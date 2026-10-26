@@ -375,6 +375,115 @@ final class EmailEventApplierTest extends TestCase
         $this->assertTrue($result->flagApplied, 'A state-mode duplicate still applies the flag');
     }
 
+    // --- #2502: state mode writes no second row for the same block ----------
+
+    public function testStateModeWithAnExistingSameCauseRowWritesNoRowAndStillSetsTheFlag(): void
+    {
+        $this->givenState();
+        $this->mockRepo->method('hasOwnerEmailEventForAddress')->willReturn(true);
+        $this->mockRepo->expects($this->never())->method('insertOwnerEmailEvent');
+        $this->mockManager->expects($this->once())
+            ->method('setSuppressedFromEvent')
+            ->with(42, self::ADDRESS, 'spam', self::EVENT_TIME, 'import');
+
+        $result = $this->apply('spam', mode: EmailEventApplier::MODE_STATE, source: 'import');
+        $this->assertFalse($result->eventRowWritten);
+        $this->assertTrue($result->flagApplied, 'The clear flag is still set');
+    }
+
+    public function testEventModeNeverAsksForAnExistingRow(): void
+    {
+        $this->givenState();
+        $this->mockRepo->expects($this->never())->method('hasOwnerEmailEventForAddress');
+
+        $result = $this->apply('hard_bounce');
+        $this->assertTrue($result->eventRowWritten);
+    }
+
+    public function testStateModeBlockedAsksForTheWholeHardBounceGroup(): void
+    {
+        $this->givenState();
+        $this->mockRepo->expects($this->once())
+            ->method('hasOwnerEmailEventForAddress')
+            ->with(42, self::ADDRESS, ['hard_bounce', 'blocked', 'invalid', 'invalid_email'])
+            ->willReturn(true);
+        $this->mockRepo->expects($this->never())->method('insertOwnerEmailEvent');
+
+        $result = $this->apply('blocked', mode: EmailEventApplier::MODE_STATE, source: 'import');
+        $this->assertFalse($result->eventRowWritten);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function singleCauseEventProvider(): array
+    {
+        return ['spam' => ['spam'], 'unsubscribed' => ['unsubscribed']];
+    }
+
+    #[DataProvider('singleCauseEventProvider')]
+    public function testStateModeSpamAndUnsubscribedAskOnlyForTheirOwnName(string $event): void
+    {
+        $this->givenState();
+        $this->mockRepo->expects($this->once())
+            ->method('hasOwnerEmailEventForAddress')
+            ->with(42, self::ADDRESS, [$event])
+            ->willReturn(false);
+
+        $result = $this->apply($event, mode: EmailEventApplier::MODE_STATE, source: 'import');
+        $this->assertTrue($result->eventRowWritten, 'No row of the same cause: the row is written');
+    }
+
+    private function applyAdminBlock(): EmailEventApplyResult
+    {
+        return $this->applier->apply(
+            EmailEventMatch::matched(42, null, self::MESSAGE_TIME),
+            self::ADDRESS,
+            'unsubscribed',
+            null,
+            CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX . 'hash',
+            self::EVENT_TIME,
+            'import',
+            EmailEventApplier::MODE_STATE,
+            CarRepository::BLOCKED_CAUSE_BLOCKLIST
+        );
+    }
+
+    public function testStateModeAdminBlockIsNotStoppedByAPlainUnsubscribeRow(): void
+    {
+        $this->givenState();
+        $this->mockRepo->expects($this->never())->method('hasOwnerEmailEventForAddress');
+        $this->mockRepo->expects($this->once())
+            ->method('ownerBlockEventCauses')
+            ->with(42, self::ADDRESS, null)
+            ->willReturn(['unsubscribed']);
+        $this->mockRepo->expects($this->once())->method('insertOwnerEmailEvent');
+
+        $this->assertTrue($this->applyAdminBlock()->eventRowWritten, 'A real unsubscribe does not stop the admin-block row');
+    }
+
+    public function testStateModeAdminBlockWithAnEarlierAdminBlockRowWritesNoRow(): void
+    {
+        $this->givenState();
+        $this->mockRepo->method('ownerBlockEventCauses')->willReturn(['unsubscribed', 'blocklist']);
+        $this->mockRepo->expects($this->never())->method('insertOwnerEmailEvent');
+
+        $this->assertFalse($this->applyAdminBlock()->eventRowWritten);
+    }
+
+    public function testStateModeWithNoSameCauseRowInsertsTheRow(): void
+    {
+        $this->mockRepo->method('lockEventGuardState')->willReturn(self::guardState());
+        $this->mockRepo->method('hasOwnerEmailEventForAddress')->willReturn(false);
+        $this->mockRepo->expects($this->once())
+            ->method('insertOwnerEmailEvent')
+            ->with(42, self::ADDRESS, 'blocked', null, 'msg-1', self::EVENT_TIME, null)
+            ->willReturn(1);
+
+        $result = $this->apply('blocked', mode: EmailEventApplier::MODE_STATE, source: 'import');
+        $this->assertTrue($result->eventRowWritten);
+    }
+
     public function testAnEventForAnOldAddressRecordsTheRowAndSetsNoFlag(): void
     {
         $this->givenState(['email' => 'new@example.com']);

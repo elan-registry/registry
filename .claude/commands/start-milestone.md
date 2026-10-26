@@ -451,7 +451,8 @@ Otherwise, create a draft release notes file at
 `docs/development/RELEASE_NOTES_TEMPLATE.md`:
 
 - Fill in the version and today's date
-- Write a brief summary based on the milestone description
+- Write a summary of at most 2 sentences based on the milestone
+  description
 - Populate the "Issues Resolved" section with all open issues from the
   milestone, in the order approved in Step 5, not sorted by number. Put the
   issues of a combine group next to each other. `/finish-issue` reads this

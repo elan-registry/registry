@@ -23,12 +23,11 @@ building.
 
 ## Candidate filter
 
-A candidate is an open issue, not a pull request, with no milestone or in
-the `Backlog` milestone. The `Backlog` milestone is not a release
-commitment. An issue in any other milestone belongs to that release and is
-never a candidate. Every issue query in this command uses `--paginate`
-(`gh api`) or `--limit 500` (`gh issue list`), because the backlog has more
-than 100 open issues.
+A candidate is an open issue, not a pull request, with no milestone. An
+issue in a milestone belongs to that release and is never a candidate. Every
+issue query in this command uses `--paginate` (`gh api`) or `--limit 500`
+(`gh issue list`), because the repository has more than 100 open issues and
+each query filters them on the client side.
 
 ## Context check
 
@@ -94,7 +93,7 @@ Pull every candidate (see "Candidate filter"), newest first:
 
 ```bash
 gh api "repos/elan-registry/registry/issues?state=open&sort=created&direction=desc&per_page=100" --paginate \
-  --jq '.[] | select(.pull_request == null) | select(.milestone == null or .milestone.title == "Backlog") | {number, title, labels: [.labels[].name], created_at}'
+  --jq '.[] | select(.pull_request == null) | select(.milestone == null) | {number, title, labels: [.labels[].name], created_at}'
 ```
 
 Group by `signal:*` label. Read `signal:owner` and `signal:analytics` issues
@@ -137,7 +136,7 @@ those already loosely related — scan broadly, the theme is the filter):
 
 ```bash
 gh api "repos/elan-registry/registry/issues?state=open&per_page=100" --paginate \
-  --jq '.[] | select(.pull_request == null) | select(.milestone == null or .milestone.title == "Backlog") | {number, title, labels: [.labels[].name], body}'
+  --jq '.[] | select(.pull_request == null) | select(.milestone == null) | {number, title, labels: [.labels[].name], body}'
 ```
 
 First, sort out the `signal:defect` candidates. For each one, decide from
@@ -186,8 +185,8 @@ Produce two lists:
 ```
 
 Two more kinds of work skip this gate entirely — check for both
-separately. Take only candidates (no milestone, or `Backlog`). An issue of
-either kind in another milestone stays in that milestone.
+separately. Take only candidates (no milestone). An issue of
+either kind that is in a milestone stays in that milestone.
 
 - **`signal:forced`** — at most one per milestone (the housekeeping slot in
   Step 4). If more than one is a candidate, the user picks which ships now.
@@ -198,10 +197,10 @@ either kind in another milestone stays in that milestone.
 ```bash
 gh issue list --repo elan-registry/registry --label "signal:forced" --state open --limit 500 \
   --json number,title,milestone \
-  --jq '.[] | select(.milestone == null or .milestone.title == "Backlog") | {number, title}'
+  --jq '.[] | select(.milestone == null) | {number, title}'
 gh issue list --repo elan-registry/registry --label "gate-critical" --state open --limit 500 \
   --json number,title,milestone \
-  --jq '.[] | select(.milestone == null or .milestone.title == "Backlog") | {number, title}'
+  --jq '.[] | select(.milestone == null) | {number, title}'
 ```
 
 ## Step 4: Seal the milestone
@@ -277,8 +276,8 @@ gh issue close NNN --repo elan-registry/registry \
   --comment "Closing as low-value / make-work during milestone planning. Can be reopened if prioritized."
 ```
 
-Otherwise leave the issue open. Do not change its milestone (none or
-`Backlog`) or its labels. Add one comment with the one-line reason from the "Candidates
+Otherwise leave the issue open. Do not change its milestone (none) or its
+labels. Add one comment with the one-line reason from the "Candidates
 cut" table:
 
 ```bash

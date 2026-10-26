@@ -429,8 +429,10 @@ milestone release notes. Go to Step 7.
 Otherwise, use the milestone branch that Step 6.4 resolved. The version is
 the branch name without `milestone/` (`milestone/v2.17.0` → `v2.17.0`). Update `docs/releases/RELEASE_NOTES_<version>.md` (create
 from `docs/development/RELEASE_NOTES_TEMPLATE.md` if it doesn't exist yet).
-Add this issue's changes to the appropriate section, keep it cumulative, use
-the `technical-documentation-writer` agent for non-trivial entries.
+Add this issue's changes to the appropriate section and keep it cumulative.
+Follow the template's "Be brief" rule: at most one entry for this issue in
+User-Facing or Admin-Facing Changes, one sentence of at most 20 words. A
+change with no visible effect gets no entry there.
 
 ### Step 6.8: Simplify Pass
 

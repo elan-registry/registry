@@ -295,6 +295,7 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
         $ownerIdsToRun = [$firstOwnerId, $throwerOwnerId, $lastOwnerId];
 
         $this->db->query('DELETE FROM users WHERE id = ?', [$throwerOwnerId]);
+        $this->deleteDeletedUserAddressRows([$throwerOwnerId]);
 
         $totals = $this->runExecuteLoop($ownerIdsToRun);
 

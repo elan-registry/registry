@@ -4,14 +4,16 @@ declare(strict_types=1);
 
 use ElanRegistry\Car\EmailEventApplier;
 use ElanRegistry\Car\VerificationTabStatus;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
  * Unit tests for VerificationTabStatus::chip(), the Status-column chip logic
  * of the admin Verification tab (#1896, #2101, #2361, #2330).
  *
- * Since #2101 the owner's profile flags decide the chip: no profile, then
- * blocked, then opted out, then the latest event. The chip no longer reads
+ * Since #2101 the owner's profile flags decide the chip. Since #2461 the
+ * order is: no profile, blocked, the bounce flag, opted out, then the latest
+ * event (a hard-bounce event still shows "Bounced"). The chip no longer reads
  * suppression events or EmailNoticeBuilder. Since #2361 a block reads
  * "Blocked", not "Brevo complaint".
  */
@@ -66,6 +68,77 @@ final class AdminVerificationStatusChipTest extends TestCase
         $chip = VerificationTabStatus::chip(null, true, true, 'spam', true);
 
         $this->assertSame('blocked', $chip['kind']);
+    }
+
+    public function testBouncedFlagWinsOverOptedOut(): void
+    {
+        $chip = VerificationTabStatus::chip(null, true, false, null, true, true);
+
+        $this->assertSame('bounced', $chip['kind']);
+        $this->assertSame('Bounced', $chip['label']);
+    }
+
+    public function testBlockedWinsOverBouncedFlag(): void
+    {
+        $chip = VerificationTabStatus::chip(null, true, true, 'spam', false, true);
+
+        $this->assertSame('blocked', $chip['kind']);
+    }
+
+    public function testBouncedFlagWithNoEventShowsBounced(): void
+    {
+        $chip = VerificationTabStatus::chip(null, true, false, null, false, true);
+
+        $this->assertSame('bounced', $chip['kind']);
+        $this->assertSame('', $chip['reason']);
+    }
+
+    public function testBouncedFlagKeepsTheHardBounceEventReason(): void
+    {
+        $event = (object) ['event' => 'hard_bounce', 'occurred_at' => '2026-09-01 10:00:00', 'reason' => 'mailbox full'];
+
+        $chip = VerificationTabStatus::chip($event, true, false, null, false, true);
+
+        $this->assertSame('bounced', $chip['kind']);
+        $this->assertSame('mailbox full', $chip['reason']);
+    }
+
+    public function testBouncedFlagDropsTheReasonOfANonHardBounceEvent(): void
+    {
+        $event = (object) ['event' => 'soft_bounce', 'occurred_at' => '2026-09-01 10:00:00', 'reason' => 'mailbox full'];
+
+        $chip = VerificationTabStatus::chip($event, true, false, null, false, true);
+
+        $this->assertSame('bounced', $chip['kind']);
+        $this->assertSame('', $chip['reason']);
+    }
+
+    /** @return array<string, array{0: string}> */
+    public static function hardBounceEventProvider(): array
+    {
+        $events = EmailEventApplier::HARD_BOUNCE_EVENTS;
+
+        return array_combine($events, array_map(static fn (string $name): array => [$name], $events));
+    }
+
+    /**
+     * An opted-out owner gets no new sends, so the latest event can be a
+     * hard bounce at a previous address. With no bounce flag that applies,
+     * the event must not hide the opt-out (#2461).
+     */
+    #[DataProvider('hardBounceEventProvider')]
+    public function testOldHardBounceEventWithNoFlagDoesNotHideOptOut(string $eventName): void
+    {
+        $chip = VerificationTabStatus::chip(self::event($eventName, '2026-09-01 10:00:00'), true, false, null, true, false);
+
+        $this->assertSame('opted_out', $chip['kind']);
+    }
+
+    public function testOptedOutWinsOverANonBounceEvent(): void
+    {
+        $chip = VerificationTabStatus::chip(self::event('soft_bounce', '2026-09-01 10:00:00'), true, false, null, true);
+
+        $this->assertSame('opted_out', $chip['kind']);
     }
 
     public function testOwnerFlagWinsOverALatestDeliveredEvent(): void

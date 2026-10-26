@@ -304,11 +304,13 @@ cron transport delays reminders and does not stop them for good.
 | Brevo webhook (`app/api/webhooks/brevo.php`) | Runs. It records events and sets flags. It does not read the switch (#2359). |
 | `BrevoEventReconciliationJob` (backfill and prune) | Runs. |
 | `BrevoSuppressionSyncJob` | Runs. |
+| `RetentionPurgeJob` | Runs. |
 | Manual "run now" paths of both Brevo jobs | Run. |
 
 Among the cron jobs, only the send batch honours the switch. The prune, the
-reconciliation and the suppression import must run while sends are off. They
-read from Brevo and write the registry's own records. They send no email.
+reconciliation, the suppression import and the retention purge must run while
+sends are off. They read from Brevo or delete old records, and write the
+registry's own records. They send no email.
 `AbstractCronJob::refusesWhileSwitchOff()` makes the choice. The default
 returns `false`. The send batch overrides it. See
 [DEPLOYMENT.md, Cron Transport](DEPLOYMENT.md#cron-transport-userspice-cron-manager).
@@ -321,8 +323,9 @@ the suppression import. To stop all event writes, do these three steps:
 1. Set `BREVO_WEBHOOK_TOKEN` to an empty value. The webhook then refuses
    every call with 401, and Brevo retries the call later.
 2. Set `er_cron_job_runs.enabled = 0` for `brevo_reconciliation` and
-   `brevo_suppression_sync`. This also stops the retention prune, because the
-   reconciliation job runs the prune. Also pause the
+   `brevo_suppression_sync`. This also stops the `er_email_events` prune,
+   because the reconciliation job runs it. It does not stop
+   `retention_purge`. Also pause the
    `brevo-event-reconciliation-<env>` check in healthchecks.io. Otherwise it
    lapses and alerts Discord (see
    [DEPLOYMENT.md, Cron monitoring](DEPLOYMENT.md#cron-monitoring-healthchecksio)).
@@ -575,7 +578,9 @@ Opted out counts cars whose owner has `email_opted_out = 1`. An owner with no
 `profiles` row gets no verification email, so the car is never Eligible.
 The rule lives once, in `CarRepository::countVerificationSummary()`.
 
-**Table columns:** Car, Chassis, Owner, Sent, Days, Status, Actions.
+**Table columns:** Car, Chassis, Owner, User ID, Sent, Days, Status, Actions.
+The User ID links to the user's admin page (`users/admin.php?view=user&id=N`)
+in a new tab. A row with no owner shows a dash.
 
 **URL state:** `?tab=verification&status=&window=&show=`. A view has its own
 bookmarkable URL. `app/admin/index.php` checks each value against a fixed
@@ -614,11 +619,15 @@ Rules for the controls:
   `email_opted_out`). A car whose owner has a flag shows under its own pill
   instead. A car whose owner has no `profiles` row can still be Pending.
 
-**Status chip.** The Status column shows the owner's profile state first, then
+**Status chip.** The Status column shows the owner's profile flags first, then
 the car's latest email event. `VerificationTabStatus::chip()` builds the chip,
 and `CarRepository::findLatestEmailEventPerCarWithPrecedence()` selects the
-event. Possible chips are: No profile, Blocked, Opted out, Sent, Delivered,
-Soft bounce (with reason), Bounced, Spam complaint, and Unknown event names.
+event. The chip uses this order: no profile, blocked, bounced, opted out, then
+the latest event. The batch report (`SendPolicy::verificationReason()`) and
+the account notice (`EmailNoticeBuilder`) use the same order, so the three
+views give one reason for an owner with more than one flag (#2461). The
+possible chips, not in priority order, are: No profile, Blocked, Opted out, Sent, Delivered, Soft bounce (with
+reason), Bounced, Spam complaint, and Unknown event names.
 "Bounced" covers `EmailEventApplier::HARD_BOUNCE_EVENTS` (`hard_bounce`,
 `blocked`, `invalid`, `invalid_email`). "Delivered" covers four Brevo event
 names: `delivered`, `unique_opened`, `opened`, and `click` — an open or a
@@ -671,17 +680,21 @@ checks run in this order, and the first match wins (`VerificationTabStatus::chip
 2. `email_blocked = 1`: "Blocked". The reason text is `email_blocked_cause`
    (`spam`, `unsubscribed`, `blocklist`), or "cause unknown" when the cause
    is NULL. The reason shows as small muted text under the badge.
-3. `email_opted_out = 1`: "Opted out".
-4. Otherwise the chip shows the latest email event, as the rules above select it.
+3. `email_bounced = 1`: "Bounced". The reason text is the reason of the
+   latest event when that event is a hard bounce, else empty.
+4. `email_opted_out = 1`: "Opted out".
+5. Otherwise the chip shows the latest email event, as the rules above select it.
+   A hard-bounce event shows "Bounced" also for an owner with no bounce flag.
 
 The tab does not read suppression events or `cars_hist` to find the cause.
-The cause is the stored `email_blocked_cause`. `blocked` means that the block
-applies to the owner's current address (#2356).
+The cause is the stored `email_blocked_cause`. Steps 2 and 3 count a flag only
+when it applies to the owner's current address (#2356). The tab reads the
+`email_blocked_active` and `email_bounced_active` columns for this.
 
-The chip does not test the bounce flag, although a bounce that applies also
-stops all mail to the owner. The chip reports what happened to the last email.
-A hard-bounce event already shows "Bounced" through step 4. The Bounced pill
-and the row action read the bounce flag instead.
+The bounce flag comes before the opt-out, and a hard-bounce event comes after
+it (#2461). An opted-out owner gets no new sends, so the latest event can be
+a hard bounce at an address the owner no longer uses. That old event does not
+hide the opt-out.
 
 **Why the filter pill and the status chip can disagree.** The pill is based
 on the car's current state. The chip is based on the latest email event.
@@ -726,6 +739,9 @@ button, in this order:
 | Opted out (`email_opted_out` is set) | Clear Opt-out | `clear_opt_out` |
 | Bounced (`email_bounced` applies to the owner's current address) | Clear Bounced | `clear_bounced` |
 | None of these | Mark Bounced | `mark_bounced` |
+
+This is a clear order, not the Status chip order. An owner who is bounced and
+opted out shows the "Bounced" chip and the Clear Opt-out button.
 
 An owner with several flags shows the first action that applies. After the
 admin clears one flag, the row shows the next action. For example, after Clear
@@ -1016,11 +1032,13 @@ with no car sees it too (#2319). It links to the fix, so the owner does not
 need to know where to look.
 
 **Builder:** `EmailNoticeBuilder::buildForOwner(int $ownerId): ?array`
-(`usersc/classes/Car/EmailNoticeBuilder.php`). It calls only
-`CarRepository::effectiveEmailFlags()`, so a flag for an old address does not
-show (see [Address-Match Rule](#address-match-rule-2356)). It returns `null`
-when no flag applies. The array holds `kind`, `address`, `date`, `cause`,
-`alsoOptedOut`, `optedOutDate` and `contentHash`.
+(`usersc/classes/Car/EmailNoticeBuilder.php`). It calls
+`CarRepository::effectiveEmailFlags()` for every owner. A flag for an old
+address does not show (see [Address-Match Rule](#address-match-rule-2356)).
+For a block with an address, it also calls
+`CarRepository::ownerBlockEventCauses()` and `CarRepository::latestFlagClearAt()`.
+It returns `null` when no flag applies. The array holds `kind`, `address`,
+`date`, `causes`, `alsoOptedOut`, `optedOutDate` and `contentHash`.
 
 **States.** One state shows. The builder picks it in this order:
 
@@ -1035,21 +1053,64 @@ when no flag applies. The array holds `kind`, `address`, `date`, `cause`,
 - If a block or bounce has no stored address, `address` is the owner's current
   `users.email`. That flag applies to the current address.
 - A NULL `_at` column gives a null date. The notice then shows no date.
-- `cause` is one of `spam`, `unsubscribed` or `blocklist`. Any other stored
-  value, or none, gives no cause (#2318).
+- `causes` is a list of block causes. Each value is `spam`, `unsubscribed` or
+  `blocklist`, and each cause appears once. It is empty for a bounce, an
+  opt-out, and a block with no known cause.
+- The builder builds the list in this order:
+  - The profile cause, `email_blocked_cause`, comes first.
+  - Each other `spam` or `unsubscribed` event for the blocked address follows.
+    The builder counts only events after the latest clear of the block. An
+    admin Clear Block (source `admin`) and a confirmed email change (source
+    `email_change`) both clear it. The later of the two times applies.
+    Events follow the order of `CarRepository::BLOCKED_CAUSES`.
+- An `adminBlocked` import row has the event `unsubscribed` and a message ID
+  that starts with `suppression-import-blocklist-`. The repository gives the
+  cause `blocklist` for that row, not `unsubscribed`. So a profile cause
+  `spam` and a later admin block give `spam` and `blocklist` (#2500).
+- A `blocklist` profile cause ignores `unsubscribed` events. An admin-block
+  row from before #2500 has no tag, so the notice would otherwise say the
+  owner unsubscribed. The import retags such a row when it sees the contact
+  again (see [the import](#brevo-suppression-list-import-1923)). This rule stays for a
+  row that the import does not see again, for example when the contact is no
+  longer on Brevo's list.
+- The hard-bounce event `blocked` is not a block cause.
+- An unknown profile cause adds no profile cause. The builder writes a log
+  line. Event causes still apply (#2318).
+- With no address, the builder runs no event query. The list then holds only
+  the profile cause.
+- If the event lookup fails, the builder logs the failure with no exception
+  message and keeps the notice with the profile cause only. The flags already
+  show the block, so the owner still sees it.
 
 **Copy.** The partial `app/views/_email_paused_notice.php` shows this text. It
-never shows the word "Brevo".
+never shows the word "Brevo". The cause texts are in
+`EmailNoticeBuilder::CAUSE_TEXT`. The partial escapes them.
 
 | State | Message |
 | --- | --- |
 | Blocked, cause `spam` | "Email to `<address>` is blocked because a message to this address was reported as spam." |
 | Blocked, cause `unsubscribed` | "Email to `<address>` is blocked because this address unsubscribed from registry email." |
 | Blocked, cause `blocklist` | "Email to `<address>` is blocked because an administrator blocked this address." |
+| Blocked, two causes | "Email to `<address>` is blocked because `<A>` and `<B>`." `<A>` and `<B>` are cause texts from the rows above, in list order. |
+| Blocked, three causes | "Email to `<address>` is blocked because `<A>`, `<B>` and `<C>`." The texts are in list order. |
 | Blocked, no cause | "Email to `<address>` is blocked." |
 | Bounced | "Email to `<address>` bounced on `<date>`." The text "on `<date>`" is absent when the date is null. |
 | Opted out | "You opted out of registry email on `<date>`." The text "on `<date>`" is absent when the date is null. |
 
+- The partial keeps the list order. One cause text stands alone. Two texts
+  join with "and". Three texts join as "A, B and C". Three causes are rare.
+  For example, a message was reported as spam (profile cause `spam`). Then an
+  administrator blocked the address at Brevo, and the import wrote a tagged
+  admin-block row. Then the owner unsubscribed, and the webhook wrote an
+  `unsubscribed` row. The list is `spam`, `unsubscribed`, `blocklist`, in
+  `CarRepository::BLOCKED_CAUSES` order: "Email to `<address>` is blocked
+  because a message to this address was reported as spam, this address
+  unsubscribed from registry email and an administrator blocked this address."
+- Known limit (#2529): after an admin Clear Block, a later admin block that
+  the import finds as a duplicate writes no new row, so the notice does not
+  name it.
+- Every notice line uses the warning style, `er-email-notice__line--problem`.
+  The opted-out notice uses it too.
 - A blocked or bounced notice adds "Change your email address or contact an
   admin." It has two links: **Change email** (`usersc/user_settings.php#account-email`)
   and **Contact an admin** (`app/owner/contact/index.php`).
@@ -1260,9 +1321,10 @@ trailing spaces. Matching never uses `LIKE`, `FIND_IN_SET` or a substring.
   [Brevo Suppression List Import](#brevo-suppression-list-import-1923).
 - The nightly prune blanks the address of each car's latest `sent` row once
   the row is older than 90 days. A later event for that message cannot match
-  by step (a). It matches by step (b) if the plugin row still exists.
-  Otherwise it matches no user, and a verification-tagged event counts as
-  unmatched.
+  by step (a). Step (b) needs the address in the plugin row. The retention
+  purge removes that address after 90 days (see
+  [Retention of plugin rows](#retention-of-plugin-rows)). So the event
+  matches no user, and a verification-tagged event counts as unmatched.
 
 An event for our message with no matching user returns `NO_USER_MATCH`. The
 webhook returns 2xx and writes no row. It logs the first 8 hex characters of
@@ -1308,7 +1370,7 @@ the response does not change. The webhook does not call it for an event that is 
 | Brevo event | Effect |
 | --- | --- |
 | `hard_bounce`, `blocked`, `invalid`, `invalid_email` | Immediately flags the owner as bounced (`profiles.email_bounced = 1`, with `email_bounced_address` set to the reported address and `email_bounced_at` set to the event time) |
-| `soft_bounce` | Event row only, unless this is the 3rd or later distinct send cycle (distinct `brevo_message_id`) since the email's last `delivered` event. Then it escalates through the same bounced flag. Soft bounces before the owner's `email_bounce_cleared_at` or `email_address_since` do not count. A soft bounce of owner contact mail does not count either (#2460): the count skips a send cycle when the `plg_sendinblue_messages` row for that `brevo_message_id` has the tag `send-owner-email` in its `tags`. A cycle with no plugin row, or with null tags, still counts, so an owner contact cycle counts again after its plugin row is deleted. [Retention of plugin rows](#retention-of-plugin-rows) says when the purge deletes that row. The sender picks the recipient, so a full mailbox must not mark the owner bounced. Hard bounces, blocks and spam of owner contact mail still set their flags. In MODE_EVENT, a soft bounce for a message before the owner's `join_date` or `email_address_since` records no row |
+| `soft_bounce` | Event row only, unless this is the 3rd or later distinct send cycle (distinct `brevo_message_id`) since the email's last `delivered` event. Then it escalates through the same bounced flag. Soft bounces before the owner's `email_bounce_cleared_at` or `email_address_since` do not count. A soft bounce of owner contact mail does not count either (#2460): the count skips a send cycle when the `plg_sendinblue_messages` row for that `brevo_message_id` has the tag `send-owner-email` in its `tags`. A cycle with no plugin row, or with null tags, still counts. The retention purge keeps the plugin row, with its tags, while an event names its message ID. So an owner contact cycle still does not count after 90 days. See [Retention of plugin rows](#retention-of-plugin-rows). The sender picks the recipient, so a full mailbox must not mark the owner bounced. Hard bounces, blocks and spam of owner contact mail still set their flags. In MODE_EVENT, a soft bounce for a message before the owner's `join_date` or `email_address_since` records no row |
 | `delivered` | Event row only. Implicitly resets the soft-bounce escalation window (the count query only looks at soft bounces after the most recent `delivered` row) |
 | `spam` | Flags the owner as blocked (`profiles.email_blocked = 1`, cause `spam`, with the address and event time). This is a distinct signal from a bounce |
 | `unsubscribed` | The same as `spam`, with cause `unsubscribed` |
@@ -1508,30 +1570,41 @@ The readers are `CarRepository::findLatestEmailEventsByCarIds()` and
   the owner.
 - A car merge moves `car_id` from the merged car to the surviving car. It
   changes no other column.
-- An account deletion runs a privacy step first, in its own transaction. The
-  step locks the profile row (`SELECT ... FOR UPDATE`). This is the same lock
-  that the event step takes first. So no event row for the user can arrive
-  between the address read and the deletes. The step reads the user's
-  addresses from the profile, the user's event rows and the user's cars. It
-  deletes the user's `plg_sendinblue_messages` rows, then the user's event
-  rows, then the profile. It skips an address that is another user's current
-  `users.email`. If the plugin table is absent, the step logs this and
-  continues. If the step fails, it rolls back, logs a CRITICAL line with the
-  user ID, the stage and the exception class, and the hook continues with the
-  car cleanup. The step then logs a summary line, whether it committed or
-  rolled back.
+- An account deletion runs a privacy step first, in its own transaction
+  (`AccountDeletionPrivacyStep`). The step locks the profile row
+  (`SELECT ... FOR UPDATE`). This is the same lock that the event step takes
+  first. So no event row for the user can arrive between the address read and
+  the deletes. The step reads the user's addresses from the profile, the user's
+  event rows, the user's cars and the user's `er_deleted_user_addresses` row.
+  It deletes the user's `plg_sendinblue_messages` rows, then the user's event
+  rows, then the profile, then the holding row. It skips an address that is
+  another user's current `users.email`. If the plugin table is absent, the step
+  logs this and continues. If the step fails, it rolls back and logs a CRITICAL
+  line with the user ID, the stage and the exception class. The hook then
+  continues with the car cleanup. The step logs a summary line, whether it
+  committed or rolled back.
+
+  **Holding row.** Upstream `deleteUsers()` deletes the `users` row before the
+  hook runs, so the step cannot read `users.email` or `users.email_new`. The
+  trigger `users_delete_capture_addresses` copies both addresses into
+  `er_deleted_user_addresses` when the row is deleted. The step reads them
+  from there. So a stale `email_address_seen` and a pending `email_new` are
+  covered. The step deletes the holding row in the same transaction. After a
+  failed step, the row stays and a rerun has the addresses. See
+  [DATABASE.md](DATABASE.md#er_deleted_user_addresses---addresses-of-a-deleted-user-2419).
+
+  **Rerun.** After the CRITICAL "privacy step failed" line, an admin runs
+  `30-Rerun-Deletion-Privacy-Step.php` for the user ID. See
+  [FIX_SCRIPTS.md](FIX_SCRIPTS.md#rerun-the-deletion-privacy-step-30-rerun-deletion-privacy-stepphp).
 
   The address sources include `cars.email` of the user's cars. On a
   transferred car, this field can hold the old address of a previous owner.
   So the step can delete the plugin mail-log rows of that person. This
   over-deletes log rows. It does not leak data.
 
-  Known gaps:
+  Known gap:
 
-  - The step cannot read the current `users.email`, because the hook already
-    deleted that row. So a stale `email_address_seen` or a pending `email_new`
-    is not covered. See [#2419](https://github.com/elan-registry/registry/issues/2419).
-  - A failed privacy step leaves the data in place, and nothing retries it.
+  - Nothing retries a failed privacy step. An admin must run the rerun script.
     See [#2421](https://github.com/elan-registry/registry/issues/2421).
 
 ### Event Retention
@@ -1575,24 +1648,46 @@ list above) and the latest event of each car in its Status chip (#2361).
 
 The table `plg_sendinblue_messages` must keep a recipient address for 90 days
 or less. The upstream sendinblue plugin 1.8.0 has no retention setting for
-this table. The Registry sets the limit in two steps: a one-time purge at
-go-live, then a recurring purge job. The job does not exist yet.
+this table. The Registry sets the limit with a daily purge job.
+`RetentionPurgeJob`
+([#2384](https://github.com/elan-registry/registry/issues/2384)) runs once a
+day. Its `SendinblueMessagesRetentionRule` applies the rules below. See
+[CLASSES.md](CLASSES.md#retention) for the classes.
 
-1. **At go-live, run a one-time purge.** Run this SQL once:
-   `DELETE FROM plg_sendinblue_messages WHERE accepted_at < NOW() - INTERVAL 90 DAY;`
-2. **After go-live, the purge job runs.** [#2384](https://github.com/elan-registry/registry/issues/2384)
-   adds the job.
+Go-live needs no one-time purge. The first run handles the rows that
+are already older than 90 days. Do not delete old rows by hand with
+`DELETE ... WHERE accepted_at < ...`. That SQL also deletes the rows that an
+event still names, and then owner contact soft bounces count again (#2460).
 
-Until #2384 ships, a row can stay longer than 90 days after the go-live day.
+The window is the constant `RETENTION_SENDINBLUE_MESSAGES_DAYS` in
+`usersc/includes/config.php`. It is 90. A unit test fails if the value is
+more than 90, because `app/owner/privacy.php` promises 90 days.
 
-The purge deletes every row older than 90 days. This includes a row whose
-message ID `er_email_events` still names. The effect on matching:
+**What the rule does with a row older than 90 days** (by `accepted_at`):
 
-- A soft bounce of owner contact mail counts again for that send cycle. The
-  count has no plugin row to read the tag `send-owner-email` from. See the
-  `soft_bounce` row in the event table.
-- A later event for the message matches no user by step (b). See the
-  address-match steps above.
+| An `er_email_events.brevo_message_id` names the row | Result |
+| --- | --- |
+| No | The rule deletes the row. |
+| Yes | The rule keeps the row, with its `message_id` and `tags`. It sets `recipient_email` to an empty string. |
+
+A row that is not older than 90 days does not change.
+
+- **Soft bounces.** The kept row still holds the tag `send-owner-email`. So a
+  soft bounce of owner contact mail still does not count for that send cycle.
+  See the `soft_bounce` row in the event table.
+- **Step (b).** A cleared row has no address. A later event for that message
+  matches no user by step (b). See the address-match steps above.
+- **Switch.** The job runs with the verification switch off.
+- **Missing table.** The rule first checks `information_schema` for
+  `plg_sendinblue_messages`. If the table does not exist, the job writes one
+  skip line and deletes nothing. The run succeeds. A failed check, or any
+  error on the delete or the clear (also a missing `er_email_events`), is a
+  failure.
+- **Other database error.** The rule fails and the other rules still run.
+  The run counts as a failure: the job stamps `last_failure_at`, pings
+  `/fail` and writes one `CronJobFailure` line.
+- **Log.** The job writes one line for each rule under the category
+  `RetentionPurge`. A line holds the rule name and counts, never an address.
 
 ### Address-Match Rule (#2356)
 
@@ -1796,7 +1891,55 @@ the message-ID steps do not apply. The user needs no car. An address that no
 user holds, or that two users hold, is counted as unmatched and sets no flag.
 The job calls `apply()` once for the matched user with `MODE_STATE`. It stores
 an owner-level row (`car_id` NULL) under a message ID that it builds from the
-address, the reason code and `blockedAt`, so a repeat run writes no second row.
+address, the reason code and `blockedAt`. The ID is a prefix and an MD5 hash.
+The prefix is `suppression-import-blocklist-`
+(`CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX`) for `adminBlocked`
+and `suppression-import-` for all other codes. The paused-email notice reads
+the prefix to tell an admin block from an unsubscribe (#2500). Admin-block
+rows from before #2500 have the old prefix. Without a repair, a re-run writes
+a tagged second row beside each one, and the old row still names an
+unsubscribe. So for an
+`adminBlocked` contact with a matched owner, the job first changes the ID of
+the owner's old row (event `unsubscribed`, the old prefix and the same hash)
+to the tagged ID (`CarRepository::retagOwnerEmailEventMessageId()`). When the
+owner already has the tagged row, the method deletes the old row instead.
+After a full backfill, no untagged admin-block row remains for a contact that
+is still on Brevo's list. The job has no dry-run mode, so each run makes this
+change. `er_email_events` has no audit trigger, so the job writes one log line
+for each contact whose rows it changes or deletes, with the number of rows. A
+failed retag is logged with no address, and `apply()` still runs: the retag
+repairs only the notice text. When `apply()` then writes the tagged row, the
+next run deletes the old row.
+In `MODE_STATE`, `apply()` writes no
+row when the owner already has a row for the same address and the same cause
+group. A cause group is a set of event names, one of these: all
+`HARD_BOUNCE_EVENTS` names, `spam`, or `unsubscribed`. An `adminBlocked`
+import (the tagged prefix) is a group of its own: only an earlier tagged
+admin-block row stops it. An earlier `unsubscribed` row from a real unsubscribe
+does not, so the notice names both causes. An untagged import of another
+reason code still counts a tagged admin-block row as `unsubscribed`. For an
+`adminBlocked` import, when the flag is already set for the same address, the
+flag step keeps the stored cause. Otherwise it sets the `blocklist` cause,
+unless a later admin Clear Block stops it. The check uses
+`CarRepository::hasOwnerEmailEventForAddress()`, or
+`CarRepository::ownerBlockEventCauses()` for an admin block. It does not compare
+`occurred_at` or the source, so a row from the webhook, the reconciliation job
+or an earlier import counts. A row from before an admin clear also counts. The result
+is not new. The address check and the flag step still run, so the import sets
+the flag again when it is clear and no guard stops it. A webhook row followed
+by an import of the same block gives one row. When the owner's flag still
+applies, the run summary counts that contact as "already flagged" only. A
+repeat run writes no second row. `MODE_EVENT` keeps the unique-key rule
+`(user_id, brevo_message_id, event)`.
+
+The event history therefore holds one row per address and cause. A new block
+after an admin clear that only the import sees sets the flag, but writes no
+second row. The Status chip still shows it, because the chip reads the
+profile flags before the event rows.
+A webhook row for a verification send has the `car_id` of that car. On the
+owner's other cars, the Bounced chip then shows no reason text, because no
+owner-level row exists for that block. A webhook row for other mail has no
+`car_id` and shows on every car.
 The job passes the source `import` to the audit row. The reconciliation job
 passes `reconciliation`. The job runs with the verification switch off.
 
@@ -1806,13 +1949,31 @@ fails `FILTER_VALIDATE_EMAIL`, before any match. The summary counts it in
 
 **Time.** `blockedAt` is the event time. The job uses it only when it is a
 non-empty string that parses to a positive time, and that time is not more than
-5 minutes after the run time (`MAX_FUTURE_SECONDS = 300`). The webhook and the
+5 minutes after the run time (`MAX_FUTURE_SECONDS = 300`) after the Paris
+conversion below. The webhook and the
 reconciliation job use the same 5-minute cap. Any other value is "no usable
 date": a missing value, a value that is not a string, an empty string, a string
 that does not parse, a non-positive time, or a time more than 5 minutes after
 the run time. For no usable date, the job logs a warning with the user ID, not
 the address, and uses the run time as the event time. It also tells
 `apply()` that the time is a fallback. See Import guards.
+
+**Paris time.** Brevo writes `blockedAt` as Paris local time with a `Z`
+suffix (#2501). On test, two blocks from 2026-10-22 came back exactly 2 hours
+after the epoch `ts_event` of their webhooks (`20:52:44.000Z` against
+18:52:45 UTC, and `20:00:53.000Z` against 18:00:53 UTC). That is the CEST
+offset (UTC+2). On 2026-10-25, the first day of CET, the API still returned
+the same values. So Brevo applies the Paris offset of the event date, not the
+offset of the request date. `BrevoSuppressionSyncJob::parseBlockedAt()` reads
+a value with a zero offset (`Z`, `+00:00`) or no zone as `Europe/Paris` wall
+time. The Paris DST rules give 2 hours in summer and 1 hour in winter. A
+non-zero offset is a real offset, and the job keeps it. In the repeated hour
+of the change to CET, PHP picks the CEST reading, so a block in that hour can
+be 1 hour early. Before #2501, the job read `Z` as UTC. A run within 2 hours
+of a block rejected the value and used the run time. A later run stored the
+time 1 or 2 hours late. The job does not correct the rows that it wrote
+before the change. The synthetic message ID uses the raw string, so the change
+writes no second row for an entry that is already imported.
 
 **Window.** The nightly run asks Brevo for the last 48 hours only. It does not
 find a blocklist entry that is older. An owner can change back from address B
@@ -1860,8 +2021,9 @@ fails the same way on every run. The job counts the contact in `skippedCount`, l
 
 **Skipped contacts:** A contact whose flag step was not run counts as skipped in
 the summary, not matched. This includes an owner with no `profiles` row, a date
-guard that failed, an entry with no usable date after an admin clear, and an
-address that is not the current `users.email`.
+guard that failed, an entry with no usable date after a clear that is later
+than `email_address_since`, and an address that is not the current
+`users.email`.
 
 **Import guards.** `MODE_STATE` skips the `join_date` and
 `email_address_since` guards. The bounce guard and the Clear Block bound
@@ -1870,27 +2032,35 @@ owner's latest admin Clear Block does not set `email_blocked`. The import does
 not increment the unmatched recipient counter. A blocklist entry has no
 verification tag.
 
-**No usable date after an admin clear (#2426).** The run time is always later
-than an admin clear. If the job compared it with the clear, the next import
-would set a cleared flag again. So an entry with no usable `blockedAt` is
-skipped when a clear is on record for the flag that the entry sets. The skip
-happens in `EmailEventApplier::apply()`, after the date guards and before the
-event row insert. The applier writes no event row and no flag-change row. It
-logs the event name and the user ID, not the address. The summary counts the
-contact as skipped.
+**No usable date after an admin clear (#2426, #2482).** The run time is
+always later than an admin clear. If the job compared it with the clear, the
+next import would set a cleared flag again. So an entry with no usable
+`blockedAt` is skipped when a clear that counts is on record for the flag that
+the entry sets. The skip happens in `EmailEventApplier::apply()`, after the
+date guards and before the event row insert. The applier writes no event row
+and no flag-change row. It logs the event name and the user ID, not the
+address. The summary counts the contact as skipped.
 
 | Brevo reason code | Flag the entry sets | Skipped when |
 | --- | --- | --- |
-| `hardBounce` | `email_bounced` | `email_bounce_cleared_at` is not NULL (set by Clear Bounced and by a confirmed email change that clears a bounce) |
-| `contactFlaggedAsSpam`, `unsubscribedVia*`, `adminBlocked` | `email_blocked` | `CarRepository::latestFlagClearAt()` finds an admin Clear Block for the owner |
+| `hardBounce` | `email_bounced` | `email_bounce_cleared_at` is later than `email_address_since` |
+| `contactFlaggedAsSpam`, `unsubscribedVia*`, `adminBlocked` | `email_blocked` | `CarRepository::latestFlagClearAt()` finds an admin Clear Block for the owner later than `email_address_since` |
 
 Rules:
 
 - A bounce clear does not guard `email_blocked`, and a Clear Block does not
   guard `email_bounced`. Each flag follows its own clear.
-- Any admin clear on record guards a no-date entry. The guard has no time
-  window.
-- With no clear on record, an entry with no usable date still sets the flag,
+- A clear guards a no-date entry only when it is later than
+  `email_address_since`. The compare is strict. A clear at the same second
+  does not count.
+- A clear for an earlier address does not count. A confirmed email change
+  writes `email_bounce_cleared_at` at or before `email_address_since`, so that
+  clear does not count. The flag applies at the run time.
+- When `email_address_since` is NULL or not a valid datetime, or the clear
+  time is not a valid datetime, any clear counts. This is the fail-closed
+  rule from #2426. A NULL or invalid date writes a log line that names the
+  value, for example "owner 42: email_address_since is NULL".
+- With no clear that counts, an entry with no usable date still sets the flag,
   with the run time as its time. The first import does not change.
 - An entry with a usable date follows the normal guards. Brevo's `blockedAt`
   must be later than the clear.
@@ -2032,6 +2202,13 @@ like a phishing link. Give each action link a text label, never the URL. Use an 
 be a plain `<a>` with a text label. If a template needs a fallback for a button that does not work, give a `mailto:`
 contact hint built from `getFeedbackEmail()`. A `mailto:` link is not an http(s) link, so Brevo is not expected to
 rewrite it (not yet confirmed in a live send). The auth email templates in `usersc/views/` use this pattern.
+
+**Brevo click counts do not show owner clicks on verification email.** Outlook Safe Links opens the links of a message
+to scan them. On 2026-10-22 (#2088), it opened the Verify, Sold, and Opt-Out links of a verification email 3 minutes
+after delivery. Brevo logged 3 Clicked events. No car or owner data changed: a GET to `verify_car.php` never changes
+it. Only a POST from a button on the landing page does. So a Clicked event on a verification email does not show that
+the owner clicked. To see what an owner did, use the `cars_hist` rows with operation `VERIFIED` or `VERIFIED SOLD`,
+and the owner's `profiles.email_opted_out` flag.
 
 **Template-variable workaround: tested, does not work.** Some Brevo users report that supplying the URL via a
 template variable (`href="{{ params.link }}"` instead of a literal `href="https://..."`) sometimes escapes

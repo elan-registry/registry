@@ -79,6 +79,17 @@ class CarRepository
     ];
 
     /**
+     * Message-ID prefix of a suppression-import row for an `adminBlocked` contact
+     *
+     * That row has the event `unsubscribed`, so the event name cannot show
+     * the admin block.
+     * {@see \ElanRegistry\Cron\BrevoSuppressionSyncJob} writes this prefix,
+     * and {@see ownerBlockEventCauses()} gives such a row the cause
+     * `blocklist`, not `unsubscribed`.
+     */
+    public const ADMIN_BLOCK_MESSAGE_ID_PREFIX = 'suppression-import-blocklist-';
+
+    /**
      * SQL that normalizes a column the way
      * {@see EmailAddress::normalize()} does: strip
      * leading and trailing white space, then lower case. Wrap a column name
@@ -827,36 +838,6 @@ class CarRepository
     }
 
     /**
-     * Clear an owner's block (`email_blocked` with its address, time and cause)
-     *
-     * A stored value other than 0 or 1 is always written over, and the
-     * return value is the opposite of the value written ({@see writerFlagValue()}).
-     *
-     * @param int $userId Owner user ID
-     * @return int|null The old flag value (0 or 1), or null when the owner has
-     *                  no profiles row (nothing is written)
-     * @throws CarDatabaseException If a query fails
-     */
-    public function clearProfileBlocked(int $userId): ?int
-    {
-        $state = $this->findProfileEmailState($userId, true);
-        if ($state === null) {
-            return null;
-        }
-        [$old, $valid] = self::writerFlagValue($state->email_blocked, 'email_blocked', $userId, 1);
-        if ($valid && $old === 0) {
-            return $old;
-        }
-        if (!$valid) {
-            self::logFlagRepair($state->email_blocked, 'email_blocked', $userId);
-        }
-
-        $this->writeProfileBlockClear($userId, 'clearProfileBlocked');
-
-        return $old;
-    }
-
-    /**
      * Read what admin Clear Block needs before its Brevo call (#2357)
      *
      * Clear Block clears the stored block, not the effective flag, so it
@@ -898,7 +879,7 @@ class CarRepository
      * exact and null-safe: no normalization, and NULL matches only NULL.
      * When the address changed, it writes nothing, so the caller can roll
      * back. When the address matches, it clears `email_blocked` with its
-     * address, date and cause, as {@see clearProfileBlocked()} does.
+     * address, date and cause.
      *
      * When the address matches, a stored value other than 0 or 1 is written
      * over, and `old` is
@@ -1118,8 +1099,7 @@ class CarRepository
         [$bounced, $bouncedValid] = self::writerFlagValue($row->email_bounced, 'email_bounced', $userId, 1);
         [$blocked, $blockedValid] = self::writerFlagValue($row->email_blocked, 'email_blocked', $userId, 1);
         $current = EmailAddress::normalize(self::nullableString($row->user_email));
-        $seen    = EmailAddress::normalize(self::nullableString($row->email_address_seen));
-        $changed = $current !== $seen;
+        $changed = EmailAddress::isChange(self::nullableString($row->email_address_seen), $current);
 
         if ($changed) {
             if ($bounced === 1) {
@@ -1134,6 +1114,8 @@ class CarRepository
                 }
                 $this->writeProfileBlockClear($userId, 'clearFlagsForConfirmedEmailChange');
             }
+            // Keep this write after the bounce clear: the clear must not be later
+            // than email_address_since, or the import counts it for the new address (#2482).
             $this->writeProfile(
                 $userId,
                 'email_address_since = ?, email_address_seen = ?',
@@ -2854,6 +2836,223 @@ class CarRepository
     }
 
     /**
+     * Whether an owner has an er_email_events row for an address with one of the given events
+     *
+     * The suppression import calls it before it writes a row (#2502). The
+     * unique key `(user_id, brevo_message_id, event)` does not find a webhook
+     * row for the same block, because the import has its own message ID and
+     * can use another event name.
+     *
+     * The address is normalized ({@see EmailAddress::normalize()}), as the
+     * writers store it. The compare uses `COLLATE utf8mb4_bin`, because the
+     * column collation would match an accent or case variant of the address.
+     * `occurred_at` is not compared: a row of any date matches. The element
+     * check runs first, so a non-string event throws in every case.
+     *
+     * @param int $userId Owner user ID. A value less than 1 issues no query.
+     * @param string $email Recipient address
+     * @param list<string> $events Event names. An empty list issues no query.
+     * @return bool True when at least one row matches
+     * @throws InvalidArgumentException If an element of $events is not a string
+     * @throws CarDatabaseException If the query fails
+     */
+    public function hasOwnerEmailEventForAddress(int $userId, string $email, array $events): bool
+    {
+        foreach ($events as $event) {
+            if (!is_string($event)) {
+                throw new InvalidArgumentException(
+                    'CarRepository::hasOwnerEmailEventForAddress: each event must be a string'
+                );
+            }
+        }
+        if ($userId < 1 || $events === []) {
+            return false;
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($events), '?'));
+        $this->db->query(
+            "SELECT 1
+               FROM er_email_events
+              WHERE user_id = ?
+                AND email = ? COLLATE utf8mb4_bin
+                AND event IN ({$placeholders})
+              LIMIT 1",
+            [$userId, EmailAddress::normalize($email), ...array_values($events)]
+        );
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::hasOwnerEmailEventForAddress failed for user={$userId}: " . $this->db->errorString()
+            );
+        }
+
+        return $this->db->count() > 0;
+    }
+
+    /**
+     * Find the block causes that an owner's er_email_events rows give for an address
+     *
+     * The account notice calls it to name each cause of a block (#2500). A
+     * block can have more than one cause, but `profiles.email_blocked_cause`
+     * holds only one. Only the events in
+     * {@see EmailEventApplier::SUPPRESSION_EVENTS} count. The `blocked` event
+     * is a hard bounce, not a block cause.
+     *
+     * The address is normalized and compared with `COLLATE utf8mb4_bin`, as
+     * in {@see hasOwnerEmailEventForAddress()}. With `$after`, only rows with
+     * `occurred_at` after that time count, so an event from before a clear
+     * of the block does not show.
+     *
+     * The suppression import records a Brevo admin block as an `unsubscribed`
+     * row with the message-ID prefix
+     * {@see self::ADMIN_BLOCK_MESSAGE_ID_PREFIX}. Such a
+     * row gives the cause `blocklist`, because the owner did not unsubscribe.
+     * An admin-block row from before #2500 has no prefix and gives
+     * `unsubscribed` until the import retags it
+     * ({@see retagOwnerEmailEventMessageId()}).
+     *
+     * @param int $userId Owner user ID. A value less than 1 issues no query.
+     * @param string $email Recipient address. An empty address issues no query.
+     * @param string|null $after Lower bound for `occurred_at` (exclusive), in
+     *                           AppConstants::DATETIME_FORMAT. Null applies no bound.
+     * @return list<string> Each matching cause once, as a {@see self::BLOCKED_CAUSES}
+     *                      value, in no set order
+     * @throws CarDatabaseException If the query fails
+     */
+    public function ownerBlockEventCauses(int $userId, string $email, ?string $after): array
+    {
+        $email = EmailAddress::normalize($email);
+        if ($userId < 1 || $email === '') {
+            return [];
+        }
+
+        $events = EmailEventApplier::SUPPRESSION_EVENTS;
+        $placeholders = implode(', ', array_fill(0, count($events), '?'));
+        $prefix = self::ADMIN_BLOCK_MESSAGE_ID_PREFIX;
+        // LEFT() and not LIKE, so a `_` or `%` in the prefix needs no escape.
+        $sql = "SELECT DISTINCT
+                       CASE WHEN event = ? AND LEFT(brevo_message_id, ?) = ? COLLATE utf8mb4_bin
+                            THEN ? ELSE event END AS cause
+                  FROM er_email_events
+                 WHERE user_id = ?
+                   AND email = ? COLLATE utf8mb4_bin
+                   AND event IN ({$placeholders})";
+        $params = [
+            self::BLOCKED_CAUSE_UNSUBSCRIBED,
+            strlen($prefix),
+            $prefix,
+            self::BLOCKED_CAUSE_BLOCKLIST,
+            $userId,
+            $email,
+            ...$events,
+        ];
+        if ($after !== null) {
+            $sql .= ' AND occurred_at > ?';
+            $params[] = $after;
+        }
+
+        $result = $this->db->query($sql, $params);
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::ownerBlockEventCauses failed for user={$userId}: " . $this->db->errorString()
+            );
+        }
+
+        return array_map(static fn (object $row): string => (string) $row->cause, $result->results());
+    }
+
+    /**
+     * Change the message ID of one owner's er_email_events rows with a given event and ID
+     *
+     * The suppression import calls it to give an admin-block row from before
+     * #2500 the tagged ID
+     * ({@see self::ADMIN_BLOCK_MESSAGE_ID_PREFIX}), so
+     * {@see ownerBlockEventCauses()} gives the cause `blocklist` for it.
+     *
+     * When the owner already has a row with `$toId` and `$event`, the method
+     * deletes the `$fromId` rows. A rename would break the unique key
+     * `(user_id, brevo_message_id, event)`, and the old row would stay and
+     * give a second, false cause. Otherwise the method changes the ID of the
+     * `$fromId` rows to `$toId`.
+     *
+     * The ID compares use `COLLATE utf8mb4_bin`, because the column collation
+     * would match a case variant of the ID. The table has no audit trigger.
+     *
+     * @param int $userId Owner user ID. A value less than 1 issues no query.
+     * @param string $event Event name of the rows to change
+     * @param string $fromId Current message ID of the rows to change
+     * @param string $toId New message ID
+     * @return array{retagged: int, removed: int} Number of rows that got the new
+     *             ID, and number of old rows deleted because a row with the new
+     *             ID was already there. Both are 0 when no row matches.
+     * @throws CarDatabaseException If a query fails
+     */
+    public function retagOwnerEmailEventMessageId(int $userId, string $event, string $fromId, string $toId): array
+    {
+        $result = ['retagged' => 0, 'removed' => 0];
+        if ($userId < 1) {
+            return $result;
+        }
+
+        $tagged = $this->db->query(
+            'SELECT 1 FROM er_email_events
+              WHERE user_id = ?
+                AND event = ? COLLATE utf8mb4_bin
+                AND brevo_message_id = ? COLLATE utf8mb4_bin
+              LIMIT 1',
+            [$userId, $event, $toId]
+        );
+        $this->throwIfRetagFailed($userId, $event);
+
+        if ($tagged->count() > 0) {
+            // Only the nightly prune or a user delete removes the $toId row.
+            // Both also remove the $fromId row (same occurred_at, same user),
+            // so the owner never ends up with no row.
+            $this->db->query(
+                'DELETE FROM er_email_events
+                  WHERE user_id = ?
+                    AND event = ? COLLATE utf8mb4_bin
+                    AND brevo_message_id = ? COLLATE utf8mb4_bin',
+                [$userId, $event, $fromId]
+            );
+            $this->throwIfRetagFailed($userId, $event);
+            $result['removed'] = $this->db->count();
+
+            return $result;
+        }
+
+        // IGNORE: when a concurrent run writes the $toId row after the check
+        // above, the unique key stops the rename with a warning, not an
+        // error. The next run then deletes the old row.
+        $this->db->query(
+            'UPDATE IGNORE er_email_events
+                SET brevo_message_id = ?
+              WHERE user_id = ?
+                AND event = ? COLLATE utf8mb4_bin
+                AND brevo_message_id = ? COLLATE utf8mb4_bin',
+            [$toId, $userId, $event, $fromId]
+        );
+        $this->throwIfRetagFailed($userId, $event);
+        $result['retagged'] = $this->db->count();
+
+        return $result;
+    }
+
+    /**
+     * Throw when the last query of {@see retagOwnerEmailEventMessageId()} failed
+     *
+     * @throws CarDatabaseException If the last query failed
+     */
+    private function throwIfRetagFailed(int $userId, string $event): void
+    {
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::retagOwnerEmailEventMessageId failed for user={$userId}, event={$event}: "
+                . $this->db->errorString()
+            );
+        }
+    }
+
+    /**
      * Insert one er_email_events row from a SELECT source, and keep a duplicate unchanged
      *
      * A duplicate of the unique key `(user_id, brevo_message_id, event)`
@@ -2939,12 +3138,16 @@ class CarRepository
      * The query skips a send cycle whose `plg_sendinblue_messages` row has
      * {@see AppConstants::OWNER_CONTACT_EMAIL_TAG} in its comma-separated
      * `tags`. A cycle with no plugin row, or with null tags, still counts.
-     * So an owner contact cycle counts again after its plugin row is deleted.
-     * The purge of plugin rows (#2384) deletes every row older than 90 days,
-     * also a row whose message ID `er_email_events` still names. After that,
-     * an owner contact soft bounce of that send cycle counts again (see
-     * EMAIL_SYSTEM.md, "Retention of Plugin Rows"). When the plugin table or its `tags` column
-     * does not exist, the query has no such filter
+     * So an owner contact cycle would count again if its plugin row were
+     * deleted while its soft-bounce events stay. Account deletion does not
+     * make that state: it deletes the user's plugin rows and events in one
+     * transaction ({@see \ElanRegistry\AccountDeletionPrivacyStep}).
+     * The purge of plugin rows (#2384) does not delete a row older than 90
+     * days while `er_email_events` still names its message ID. It clears only
+     * the address of that row. The row keeps its `message_id` and `tags`, so
+     * an owner contact soft bounce of that send cycle still does not count
+     * (see EMAIL_SYSTEM.md, "Retention of Plugin Rows"). When the plugin
+     * table or its `tags` column does not exist, the query has no such filter
      * ({@see sendinblueTagsColumnExists()}).
      *
      * @param int $userId Owner user ID
@@ -3379,7 +3582,10 @@ class CarRepository
      * - `email_address_seen`, `email_bounced_address` and
      *   `email_blocked_address` of the profile,
      * - `DISTINCT email` of the user's er_email_events rows,
-     * - `cars.email` of the user's cars.
+     * - `cars.email` of the user's cars,
+     * - `email` and `email_new` of the user's `er_deleted_user_addresses`
+     *   row. The `users_delete_capture_addresses` trigger writes this row
+     *   when the `users` row is deleted (#2419).
      *
      * @param int $userId User ID
      * @return list<string> Unique non-empty addresses, normalized
@@ -3395,6 +3601,7 @@ class CarRepository
                              FOR UPDATE',
             'events'  => 'SELECT DISTINCT email FROM er_email_events WHERE user_id = ?',
             'cars'    => 'SELECT email FROM cars WHERE user_id = ?',
+            'holding row' => 'SELECT email, email_new FROM er_deleted_user_addresses WHERE user_id = ?',
         ];
 
         $addresses = [];
@@ -3414,6 +3621,33 @@ class CarRepository
         }
 
         return self::normalizeAddressList($addresses);
+    }
+
+    /**
+     * Delete a deleted user's holding row from er_deleted_user_addresses (account deletion)
+     *
+     * The account-deletion privacy step calls this last, in its transaction,
+     * after it has deleted the rows for the addresses in the holding row.
+     *
+     * @param int $userId User ID. A value less than 1 issues no query.
+     * @return int Number of rows deleted (0 or 1)
+     * @throws CarDatabaseException If the query fails
+     */
+    public function deleteDeletedUserAddresses(int $userId): int
+    {
+        if ($userId <= 0) {
+            return 0;
+        }
+
+        $this->db->query('DELETE FROM er_deleted_user_addresses WHERE user_id = ?', [$userId]);
+
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::deleteDeletedUserAddresses failed for user={$userId}: " . $this->db->errorString()
+            );
+        }
+
+        return $this->db->count();
     }
 
     /**

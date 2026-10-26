@@ -32,6 +32,14 @@ define('BACKUP_RETENTION_MANUAL', 30);      // Manual backups: 30 days
 define('BACKUP_RETENTION_ROLLBACK', 30);    // Rollback backups: 30 days
 
 /**
+ * Days that the mail service's log of sent messages (plg_sendinblue_messages)
+ * keeps a recipient address (#2384).
+ * app/owner/privacy.php promises 90 days to owners. Do not set a larger value
+ * unless you change that page first. A unit test fails above 90.
+ */
+define('RETENTION_SENDINBLUE_MESSAGES_DAYS', 90);
+
+/**
  * Backup cleanup warning threshold (in days)
  * Warns admins when backups are approaching expiration
  */

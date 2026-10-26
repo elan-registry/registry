@@ -924,6 +924,32 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
         $this->assertCount(1, $this->eventRows($userId, 'unsubscribed'));
     }
 
+    public function testStateModeAdminBlockAfterAWebhookUnsubscribeWritesItsOwnRowOnce(): void
+    {
+        $userId = $this->makeOwner();
+        $address = $this->emailOf($userId);
+        $this->assertTrue($this->applyEvent($userId, 'unsubscribed', $this->id('<webhook'), '2026-10-01 00:00:00', '2026-10-01 00:01:00'));
+        $importAdminBlock = fn (string $hash): bool => $this->applyEvent(
+            $userId,
+            'unsubscribed',
+            CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX . $hash,
+            '2026-10-14 09:00:00',
+            '2026-10-14 09:00:00',
+            mode: EmailEventApplier::MODE_STATE,
+            source: 'import',
+            blockedCause: CarRepository::BLOCKED_CAUSE_BLOCKLIST
+        );
+
+        $this->assertTrue($importAdminBlock(md5('first-' . $userId)), 'A real unsubscribe does not stop the admin-block row');
+        $causes = $this->repo->ownerBlockEventCauses($userId, $address, null);
+        sort($causes);
+        $this->assertSame(['blocklist', 'unsubscribed'], $causes);
+
+        $this->assertFalse($importAdminBlock(md5('first-' . $userId)), 'The same import again writes no row');
+        $this->assertFalse($importAdminBlock(md5('other-blockedAt-' . $userId)), 'An admin block with another hash writes no row (#2502)');
+        $this->assertCount(2, $this->eventRows($userId, 'unsubscribed'));
+    }
+
     public function testStateModeHardBounceUsesBlockedAtForTheClearBouncedGuard(): void
     {
         $userId = $this->makeOwner(['email_bounce_cleared_at' => '2026-10-10 00:00:00']);
@@ -1014,16 +1040,149 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
         $this->assertSame([], $this->eventRows($userId), 'No event row is written');
         $this->assertNoFlags($userId, 'A run time is not a date that can beat an admin clear');
 
-        $lines = $this->db->query(
+        $lines = $this->fallbackSkipLines($userId);
+        $this->assertCount(1, $lines);
+        $this->assertSame(
+            "Brevo: event \"{$event}\" for owner {$userId} not recorded: no usable event date and a clear for the current address is on record.",
+            $lines[0]
+        );
+        $this->assertStringNotContainsString('@', $lines[0]);
+    }
+
+    /** Seed the admin clear for the flag that the event sets. */
+    private function seedClearFor(int $userId, bool $clearBounced, string $clearedAt): void
+    {
+        if ($clearBounced) {
+            $this->db->query('UPDATE profiles SET email_bounce_cleared_at = ? WHERE user_id = ?', [$clearedAt, $userId]);
+            $this->assertFalse($this->db->error(), 'Test setup: Clear Bounced: ' . $this->db->errorString());
+        } else {
+            $this->seedClearBlockRowAt($userId, $clearedAt);
+        }
+    }
+
+    #[DataProvider('fallbackClearProvider')]
+    public function testFallbackMarkerAppliesWhenTheClearIsBeforeTheAddressChange(string $event, bool $clearBounced): void
+    {
+        $userId = $this->makeOwner(['email_address_since' => '2026-09-05 00:00:00']);
+        $this->seedClearFor($userId, $clearBounced, '2026-09-01 00:00:00');
+
+        $result = $this->applyFallbackEntry($userId, $event);
+
+        $this->assertTrue($result->eventRowWritten);
+        $this->assertTrue($result->flagApplied);
+        $flag = $clearBounced ? 'bounced' : 'blocked';
+        $flags = $this->flags($userId);
+        $this->assertSame('1', $flags[$flag], 'A clear for the old address does not guard the new one');
+        $this->assertSame(self::RUN_TIME, $flags[$flag . '_at']);
+        $this->assertSame([], $this->fallbackSkipLines($userId));
+    }
+
+    #[DataProvider('fallbackClearProvider')]
+    public function testFallbackMarkerSkipsWhenTheClearIsAfterTheAddressChange(string $event, bool $clearBounced): void
+    {
+        $userId = $this->makeOwner(['email_address_since' => '2026-09-05 00:00:00']);
+        $this->seedClearFor($userId, $clearBounced, self::CLEARED_AT);
+
+        $result = $this->applyFallbackEntry($userId, $event);
+
+        $this->assertFalse($result->eventRowWritten);
+        $this->assertFalse($result->flagApplied);
+        $this->assertSame([], $this->eventRows($userId));
+        $this->assertNoFlags($userId, 'A clear after the address change still guards');
+        $this->assertCount(1, $this->fallbackSkipLines($userId));
+    }
+
+    #[DataProvider('fallbackClearProvider')]
+    public function testFallbackMarkerAppliesWhenTheClearIsAtTheSecondOfTheAddressChange(string $event, bool $clearBounced): void
+    {
+        $userId = $this->makeOwner(['email_address_since' => '2026-09-05 00:00:00']);
+        $this->seedClearFor($userId, $clearBounced, '2026-09-05 00:00:00');
+
+        $result = $this->applyFallbackEntry($userId, $event);
+
+        $this->assertTrue($result->flagApplied);
+        $flag = $clearBounced ? 'bounced' : 'blocked';
+        $flags = $this->flags($userId);
+        $this->assertSame('1', $flags[$flag], 'A clear at the address change is for the old address');
+        $this->assertSame(self::RUN_TIME, $flags[$flag . '_at']);
+    }
+
+    #[DataProvider('fallbackClearProvider')]
+    public function testFallbackMarkerSkipsWhenTheAddressChangeTimeIsNull(string $event, bool $clearBounced): void
+    {
+        $userId = $this->makeOwner(['email_address_since' => null]);
+        $this->seedClearFor($userId, $clearBounced, self::CLEARED_AT);
+
+        $result = $this->applyFallbackEntry($userId, $event);
+
+        $this->assertFalse($result->eventRowWritten);
+        $this->assertFalse($result->flagApplied);
+        $this->assertNoFlags($userId, 'With no address change time the clear counts');
+        $this->assertCount(1, $this->fallbackSkipLines($userId));
+        $this->assertSame(1, $this->logLineCount(
+            $userId,
+            "Brevo: owner {$userId}: email_address_since is NULL, so the clear counts and the dateless import entry is skipped."
+        ));
+    }
+
+    /** The connection runs with sql_mode '', so MySQL stores a zero date. */
+    #[DataProvider('fallbackClearProvider')]
+    public function testFallbackMarkerSkipsWhenTheAddressChangeTimeIsAZeroDate(string $event, bool $clearBounced): void
+    {
+        $userId = $this->makeOwner(['email_address_since' => '0000-00-00 00:00:00']);
+        $this->seedClearFor($userId, $clearBounced, self::CLEARED_AT);
+
+        $result = $this->applyFallbackEntry($userId, $event);
+
+        $this->assertFalse($result->eventRowWritten);
+        $this->assertFalse($result->flagApplied);
+        $this->assertSame([], $this->eventRows($userId));
+        $this->assertNoFlags($userId, 'With an invalid address change time the clear counts');
+        $this->assertCount(1, $this->fallbackSkipLines($userId));
+        $this->assertSame(1, $this->invalidClearDateLineCount($userId, 'email_address_since'));
+    }
+
+    /** A zero Clear Bounced time sets no bound in the date guard, but the clear still counts here. */
+    public function testFallbackMarkerSkipsWhenTheClearTimeIsAZeroDate(): void
+    {
+        $userId = $this->makeOwner(['email_bounce_cleared_at' => '0000-00-00 00:00:00']);
+
+        $result = $this->applyFallbackEntry($userId, 'hard_bounce');
+
+        $this->assertFalse($result->eventRowWritten);
+        $this->assertFalse($result->flagApplied);
+        $this->assertSame([], $this->eventRows($userId));
+        $this->assertNoFlags($userId, 'With an invalid clear time the clear counts');
+        $this->assertCount(1, $this->fallbackSkipLines($userId));
+        $this->assertSame(1, $this->invalidClearDateLineCount($userId, 'email_bounce_cleared_at'));
+    }
+
+    /** @param string $label The value the log line names as not valid */
+    private function invalidClearDateLineCount(int $userId, string $label): int
+    {
+        return $this->logLineCount(
+            $userId,
+            "Brevo: owner {$userId}: {$label} is not a valid datetime, so the clear counts and the dateless import entry is skipped."
+        );
+    }
+
+    private function logLineCount(int $userId, string $lognote): int
+    {
+        return (int) $this->db->query(
+            'SELECT COUNT(*) AS n FROM logs WHERE id > ? AND user_id = ? AND lognote = ?',
+            [$this->logIdFloor, $userId, $lognote]
+        )->first()->n;
+    }
+
+    /** @return list<string> */
+    private function fallbackSkipLines(int $userId): array
+    {
+        $rows = $this->db->query(
             'SELECT lognote FROM logs WHERE id > ? AND user_id = ? AND lognote LIKE ?',
             [$this->logIdFloor, $userId, '%no usable event date%']
         )->results();
-        $this->assertCount(1, $lines);
-        $this->assertSame(
-            "Brevo: event \"{$event}\" for owner {$userId} not recorded: no usable event date and an admin clear is on record.",
-            $lines[0]->lognote
-        );
-        $this->assertStringNotContainsString('@', $lines[0]->lognote);
+
+        return array_map(static fn (object $row): string => (string) $row->lognote, $rows);
     }
 
     /** @return array<string, array{string, string}> event, the flag column that it sets */
@@ -1075,6 +1234,66 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
         }
         $this->assertSame([], $this->eventRows($userId), 'Nothing is written');
         $this->assertNoFlags($userId, 'Nothing is written');
+    }
+
+    // --- #2502: hasOwnerEmailEventForAddress -------------------------------
+
+    public function testOwnerEmailEventForAddressFindsAMatchingRow(): void
+    {
+        $userId = $this->makeOwner();
+        $this->repo->insertOwnerEmailEvent($userId, 'match@example.com', 'hard_bounce', null, $this->id('has'), '2026-10-14 09:00:00');
+
+        $this->assertTrue($this->repo->hasOwnerEmailEventForAddress($userId, 'match@example.com', ['blocked', 'hard_bounce']));
+    }
+
+    public function testOwnerEmailEventForAddressIsFalseForAnotherAddress(): void
+    {
+        $userId = $this->makeOwner();
+        $this->repo->insertOwnerEmailEvent($userId, 'match@example.com', 'hard_bounce', null, $this->id('has'), '2026-10-14 09:00:00');
+
+        $this->assertFalse($this->repo->hasOwnerEmailEventForAddress($userId, 'other@example.com', ['hard_bounce']));
+    }
+
+    public function testOwnerEmailEventForAddressIsFalseForAnAccentVariant(): void
+    {
+        $userId = $this->makeOwner();
+        $this->repo->insertOwnerEmailEvent($userId, 'match@example.com', 'hard_bounce', null, $this->id('has'), '2026-10-14 09:00:00');
+
+        $this->assertFalse($this->repo->hasOwnerEmailEventForAddress($userId, 'mätch@example.com', ['hard_bounce']));
+    }
+
+    public function testOwnerEmailEventForAddressIsFalseForAnotherCause(): void
+    {
+        $userId = $this->makeOwner();
+        $this->repo->insertOwnerEmailEvent($userId, 'match@example.com', 'spam', null, $this->id('has'), '2026-10-14 09:00:00');
+
+        $this->assertFalse($this->repo->hasOwnerEmailEventForAddress($userId, 'match@example.com', ['hard_bounce', 'blocked']));
+    }
+
+    public function testOwnerEmailEventForAddressIsFalseForAnotherUser(): void
+    {
+        $userId = $this->makeOwner();
+        $otherId = $this->makeOwner();
+        $this->repo->insertOwnerEmailEvent($userId, 'match@example.com', 'spam', null, $this->id('has'), '2026-10-14 09:00:00');
+
+        $this->assertFalse($this->repo->hasOwnerEmailEventForAddress($otherId, 'match@example.com', ['spam']));
+    }
+
+    public function testOwnerEmailEventForAddressNormalizesTheInputAddress(): void
+    {
+        $userId = $this->makeOwner();
+        $this->repo->insertOwnerEmailEvent($userId, 'match@example.com', 'spam', null, $this->id('has'), '2026-10-14 09:00:00');
+
+        $this->assertTrue($this->repo->hasOwnerEmailEventForAddress($userId, ' MATCH@Example.COM ', ['spam']));
+    }
+
+    public function testOwnerEmailEventForAddressRejectsANonStringEvent(): void
+    {
+        $userId = $this->makeOwner();
+
+        $this->expectException(InvalidArgumentException::class);
+        /** @phpstan-ignore argument.type */
+        $this->repo->hasOwnerEmailEventForAddress($userId, 'match@example.com', ['spam', 123]);
     }
 
     // --- Live-DB guard: the affected-row count ----------------------------

@@ -216,4 +216,60 @@ final class CronJobGuardIntegrationTest extends IntegrationTestCase
             );
         }
     }
+
+    // --- retention_purge (#2384) -------------------------------------------
+
+    /**
+     * The retention_purge allowlist entry and its seeded row agree: a name
+     * present in only one of them never claims.
+     */
+    public function testClaimRoundTripAgainstSeededRetentionPurgeRow(): void
+    {
+        $jobName = 'retention_purge';
+
+        $this->db->query('SELECT enabled, last_run_at FROM er_cron_job_runs WHERE job_name = ?', [$jobName]);
+        $this->assertFalse($this->db->error(), 'Failed to read seeded retention_purge row: ' . $this->db->errorString());
+        $row = $this->db->first();
+        $this->assertIsObject(
+            $row,
+            "er_cron_job_runs must already have a seeded '{$jobName}' row"
+            . ' — run: composer migrate (20261025000000_seed_retention_purge_cron)'
+        );
+
+        $originalEnabled = (bool) $row->enabled;
+        $originalLastRunAt = !empty($row->last_run_at) ? (string) $row->last_run_at : null;
+
+        try {
+            $this->db->query(
+                'UPDATE er_cron_job_runs SET enabled = 1, last_run_at = NULL WHERE job_name = ?',
+                [$jobName]
+            );
+            $this->assertFalse($this->db->error());
+
+            $guard = new CronJobGuard($this->db);
+
+            $this->assertTrue(
+                $guard->claim($jobName, 20),
+                'A real claim() against the seeded retention_purge row must succeed when enabled'
+            );
+
+            $this->db->query('SELECT last_run_at FROM er_cron_job_runs WHERE job_name = ?', [$jobName]);
+            $confirmRow = $this->db->first();
+            $this->assertIsObject($confirmRow);
+            $this->assertNotEmpty(
+                $confirmRow->last_run_at,
+                'A successful claim must actually update last_run_at in the real table'
+            );
+
+            $this->assertFalse(
+                $guard->claim($jobName, 20),
+                'A second immediate claim against the same row must not also succeed'
+            );
+        } finally {
+            $this->db->query(
+                'UPDATE er_cron_job_runs SET enabled = ?, last_run_at = ? WHERE job_name = ?',
+                [$originalEnabled ? 1 : 0, $originalLastRunAt, $jobName]
+            );
+        }
+    }
 }

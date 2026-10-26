@@ -174,7 +174,7 @@ plan file for this issue already exists (Step 2.5) and has an
 it again.
 
 - **All three are present** — continue.
-- **`milestone` is `none` or `Backlog`** — stop. Tell the user: "Issue
+- **`milestone` is `none`** — stop. Tell the user: "Issue
   #ISSUE_NUMBER is not admitted to a milestone. Type
   `/plan-milestone <version>` to scope it, or type `/start-issue
   ISSUE_NUMBER --hotfix` if it is an emergency."

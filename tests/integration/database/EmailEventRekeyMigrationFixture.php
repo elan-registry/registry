@@ -93,6 +93,15 @@ final class EmailEventRekeyMigrationFixture
         $pdo->exec('DELETE FROM cars_hist WHERE car_id IN (' . implode(',', self::CAR_IDS) . ')');
         $pdo->exec('DELETE FROM profiles WHERE user_id IN (' . implode(',', self::USER_IDS) . ')');
         $pdo->exec('DELETE FROM users WHERE id IN (' . implode(',', self::USER_IDS) . ')');
+
+        // The users AFTER DELETE trigger leaves a holding row per user (#2419).
+        // The table is absent until its migration runs.
+        $hasHoldingTable = $pdo->query(
+            "SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'er_deleted_user_addresses'"
+        );
+        if ($hasHoldingTable !== false && $hasHoldingTable->fetchColumn() !== false) {
+            $pdo->exec('DELETE FROM er_deleted_user_addresses WHERE user_id IN (' . implode(',', self::USER_IDS) . ')');
+        }
     }
 
     private static function seedUsers(\PDO $pdo): void

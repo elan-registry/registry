@@ -526,8 +526,8 @@ Follow these rules for the deploy:
    phpMyAdmin (structure and data). The migration deletes and merges rows. The
    `down()` method restores the schema only. This backup is the only full
    rollback. Keep it until the first reconciliation run after the deploy has
-   run and you checked it. That run also runs the retention prune for the
-   first time, which deletes old `delivered`, `sent` and `soft_bounce` rows
+   run and you checked it. That run also runs the `er_email_events` prune
+   for the first time (not `retention_purge`), which deletes old `delivered`, `sent` and `soft_bounce` rows
    (90 days) and old terminal rows (24 months).
 2. **Deploy the migration and the code together.** Use one push. The new code
    needs `er_email_events.user_id`. The old code writes no `user_id` and fails
@@ -1053,8 +1053,9 @@ Each monitored job pings its check at the end of a scheduled run.
 | --- | --- |
 | `SendVerificationBatchJob` | `send-verification-batch-prod`, `send-verification-batch-test` |
 | `BrevoEventReconciliationJob` | `brevo-event-reconciliation-prod`, `brevo-event-reconciliation-test` |
+| `RetentionPurgeJob` | `retention-purge-prod`, `retention-purge-test` |
 
-**Check settings** (the same for all four checks):
+**Check settings** (the same for all six checks):
 
 - Period and timeout: 1 day (86400 s).
 - Grace: 2 hours (7200 s).
@@ -1128,6 +1129,33 @@ Use the job slug plus the new suffix, for example
 `send-verification-batch-staging`. Use the same settings as above. Set
 `HEALTHCHECKS_SLUG_SUFFIX` to the new suffix (`-staging`) in that
 environment's `.env`.
+
+### Retention purge job
+
+`RetentionPurgeJob` (`users/cron/retention_purge.php`) deletes old rows once a
+day. It runs a list of rules. Each rule owns one table and one window. The job
+runs with the verification switch off. The rule for
+`plg_sendinblue_messages` deletes old plugin rows. See
+[EMAIL_SYSTEM.md](EMAIL_SYSTEM.md#retention-of-plugin-rows) for what it does
+and [CLASSES.md](CLASSES.md#retention) for the classes.
+
+The rule `deleted_user_addresses_backlog` deletes nothing. It fails the run
+while an `er_deleted_user_addresses` row is older than 24 hours. Such a row
+shows that the account-deletion privacy step did not commit, so personal data
+of a deleted user stays. The run then stamps `last_failure_at` and pings
+`/fail` each night, but the other rules still run. To clear the alarm:
+
+1. In the `RetentionPurge` log, find the line that starts with
+   `Account-deletion privacy step not complete`. It names the user IDs.
+2. Run `app/admin/scripts/maintenance/30-Rerun-Deletion-Privacy-Step.php` for
+   each user ID. See
+   [FIX_SCRIPTS.md](FIX_SCRIPTS.md#rerun-the-deletion-privacy-step-30-rerun-deletion-privacy-stepphp).
+3. The next daily run passes when no holding row is older than 24 hours.
+
+Do not delete a holding row by hand: the rerun script reads the addresses
+from it.
+
+To add a rule, see [CLASSES.md, "Add a rule"](CLASSES.md#add-a-rule).
 
 ### Deployment Verification Checklist
 

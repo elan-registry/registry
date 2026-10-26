@@ -418,7 +418,7 @@ final class CarRepositoryProfileFlagReadersTest extends IntegrationTestCase
         $this->assertNotNull($blocked);
         $this->assertSame('blocked', $blocked['kind']);
         $this->assertSame($owners['blocked']['email'], $blocked['address']);
-        $this->assertSame('spam', $blocked['cause']);
+        $this->assertSame(['spam'], $blocked['causes']);
         $this->assertSame('2026-04-05', $blocked['date']);
 
         $bounced = $builder->buildForOwner($owners['bounced']['owner']);

@@ -63,13 +63,21 @@ When generating release notes:
    `docs/plans/releases/<version>-deploy.md` from
    `RELEASE_INSTRUCTIONS_TEMPLATE.md` — not in this file. This file is a
    changelog index; the deploy sheet is the operational procedure.
-5. **Be concise.** One sentence per entry, every section, no exceptions —
-   User-Facing, Admin-Facing, and Issues Resolved alike. No bolded
-   feature-name headers, no parenthetical asides, no "here's why this
-   matters" follow-up clauses, no multi-sentence entries. If an entry needs
-   more than one sentence to explain, that explanation belongs in the
-   issue/PR, not here — link to it and stop. See v2.30.2 on GitHub Releases
-   for the target format.
+5. **Be brief.** The GitHub release body is this file, so these limits
+   apply to the published release:
+   - The summary under the header is at most 2 sentences.
+   - Each issue has at most one entry in User-Facing Changes or
+     Admin-Facing Changes, not in both. Merge several changes of one issue
+     into one entry.
+   - Each entry is one sentence of at most 20 words.
+   - Say what the reader sees, not how the code does it. Do not name
+     columns, flags, classes, scripts, log lines, or error text.
+   - A change that no visitor or administrator can see (logging, tests,
+     refactors, internal guards) goes only in Issues Resolved.
+
+   No bolded feature-name headers, no parenthetical asides, no "here's why
+   this matters" clauses. Detail belongs in the issue/PR. Link to it and
+   stop. See v2.30.2 on GitHub Releases for the target format.
 6. **No emoji** in section headers.
 
 ### Section Guidelines

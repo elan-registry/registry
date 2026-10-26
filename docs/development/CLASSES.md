@@ -43,6 +43,7 @@ The Elan Registry uses namespaces to organize classes by their architectural rol
 | --- | --- | --- | --- |
 | **(root)** | Entity classes (domain objects) | `/usersc/classes/` | Car, Owner |
 | `ElanRegistry\Exceptions` | Custom exception types | `/usersc/classes/Exceptions/` | CarNotFoundException, CarValidationException |
+| `ElanRegistry\Retention` | Retention rules for the daily purge | `/usersc/classes/Retention/` | RetentionRule, RetentionPolicy, RetentionResult, SendinblueMessagesRetentionRule, DeletedUserAddressesBacklogRule |
 | `ElanRegistry\Reference` | **External reference data** | `/usersc/classes/Reference/` | CarModel |
 
 ### Reference Data vs. Entity Classes
@@ -660,7 +661,6 @@ to provide a focused, testable data access layer wrapping the `cars`,
     `email_blocked` with address, time and cause. `$cause` is one of `BLOCKED_CAUSES` or null. Writes
     when the flag is 0 or is set for another address. A repeat for the same address keeps the first
     time and cause.
-  - `clearProfileBlocked(int $userId): ?int` - Clear `email_blocked` and its address, time and cause.
   - `findBlockClearTarget(int $ownerId): ?array` - Admin Clear Block's read before the Brevo call. No
     lock. Returns `blocked` (false only for a stored 0), the stored `blockedAddress` (no address match)
     and `userEmail` (`''` when the users row is missing). Returns `null` for an owner with no `profiles`
@@ -674,7 +674,7 @@ to provide a focused, testable data access layer wrapping the `cars`,
     `stillBounced` (true when `email_bounced` applies to the owner's current address, read under the
     lock) and `stillOptedOut` (true when `email_opted_out` is 1, read under the lock). It clears the
     flag only when `addressMatched` is true and `old` is 1. When the address changed
-    it writes nothing, so the caller can roll back.
+    it writes nothing, so the caller can roll back. It is the only block clear for one owner.
   - `setProfileBounced(int $userId, string $address, string $bouncedAt): ?int` - Set `email_bounced`
     with address and `email_bounced_at`. Same repeat rule as the block.
   - `clearProfileBounced(int $userId): ?int` - Clear `email_bounced` and its address and time, and set
@@ -726,7 +726,38 @@ to provide a focused, testable data access layer wrapping the `cars`,
   same as in `insertEmailEvent()`. A `$userId` less than 1, a user that does not exist, or
   the `noowner` account writes no row and returns 0. The method does not check
   the address or the time. The callers clamp the time
-  (`resolveOccurredAt()`). `EmailEventApplier::apply()` calls it.
+  (`resolveOccurredAt()`). `EmailEventApplier::apply()` calls it. In
+  `MODE_STATE` (the suppression import), `apply()` does not call it when
+  `hasOwnerEmailEventForAddress()` finds a row in the same cause group
+  (#2502)
+- `hasOwnerEmailEventForAddress(int $userId, string $email, array $events): bool` -
+  True when `er_email_events` has a row for the user, the normalized address
+  and one of the event names (#2502). It returns false for a `$userId` less
+  than 1 or an empty `$events` list. The query is
+  `SELECT 1 ... WHERE user_id = ? AND email = ? COLLATE utf8mb4_bin AND event IN (...) LIMIT 1`.
+  It does not compare `occurred_at`. With the `COLLATE`, the `email` index
+  gives only a range scan, and MySQL picks an index that starts with
+  `user_id`. Throws `InvalidArgumentException` for an event that is not a string
+  (checked before the false cases), and `CarDatabaseException` on a query
+  error.
+  `EmailEventApplier::apply()` calls it in `MODE_STATE`
+- `ownerBlockEventCauses(int $userId, string $email, ?string $after): list<string>` -
+  Distinct block causes (`BLOCKED_CAUSE_*` values) from the `spam` and `unsubscribed`
+  rows in `er_email_events` for the user and the normalized address (`COLLATE
+  utf8mb4_bin`). An `unsubscribed` row whose message ID starts with
+  `CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX` gives `blocklist`. Other
+  rows give their event name. With `$after`, only rows with
+  `occurred_at` after that time count. It returns `[]` with no query for a `$userId`
+  less than 1 or an empty address. `EmailNoticeBuilder` uses it for block causes (#2500).
+- `retagOwnerEmailEventMessageId(int $userId, string $event, string $fromId, string $toId): array{retagged: int, removed: int}` -
+  When the user already has a row with `$event` and `$toId`, deletes the
+  user's rows with `$event` and `$fromId` and returns the count in `removed`.
+  This repairs the state after a failed retag. Otherwise it sets
+  `brevo_message_id` to `$toId` on those rows (`UPDATE IGNORE`) and returns
+  the count in `retagged`. IDs compare with `COLLATE utf8mb4_bin`. A `$userId`
+  less than 1 issues no query. Throws `CarDatabaseException` on a query error.
+  `BrevoSuppressionSyncJob` uses it to give an admin-block row from before
+  #2500 the `ADMIN_BLOCK_MESSAGE_ID_PREFIX` tag
 - `findUserIdsByAddress(string $address): array` - Distinct IDs of the users
   whose `users.email` equals the address under the matching rule (#2359). SQL
   selects candidates with the column collation. PHP keeps only a byte-equal
@@ -778,15 +809,24 @@ to provide a focused, testable data access layer wrapping the `cars`,
   was cleared. A second run with the same cutoffs changes no row (#1889, #2358)
 - `lockProfileAndFindAddresses(int $userId): array` - First call of the
   account-deletion privacy step, inside its transaction. It runs
-  `SELECT ... FROM profiles WHERE user_id = ? FOR UPDATE`. This is the lock that
-  the event step of #2359 will take. Then no event row for the user can arrive
-  between the read and the delete. Today an event write takes no profile lock,
-  so this design applies after #2359 ships. A user with no profile row gets a
-  gap lock.
-  Returns the unique, non-empty, normalized addresses from five sources:
-  `email_address_seen`, `email_bounced_address` and `email_blocked_address` of
-  the profile, `DISTINCT email` of the user's event rows, and `cars.email` of
-  the user's cars (#2358)
+  `SELECT ... FROM profiles WHERE user_id = ? FOR UPDATE`. This is the same lock
+  that `EmailEventApplier::apply()` takes first, through
+  `lockEventGuardState()`. So no event row for the user can arrive between the
+  read and the delete, if the user has a profile row. A user with no profile row
+  gets a gap lock.
+  Returns the unique, non-empty, normalized addresses from four reads (seven
+  columns). It reads them in this order, and a failed read names its source in
+  the `CarDatabaseException` message:
+  1. `profile`: `email_address_seen`, `email_bounced_address` and
+     `email_blocked_address` (the read that takes the lock),
+  2. `events`: `DISTINCT email` of the user's `er_email_events` rows,
+  3. `cars`: `cars.email` of the user's cars,
+  4. `holding row`: `email` and `email_new` of the user's
+     `er_deleted_user_addresses` row. The `users_delete_capture_addresses`
+     trigger writes this row when the `users` row is deleted (#2419).
+
+  A NULL, empty or non-string value is skipped. A duplicate after
+  normalization is kept once, at its first position (#2358, #2419)
 - `sendinblueMessagesTableExists(): bool` - Whether the sendinblue plugin's
   `plg_sendinblue_messages` table exists in the current schema. A site without
   the plugin has no such table (#2358)
@@ -798,11 +838,19 @@ to provide a focused, testable data access layer wrapping the `cars`,
   rows. It skips an address that is another user's current `users.email`. It
   drops an empty, non-string or duplicate address, and issues no `IN ()` for an
   empty list. A `$userId` less than 1 issues no query (#2358)
+- `deleteDeletedUserAddresses(int $userId): int` - Delete the user's holding
+  row from `er_deleted_user_addresses` (`DELETE ... WHERE user_id = ?`, the user
+  ID is the only bound value). The privacy step calls it last in its
+  transaction, so on a failure the row stays and a rerun still has the
+  addresses. Returns the rows deleted (0 or 1). A `$userId` less than 1 issues
+  no query and returns 0. Throws `CarDatabaseException` on a query failure
+  (#2419)
 - `clearFlagsForConfirmedEmailChange(int $userId): ?array` - Clear the bounce and the block when a
   confirmed email change gives a new address (#2356). Call it inside a transaction. It locks the
   `profiles` row and the `users` row (`SELECT ... FOR UPDATE OF p, u`), profiles first, the same order
-  as `Owner::update()`. Then it makes one compare: the normalized `users.email`
-  against `email_address_seen`. If they are equal, it writes nothing. If they differ, it clears
+  as `Owner::update()`. Then it makes one compare,
+  `EmailAddress::isChange()` of `email_address_seen` and `users.email`, the
+  same compare that `Owner::update()` makes. If they are equal, it writes nothing. If they differ, it clears
   `email_bounced` (with address and date, and sets `email_bounce_cleared_at`), clears `email_blocked`
   (with address, date and cause), and sets `email_address_since` to now and `email_address_seen` to the
   normalized address. It keeps `email_opted_out`. Returns `array{bounced: int, blocked: int,
@@ -1032,9 +1080,10 @@ row. Add a row and a test here when you add one.
 
 - Car class (composed data-access layer)
 - `app/api/cars/chassis-availability.php`, `app/api/cars/transfer-request.php` (`findByChassisKey()`)
-- User-deletion hook (`reassignCarsByUser()`, and in the privacy step
-  `lockProfileAndFindAddresses()`, `sendinblueMessagesTableExists()`,
-  `deleteSendinblueMessagesForUser()`, `deleteEmailEventsForUser()`)
+- User-deletion hook (`reassignCarsByUser()`)
+- `AccountDeletionPrivacyStep` (`lockProfileAndFindAddresses()`,
+  `sendinblueMessagesTableExists()`, `deleteSendinblueMessagesForUser()`,
+  `deleteEmailEventsForUser()`, `deleteDeletedUserAddresses()`) (#2358, #2419)
 - `CarAdministrationService` (`detachEmailEventsFromCar()` on car deletion, `transferEmailEvents()` on car merge)
 - `CarVerificationManager::clearFlagsForConfirmedEmailChange()` (the `verifySuccess` hook) (#2356)
 - `EmailNoticeBuilder`, `CarVerificationSendService`, `BrevoSuppressionSyncJob`, `user_form_hook.php`, `user_settings.php`, and the Email on file row (`effectiveEmailFlags()`)
@@ -1458,12 +1507,13 @@ public static function verifiedTooltip(): string
 - `soldDate()` returns the sold date at midnight for display, or null when
   the car is not sold or the value is not a valid `Y-m-d` date. The account
   page, the car details page, and the vericode landing page use it for the
-  Vehicle Information card. The vericode "already sold" notice also uses it.
+  Vehicle Information card. The vericode "already sold" notice and the
+  thank-you after a Sold POST also use it.
   A sold car with a bad value (for example a zero date or `2024-02-30`) logs
   one entry to `LOG_CATEGORY_CAR_ERRORS`, with the car ID from `$carId` or
   `unknown`. `isSold()` is still true for that car, so the account hero and
   the cars list show Sold. The vericode landing page disables its sold button,
-  and the "already sold" notice leaves out the date. The Vehicle Information
+  and the "already sold" notice and the thank-you leave out the date. The Vehicle Information
   card has no Sold row.
 - `verifiedStatus()` returns the Verified row status for one car record. Returns
   an array with `source` and `date` keys when: the car is not sold, the car is
@@ -1575,10 +1625,13 @@ It returns a plain array and renders no HTML. The partial
 - `buildForOwner(int $ownerId): ?array` - One owner-level state, or `null` when no
   flag applies. An owner with no car still gets the notice (#2319). The shape is
   `array{kind: 'blocked'|'bounced'|'opted_out', address: ?string, date: ?string,
-  cause: ?string, alsoOptedOut: bool, optedOutDate: ?string, contentHash: string}`.
+  causes: list<string>, alsoOptedOut: bool, optedOutDate: ?string, contentHash: string}`.
 - Takes `CarRepository` by constructor injection, so a test can supply a mock. It
-  calls only `CarRepository::effectiveEmailFlags()`. A flag stored for an old
-  address does not show.
+  calls `CarRepository::effectiveEmailFlags()` for every owner. For a block with
+  an address, it also calls `ownerBlockEventCauses()` and `latestFlagClearAt()`.
+  A flag stored for an old address does not show.
+- `CAUSE_TEXT`: the raw notice text for each `CarRepository::BLOCKED_CAUSE_*` value.
+  `app/views/_email_paused_notice.php` reads and escapes it.
 - `kind` constants: `KIND_BLOCKED`, `KIND_BOUNCED`, `KIND_OPTED_OUT`. One state wins.
   A block wins over a bounce. An opt-out is the `kind` only when no block or bounce
   applies. With a block or bounce, `alsoOptedOut` is true when the owner also opted
@@ -1586,14 +1639,24 @@ It returns a plain array and renders no HTML. The partial
 - `address` is the flagged address for `blocked` and `bounced`. If the flag has
   no stored address, it is the owner's current `users.email`. It is `null` for
   `opted_out`.
-- `cause` is set only for `blocked`. It is one of the `CarRepository::BLOCKED_CAUSE_*`
-  values. Any other stored value gives `null` (no cause, #2318).
+- `causes` is set only for `blocked`. Each value is a `CarRepository::BLOCKED_CAUSE_*`
+  value, and each appears once. The profile cause (`email_blocked_cause`) comes first.
+  Then the `spam` and `unsubscribed` events after the latest clear of the block add
+  their causes, in `BLOCKED_CAUSES` order. The bound is the later of the latest admin
+  Clear Block and the latest confirmed email change clear (`BLOCK_CLEAR_SOURCES`:
+  `admin`, `email_change`). A tagged admin-block import row gives
+  `blocklist`. A `blocklist` profile cause drops `unsubscribed` events, for the
+  untagged admin-block rows from before the tag. An unknown profile cause adds nothing and writes a log
+  line (#2318, #2500). If the event lookup throws `CarDatabaseException`, the
+  builder logs it (`ExceptionLogSummary`, no message) and keeps the profile cause
+  only. It is `[]` for `bounced` and `opted_out`.
 - `date` and `optedOutDate` are `Y-m-d`. A NULL or invalid `_at` column gives
   `null`, and the partial omits the date.
 - `contentHash` is a sha256 of the state. `account.php` uses it in the per-owner
   `sessionStorage` dismissal key, so a change to the state makes the notice
   reappear.
-- The builder reads no `er_email_events` and no `cars_hist` rows. It has no
+- The builder reads `er_email_events` only for a block with an address, through
+  `CarRepository::ownerBlockEventCauses()`. It reads no `cars_hist` rows. It has no
   per-car logic and no address list.
 
 ---
@@ -1753,9 +1816,9 @@ other probes.
   `autoSendLastRunFailed()`, `autoSendCounts()`, `autoSendCountsUnreadable()`,
   `autoSendNextEligibleAt()`, `autoSendDesiredState()` give the automatic send job
   state and the card and Pause/Resume button state
-- Static `chip()` method generates the Status chip for a car row: profile state
-  (no profile / blocked / opted out) takes precedence over the car's latest email
-  event
+- Static `chip()` method generates the Status chip for a car row, in this
+  order: no profile, blocked, the bounce flag, opted out, then the car's
+  latest email event
 
 **Constants**:
 
@@ -1796,10 +1859,14 @@ other probes.
   guard allows the next automatic run, or `null` when the job never ran
 - `autoSendDesiredState(): string` - Give the state the Pause/Resume button asks
   for. Returns `'disable'` when the job is enabled, `'enable'` when not
-- `chip(?object $event, bool $hasProfile, bool $blocked, ?string $blockedCause,
-  bool $optedOut): array` - Static method. Give the Status chip for a car row.
-  Profile state (no profile / blocked / opted out) takes precedence; otherwise
-  the chip shows the car's latest email event. Returns
+- `chip(?object $event, bool $hasProfile = true, bool $blocked = false,
+  ?string $blockedCause = null, bool $optedOut = false,
+  bool $bounced = false): array` - Static method. Give the
+  Status chip for a car row. `$blocked` and `$bounced` are true only when the
+  flag applies to the owner's current address. Order: no profile, blocked,
+  bounced, opted out, the same as `SendPolicy::verificationReason()` (#2461).
+  Otherwise the chip shows the car's latest email event. A hard-bounce event
+  still shows "Bounced" for an owner with no bounce flag. Returns
   `['kind' => string, 'label' => string, 'class' => string, 'reason' => string]`.
   `kind` is empty when there is no event to show
 
@@ -2084,7 +2151,9 @@ send, owner contact and admin contact cannot drift apart. The mail table is in
   address that more than one user may hold. One blocking flag on any user stops
   the send. No user with the address gives `no_match`
 - `verificationReason(SendDecision $decision): ?string` - The first refusal
-  reason for the admin report, or `null` when allowed
+  reason for the admin report, or `null` when allowed. Order: no profile,
+  blocked, bounced, opted out. `VerificationTabStatus::chip()` and
+  `EmailNoticeBuilder::buildForOwner()` use the same order (#2461)
 - `adminMessage(SendDecision $decision): string` - The text for `usError()`.
   It starts with "Message not sent." and adds one sentence for each reason.
   It escapes the bounce date. It returns an empty string when allowed
@@ -2319,6 +2388,10 @@ same rules.
   `email_address_since`. For a bounce event it must not be before
   `email_bounce_cleared_at` either. A failed guard writes nothing
 - A duplicate event changes no column. Only a new row is "new"
+- In `MODE_STATE`, it writes no row when the owner already has a row of any
+  date for the same address and the same cause group, by event name (any `HARD_BOUNCE_EVENTS` event,
+  `spam`, or `unsubscribed`). The result is not new. The address check and
+  the flag step still run (#2502)
 - Cuts `reason` to 255 characters of valid UTF-8
 - Escalation rules owned here:
   - `hard_bounce` / `blocked` / `invalid` / `invalid_email` immediately set
@@ -2384,13 +2457,16 @@ public function apply(
   `CarRepository::BLOCKED_CAUSES`. The import passes `blocklist` for Brevo's
   `adminBlocked`, while the event row stays `unsubscribed`.
 - `$occurredAtIsFallback` is true when `$occurredAt` is the import's run time
-  and not a date from Brevo (#2426). It is valid only with `MODE_STATE`. When
-  it is set and an admin clear is on record for the flag that the event sets,
-  `apply()` writes no event row and no flag, logs the event name and the user
-  ID, and returns `EmailEventApplyResult(false, false)`. A hard bounce checks
-  `email_bounce_cleared_at`. `spam` and `unsubscribed` check
-  `CarRepository::latestFlagClearAt()` for an admin Clear Block. With no clear
-  on record, the run time applies.
+  and not a date from Brevo (#2426). It is valid only with `MODE_STATE`.
+  When it is set and a clear that counts is on record for the flag that the
+  event sets, `apply()` writes no event row and no flag. It logs the event
+  name and the user ID, and returns `EmailEventApplyResult(false, false)`.
+  A hard bounce checks `email_bounce_cleared_at`. `spam` and `unsubscribed`
+  check `CarRepository::latestFlagClearAt()` for an admin Clear Block. A clear
+  counts only when it is later than `email_address_since` (#2482). When
+  `email_address_since` is NULL or not a valid datetime, or the clear time is
+  not a valid datetime, the clear counts. With no clear that counts, the run
+  time applies.
 - Returns an `EmailEventApplyResult` with `eventRowWritten` (true when a new
   event row was written) and `flagApplied` (true when the flag step ran for
   the current address; false for a skipped step such as no profile row, address
@@ -2565,6 +2641,8 @@ public function __construct(
 
 - `BrevoEventReconciliationJob` (extends `AbstractCronJob`)
 - `BrevoSuppressionSyncJob` (extends `AbstractCronJob`)
+- `RetentionPurgeJob` (extends `AbstractCronJob`; keeps the default
+  `refusesWhileSwitchOff()`, so it runs with the switch off)
 - `SendVerificationBatchJob` (extends `AbstractCronJob`; no `runNowWithSummary()`
   override — relies entirely on inherited `run()`/`runNow()`. It overrides
   `refusesWhileSwitchOff()`, so it is the only job that the switch stops)
@@ -2576,6 +2654,55 @@ public function __construct(
 - [DEPLOYMENT.md](DEPLOYMENT.md) — "Timeout & Crash Isolation" section (full contract rationale)
 - [DATABASE.md](DATABASE.md) — `er_cron_job_runs` schema
 - [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_CRON_JOB_FAILURE`, `LOG_CATEGORY_CRON_JOB_SKIPPED`
+
+---
+
+### RetentionPurgeJob
+
+**Location**: `/usersc/classes/Cron/RetentionPurgeJob.php`
+
+**Namespace**: `ElanRegistry\Cron`
+
+**Purpose**: Daily job that runs the retention rules from
+`RetentionPolicy::rules()`. It extends `AbstractCronJob`.
+
+**Constants**: `JOB_NAME` is `'retention_purge'`. The guard interval is 20
+hours, as for the other daily jobs. `HEALTHCHECK_SLUG` is `'retention-purge'`. The shim is
+`users/cron/retention_purge.php`.
+
+**Constructor**:
+
+```php
+public function __construct(
+    DatabaseInterface $db,
+    array $rules,                          // list<RetentionRule>
+    ?\DateTimeImmutable $now = null,
+    ?HealthcheckPinger $pinger = null,
+)
+```
+
+**Behavior**:
+
+- It runs each rule inside its own `try/catch (\Throwable)`. Every rule gets
+  the same `$now`.
+- A rule that succeeds or skips writes one `LOG_CATEGORY_RETENTION_PURGE`
+  line. The line holds the rule name and counts.
+- A rule that fails writes one line in the same category with the rule name
+  and `ExceptionLogSummary::of()`. When the rule threw a
+  `RetentionPurgeException` from `forStep()`, the line also names the step
+  and the SQLSTATE, for example `(step: delete, SQLSTATE: HY000)`. It never
+  holds the exception message. If `name()` itself throws, the line uses
+  `rule #<index>`. The next rule still runs.
+- After the last rule, if any rule failed, the job throws
+  `RetentionPurgeException` that names the failed rules. `AbstractCronJob::run()`
+  then stamps `last_failure_at`, writes one `CronJobFailure` line and pings
+  `/fail`.
+- A skipped rule (table missing) is a success.
+- The job does not read the verification switch.
+
+**See Also**: [Retention](#retention),
+[EMAIL_SYSTEM.md](EMAIL_SYSTEM.md#retention-of-plugin-rows),
+[DEPLOYMENT.md](DEPLOYMENT.md#retention-purge-job)
 
 ---
 
@@ -3496,7 +3623,188 @@ if ($result['valid']) {
 ]
 ```
 
+## Retention
+
+**Namespace**: `ElanRegistry\Retention`
+
+**Location**: `/usersc/classes/Retention/`
+
+**Purpose**: Delete or clear old rows on a schedule. `RetentionPurgeJob`
+runs the rules. Each rule owns one table. Windows are `define()` constants in
+`usersc/includes/config.php`. One rule, `DeletedUserAddressesBacklogRule`,
+deletes nothing: it fails the run while a failed deletion privacy step left
+personal data.
+
+### RetentionRule (interface)
+
+- `name(): string` — A stable name for log lines, for example
+  `sendinblue_messages`.
+- `purge(\DateTimeImmutable $now): RetentionResult` — A purge rule computes
+  its cutoff from `$now` and its window. An alarm rule
+  (`DeletedUserAddressesBacklogRule`) changes no row and can use the database
+  clock. It throws `RetentionPurgeException` on a database error, and an
+  alarm rule also throws it when it finds its condition. It returns `skipped()` only when its own table does not
+  exist (see `RetentionResult`).
+
+### RetentionResult
+
+`final readonly` value object. Properties: `ruleName`, `deleted`, `cleared`,
+`?string $skipReason`. Named constructors: `RetentionResult::purged()` and
+`RetentionResult::skipped()`. A skipped result means the table does not exist.
+
+### RetentionPolicy
+
+`final` class. `RetentionPolicy::rules(DatabaseInterface $db):
+list<RetentionRule>` returns the one list of rules. It passes each window
+constant to its rule.
+
+### SendinblueMessagesRetentionRule
+
+`final` class that implements `RetentionRule`. Constructor:
+`(DatabaseInterface $db, int $retentionDays)`. `RetentionPolicy` passes
+`RETENTION_SENDINBLUE_MESSAGES_DAYS`.
+
+For `plg_sendinblue_messages` rows with `accepted_at` older than the window:
+
+1. It deletes the row when no `er_email_events.brevo_message_id` names its
+   `message_id`.
+2. It sets `recipient_email` to an empty string when an event names it. The
+   row keeps `message_id` and `tags`.
+
+It first checks `information_schema` for the table. If the table does not
+exist, it returns `skipped()` and deletes nothing. A failed check, or any
+error on the delete or the clear, throws `RetentionPurgeException`.
+A second run with the same cutoff changes no row. See
+[EMAIL_SYSTEM.md](EMAIL_SYSTEM.md#retention-of-plugin-rows).
+
+### DeletedUserAddressesBacklogRule
+
+`final` class that implements `RetentionRule` (#2419). Constructor:
+`(DatabaseInterface $db)`. `NAME` is `'deleted_user_addresses_backlog'`.
+`MAX_AGE_HOURS` is 24.
+
+The account-deletion privacy step deletes the user's
+`er_deleted_user_addresses` holding row in the same transaction as its other
+privacy deletes. So a holding
+row older than 24 hours shows a privacy step that did not commit. The rule
+selects the `user_id` of each such row. The cutoff is MySQL `NOW()`, not the
+PHP `$now`, because the trigger writes `deleted_at` with MySQL `NOW()`.
+
+- No stale row: it returns `purged()` with zero counts.
+- One or more stale rows: it logs one `LOG_CATEGORY_RETENTION_PURGE` line with
+  the count, the user IDs and the remedy (run
+  `30-Rerun-Deletion-Privacy-Step.php` for each user ID). Then it throws
+  `RetentionPurgeException` from `forStep()` with step `stale holding rows`.
+  So the job fails the run each night until an admin runs the rerun.
+- It deletes nothing. The rerun script reads the addresses from the holding
+  row.
+- The table does not exist: it returns `skipped()`.
+
+The log line and the message hold user IDs and counts only, never an address.
+
+### Add a rule
+
+1. Write a class in `usersc/classes/Retention/` that implements
+   `RetentionRule`.
+2. If the rule has a window, add a `RETENTION_<NAME>_DAYS` constant to
+   `usersc/includes/config.php`. Add the same `define()` to
+   `tests/bootstrap-unit.php`, because the unit tests do not load `config.php`.
+3. Add one line to `RetentionPolicy::rules()`.
+
+The job needs no new seed row, shim or healthcheck for a new rule.
+
+### RetentionPurgeException
+
+`ElanRegistry\Exceptions\RetentionPurgeException` extends
+`ElanRegistryException`. A rule throws it on a database error. The job throws
+it after the loop when a rule failed.
+
+`forStep(string $message, string $step, ?string $sqlState)` builds it for one
+failed step of a rule. `step()` and `sqlState()` return those values, or null
+for the job-level exception. The job log prints the step and the SQLSTATE but
+not the message, because the message can echo a database error text.
+
+---
+
 ## Support Classes
+
+### AccountDeletionPrivacyStep
+
+**Location**: `/usersc/classes/AccountDeletionPrivacyStep.php`
+
+**Namespace**: `ElanRegistry`
+
+**Purpose**: `final class` that deletes the personal data of a deleted user
+that does not go with the `users` row (#2358, #2419): the sendinblue plugin
+mail rows, the `er_email_events` rows, the `profiles` row, and the
+`er_deleted_user_addresses` holding row that the
+`users_delete_capture_addresses` trigger wrote.
+
+**Constructor**: `__construct(DatabaseInterface $db, ?CarRepository $repo = null)`.
+`$repo` must use the same connection. `null` creates one on `$db`.
+
+**Methods**:
+
+- `run(int $userId): AccountDeletionPrivacyResult` - Run the step for one
+  deleted user. It does not throw, because the caller must continue with the
+  car cleanup.
+  - It refuses a user ID less than 1, an ID that still has a `users` row, and
+    an ID for which the `users` row check fails. A refusal deletes nothing and
+    writes a CRITICAL log line. On a refusal, `after_user_deletion.php` stops
+    and skips the car cleanup.
+  - If the rollback itself throws, the CRITICAL line says `rollback failed`
+    with that exception's class and code in place of `rolled back`, and
+    `run()` still returns.
+  - Otherwise it runs these stages in one transaction:
+    `lockProfileAndFindAddresses()`, the plugin delete
+    (`deleteSendinblueMessagesForUser()`, only when
+    `sendinblueMessagesTableExists()`), `deleteEmailEventsForUser()`, the
+    `profiles` delete, then `deleteDeletedUserAddresses()`. The plugin delete
+    reads the event message IDs, so it runs before the event delete. The
+    holding row goes last, so on a failure it stays and a rerun has the
+    addresses.
+  - A failure at any stage rolls back all stages and writes a CRITICAL line
+    that names the stage.
+  - After the transaction it logs the outcome and the row counts, and that the
+    plugin table is absent when that is so. All lines use
+    `LOG_CATEGORY_USER_DELETION`. A log line names the user ID, the stage, the
+    exception class and code only, never the exception message, because a
+    message can contain an address.
+
+**Used By**:
+
+- `usersc/scripts/after_user_deletion.php` (after upstream `deleteUsers()`
+  deletes the `users` row)
+- `app/admin/scripts/maintenance/30-Rerun-Deletion-Privacy-Step.php` (runs the
+  step again for one user ID after a CRITICAL "privacy step failed" line)
+
+---
+
+### AccountDeletionPrivacyResult
+
+**Location**: `/usersc/classes/AccountDeletionPrivacyResult.php`
+
+**Namespace**: `ElanRegistry`
+
+**Purpose**: `final` value object with readonly properties that holds the
+outcome of `AccountDeletionPrivacyStep::run()` (#2419). It holds no address,
+so a caller can show it on a page or write it to a log.
+
+**Properties**: `$committed`, `$refused`, `$failedStage` (`?string`, the stage
+that failed when the step rolled back), `$deletedEmailEventCount`,
+`$deletedPluginMessageCount`, `$deletedHoldingRowCount` (0 or 1) and
+`$pluginTableAbsent`. The counts are 0 when the run did not commit.
+
+| Outcome | How to create it | Properties |
+| --- | --- | --- |
+| Committed | `committed(int $deletedEmailEventCount, int $deletedPluginMessageCount, int $deletedHoldingRowCount, bool $pluginTableAbsent)` | `committed` true and the row counts |
+| Rolled back | `rolledBack(string $stage)` | `committed` false, `failedStage` set |
+| Refused | `refused()` | `committed` false, `refused` true |
+
+**Used By**: `AccountDeletionPrivacyStep::run()` (returns it) and the rerun
+script `30-Rerun-Deletion-Privacy-Step.php` (shows it)
+
+---
 
 ### EmailAddress
 
@@ -3515,11 +3823,16 @@ addresses (#2358). Runtime code compares addresses from `users`, `cars`,
   through it, then the compare is byte for byte in PHP, or in SQL with
   `COLLATE utf8mb4_bin`. The column collations ignore case and accents, so a
   plain SQL `=` would match `jose@` and `josé@`.
+- `static isChange(?string $seen, ?string $new): bool` - True when the two
+  addresses differ after `normalize()`. A case-only or white-space-only edit is
+  not a change. NULL and `''` are equal. The compare is symmetric.
+  `Owner::update()` and `CarRepository::clearFlagsForConfirmedEmailChange()`
+  both use it, so they agree on what an address change is.
 
 **Used By**:
 
 - `CarRepository` (event writes, flag reads, the privacy-step address list)
-- `Owner`, `usersc/scripts/during_user_creation.php`,
+- `Owner` (`update()` uses `isChange()`), `usersc/scripts/during_user_creation.php`,
   `app/admin/includes/account-cleanup-helpers.php`
 
 **See Also**:

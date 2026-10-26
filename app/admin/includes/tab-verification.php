@@ -743,6 +743,7 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                             <th scope="col">Car</th>
                             <th scope="col">Chassis</th>
                             <th scope="col">Owner</th>
+                            <th scope="col">User ID</th>
                             <th scope="col">Sent</th>
                             <th scope="col">Days</th>
                             <th scope="col">Status</th>
@@ -752,6 +753,7 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                     <tbody>
                     <?php foreach ($vsQueueRows as $queueCar) {
                         $queueCarId = (int) ($queueCar->id ?? 0);
+                        $queueOwnerId = (int) ($queueCar->user_id ?? 0);
 
                         // cars.fname/cars.lname ARE present in this row (both queue queries
                         // select them, and fname/lname are denormalized onto cars — see
@@ -825,7 +827,8 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                             $queueHasProfile,
                             $queueBlocked,
                             $queueBlockedCause,
-                            $queueOptedOut
+                            $queueOptedOut,
+                            $queueBounced
                         );
 
                         // The owner actions write the profiles row, so an owner
@@ -836,12 +839,13 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                         }
 
                         // One action per row, from the owner's state, in the order Clear Block,
-                        // Clear Opt-out, Clear Bounced, Mark Bounced. A blocked or opted-out
-                        // owner who is not bounced needs a clear, not Mark Bounced. After Clear
-                        // Block, the row shows the next action that still applies. A single soft
-                        // bounce keeps the car Pending (Brevo escalates repeated soft bounces),
-                        // so Mark Bounced is disabled there. Clear Block and Clear Opt-out need
-                        // the owner's request, so they open the confirm modal ('ownerRequest').
+                        // Clear Opt-out, Clear Bounced, Mark Bounced. This is a clear order, not
+                        // the chip order (#2461). A blocked or opted-out owner who is not
+                        // bounced needs a clear, not Mark Bounced. After Clear Block, the row
+                        // shows the next action that still applies. A single soft bounce keeps
+                        // the car Pending (Brevo escalates repeated soft bounces), so Mark
+                        // Bounced is disabled there. Clear Block and Clear Opt-out need the
+                        // owner's request, so they open the confirm modal ('ownerRequest').
                         if ($queueBlocked) {
                             $queueAction = ['command' => 'clear_block', 'label' => 'Clear Block',
                                             'class' => 'btn-outline-secondary', 'disabled' => false,
@@ -868,6 +872,13 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                             </td>
                             <td><?= vsEsc($queueCar->chassis ?? '') ?></td>
                             <td><?= vsEsc($vsOwnerName !== '' ? $vsOwnerName : "owner #{$queueCar->user_id}") ?></td>
+                            <td>
+                                <?php if ($queueOwnerId > 0) { ?>
+                                <a href="<?= vsEsc($us_url_root . 'users/admin.php?view=user&id=' . $queueOwnerId) ?>" target="_blank" rel="noopener"><?= vsEsc($queueOwnerId) ?></a>
+                                <?php } else { ?>
+                                &mdash;
+                                <?php } ?>
+                            </td>
                             <td><?= $queueSentAt !== false ? vsEsc($queueSentAt->format('Y-m-d')) : '&mdash;' ?></td>
                             <td><?= $queueDays !== null ? vsEsc((string) $queueDays) : '&mdash;' ?></td>
                             <td>

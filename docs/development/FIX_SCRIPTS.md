@@ -148,6 +148,116 @@ restructuring, `FIX/_ARCHIVE/`), and several were edited *after* that move — s
 a `git log` on the pre-archive path stops at the move commit and recovers a
 stale version.
 
+## Rerun the Deletion Privacy Step (`30-Rerun-Deletion-Privacy-Step.php`)
+
+Script `app/admin/scripts/maintenance/30-Rerun-Deletion-Privacy-Step.php`
+runs the account-deletion privacy step again for one deleted user ID (#2419).
+It is a repeatable maintenance script. An admin runs it. An editor cannot.
+
+### When to run it
+
+Run it when the `UserDeletion` log has this CRITICAL line for a user:
+
+```text
+CRITICAL: privacy step failed for user N at stage S, rolled back, personal data remains: ExceptionClass (code C)
+```
+
+`N` is the user ID. `S` is the stage that failed. If the rollback also
+failed, the line says `rollback failed: ExceptionClass (code C)` in place of
+`rolled back`. Run the script in both cases. The personal data of that
+user then remains: the plugin mail rows, the email events, the profile and the
+holding row in `er_deleted_user_addresses`. The log line holds no address.
+
+Also run it for each user ID that the daily retention run names in the
+`RetentionPurge` log line "Account-deletion privacy step not complete". The
+run fails while an `er_deleted_user_addresses` row is older than 24 hours. It
+passes again after the rerun.
+
+For a "privacy step refused" line, read the reason in the line first:
+
+- `the ID is below 1` or `a users row still exists`: do not run the script.
+  The step deleted nothing, because the ID is not a deleted user.
+- `the users row check failed`: the step could not read `users`. Make sure
+  that no `users` row has ID `N`, then run the script for `N`.
+
+After a refusal from the deletion hook, the log also has the line
+`CRITICAL: car cleanup skipped for user N`. The script does not move cars.
+If no `users` row has ID `N`, reassign the cars and expire their pending
+transfer requests by hand.
+
+### How to find the user ID
+
+1. Open the `logs` table or the admin log view. Filter the category to `UserDeletion`.
+2. Find the CRITICAL line.
+3. Read the number after `for user`.
+
+The log row also stores the same ID as its user ID.
+
+### Steps
+
+1. Open the Maintenance page in the admin console.
+2. Open `30-Rerun-Deletion-Privacy-Step`.
+3. Enter the user ID in the field `Deleted user ID`.
+4. Click `Run Privacy Step`.
+
+The script refuses an ID that still has a `users` row. This protects a live
+owner's profile. It shows the user ID and row counts only, never an address.
+
+### What success looks like
+
+The page shows a green "Committed" message and a table of deleted row counts:
+
+| Row | Count |
+| --- | --- |
+| `plg_sendinblue_messages` | Plugin mail rows deleted. |
+| `er_email_events` | Email events deleted. |
+| `er_deleted_user_addresses` | Holding rows deleted. A first rerun shows 1. |
+
+If the page shows a note that `plg_sendinblue_messages` does not exist, the
+site has no plugin table. Zero plugin rows is then correct.
+
+A second run for the same ID is safe. It finds no holding row, profile or
+event rows. It also logs a summary line to the `UserDeletion` log.
+
+If the page warns that it found no holding row for the ID, check the ID
+against the CRITICAL log line. A mistyped ID, a second run, or a missing
+trigger gives this warning.
+
+### Limits
+
+The rerun cannot find every address. The car cleanup runs after a failed
+privacy step. It takes the user's cars away from the user ID, so the rerun
+cannot read the addresses on those cars. The holding row stores only
+`users.email` and `users.email_new`. A `plg_sendinblue_messages` row sent to
+an address that was only on the user's cars, with no `er_email_events` row for
+the user, therefore remains. The page shows a note about this after each
+committed run. The daily retention purge deletes those rows once they are
+older than 90 days.
+
+### If the run fails again
+
+1. Read the page. A "Failed at stage" message names the stage. A "Refused"
+   message means the ID has a `users` row or the check failed.
+2. Read the `UserDeletion` log for the exception class and code.
+3. Fix the cause. Examples are a database lock timeout or a missing table.
+4. Run the script again. The holding row stays after a failure, so the
+   addresses are still available.
+5. If the failure repeats, open a GitHub issue. Put the user ID, the stage,
+   the exception class and the code in it. Do not put an address in it.
+
+Nothing retries a failed step by itself. See
+[#2421](https://github.com/elan-registry/registry/issues/2421).
+
+### After a deploy
+
+The script is a new page. UserSpice creates its `pages` row when an admin
+first opens it, and `21-Fix-Page-Permissions.php` changes only pages that have
+a row. So on test, then on production:
+
+1. Open `30-Rerun-Deletion-Privacy-Step.php` once as an admin.
+2. Run `21-Fix-Page-Permissions.php` from the Maintenance page. This adds the
+   permission rows for the new page.
+
 ## See Also
 
 - `/app/admin/scripts/fix/_TEMPLATE_Fix-Script.php` - The standardized template

@@ -47,11 +47,17 @@ final class BrevoSuppressionSyncJobTest extends TestCase
      */
     private const APP_TIMEZONE = 'America/Los_Angeles';
 
-    /** Brevo's UTC blocked-at used by FakeBrevoBlockedContact's default. */
-    private const BLOCKED_AT_UTC = '2026-09-08T12:00:00.000Z';
+    /**
+     * Brevo's blocked-at used by FakeBrevoBlockedContact's default. Brevo
+     * writes Paris wall time with a `Z` suffix (#2501).
+     */
+    private const BLOCKED_AT_BREVO = '2026-09-08T12:00:00.000Z';
 
-    /** self::BLOCKED_AT_UTC rendered in self::APP_TIMEZONE (UTC-7, PDT). */
-    private const BLOCKED_AT_LOCAL = '2026-09-08 05:00:00';
+    /**
+     * self::BLOCKED_AT_BREVO read as Paris time (CEST, 10:00 UTC) and
+     * rendered in self::APP_TIMEZONE (UTC-7, PDT).
+     */
+    private const BLOCKED_AT_LOCAL = '2026-09-08 03:00:00';
 
     /** Mirrors private BrevoSuppressionSyncJob::PAGE_SIZE. Brevo rejects 1000. */
     private const PAGE_SIZE = 100;
@@ -111,6 +117,13 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     {
         $this->mockRepo->method('findUserIdsByAddress')->willReturn([$userId]);
         $this->stubOwnerFlags([]);
+    }
+
+    /** An adminBlocked contact calls the retag. Its owner has no old row. */
+    private function stubRetagFindsNoRow(): void
+    {
+        $this->mockRepo->method('retagOwnerEmailEventMessageId')
+            ->willReturn(['retagged' => 0, 'removed' => 0]);
     }
 
     /**
@@ -209,6 +222,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     public function testReasonCodeMapsToItsEventAndCause(string $code, string $expectedEvent, ?string $expectedCause): void
     {
         $this->matchEveryEmailTo(7);
+        $this->stubRetagFindsNoRow();
 
         $this->makeJobWithContacts([
             FakeBrevoBlockedContact::withReason('owner@example.com', $code),
@@ -240,6 +254,12 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         ];
     }
 
+    /** @return array<string, array{string}> */
+    public static function mappedReasonCodes(): array
+    {
+        return array_map(static fn (array $row): array => [$row[0]], self::reasonCodeMappings());
+    }
+
     /**
      * `adminBlocked` is a human suppression decision, not a dead mailbox, so it
      * must not set the hard-bounce flag. A reader may want to "correct" this.
@@ -247,6 +267,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     public function testAdminBlockedIsASuppressionNotABounce(): void
     {
         $this->matchEveryEmailTo(1);
+        $this->stubRetagFindsNoRow();
 
         $this->makeJobWithContacts([
             FakeBrevoBlockedContact::withReason('admin@example.com', 'adminBlocked'),
@@ -406,22 +427,70 @@ final class BrevoSuppressionSyncJobTest extends TestCase
 
     /**
      * Three writers share occurred_at and countSoftBouncesSinceLastDelivered()
-     * compares their rows, so a UTC blockedAt must be converted.
+     * compares their rows, so the job converts blockedAt to the PHP default
+     * timezone after it reads the value as Paris time (#2501).
      */
-    public function testUtcBlockedAtIsStoredInThePhpDefaultTimezone(): void
+    public function testBlockedAtIsReadAsParisTimeAndStoredInThePhpDefaultTimezone(): void
     {
         $this->matchEveryEmailTo(1);
 
         $this->makeJobWithContacts([
-            FakeBrevoBlockedContact::withReason('owner@example.com', 'hardBounce', null, self::BLOCKED_AT_UTC),
+            FakeBrevoBlockedContact::withReason('owner@example.com', 'hardBounce', null, self::BLOCKED_AT_BREVO),
         ])->runNow();
 
-        $this->assertSame(
-            date('Y-m-d H:i:s', (new DateTimeImmutable(self::BLOCKED_AT_UTC))->getTimestamp()),
-            $this->applier->calls[0]['occurredAt']
-        );
         $this->assertSame(self::BLOCKED_AT_LOCAL, $this->applier->calls[0]['occurredAt']);
         $this->assertSame([], $this->logsContaining('no usable blocked-at date'));
+    }
+
+    /**
+     * The value seen on test (#2501): Brevo sent `20:52:44.000Z` for a block
+     * that the webhook dated 18:52:44 UTC (11:52:44 PDT). Before #2501 the job
+     * read it as UTC, 2 hours late, and a run within 2 hours of the block
+     * rejected it as a future date.
+     */
+    public function testTheCestOffsetSeenOnTestGivesTheWebhookTime(): void
+    {
+        $this->assertSame(
+            ['occurredAt' => '2026-10-22 11:52:44', 'fallback' => false],
+            $this->occurredAtForBlockedAt('2026-10-22T20:52:44.000Z', '2026-10-22 12:20:38')
+        );
+    }
+
+    /** In winter Paris is UTC+1 (CET), so the job takes 1 hour off, not 2. */
+    public function testACetValueLosesOneHour(): void
+    {
+        // 10:00 Paris (CET) = 09:00 UTC = 01:00 PST (US DST ended on 2026-11-01).
+        $this->assertSame(
+            ['occurredAt' => '2026-11-03 01:00:00', 'fallback' => false],
+            $this->occurredAtForBlockedAt('2026-11-03T10:00:00.000Z', '2026-11-03 12:00:00')
+        );
+    }
+
+    /** A non-zero offset is a real offset. The job keeps it. */
+    public function testAnExplicitNonZeroOffsetIsKept(): void
+    {
+        $this->assertSame(
+            ['occurredAt' => '2026-09-08 03:00:00', 'fallback' => false],
+            $this->occurredAtForBlockedAt('2026-09-08T12:00:00+02:00', self::NOW)
+        );
+    }
+
+    /** A value with no zone is Paris wall time too. */
+    public function testAValueWithNoZoneIsReadAsParisTime(): void
+    {
+        $this->assertSame(
+            ['occurredAt' => self::BLOCKED_AT_LOCAL, 'fallback' => false],
+            $this->occurredAtForBlockedAt('2026-09-08 12:00:00', self::NOW)
+        );
+    }
+
+    /** `+00:00` is the same label as `Z`. */
+    public function testAPlusZeroOffsetIsReadAsParisTime(): void
+    {
+        $this->assertSame(
+            ['occurredAt' => self::BLOCKED_AT_LOCAL, 'fallback' => false],
+            $this->occurredAtForBlockedAt('2026-09-08T12:00:00+00:00', self::NOW)
+        );
     }
 
     /**
@@ -489,7 +558,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->matchEveryEmailTo(1);
 
         $this->makeJobWithContacts([
-            FakeBrevoBlockedContact::withReason('owner@example.com', 'contactFlaggedAsSpam', null, self::BLOCKED_AT_UTC),
+            FakeBrevoBlockedContact::withReason('owner@example.com', 'contactFlaggedAsSpam', null, self::BLOCKED_AT_BREVO),
         ])->runNow();
 
         $this->assertFalse($this->applier->calls[0]['occurredAtIsFallback']);
@@ -500,7 +569,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     public function testBlockedAtMoreThanFiveMinutesAheadTakesTheRunTimeAndSetsTheMarker(): void
     {
         $this->matchEveryEmailTo(1);
-        $ahead = gmdate('Y-m-d\TH:i:s\Z', (new DateTimeImmutable(self::NOW))->getTimestamp() + 301);
+        $ahead = FakeBrevoBlockedContact::blockedAtFor((new DateTimeImmutable(self::NOW))->getTimestamp() + 301);
 
         $this->makeJobWithContacts([
             FakeBrevoBlockedContact::withReason('owner@example.com', 'contactFlaggedAsSpam', null, $ahead),
@@ -519,7 +588,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     {
         $this->matchEveryEmailTo(1);
         $nowTimestamp = (new DateTimeImmutable(self::NOW))->getTimestamp();
-        $ahead = gmdate('Y-m-d\TH:i:s\Z', $nowTimestamp + 299);
+        $ahead = FakeBrevoBlockedContact::blockedAtFor($nowTimestamp + 299);
 
         $this->makeJobWithContacts([
             FakeBrevoBlockedContact::withReason('owner@example.com', 'contactFlaggedAsSpam', null, $ahead),
@@ -1336,7 +1405,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
             'owner@example.com',
             'hardBounce',
             null,
-            self::BLOCKED_AT_UTC
+            self::BLOCKED_AT_BREVO
         );
 
         $this->makeJobWithContacts([$contact()])->runFullBackfill();
@@ -1348,6 +1417,111 @@ final class BrevoSuppressionSyncJobTest extends TestCase
 
         $this->assertSame($firstId, $secondId);
         $this->assertStringStartsWith('suppression-import-', $firstId);
+    }
+
+    /**
+     * The notice reads the prefix to tell an admin block from an unsubscribe,
+     * because both rows have the event `unsubscribed` (#2500).
+     */
+    #[DataProvider('mappedReasonCodes')]
+    public function testOnlyAnAdminBlockGetsTheBlocklistMessageIdPrefix(string $code): void
+    {
+        $this->matchEveryEmailTo(1);
+        $this->stubRetagFindsNoRow();
+
+        $this->makeJobWithContacts([
+            FakeBrevoBlockedContact::withReason('owner@example.com', $code),
+        ])->runFullBackfill();
+        $id = $this->applier->messageIds()[0];
+
+        $this->assertSame($this->syntheticId('owner@example.com', $code), $id);
+        $this->assertSame(
+            $code === 'adminBlocked',
+            str_starts_with($id, CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX)
+        );
+    }
+
+    /**
+     * An admin-block row from before #2500 has the untagged ID. The import
+     * renames it, because a re-run writes no second row for it.
+     */
+    #[DataProvider('mappedReasonCodes')]
+    public function testOnlyAnAdminBlockRetagsTheOldUntaggedRow(string $code): void
+    {
+        $repo = $this->expectRepoCalls();
+        $this->matchEveryEmailTo(7);
+        $hash = md5('owner@example.com|' . $code . '|' . self::BLOCKED_AT_BREVO);
+
+        if ($code === 'adminBlocked') {
+            $repo->expects($this->once())
+                ->method('retagOwnerEmailEventMessageId')
+                ->with(7, 'unsubscribed', 'suppression-import-' . $hash, 'suppression-import-blocklist-' . $hash)
+                ->willReturn(['retagged' => 1, 'removed' => 0]);
+        } else {
+            $repo->expects($this->never())->method('retagOwnerEmailEventMessageId');
+        }
+
+        $this->makeJobWithContacts([
+            FakeBrevoBlockedContact::withReason('owner@example.com', $code),
+        ])->runFullBackfill();
+
+        $this->assertCount(1, $this->applier->calls);
+        $this->assertCount(
+            $code === 'adminBlocked' ? 1 : 0,
+            $this->logsContaining('retagged 1 old admin-block row(s) for owner 7')
+        );
+    }
+
+    /**
+     * After a failed retag, apply() writes the tagged row beside the old one.
+     * The next run deletes the old row, and the log says so with no address.
+     */
+    public function testRemovedOldAdminBlockRowIsLoggedWithNoAddress(): void
+    {
+        $this->matchEveryEmailTo(7);
+        $this->mockRepo->method('retagOwnerEmailEventMessageId')
+            ->willReturn(['retagged' => 0, 'removed' => 1]);
+
+        $this->makeJobWithContacts([
+            FakeBrevoBlockedContact::withReason('owner@example.com', 'adminBlocked'),
+        ])->runFullBackfill();
+
+        $this->assertCount(1, $this->applier->calls, 'The flag write still runs');
+        $this->assertCount(0, $this->logsContaining('retagged'));
+        $log = $this->logsContaining('removed 1 old admin-block row(s) for owner 7');
+        $this->assertCount(1, $log);
+        $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, $log[0]['category']);
+        $this->assertStringNotContainsString('@', $log[0]['message'], 'The log line must not hold an address');
+    }
+
+    /** The retag only repairs the notice text, so a failure must not stop the flag write. */
+    public function testRetagFailureIsLoggedWithNoAddressAndTheRunContinues(): void
+    {
+        $this->matchEveryEmailTo(7);
+        $this->mockRepo->method('retagOwnerEmailEventMessageId')->willThrowException(
+            new CarDatabaseException('retag failed for owner@example.com', 1205)
+        );
+
+        $summary = $this->makeJobWithContacts([
+            FakeBrevoBlockedContact::withReason('owner@example.com', 'adminBlocked'),
+            FakeBrevoBlockedContact::withReason('next@example.com', 'adminBlocked'),
+        ])->runFullBackfill();
+
+        $this->assertSame(
+            ['owner@example.com', 'next@example.com'],
+            array_column($this->applier->calls, 'email'),
+            'A failed retag must not stop the flag write or the next contact'
+        );
+        $this->assertSame(2, $summary->matchedCount);
+        $this->assertSame(0, $summary->skippedCount);
+
+        $log = $this->logsContaining('retag of old admin-block row FAILED');
+        $this->assertCount(2, $log);
+        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $log[0]['category']);
+        $this->assertStringContainsString('owner 7', $log[0]['message']);
+        $this->assertStringContainsString('CarDatabaseException (code 1205)', $log[0]['message']);
+        $this->assertStringNotContainsString('retag failed', $log[0]['message']);
+        $this->assertStringNotContainsString('@', $log[0]['message'], 'The log line must not hold an address');
     }
 
     /** Built from the raw blockedAt: the run-time fallback date would change the id. */
@@ -1417,9 +1591,9 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->matchEveryEmailTo(1);
 
         $this->makeJobWithContacts([
-            FakeBrevoBlockedContact::withReason('a@example.com', 'hardBounce', null, self::BLOCKED_AT_UTC),
-            FakeBrevoBlockedContact::withReason('b@example.com', 'hardBounce', null, self::BLOCKED_AT_UTC),
-            FakeBrevoBlockedContact::withReason('a@example.com', 'contactFlaggedAsSpam', null, self::BLOCKED_AT_UTC),
+            FakeBrevoBlockedContact::withReason('a@example.com', 'hardBounce', null, self::BLOCKED_AT_BREVO),
+            FakeBrevoBlockedContact::withReason('b@example.com', 'hardBounce', null, self::BLOCKED_AT_BREVO),
+            FakeBrevoBlockedContact::withReason('a@example.com', 'contactFlaggedAsSpam', null, self::BLOCKED_AT_BREVO),
             FakeBrevoBlockedContact::withReason('a@example.com', 'hardBounce', null, '2026-01-01T00:00:00.000Z'),
         ])->runFullBackfill();
 
@@ -1545,10 +1719,39 @@ final class BrevoSuppressionSyncJobTest extends TestCase
 
     // --- Helpers ---------------------------------------------------------
 
-    /** Mirrors the job's id scheme on purpose: a scheme change must break these tests. */
-    private function syntheticId(string $email, string $code, string $datePart = self::BLOCKED_AT_UTC): string
+    /**
+     * Run the job at $now with one contact and return what it passed to apply().
+     *
+     * @return array{occurredAt: string, fallback: bool}
+     */
+    private function occurredAtForBlockedAt(string $blockedAt, string $now): array
     {
-        return 'suppression-import-' . md5($email . '|' . $code . '|' . $datePart);
+        $this->matchEveryEmailTo(1);
+        (new BrevoSuppressionSyncJob(
+            new AbstractCronJobFakeDatabase(),
+            $this->mockRepo,
+            new EmailEventMatcher($this->mockRepo),
+            $this->applier,
+            new FakeBrevoSuppressionSyncClient([
+                FakeBrevoSuppressionSyncClient::page([
+                    FakeBrevoBlockedContact::withReason('owner@example.com', 'hardBounce', null, $blockedAt),
+                ]),
+            ]),
+            new DateTimeImmutable($now)
+        ))->runNow();
+
+        return [
+            'occurredAt' => $this->applier->calls[0]['occurredAt'],
+            'fallback' => $this->applier->calls[0]['occurredAtIsFallback'],
+        ];
+    }
+
+    /** Mirrors the job's id scheme on purpose: a scheme change must break these tests. */
+    private function syntheticId(string $email, string $code, string $datePart = self::BLOCKED_AT_BREVO): string
+    {
+        $prefix = $code === 'adminBlocked' ? 'suppression-import-blocklist-' : 'suppression-import-';
+
+        return $prefix . md5($email . '|' . $code . '|' . $datePart);
     }
 
     /** First 8 hex characters of the sha256 of the normalized address, as the job logs it. */

@@ -144,7 +144,7 @@ test.describe('Join form client-side failure beacon (#1690)', () => {
     // message must not be replaced by the generic one.
     const errorDiv = page.locator('[id$="-error"]');
     await expect(errorDiv).toBeVisible();
-    await expect(errorDiv).toContainText('Unable to determine address from GPS coordinates');
+    await expect(errorDiv).toHaveText('We could not find a town for your location. Type your town or city in the Location box and select it from the list.');
   });
 
   test('a throwing onGPSError callback does not leave the GPS button permanently disabled', async ({ page, context }) => {

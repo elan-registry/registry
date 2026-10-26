@@ -973,7 +973,6 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
         return [
             'Mark Bounced'      => ['markBounced'],
             'Clear Bounced'     => ['clearBounced'],
-            'Clear Block'       => ['clearBlocked'],
             'Clear Block if address' => ['clearBlockedIfAddress'],
             'Clear Opt-out'     => ['clearOptedOut'],
             'Set Block'         => ['setBlocked'],
@@ -986,7 +985,6 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
         match ($writer) {
             'markBounced'  => $this->manager->setBouncedForOwner($ownerId, 'lock-a@example.com', self::ADMIN_ID),
             'clearBounced' => $this->manager->clearBouncedForOwner($ownerId, self::ADMIN_ID),
-            'clearBlocked' => $this->repo->clearProfileBlocked($ownerId),
             'clearBlockedIfAddress' => $this->repo->clearProfileBlockedIfAddress($ownerId, null),
             'clearOptedOut' => $this->manager->clearOptedOutForOwner($ownerId, self::ADMIN_ID),
             'setBlocked'   => $this->repo->setProfileBlocked($ownerId, 'lock-a@example.com', 'spam', '2026-01-01 00:00:00'),

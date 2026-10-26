@@ -9,8 +9,10 @@ if (count(get_included_files()) == 1) { die(); }
  *
  *   'verified' — the record is confirmed (the state the verify POST's 303
  *                redirect lands on, and what a later revisit renders)
- *   'sold'     — the car is already recorded as sold (idempotent: a repeat
- *                POST is a strict no-op and renders this)
+ *   'sold'     — the car is recorded as sold. Two texts: a thank-you on the
+ *                landing of the Sold POST's 303 redirect (`recorded=1`),
+ *                and the already-sold notice for every other request
+ *                (idempotent: a repeat POST is a strict no-op and renders it)
  *   'invalid'  — the generic expired-or-invalid-link page
  *   'error'    — a write failed AFTER the vericode already authenticated
  *                (see verify_car.php's renderActionFailed()); unlike

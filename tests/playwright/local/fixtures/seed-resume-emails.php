@@ -113,6 +113,18 @@ $db = dbi();
 
 // Delete all earlier marker rows, so a re-run is idempotent and --cleanup works.
 $cleanupQueries = [['DELETE FROM cars WHERE model = ?', [SEED_CAR_MODEL]]];
+// The users AFTER DELETE trigger leaves a holding row per deleted user (#2419).
+// Capture the ids first: the username lookup finds nothing after the delete.
+$seedUserIds = array_map(
+    'intval',
+    array_column(
+        $db->query(
+            'SELECT id FROM users WHERE username IN (' . implode(',', array_fill(0, count($owners), '?')) . ')',
+            array_map(static fn (array $owner): string => $owner['username'], array_values($owners))
+        )->results(true),
+        'id'
+    )
+);
 foreach ($owners as $owner) {
     $cleanupQueries[] = ['DELETE FROM cars WHERE user_id IN (SELECT id FROM users WHERE username = ?)', [$owner['username']]];
     $cleanupQueries[] = ['DELETE FROM profiles WHERE user_id IN (SELECT id FROM users WHERE username = ?)', [$owner['username']]];
@@ -124,6 +136,18 @@ foreach ($cleanupQueries as [$cleanupSql, $cleanupParams]) {
     if ($db->error()) {
         fwrite(STDERR, "ERROR: Cleanup query failed ({$cleanupSql}): {$db->errorString()}\n");
         exit(1);
+    }
+}
+if ($seedUserIds !== []) {
+    $holdingTable = $db->query(
+        'SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
+        ['er_deleted_user_addresses']
+    );
+    if ($holdingTable->count() > 0) {
+        $db->query(
+            'DELETE FROM er_deleted_user_addresses WHERE user_id IN (' . implode(',', array_fill(0, count($seedUserIds), '?')) . ')',
+            $seedUserIds
+        );
     }
 }
 

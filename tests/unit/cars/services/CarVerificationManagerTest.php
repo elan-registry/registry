@@ -1089,7 +1089,6 @@ final class CarVerificationManagerTest extends TestCase
     public function testClearOptedOutForOwnerClearsOnlyTheOptOutAndLogsOwnerRequested(): void
     {
         $this->mockRepo->expects($this->once())->method('setProfileOptedOut')->with(42, false)->willReturn(1);
-        $this->mockRepo->expects($this->never())->method('clearProfileBlocked');
         $this->mockRepo->expects($this->never())->method('clearProfileBlockedIfAddress');
         $this->mockRepo->expects($this->never())->method('clearProfileBounced');
         $this->mockRepo->expects($this->never())->method('findByOwner');
@@ -1143,7 +1142,7 @@ final class CarVerificationManagerTest extends TestCase
     public function testClearSuppressedForOwnerByOwnerClearsOnlyTheOptOut(): void
     {
         $this->mockRepo->expects($this->once())->method('setProfileOptedOut')->with(42, false)->willReturn(1);
-        $this->mockRepo->expects($this->never())->method('clearProfileBlocked');
+        $this->mockRepo->expects($this->never())->method('clearProfileBlockedIfAddress');
         $this->mockRepo->expects($this->never())->method('clearProfileBounced');
         $this->mockRepo->expects($this->never())->method('findByOwner');
         $this->mockRepo->expects($this->never())->method('updateCar');

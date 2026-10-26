@@ -219,6 +219,18 @@ final class CronJobGuardTest extends TestCase
         $this->assertSame(['send_verification_batch', 20], $db->lastParams());
     }
 
+    /**
+     * #2384: 'retention_purge' must be in ALLOWED_JOB_NAMES, or its claim is refused.
+     */
+    public function testClaimAcceptsRetentionPurgeJobName(): void
+    {
+        $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
+
+        $this->assertTrue((new CronJobGuard($db))->claim('retention_purge', 20));
+        $this->assertStringContainsString('job_name = ?', $db->lastSql());
+        $this->assertSame(['retention_purge', 20], $db->lastParams());
+    }
+
     // =========================================================================
     // recordFailure() — the claim()'s counterpart, stamping last_failure_at
     // for a run whose execute() threw. claim() stamps last_run_at BEFORE the

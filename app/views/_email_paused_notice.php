@@ -24,7 +24,6 @@ if (count(get_included_files()) == 1) {
  * The builder returns raw values. This file escapes every value it prints.
  */
 
-use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\EmailNoticeBuilder;
 
 /**
@@ -32,7 +31,7 @@ use ElanRegistry\Car\EmailNoticeBuilder;
  *   kind: 'blocked'|'bounced'|'opted_out',
  *   address: ?string,
  *   date: ?string,
- *   cause: ?string,
+ *   causes: list<string>,
  *   alsoOptedOut: bool,
  *   optedOutDate: ?string,
  *   contentHash: string
@@ -54,24 +53,28 @@ $_enDate = static function (?string $date) use ($_en): ?string {
     return $parsed === false ? null : '<strong>' . $_en($parsed->format('j F Y')) . '</strong>';
 };
 
-$_enCauseText = [
-    CarRepository::BLOCKED_CAUSE_SPAM         => 'a message to this address was reported as spam',
-    CarRepository::BLOCKED_CAUSE_UNSUBSCRIBED => 'this address unsubscribed from registry email',
-    CarRepository::BLOCKED_CAUSE_BLOCKLIST    => 'an administrator blocked this address',
-];
-
 $_enKind      = $emailNotice['kind'];
 $_enAddress   = '<strong>' . $_en($emailNotice['address'] ?? '') . '</strong>';
 $_enWhen      = $_enDate($emailNotice['date']);
-$_enCause     = $_enCauseText[$emailNotice['cause'] ?? ''] ?? null;
+$_enCauses    = [];
+foreach ($emailNotice['causes'] as $_enCauseKey) {
+    if (isset(EmailNoticeBuilder::CAUSE_TEXT[$_enCauseKey])) {
+        $_enCauses[] = $_en(EmailNoticeBuilder::CAUSE_TEXT[$_enCauseKey]);
+    }
+}
+// Join as "A", "A and B" or "A, B and C".
+$_enCause = match (count($_enCauses)) {
+    0       => null,
+    1       => $_enCauses[0],
+    default => implode(', ', array_slice($_enCauses, 0, -1)) . ' and ' . end($_enCauses),
+};
 if ($_enKind === EmailNoticeBuilder::KIND_BLOCKED) {
-    $_enMessage = 'Email to ' . $_enAddress . ' is blocked' . ($_enCause !== null ? ' because ' . $_en($_enCause) : '') . '.';
+    $_enMessage = 'Email to ' . $_enAddress . ' is blocked' . ($_enCause !== null ? ' because ' . $_enCause : '') . '.';
 } elseif ($_enKind === EmailNoticeBuilder::KIND_BOUNCED) {
     $_enMessage = 'Email to ' . $_enAddress . ' bounced' . ($_enWhen !== null ? ' on ' . $_enWhen : '') . '.';
 } else {
     $_enMessage = 'You opted out of registry email' . ($_enWhen !== null ? ' on ' . $_enWhen : '') . '.';
 }
-$_enLineClass = $_enKind === EmailNoticeBuilder::KIND_OPTED_OUT ? 'opted-out' : 'problem';
 $_enIcon      = $_enKind === EmailNoticeBuilder::KIND_OPTED_OUT ? 'fa-envelope' : 'fa-exclamation-triangle';
 
 $_enSettingsUrl = $_en($us_url_root . 'usersc/user_settings.php');
@@ -131,7 +134,7 @@ $_enDismissKey  = 'er.emailNotice.dismissed.' . $ownerId . '.' . $emailNotice['c
     <button type="button" class="btn-close er-email-notice__dismiss"
             aria-label="Dismiss this notice until your next visit"></button>
 
-    <div class="er-email-notice__line er-email-notice__line--<?= $_enLineClass ?>">
+    <div class="er-email-notice__line er-email-notice__line--problem">
         <p class="mb-2 text-break" id="email-notice-message">
             <i class="fas <?= $_enIcon ?> me-2 er-email-notice__icon" aria-hidden="true"></i><?= $_enMessage ?>
         </p>

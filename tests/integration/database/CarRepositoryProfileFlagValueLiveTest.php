@@ -106,7 +106,11 @@ final class CarRepositoryProfileFlagValueLiveTest extends IntegrationTestCase
         $this->assertTrue($flags->blocked);
         $this->assertTrue($flags->bounced);
         $this->assertSame(1, $this->repo->findProfileOptedOut($this->userId));
-        $this->assertSame(1, $this->repo->clearProfileBlocked($this->userId), 'The writer returns the old value, 1');
+        $this->assertSame(
+            1,
+            $this->repo->clearProfileBlockedIfAddress($this->userId, $this->email)['old'] ?? null,
+            'The writer returns the old value, 1'
+        );
         $this->assertSame(1, $this->repo->clearProfileBounced($this->userId));
         $this->assertSame(1, $this->repo->setProfileOptedOut($this->userId, false));
         $this->assertSame(0, $this->repo->findProfileOptedOut($this->userId));
@@ -122,7 +126,7 @@ final class CarRepositoryProfileFlagValueLiveTest extends IntegrationTestCase
         return [
             'email_opted_out via setProfileOptedOut (clear)' => ['email_opted_out', 'optOutClear', 1, 0],
             'email_opted_out via setProfileOptedOut (set)'   => ['email_opted_out', 'optOutSet', 0, 1],
-            'email_blocked via clearProfileBlocked'          => ['email_blocked', 'clearBlocked', 1, 0],
+            'email_blocked via clearProfileBlockedIfAddress' => ['email_blocked', 'clearBlocked', 1, 0],
             'email_blocked via setProfileBlocked'            => ['email_blocked', 'setBlocked', 0, 1],
             'email_bounced via clearProfileBounced'          => ['email_bounced', 'clearBounced', 1, 0],
             'email_bounced via setProfileBounced'            => ['email_bounced', 'setBounced', 0, 1],
@@ -151,7 +155,10 @@ final class CarRepositoryProfileFlagValueLiveTest extends IntegrationTestCase
             $old = match ($writer) {
                 'optOutClear'  => $this->repo->setProfileOptedOut($this->userId, false),
                 'optOutSet'    => $this->repo->setProfileOptedOut($this->userId, true),
-                'clearBlocked' => $this->repo->clearProfileBlocked($this->userId),
+                'clearBlocked' => $this->repo->clearProfileBlockedIfAddress(
+                    $this->userId,
+                    $this->repo->findBlockClearTarget($this->userId)['blockedAddress'] ?? null
+                )['old'] ?? null,
                 'setBlocked'   => $this->repo->setProfileBlocked($this->userId, $this->email, null, $at),
                 'clearBounced' => $this->repo->clearProfileBounced($this->userId),
                 'setBounced'   => $this->repo->setProfileBounced($this->userId, $this->email, $at),

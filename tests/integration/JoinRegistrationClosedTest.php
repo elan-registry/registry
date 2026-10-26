@@ -135,6 +135,7 @@ final class JoinRegistrationClosedTest extends IntegrationTestCase
             ["New user {$id}:%", "%user_id={$id}"]
         );
         $this->db->query('DELETE FROM users WHERE id = ?', [$id]);
+        $this->deleteDeletedUserAddressRows([$id]);
     }
 
     private function countUsersWithEmail(): int

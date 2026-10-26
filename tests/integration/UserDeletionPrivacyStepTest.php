@@ -11,11 +11,14 @@ use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\SendinblueMessagesTable;
 
 /**
- * #2358: the privacy step of usersc/scripts/after_user_deletion.php.
+ * #2358, #2419: the privacy step that usersc/scripts/after_user_deletion.php runs
+ * (AccountDeletionPrivacyStep).
  *
  * The step runs first, in its own transaction. It locks the profile row, reads the
- * addresses of the account, deletes the plugin message rows, the events and the
- * profile, and commits. The early returns after it keep no personal data.
+ * addresses of the account (also from the er_deleted_user_addresses holding row that
+ * the users delete trigger writes), deletes the plugin message rows, the events, the
+ * profile and the holding row, and commits. The early returns after it keep no
+ * personal data.
  *
  * The test schema has the plugin's `plg_sendinblue` table but not
  * `plg_sendinblue_messages`. A TEMPORARY table would not do: the hook finds the
@@ -324,6 +327,43 @@ final class UserDeletionPrivacyStepTest extends IntegrationTestCase
         $this->assertFalse($this->db->inTransaction());
         $notes = $this->deletionLogNotes($userId);
         $this->assertContains("Complete cleanup: reassigned 0 cars to noowner user (ID: {$this->noownerId()})", $notes);
+        // The hook catches a car-cleanup failure and only logs it, so the test must look for the line.
+        foreach ($notes as $note) {
+            $this->assertStringNotContainsString('Cleanup failed', $note);
+        }
+    }
+
+    public function testWithNoNoownerAccountTheFallbackRunsAndAllDataIsDeleted(): void
+    {
+        $userId = $this->createOwner();
+        $address = $this->uniqueAddress('nonoowner');
+        $carId = $this->createTestCar($userId, ['email' => $address]);
+        $this->insertEvent($userId, null, $address, 'priv-nonoowner-' . uniqid());
+        $pluginRow = 'privacy-nonoowner-' . uniqid();
+        $this->insertPluginRow($pluginRow, $address);
+
+        // The hook finds the noowner account by username. The rename sends it to the fallback branch.
+        $noownerId = $this->noownerId();
+        $this->db->query('UPDATE users SET username = ? WHERE id = ?', ['noowner-renamed-for-test', $noownerId]);
+        $this->assertFalse($this->db->error(), 'Test setup: failed to rename noowner: ' . $this->db->errorString());
+        try {
+            $this->runHook($userId);
+        } finally {
+            $this->db->query('UPDATE users SET username = ? WHERE id = ?', ['noowner', $noownerId]);
+            $this->assertFalse($this->db->error(), 'Test cleanup: failed to restore noowner: ' . $this->db->errorString());
+        }
+
+        $this->assertFalse($this->db->inTransaction(), 'The fallback must leave no transaction open');
+        $this->assertSame(0, $this->profileCount($userId), 'The profile is deleted');
+        $this->assertSame(0, $this->eventCount($userId), 'The events are deleted');
+        $this->assertFalse($this->pluginRowExists($pluginRow), 'The plugin rows are deleted');
+        $this->assertContains(
+            'Fallback cleanup: noowner user not found, set cars to NULL',
+            $this->deletionLogNotes($userId),
+            'Test control: the hook took the fallback branch'
+        );
+        $row = $this->db->query('SELECT user_id FROM cars WHERE id = ?', [$carId])->first();
+        $this->assertNull($row->user_id, 'The fallback sets the car owner to NULL');
     }
 
     public function testAnOwnerWhoChangedAddressOnceLosesRowsForBothAddresses(): void
@@ -403,6 +443,34 @@ final class UserDeletionPrivacyStepTest extends IntegrationTestCase
         $this->assertContains('Cleanup aborted: no authenticated admin session', $notes);
         $row = $this->db->query('SELECT user_id FROM cars WHERE id = ?', [$carId])->first();
         $this->assertSame($userId, (int) $row->user_id, 'The car stays: the early return skipped the reassignment');
+    }
+
+    public function testALiveUsersRowStopsTheHookAndTheCarStays(): void
+    {
+        $userId = $this->createOwner();
+        $address = $this->uniqueAddress('live');
+        $carId = $this->createTestCar($userId, ['email' => $address]);
+        $this->insertEvent($userId, null, $address, 'priv-live-' . uniqid());
+        $this->loginAsTestUser($this->adminId);
+
+        // deleteUsers() ignores a failed DELETE FROM users and still includes the hook.
+        $id = $userId;
+        $db = $this->db;
+        require TESTING_ROOT . '/usersc/scripts/after_user_deletion.php';
+
+        $this->assertFalse($this->db->inTransaction());
+        $this->assertSame(1, $this->profileCount($userId), 'A live owner keeps the profile');
+        $this->assertSame(1, $this->eventCount($userId), 'A live owner keeps the events');
+        $row = $this->db->query('SELECT user_id FROM cars WHERE id = ?', [$carId])->first();
+        $this->assertSame($userId, (int) $row->user_id, 'The car cleanup must not move a live owner\'s car');
+        $this->assertContains(
+            "CRITICAL: privacy step refused user {$userId}: a users row still exists, no row deleted; if an account deletion ran, check the trigger users_delete_capture_addresses and the user permission rows",
+            $this->deletionLogNotes($userId)
+        );
+        $this->assertContains(
+            "CRITICAL: car cleanup skipped for user {$userId} because the privacy step refused; the cars and pending transfer requests still name this ID",
+            $this->deletionLogNotes($userId)
+        );
     }
 
     // --- Failure and absent plugin table ----------------------------------------
@@ -555,6 +623,216 @@ final class UserDeletionPrivacyStepTest extends IntegrationTestCase
             $this->deletionLogNotes($userId),
             static fn (string $note): bool => str_starts_with($note, 'CRITICAL: privacy step failed')
         ), 'The step must not fail');
+    }
+
+    // --- Addresses that only the users row held, and the holding row (#2419) ----
+
+    private function holdingRow(int $userId): ?object
+    {
+        $rows = $this->db->query(
+            'SELECT email, email_new FROM er_deleted_user_addresses WHERE user_id = ?',
+            [$userId]
+        )->results();
+
+        return $rows === [] ? null : $rows[0];
+    }
+
+    /**
+     * An owner whose users.email and users.email_new are known, and whose
+     * profiles.email_address_seen holds a third, stale address.
+     *
+     * @return array{id: int, email: string, pending: string, stale: string}
+     */
+    private function createOwnerWithPendingChange(): array
+    {
+        $email = $this->uniqueAddress('current');
+        $pending = $this->uniqueAddress('pending');
+        $stale = $this->uniqueAddress('stale');
+        $userId = $this->createTestUser(['email' => $email, 'email_new' => $pending], true);
+        $this->loggedUserIds[] = $userId;
+        $this->setEmailAddressSinceSeen($userId, $stale);
+
+        return ['id' => $userId, 'email' => $email, 'pending' => $pending, 'stale' => $stale];
+    }
+
+    /**
+     * What upstream deleteUsers() does to the users row, without the hook.
+     */
+    private function deleteUsersRowOnly(int $userId): void
+    {
+        $this->db->delete('users', ['id', '=', $userId]);
+        $this->assertFalse($this->db->error(), 'Test setup: users delete: ' . $this->db->errorString());
+    }
+
+    public function testPendingEmailNewMessagesAreDeleted(): void
+    {
+        $owner = $this->createOwnerWithPendingChange();
+        $hit = 'privacy-pending-' . uniqid();
+        $this->insertPluginRow($hit, strtoupper($owner['pending']));
+
+        $this->runHook($owner['id']);
+
+        $this->assertFalse($this->pluginRowExists($hit), 'A row for the pending email_new address must go');
+        $this->assertNull($this->holdingRow($owner['id']), 'The hook path removes the holding row');
+        foreach ($this->deletionLogNotes($owner['id']) as $note) {
+            $this->assertStringNotContainsString('found no er_deleted_user_addresses row', $note);
+        }
+    }
+
+    public function testAHookRunWithNoHoldingRowLogsCriticalNamingTheTrigger(): void
+    {
+        $userId = $this->createOwner();
+        $this->loginAsTestUser($this->adminId);
+        // A missing trigger writes no holding row. Delete it to get the same state.
+        $this->deleteUsersRowOnly($userId);
+        $this->db->query('DELETE FROM er_deleted_user_addresses WHERE user_id = ?', [$userId]);
+        $this->assertFalse($this->db->error(), 'Test setup: holding-row delete: ' . $this->db->errorString());
+
+        $id = $userId;
+        $db = $this->db;
+        require TESTING_ROOT . '/usersc/scripts/after_user_deletion.php';
+
+        $notes = $this->deletionLogNotes($userId);
+        $this->assertContains(
+            "CRITICAL: privacy step for user {$userId} found no er_deleted_user_addresses row; check trigger users_delete_capture_addresses, or the users row was already gone before this deletion",
+            $notes
+        );
+        $this->assertSame(0, $this->profileCount($userId), 'The step still commits the other deletes');
+        $this->assertContains("Complete cleanup: reassigned 0 cars to noowner user (ID: {$this->noownerId()})", $notes, 'The car cleanup still runs');
+    }
+
+    public function testCurrentUsersEmailMessagesAreDeletedWhenProfileSeenIsStale(): void
+    {
+        $owner = $this->createOwnerWithPendingChange();
+        $hit = 'privacy-current-' . uniqid();
+        $this->insertPluginRow($hit, $owner['email']);
+
+        $this->runHook($owner['id']);
+
+        $this->assertFalse($this->pluginRowExists($hit), 'A row for users.email must go although email_address_seen holds another address');
+    }
+
+    public function testRowsForAnUnrelatedAddressSurvive(): void
+    {
+        $owner = $this->createOwnerWithPendingChange();
+        $control = 'privacy-unrelated-' . uniqid();
+        $hit = 'privacy-hit-' . uniqid();
+        $this->insertPluginRow($control, $this->uniqueAddress('unrelated'));
+        // The control only means something if the same run deletes a row.
+        $this->insertPluginRow($hit, $owner['pending']);
+
+        $this->runHook($owner['id']);
+
+        $this->assertFalse($this->pluginRowExists($hit), 'Test control: the run deleted the pending-address row');
+        $this->assertTrue($this->pluginRowExists($control), 'A row for an address that no source names stays');
+    }
+
+    public function testHoldingRowIsDeletedInTheSameTransactionOnSuccess(): void
+    {
+        $owner = $this->createOwnerWithPendingChange();
+        $this->deleteUsersRowOnly($owner['id']);
+        $held = $this->holdingRow($owner['id']);
+        $this->assertNotNull($held, 'Test setup: the trigger must write the holding row');
+        $this->assertSame($owner['email'], $held->email);
+        $this->assertSame($owner['pending'], $held->email_new);
+
+        $result = (new \ElanRegistry\AccountDeletionPrivacyStep($this->db))->run($owner['id']);
+
+        $this->assertTrue($result->committed);
+        $this->assertSame(1, $result->deletedHoldingRowCount);
+        $this->assertNull($this->holdingRow($owner['id']), 'A committed step removes the holding row');
+        $this->assertSame(0, $this->profileCount($owner['id']), 'The profile goes in the same commit');
+        $this->assertFalse($this->db->inTransaction());
+    }
+
+    public function testFailureKeepsHoldingRowAndRerunDeletesRowsAndClearsIt(): void
+    {
+        $owner = $this->createOwnerWithPendingChange();
+        $pendingRow = 'privacy-rerun-pending-' . uniqid();
+        $currentRow = 'privacy-rerun-current-' . uniqid();
+        $this->insertPluginRow($pendingRow, $owner['pending']);
+        $this->insertPluginRow($currentRow, $owner['email']);
+        $this->deleteUsersRowOnly($owner['id']);
+        $step = new \ElanRegistry\AccountDeletionPrivacyStep($this->db);
+
+        // The plugin delete reads er_email_events.brevo_message_id. The run must not sit
+        // in an outer transaction: CarRepository::rollback() does nothing inside one.
+        $this->db->query('ALTER TABLE er_email_events RENAME COLUMN brevo_message_id TO brevo_message_id_renamed_for_test');
+        $this->assertFalse($this->db->error(), 'Test setup: failed to force a DB error: ' . $this->db->errorString());
+        try {
+            $failed = $step->run($owner['id']);
+        } finally {
+            $this->db->query('ALTER TABLE er_email_events RENAME COLUMN brevo_message_id_renamed_for_test TO brevo_message_id');
+            $this->assertFalse($this->db->error(), 'Test cleanup: failed to restore the column: ' . $this->db->errorString());
+        }
+
+        $this->assertFalse($failed->committed);
+        $this->assertSame('plugin delete', $failed->failedStage);
+        $this->assertNotNull($this->holdingRow($owner['id']), 'The holding row stays so the rerun has the addresses');
+        $this->assertSame(1, $this->profileCount($owner['id']), 'The failed step rolled back: the profile stays');
+        $this->assertTrue($this->pluginRowExists($pendingRow));
+        $this->assertTrue($this->pluginRowExists($currentRow));
+
+        $failure = array_values(array_filter(
+            $this->deletionLogNotes($owner['id']),
+            static fn (string $note): bool => str_starts_with($note, 'CRITICAL: privacy step failed')
+        ));
+        $this->assertCount(1, $failure);
+        $this->assertSame(
+            sprintf(
+                'CRITICAL: privacy step failed for user %d at stage plugin delete, rolled back, personal data remains: %s (code 0)',
+                $owner['id'],
+                \ElanRegistry\Exceptions\CarDatabaseException::class
+            ),
+            $failure[0]
+        );
+        foreach (['email', 'pending', 'stale'] as $key) {
+            $this->assertStringNotContainsString(explode('@', $owner[$key])[0], $failure[0], "The log must not hold the {$key} address");
+        }
+
+        $rerun = $step->run($owner['id']);
+
+        $this->assertTrue($rerun->committed);
+        $this->assertSame(1, $rerun->deletedHoldingRowCount);
+        $this->assertSame(2, $rerun->deletedPluginMessageCount);
+        $this->assertFalse($this->pluginRowExists($pendingRow), 'The rerun reads email_new from the holding row');
+        $this->assertFalse($this->pluginRowExists($currentRow), 'The rerun reads email from the holding row');
+        $this->assertNull($this->holdingRow($owner['id']));
+        $this->assertSame(0, $this->profileCount($owner['id']));
+    }
+
+    public function testAddressHeldByAnotherLiveUserIsStillSkipped(): void
+    {
+        $owner = $this->createOwnerWithPendingChange();
+        $this->deleteUsersRowOnly($owner['id']);
+        // Another account registered with the deleted user's old address (other case).
+        $this->createTestUser(['email' => strtoupper($owner['email'])]);
+        $kept = 'privacy-live-holder-' . uniqid();
+        $gone = 'privacy-pending-gone-' . uniqid();
+        $this->insertPluginRow($kept, $owner['email']);
+        $this->insertPluginRow($gone, $owner['pending']);
+
+        $result = (new \ElanRegistry\AccountDeletionPrivacyStep($this->db))->run($owner['id']);
+
+        $this->assertTrue($result->committed);
+        $this->assertTrue($this->pluginRowExists($kept), 'The row belongs to the live user that holds the address now');
+        $this->assertFalse($this->pluginRowExists($gone), 'Test control: the other holding-row address still goes');
+    }
+
+    public function testNoHoldingRowStillWorks(): void
+    {
+        $userId = $this->createOwner();
+        $this->insertEvent($userId, null, $this->uniqueAddress('noholding'), 'priv-noholding-' . uniqid());
+        $this->deleteUsersRowOnly($userId);
+        $this->db->query('DELETE FROM er_deleted_user_addresses WHERE user_id = ?', [$userId]);
+        $this->assertNull($this->holdingRow($userId), 'Test setup: no holding row');
+
+        $result = (new \ElanRegistry\AccountDeletionPrivacyStep($this->db))->run($userId);
+
+        $this->assertTrue($result->committed);
+        $this->assertSame(0, $result->deletedHoldingRowCount);
+        $this->assertSame(0, $this->eventCount($userId));
+        $this->assertSame(0, $this->profileCount($userId));
     }
 
     private function noownerId(): int

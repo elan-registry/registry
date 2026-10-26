@@ -23,8 +23,8 @@ use Symfony\Component\Console\Output\BufferedOutput;
 #[Group('migration')]
 final class DeliverabilityMigrationFreshAndRollbackSandboxTest extends DeliverabilityMigrationSandboxTestCase
 {
-    /** The newest migration. Move it when a later migration lands (#2358: 20261013000000). */
-    private const FINAL_VERSION = 20261013000000;
+    /** The newest migration. Move it when a later migration lands (#2384: 20261025000000). */
+    private const FINAL_VERSION = 20261025000000;
 
     /** An older migration, before the first migration that adds the removed columns. */
     private const VERSION_OLD = 20260825120000;

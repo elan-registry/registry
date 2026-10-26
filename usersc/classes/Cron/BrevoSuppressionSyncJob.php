@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace ElanRegistry\Cron;
 
+use DateTimeImmutable;
+use DateTimeZone;
 use ElanRegistry\AppConstants;
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\DeliverabilityFlagLog;
@@ -63,10 +65,10 @@ use ElanRegistry\LogCategories;
  *
  * The incremental mode's under-fetching is safe for the same reason #1889's is:
  * the window is roughly twice the guard interval so every suppression is
- * offered to at least two runs. A repeat of an imported suppression writes
- * no second event row (`insertOwnerEmailEvent()` ignores a duplicate key),
- * and the profile writers skip a flag that already names the same address.
- * The synthetic message id below makes the duplicate key hold across runs.
+ * offered to at least two runs. An import writes no second event row when
+ * the owner already has a row of any date for the same address and the same
+ * cause group, from any source (#2502). The profile writers skip a flag that
+ * already names the same address.
  *
  * REASON-CODE MAPPING
  * -------------------
@@ -92,9 +94,24 @@ use ElanRegistry\LogCategories;
  * chip and the prune do not change. Only the cause on the profile is
  * `blocklist`.
  *
- * `blockedAt` is the event time. A missing, wrong-typed, unparseable or
- * non-positive value, or one more than MAX_FUTURE_SECONDS after the run time,
- * takes the run time and is marked as no usable date (#2426).
+ * SYNTHETIC MESSAGE ID
+ * --------------------
+ * An import row has no Brevo message ID, so the job makes one: a prefix and
+ * the MD5 of the raw address, the reason code and the raw `blockedAt`. The
+ * same contact gets the same ID on each run. The prefix is
+ * {@see CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX} for `adminBlocked` and
+ * `suppression-import-` for all other codes (#2500). Admin-block rows from
+ * before #2500 have the old prefix. A re-run does not write a tagged second
+ * row for them, because the cause-group check matches the event name. So
+ * before apply(), the job changes the ID of the owner's old row to the
+ * tagged ID ({@see self::retagLegacyAdminBlockRow()}). The job has no dry-run
+ * mode, so each run that finds such a row changes it.
+ *
+ * `blockedAt` is the event time, in Paris wall time with a `Z` suffix. The
+ * job reads it as Europe/Paris time (#2501). A missing, wrong-typed,
+ * unparseable or non-positive value, or one more than MAX_FUTURE_SECONDS
+ * after the run time after the conversion, takes the run time and is marked
+ * as no usable date (#2426).
  *
  * ADDRESS CHECK AND PRIVACY
  * -------------------------
@@ -136,6 +153,13 @@ use ElanRegistry\LogCategories;
  */
 final class BrevoSuppressionSyncJob extends AbstractCronJob
 {
+    /**
+     * Message-ID prefix of an import row for all codes other than `adminBlocked`
+     *
+     * An `adminBlocked` row uses {@see CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX}.
+     */
+    private const MESSAGE_ID_PREFIX = 'suppression-import-';
+
     /** er_cron_job_runs.job_name / CronJobGuard::ALLOWED_JOB_NAMES value. */
     public const JOB_NAME = 'brevo_suppression_sync';
 
@@ -257,6 +281,17 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
      * without error, and with `sql_mode = ''` MySQL stores it as a zero date.
      */
     private const MAX_FUTURE_SECONDS = 300;
+
+    /**
+     * Zone of the wall time in Brevo's `blockedAt` (#2501).
+     *
+     * Brevo writes Paris local time with a `Z` suffix. On test, two blocks
+     * from 2026-10-22 came back exactly 2 hours (CEST) after the epoch
+     * `ts_event` of their webhooks, and still 2 hours after the change to
+     * CET on 2026-10-25. So Brevo applies the Paris offset of the event
+     * date, and the Paris DST rules convert the value back.
+     */
+    private const BLOCKED_AT_TIMEZONE = 'Europe/Paris';
 
     /** Reason-code bucket for codes {@see self::mapReasonCodeToEvent()} does not map. */
     private const UNRECOGNIZED_REASON_BUCKET = 'unrecognized';
@@ -719,12 +754,20 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
 
             // Deterministic, so re-running the backfill produces the same id
             // for the same contact and collides with the existing row under
-            // er_email_events' UNIQUE (user_id, brevo_message_id, event) — which
-            // is what makes the import idempotent. Built from the raw address
+            // er_email_events' UNIQUE (user_id, brevo_message_id, event). The
+            // cause-group check in EmailEventApplier stops a repeat first, so
+            // the key is the second guard. Built from the raw address
             // and the raw `blockedAt`, so rows that earlier releases wrote
             // keep their id, and a contact whose date fell back to run time
-            // still gets a stable id across runs.
-            $messageId = 'suppression-import-' . md5($rawEmail . '|' . $code . '|' . $this->messageIdDatePart($rawBlockedAt));
+            // still gets a stable id across runs. An `adminBlocked` row gets
+            // its own prefix, so the notice can tell it from an unsubscribe
+            // (#2500). An admin-block row from before that change has the
+            // other prefix and the same hash. retagLegacyAdminBlockRow()
+            // gives it the new prefix.
+            $isAdminBlock = $code === self::REASON_CODE_ADMIN_BLOCKED;
+            $messageIdHash = md5($rawEmail . '|' . $code . '|' . $this->messageIdDatePart($rawBlockedAt));
+            $messageId = ($isAdminBlock ? CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX : self::MESSAGE_ID_PREFIX)
+                . $messageIdHash;
 
             // Brevo's read API is external input, so it gets the same bound
             // check against er_email_events' real column widths that #1889's
@@ -732,7 +775,7 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             // so MySQL would silently cut an oversized value in
             // insertOwnerEmailEvent(). Both values are in bounds by
             // construction here: the mapped event names are at most 12
-            // characters and the synthetic ID is always 51. So the check is
+            // characters and the synthetic ID is always 51 or 61. So the check is
             // defensive today. It stays so that a later change to either
             // scheme cannot silently store cut values.
             if (strlen($event) > self::MAX_EVENT_LENGTH || strlen($messageId) > self::MAX_MESSAGE_ID_LENGTH) {
@@ -773,6 +816,10 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             ['occurredAt' => $occurredAt, 'usable' => $dateIsUsable]
                 = $this->resolveOccurredAt($rawBlockedAt, $userId, $code);
             $wasFlagged = $this->isAlreadyInTargetState($userId, $event);
+
+            if ($isAdminBlock) {
+                $this->retagLegacyAdminBlockRow($userId, $event, self::MESSAGE_ID_PREFIX . $messageIdHash, $messageId);
+            }
 
             try {
                 $result = $this->applier->apply(
@@ -888,6 +935,66 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
     }
 
     /**
+     * Give an owner's admin-block import row from before #2500 the tagged message ID
+     *
+     * This repairs rows that the import wrote before the
+     * {@see CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX} tag. Such a row has the
+     * untagged prefix and the same hash, so the account notice reads it as an
+     * unsubscribe. Without the retag, apply() writes a tagged row beside
+     * it, because the cause-group check in {@see EmailEventApplier} counts
+     * only tagged rows for an admin block, and the old row still names an
+     * unsubscribe. When the tagged row is already there (for example, after
+     * a failed retag), the repository deletes the old row. After
+     * a full backfill, no untagged admin-block row remains for a contact that
+     * is still on Brevo's list. The notice drops the `blocklist` profile
+     * cause for the other rows ({@see \ElanRegistry\Car\EmailNoticeBuilder}).
+     *
+     * A failure is logged and the caller continues to apply(). The retag is
+     * only a repair of the notice text. The flag write is the important
+     * step, and it must not stop because of a failed repair. The next run
+     * that still finds the contact on Brevo's list as `adminBlocked`
+     * repairs the old row: it changes the ID, or it deletes the old row
+     * when apply() wrote the tagged row.
+     *
+     * @param int    $userId Matched owner user ID
+     * @param string $event  Event name of the row (`unsubscribed`)
+     * @param string $fromId Untagged message ID of the old row
+     * @param string $toId   Tagged message ID
+     */
+    private function retagLegacyAdminBlockRow(int $userId, string $event, string $fromId, string $toId): void
+    {
+        try {
+            $result = $this->repo->retagOwnerEmailEventMessageId($userId, $event, $fromId, $toId);
+        } catch (CarDatabaseException $e) {
+            logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
+                'Brevo suppression sync: retag of old admin-block row FAILED for owner %d'
+                . ' — suppression still applied, will retry next run: %s',
+                $userId,
+                ExceptionLogSummary::of($e)
+            ));
+            return;
+        }
+
+        // er_email_events has no audit trigger, so these lines are the only
+        // record of the changed or deleted rows.
+        if ($result['retagged'] > 0) {
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
+                'Brevo suppression sync: retagged %d old admin-block row(s) for owner %d.',
+                $result['retagged'],
+                $userId
+            ));
+        }
+        if ($result['removed'] > 0) {
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
+                'Brevo suppression sync: removed %d old admin-block row(s) for owner %d,'
+                . ' because the tagged row was already there.',
+                $result['removed'],
+                $userId
+            ));
+        }
+    }
+
+    /**
      * Map a Brevo suppression reason code onto an EmailEventApplier event name.
      *
      * See the class docblock for the full table and the reason that
@@ -927,12 +1034,36 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
     }
 
     /**
+     * Parse Brevo's `blockedAt` as Paris wall time (#2501).
+     *
+     * A zero offset (`Z`, `+00:00`, `UTC`) is the label Brevo puts on Paris
+     * time, so the job reads the wall time again in
+     * {@see self::BLOCKED_AT_TIMEZONE}. A value with no zone gets the same
+     * zone. A non-zero offset is a real offset, and the job keeps it. Paris
+     * never has offset 0, so the second parse cannot loop. In the repeated
+     * hour of the change to CET, PHP picks the CEST reading, so a block in
+     * that hour can be 1 hour early.
+     *
+     * @throws \Exception When the value does not parse
+     */
+    private function parseBlockedAt(string $rawBlockedAt): DateTimeImmutable
+    {
+        $zone = new DateTimeZone(self::BLOCKED_AT_TIMEZONE);
+        $parsed = new DateTimeImmutable($rawBlockedAt, $zone);
+
+        return $parsed->getOffset() === 0
+            ? new DateTimeImmutable($parsed->format('Y-m-d H:i:s.u'), $zone)
+            : $parsed;
+    }
+
+    /**
      * Normalize Brevo's `blockedAt` into an er_email_events DATETIME string.
      *
      * Duplicated from {@see BrevoEventReconciliationJob::resolveOccurredAt()}
-     * rather than extracted to a shared helper. The two are the same six lines
-     * today, but they parse different fields of different endpoints with
-     * different log wording, and this codebase's convention is against
+     * rather than extracted to a shared helper. The two differ in the parse
+     * step (this one reads Paris time, #2501). They parse different fields
+     * of different endpoints with different log wording, and this codebase's
+     * convention is against
      * extracting a shared abstraction from two similar call sites before a
      * third arrives (see CLAUDE.md — "Three similar lines are better than a
      * premature abstraction"). If a third Brevo date-parsing caller appears,
@@ -950,7 +1081,8 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
      * same clock or rows from the three paths sort against each other hours
      * apart.
      *
-     * A parsed value is trusted only when its Unix timestamp is positive and not
+     * {@see self::parseBlockedAt()} reads the value as Paris time first. A
+     * parsed value is trusted only when its Unix timestamp is positive and not
      * more than {@see self::MAX_FUTURE_SECONDS} after the run time. A value
      * outside that range takes the same logged fallback as an unparseable one.
      *
@@ -975,7 +1107,7 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
 
         if (is_string($rawBlockedAt) && $rawBlockedAt !== '') {
             try {
-                $parsed = new \DateTimeImmutable($rawBlockedAt);
+                $parsed = $this->parseBlockedAt($rawBlockedAt);
                 $seconds = $parsed->getTimestamp();
                 if ($seconds > 0 && $seconds <= $this->now->getTimestamp() + self::MAX_FUTURE_SECONDS) {
                     return ['occurredAt' => date(AppConstants::DATETIME_FORMAT, $seconds), 'usable' => true];
@@ -994,8 +1126,8 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
 
         // EMAIL_WEBHOOK, not CRON_JOB_FAILURE: a data-hygiene warning about
         // Brevo's payload, not a job fault — the run continues and the
-        // suppression is still applied unless an admin clear is on record
-        // (#2426). Matches the category both
+        // suppression is still applied unless a clear for the current address
+        // is on record (#2426, #2482). Matches the category both
         // BrevoWebhookEventProcessor and BrevoEventReconciliationJob use for
         // the identical condition, so all three paths' date problems land in
         // one searchable place.

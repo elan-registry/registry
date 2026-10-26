@@ -18,7 +18,8 @@ use ElanRegistry\LogCategories;
  * allowlist below — it grows only when a new caller genuinely needs a new
  * job, each claimed by {@see AbstractCronJob::run()} on behalf of its own
  * job class (e.g. {@see BrevoEventReconciliationJob} #1889,
- * {@see BrevoSuppressionSyncJob} #1923). The allowlist and the seeded
+ * {@see BrevoSuppressionSyncJob} #1923, {@see SendVerificationBatchJob}
+ * #1885, {@see RetentionPurgeJob} #2384). The allowlist and the seeded
  * `er_cron_job_runs` rows must stay in sync — a job name present in only one
  * of the two fails silently (allowlist-only: `claim()` always returns
  * `false`; table-only: unreachable, since nothing can pass that name through
@@ -50,6 +51,7 @@ final class CronJobGuard
         'brevo_reconciliation',
         'brevo_suppression_sync',
         'send_verification_batch',
+        'retention_purge',
     ];
 
     public function __construct(private readonly DatabaseInterface $db)

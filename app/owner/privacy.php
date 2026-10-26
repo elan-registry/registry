@@ -25,7 +25,7 @@ if (!securePage($php_self)) {
 
 $policy = <<<'GUIDEHTML'
 <h1><a id="privacy-policy" href="#privacy-policy" class="" aria-hidden="true" title="Permalink"></a>Privacy Policy</h1>
-<p><strong>Effective: October 21, 2026</strong></p>
+<p><strong>Effective: October 25, 2026</strong></p>
 <p>The Elan Registry is a community database for Lotus Elan cars, run by enthusiasts for enthusiasts. This page explains what information we collect, what we do with it, and what rights you have over your data.</p>
 <p>The short version: we collect what's needed to run the registry, we keep your personal details private, and you can change or delete your data at any time. If you decide to leave, we'll remove your personal information but may keep the car records themselves so the registry stays useful to the community.</p>
 <h2><a id="what-we-collect" href="#what-we-collect" class="" aria-hidden="true" title="Permalink"></a>What we collect</h2>
@@ -71,7 +71,7 @@ $policy = <<<'GUIDEHTML'
 <h2><a id="updates" href="#updates" class="" aria-hidden="true" title="Permalink"></a>Updates</h2>
 <p>If we change this policy, we'll update the effective date at the top of the page and post the new version here. Anything significant, we'll announce to users.</p>
 <hr />
-<p><em>Last updated: October 21, 2026. This update says that we now send car-verification request emails through Brevo. It also adds the 90-day limit on how long the email service log keeps a recipient address, and names healthchecks.io, a monitoring service that receives no personal data.</em></p>
+<p><em>Last updated: October 25, 2026. This update says that we now delete the recipient address from the email service log after 90 days, with a daily job.</em></p>
 
 GUIDEHTML;
 ?>

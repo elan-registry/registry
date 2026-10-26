@@ -357,9 +357,10 @@ final class SendPolicyTest extends TestCase
             'opted out'  => [['email_opted_out'], 'Owner has opted out of verification emails.'],
             'blocked'    => [['email_blocked'], 'Owner email is blocked.'],
             'bounced'    => [['email_bounced'], 'Owner email bounced.'],
-            // Priority: no profile, opted out, blocked, bounced.
+            // Priority: no profile, blocked, bounced, opted out (#2461).
             'profile beats all'      => [['email_bounced', 'email_blocked', 'email_opted_out', 'no_profile'], 'Owner has no profile.'],
-            'opted out beats blocked' => [['email_bounced', 'email_blocked', 'email_opted_out'], 'Owner has opted out of verification emails.'],
+            'blocked beats opted out' => [['email_blocked', 'email_opted_out'], 'Owner email is blocked.'],
+            'bounced beats opted out' => [['email_bounced', 'email_opted_out'], 'Owner email bounced.'],
             'blocked beats bounced'  => [['email_bounced', 'email_blocked'], 'Owner email is blocked.'],
             'no match fallback'      => [['no_match'], 'No owner has this address now.'],
         ];

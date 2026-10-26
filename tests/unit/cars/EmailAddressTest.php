@@ -40,6 +40,31 @@ final class EmailAddressTest extends TestCase
         $this->assertSame($expected, EmailAddress::normalize($address));
     }
 
+    /**
+     * @return array<string, array{0: string|null, 1: string|null, 2: bool}>
+     */
+    public static function changeProvider(): array
+    {
+        return [
+            'same address'             => ['owner@example.com', 'owner@example.com', false],
+            'case-only edit'           => ['owner@example.com', 'Owner@Example.COM', false],
+            'white-space-only edit'    => ['owner@example.com', "  owner@example.com\n", false],
+            'different address'        => ['old@example.com', 'new@example.com', true],
+            'no seen address yet'      => [null, 'owner@example.com', true],
+            'empty seen address'       => ['', 'owner@example.com', true],
+            'new address cleared'      => ['owner@example.com', null, true],
+            'both null'                => [null, null, false],
+            'null and empty are equal' => [null, '', false],
+        ];
+    }
+
+    #[DataProvider('changeProvider')]
+    public function testIsChange(?string $seen, ?string $new, bool $expected): void
+    {
+        $this->assertSame($expected, EmailAddress::isChange($seen, $new));
+        $this->assertSame($expected, EmailAddress::isChange($new, $seen), 'The compare is symmetric');
+    }
+
     public function testInnerWhitespaceIsKept(): void
     {
         $this->assertSame('a b@example.com', EmailAddress::normalize(' A B@example.com '));

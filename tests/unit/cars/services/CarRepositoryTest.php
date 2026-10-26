@@ -1205,7 +1205,7 @@ final class CarRepositoryTest extends TestCase
         $this->assertSame([], $writes);
     }
 
-    public function testClearProfileBlockedClearsAllFourColumnsOnly(): void
+    public function testClearProfileBlockedIfAddressClearsAllFourColumnsOnly(): void
     {
         $writes = [];
         $repo = new CarRepository($this->makeProfileDb(
@@ -1213,7 +1213,9 @@ final class CarRepositoryTest extends TestCase
             $writes
         ));
 
-        $this->assertSame(1, $repo->clearProfileBlocked(42));
+        $result = $repo->clearProfileBlockedIfAddress(42, 'o@example.com');
+        $this->assertSame(1, $result['old'] ?? null);
+        $this->assertTrue($result['addressMatched'] ?? null);
         $this->assertCount(1, $writes);
         $this->assertSame(
             'UPDATE profiles SET email_blocked = 0, email_blocked_address = NULL, email_blocked_at = NULL, '
@@ -1223,12 +1225,35 @@ final class CarRepositoryTest extends TestCase
         $this->assertStringNotContainsString('email_opted_out', $writes[0]['sql'], 'Clearing a block must leave the opt-out alone');
     }
 
-    public function testClearProfileBlockedWritesNothingWhenNotBlocked(): void
+    public function testClearProfileBlockedIfAddressWritesNothingWhenNotBlocked(): void
     {
         $writes = [];
         $repo = new CarRepository($this->makeProfileDb(self::profileRow(), $writes));
 
-        $this->assertSame(0, $repo->clearProfileBlocked(42));
+        $this->assertSame(0, $repo->clearProfileBlockedIfAddress(42, null)['old'] ?? null);
+        $this->assertSame([], $writes);
+    }
+
+    public function testClearProfileBlockedIfAddressWritesNothingWhenTheAddressChanged(): void
+    {
+        $writes = [];
+        $repo = new CarRepository($this->makeProfileDb(
+            self::profileRow(['email_blocked' => 1, 'email_blocked_address' => 'new@example.com']),
+            $writes
+        ));
+
+        $result = $repo->clearProfileBlockedIfAddress(42, 'old@example.com');
+        $this->assertSame(1, $result['old'] ?? null);
+        $this->assertFalse($result['addressMatched'] ?? null);
+        $this->assertSame([], $writes, 'A changed block address must not be cleared');
+    }
+
+    public function testClearProfileBlockedIfAddressReturnsNullWithoutAProfileRow(): void
+    {
+        $writes = [];
+        $repo = new CarRepository($this->makeProfileDb(null, $writes));
+
+        $this->assertNull($repo->clearProfileBlockedIfAddress(42, null));
         $this->assertSame([], $writes);
     }
 
