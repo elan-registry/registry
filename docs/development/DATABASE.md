@@ -501,7 +501,7 @@ the same transaction as its other deletes. So a row stays only when the step
 did not commit. The rerun script then reads the addresses from the row. See
 [FIX_SCRIPTS.md](FIX_SCRIPTS.md#rerun-the-deletion-privacy-step-30-rerun-deletion-privacy-stepphp).
 
-**Stale row alarm.** A row older than 24 hours makes the nightly retention
+**Stale row alarm.** A row older than 24 hours makes the daily retention
 run fail (`DeletedUserAddressesBacklogRule`), so healthchecks.io reports it.
 The rule deletes no row. See
 [DEPLOYMENT.md](DEPLOYMENT.md#retention-purge-job).

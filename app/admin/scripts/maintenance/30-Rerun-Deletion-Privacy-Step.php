@@ -153,7 +153,7 @@ $userIdRejected = $is_exec && $targetUserId === false;
                                             </tbody>
                                         </table>
                                         <div class="alert alert-primary mt-2 mb-0">
-                                            <i class="fa fa-info-circle"></i> Addresses that were only on the deleted user's cars cannot be found after the car cleanup, so their <code>plg_sendinblue_messages</code> rows can remain. The nightly retention purge deletes those rows once they are older than 90 days.
+                                            <i class="fa fa-info-circle"></i> Addresses that were only on the deleted user's cars cannot be found after the car cleanup, so their <code>plg_sendinblue_messages</code> rows can remain. The daily retention purge deletes those rows once they are older than 90 days.
                                         </div>
                                         <?php // With the trigger in place, a failed step leaves a holding row. None means a wrong ID, a second run, or a missing trigger. ?>
                                         <?php if ($result->deletedHoldingRowCount === 0): ?>

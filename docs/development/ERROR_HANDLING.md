@@ -154,7 +154,7 @@ handling and logging.
 | AdminOperationException | 500 | AdminActions | Admin operations |
 | AdminContactException | 500 | AdminContact | Admin contact form |
 | AdminVerificationException | 500 | AdminVerification | Admin verification |
-| RetentionPurgeException | 500 | RetentionPurge | A retention rule failed in the nightly purge job |
+| RetentionPurgeException | 500 | RetentionPurge | A retention rule failed in the daily purge job |
 
 **Usage Pattern**:
 

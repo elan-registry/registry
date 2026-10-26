@@ -71,7 +71,7 @@ $policy = <<<'GUIDEHTML'
 <h2><a id="updates" href="#updates" class="" aria-hidden="true" title="Permalink"></a>Updates</h2>
 <p>If we change this policy, we'll update the effective date at the top of the page and post the new version here. Anything significant, we'll announce to users.</p>
 <hr />
-<p><em>Last updated: October 25, 2026. This update says that we now delete the recipient address from the email service log after 90 days, with a nightly job.</em></p>
+<p><em>Last updated: October 25, 2026. This update says that we now delete the recipient address from the email service log after 90 days, with a daily job.</em></p>
 
 GUIDEHTML;
 ?>

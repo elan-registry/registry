@@ -43,7 +43,7 @@ The Elan Registry uses namespaces to organize classes by their architectural rol
 | --- | --- | --- | --- |
 | **(root)** | Entity classes (domain objects) | `/usersc/classes/` | Car, Owner |
 | `ElanRegistry\Exceptions` | Custom exception types | `/usersc/classes/Exceptions/` | CarNotFoundException, CarValidationException |
-| `ElanRegistry\Retention` | Retention rules for the nightly purge | `/usersc/classes/Retention/` | RetentionRule, RetentionPolicy, RetentionResult, SendinblueMessagesRetentionRule, DeletedUserAddressesBacklogRule |
+| `ElanRegistry\Retention` | Retention rules for the daily purge | `/usersc/classes/Retention/` | RetentionRule, RetentionPolicy, RetentionResult, SendinblueMessagesRetentionRule, DeletedUserAddressesBacklogRule |
 | `ElanRegistry\Reference` | **External reference data** | `/usersc/classes/Reference/` | CarModel |
 
 ### Reference Data vs. Entity Classes

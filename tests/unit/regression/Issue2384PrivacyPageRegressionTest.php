@@ -7,7 +7,7 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * Issue #2384: `app/owner/privacy.php` states the 90-day limit on the email
- * service log, and its revision note names the nightly deletion that now
+ * service log, and its revision note names the daily deletion that now
  * keeps that promise.
  *
  * The checks read the policy as plain text (tags stripped, white space
@@ -53,7 +53,7 @@ final class Issue2384PrivacyPageRegressionTest extends TestCase
         );
     }
 
-    public function testLastUpdatedNoteNamesTheNightlyDeletionOfTheAddress(): void
+    public function testLastUpdatedNoteNamesTheDailyDeletionOfTheAddress(): void
     {
         $found = preg_match('/Last updated: ([A-Z][a-z]+ \d{1,2}, \d{4})\.(.{0,300})/', self::policy(), $match);
         $this->assertSame(1, $found, 'The page must have a dated Last updated note');
@@ -62,7 +62,7 @@ final class Issue2384PrivacyPageRegressionTest extends TestCase
         $this->assertMatchesRegularExpression('/delete.{0,40}recipient address/i', $note);
         $this->assertMatchesRegularExpression('/email service log/i', $note);
         $this->assertMatchesRegularExpression('/90 days/i', $note);
-        $this->assertMatchesRegularExpression('/nightly/i', $note);
+        $this->assertMatchesRegularExpression('/daily/i', $note);
     }
 
     public function testEffectiveAndLastUpdatedDatesAgreeAndChanged(): void

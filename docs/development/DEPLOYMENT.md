@@ -1150,7 +1150,7 @@ of a deleted user stays. The run then stamps `last_failure_at` and pings
 2. Run `app/admin/scripts/maintenance/30-Rerun-Deletion-Privacy-Step.php` for
    each user ID. See
    [FIX_SCRIPTS.md](FIX_SCRIPTS.md#rerun-the-deletion-privacy-step-30-rerun-deletion-privacy-stepphp).
-3. The next nightly run passes when no holding row is older than 24 hours.
+3. The next daily run passes when no holding row is older than 24 hours.
 
 Do not delete a holding row by hand: the rerun script reads the addresses
 from it.

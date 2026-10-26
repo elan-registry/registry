@@ -168,7 +168,7 @@ failed, the line says `rollback failed: ExceptionClass (code C)` in place of
 user then remains: the plugin mail rows, the email events, the profile and the
 holding row in `er_deleted_user_addresses`. The log line holds no address.
 
-Also run it for each user ID that the nightly retention run names in the
+Also run it for each user ID that the daily retention run names in the
 `RetentionPurge` log line "Account-deletion privacy step not complete". The
 run fails while an `er_deleted_user_addresses` row is older than 24 hours. It
 passes again after the rerun.
@@ -231,7 +231,7 @@ cannot read the addresses on those cars. The holding row stores only
 `users.email` and `users.email_new`. A `plg_sendinblue_messages` row sent to
 an address that was only on the user's cars, with no `er_email_events` row for
 the user, therefore remains. The page shows a note about this after each
-committed run. The nightly retention purge deletes those rows once they are
+committed run. The daily retention purge deletes those rows once they are
 older than 90 days.
 
 ### If the run fails again

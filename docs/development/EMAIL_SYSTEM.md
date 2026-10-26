@@ -1648,13 +1648,13 @@ list above) and the latest event of each car in its Status chip (#2361).
 
 The table `plg_sendinblue_messages` must keep a recipient address for 90 days
 or less. The upstream sendinblue plugin 1.8.0 has no retention setting for
-this table. The Registry sets the limit with a nightly purge job.
+this table. The Registry sets the limit with a daily purge job.
 `RetentionPurgeJob`
 ([#2384](https://github.com/elan-registry/registry/issues/2384)) runs once a
 day. Its `SendinblueMessagesRetentionRule` applies the rules below. See
 [CLASSES.md](CLASSES.md#retention) for the classes.
 
-Go-live needs no one-time purge. The first nightly run handles the rows that
+Go-live needs no one-time purge. The first run handles the rows that
 are already older than 90 days. Do not delete old rows by hand with
 `DELETE ... WHERE accepted_at < ...`. That SQL also deletes the rows that an
 event still names, and then owner contact soft bounces count again (#2460).
