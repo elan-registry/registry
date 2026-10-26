@@ -3,7 +3,9 @@
 **Release Date:** October 22, 2026 (draft)
 **Type:** Patch Release - Post Verification System Cleanup and Bugs
 
-Administrators can now trust the Verification tab and the email-block tools. Account deletion and the email service log no longer keep an owner's address.
+Administrators can now trust the Verification tab and the email-block tools.
+Account deletion removes an owner's mail records, and the email service log
+keeps an address for at most 90 days.
 
 ## User-Facing Changes
 
@@ -11,7 +13,7 @@ Administrators can now trust the Verification tab and the email-block tools. Acc
 - The email service log keeps a recipient address for 90 days at most. ([#2384](https://github.com/elan-registry/registry/issues/2384))
 - The page thanks an owner after a Sold report. ([#2497](https://github.com/elan-registry/registry/issues/2497))
 - The join form shows a message when the browser blocks a submit. ([#2043](https://github.com/elan-registry/registry/issues/2043))
-- The paused-email notice shows every cause of a block. ([#2499](https://github.com/elan-registry/registry/issues/2499))
+- The paused-email notice shows every cause of a block. ([#2500](https://github.com/elan-registry/registry/issues/2500))
 
 ## Admin-Facing Changes
 
@@ -24,10 +26,12 @@ Administrators can now trust the Verification tab and the email-block tools. Acc
 ## Issues Resolved
 
 - [#2439](https://github.com/elan-registry/registry/issues/2439) — Escape decoded text in pop-up messages, so an encoded name or link cannot add HTML.
-- [#2419](https://github.com/elan-registry/registry/issues/2419) — Delete plugin mail rows for the current and pending address at account deletion, and add a manual rerun of the privacy step.
+- [#2419](https://github.com/elan-registry/registry/issues/2419) —
+  Delete plugin mail rows for the current and pending address at account deletion. Add a manual rerun.
 - [#2384](https://github.com/elan-registry/registry/issues/2384) — Delete the recipient address from the email service log after 90 days.
 - [#2482](https://github.com/elan-registry/registry/issues/2482) — Count only a clear after the address change when the suppression import has no usable date.
-- [#2461](https://github.com/elan-registry/registry/issues/2461) — Use one order for opted out, blocked and bounced in the send report, the Status chip and the notice.
+- [#2461](https://github.com/elan-registry/registry/issues/2461) —
+  Use one order for opted out, blocked and bounced in the send report, the Status chip and the notice.
 - [#2498](https://github.com/elan-registry/registry/issues/2498) — Show the owner's user ID in the Verification Queue.
 - [#2501](https://github.com/elan-registry/registry/issues/2501) — Read Brevo's blocked-at dates as Paris time, so the suppression sync stores the real block date.
 - [#2502](https://github.com/elan-registry/registry/issues/2502) — Stop the suppression sync from adding a second event row for an owner that is already flagged.

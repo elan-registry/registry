@@ -323,8 +323,9 @@ the suppression import. To stop all event writes, do these three steps:
 1. Set `BREVO_WEBHOOK_TOKEN` to an empty value. The webhook then refuses
    every call with 401, and Brevo retries the call later.
 2. Set `er_cron_job_runs.enabled = 0` for `brevo_reconciliation` and
-   `brevo_suppression_sync`. This also stops the retention prune, because the
-   reconciliation job runs the prune. Also pause the
+   `brevo_suppression_sync`. This also stops the `er_email_events` prune,
+   because the reconciliation job runs it. It does not stop
+   `retention_purge`. Also pause the
    `brevo-event-reconciliation-<env>` check in healthchecks.io. Otherwise it
    lapses and alerts Discord (see
    [DEPLOYMENT.md, Cron monitoring](DEPLOYMENT.md#cron-monitoring-healthchecksio)).
@@ -624,8 +625,8 @@ and `CarRepository::findLatestEmailEventPerCarWithPrecedence()` selects the
 event. The chip uses this order: no profile, blocked, bounced, opted out, then
 the latest event. The batch report (`SendPolicy::verificationReason()`) and
 the account notice (`EmailNoticeBuilder`) use the same order, so the three
-views give one reason for an owner with more than one flag (#2461). Possible
-chips are: No profile, Blocked, Opted out, Sent, Delivered, Soft bounce (with
+views give one reason for an owner with more than one flag (#2461). The
+possible chips, not in priority order, are: No profile, Blocked, Opted out, Sent, Delivered, Soft bounce (with
 reason), Bounced, Spam complaint, and Unknown event names.
 "Bounced" covers `EmailEventApplier::HARD_BOUNCE_EVENTS` (`hard_bounce`,
 `blocked`, `invalid`, `invalid_email`). "Delivered" covers four Brevo event

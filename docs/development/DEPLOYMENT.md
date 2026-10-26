@@ -526,8 +526,8 @@ Follow these rules for the deploy:
    phpMyAdmin (structure and data). The migration deletes and merges rows. The
    `down()` method restores the schema only. This backup is the only full
    rollback. Keep it until the first reconciliation run after the deploy has
-   run and you checked it. That run also runs the retention prune for the
-   first time, which deletes old `delivered`, `sent` and `soft_bounce` rows
+   run and you checked it. That run also runs the `er_email_events` prune
+   for the first time (not `retention_purge`), which deletes old `delivered`, `sent` and `soft_bounce` rows
    (90 days) and old terminal rows (24 months).
 2. **Deploy the migration and the code together.** Use one push. The new code
    needs `er_email_events.user_id`. The old code writes no `user_id` and fails
