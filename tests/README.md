@@ -593,3 +593,5 @@ in every config together.
 - [TESTING.md](../docs/testing/TESTING.md) - Comprehensive testing guide
 - [PLAYWRIGHT_E2E.md](../docs/testing/PLAYWRIGHT_E2E.md) - Browser testing details
 - [CODING_STANDARDS.md](../docs/development/CODING_STANDARDS.md) - Code quality standards
+
+<!-- devkit pilot test, do not merge -->
