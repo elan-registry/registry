@@ -169,7 +169,14 @@ The webhook and the reconciliation job apply events of all registry mail
 
 ### Production and Staging
 
-Both `elanregistry.org` and `test.elanregistry.org` use the same Brevo account and API key. No environment-specific configuration is needed.
+Both `elanregistry.org` and `test.elanregistry.org` use the same Brevo account and API key. The sendinblue plugin
+needs no environment-specific configuration.
+
+Each environment has its own outbound webhook and its own `BREVO_WEBHOOK_TOKEN`. Because the account is shared, Brevo
+sends each event to both webhooks (see [The "Ours?" Step](#the-ours-step)). Keep the test webhook disabled in the
+Brevo dashboard. Enable it only for an email test on test, and disable it again after the test. The production
+webhook stays enabled. To register a webhook, see
+[DEPLOYMENT.md](DEPLOYMENT.md#migration-that-keys-email-events-by-user-2358).
 
 ### Local Development
 

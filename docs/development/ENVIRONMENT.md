@@ -863,18 +863,25 @@ PHP writes errors, warnings, and fatal errors to a log outside the docroot.
 
 | Environment | `error_log` value | Set by |
 | --- | --- | --- |
-| Test | `/home/unibrain/php_error/test.elanregistry.org-php-error.log` | `.user.ini` in the test docroot |
-| Production | `/home/unibrain/php_error/elanregistry.org-php-error.log` | `.user.ini` in the production docroot |
+| Test and production | `/home/unibrain/php_error/php_error.log` (one log for all sites on the account) | Account-level `error_log` in the cPanel PHP Selector options |
 | Local Docker | empty (stderr). Read it with `docker compose logs app` | `docker/php.ini-overrides.ini` |
 
 The test and production hosts run LiteSpeed with `lsphp`, not Apache
-mod_php (checked on the hosts on 2026-10-07, #2326). PHP reads the
-`.user.ini` file in each docroot. Each host has its own `.user.ini`, which
-exists only on the host. Git does not track it, so one tree deploys to both
-hosts. A deploy into the same docroot is expected to keep it, as for
-`usersc/vericode_secret.php`, which is also untracked (`DEPLOYMENT.md`). A
-deploy into a new directory needs a new `.user.ini`. lsphp reads `.user.ini`
-again only after `user_ini.cache_ttl` (default 300 seconds).
+mod_php (checked on the hosts on 2026-10-07, #2326). lsphp does not apply
+the `.user.ini` or `php.ini` file in a docroot (#2389). The value comes from
+the account-level PHP Selector config (`/opt/alt/php85/link/conf/alt_php.ini`).
+Per Domain Settings is disabled on the host, so a separate log for each site
+is not possible. To find the errors of one site, filter the shared log by
+the site's paths. The Monitoring project reads this log and keeps only the
+production lines.
+
+The `error_log` value must be a file path. From about 2026-10-21 to
+2026-10-28 it was the folder `/home/unibrain/php_error`, and PHP dropped
+every error on production with no warning (#2326). The Deployment
+Verification Checklist in `DEPLOYMENT.md` checks this value.
+
+Each docroot still has a `.user.ini` that sets a per-site `error_log`. Git
+does not track it. lsphp ignores it, so it has no effect.
 
 Do not set `error_log` in `.htaccess`. On the hosts, LiteSpeed applied
 the #1768 `<IfModule mod_php.c>` block, and its `php_value` line overrode
