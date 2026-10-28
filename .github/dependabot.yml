@@ -30,6 +30,9 @@ updates:
       timezone: "America/Los_Angeles"
     labels:
       - "github_actions"
+    # The devkit pin moves only by hand, at a milestone boundary (ADR-021).
+    ignore:
+      - dependency-name: "unibrain1/devkit"
 
   - package-ecosystem: "docker"
     directory: "/docker"
