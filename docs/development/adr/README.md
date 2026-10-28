@@ -30,6 +30,7 @@ We follow the [Michael Nygard ADR template](https://cognitect.com/blog/2011/11/1
 | [ADR-018](ADR-018-build-at-deploy-for-frontend-vendoring.md) | Build Frontend Assets at Deploy Time Instead of Committing Build Output | Accepted | Medium |
 | [ADR-019](ADR-019-no-csrf-on-public-read-only-endpoints.md) | Do Not Apply CSRF Tokens to Public Read-Only Endpoints | In Review | High |
 | [ADR-020](ADR-020-issue-driven-workflow.md) | Issue-Driven Workflow: Theme Gate, Plan Gate, and Single Review Round | Accepted | Medium |
+| [ADR-021](ADR-021-trust-the-devkit-plugin-on-a-protected-tag.md) | Trust the devkit Plugin on a Protected Tag | Accepted | High |
 
 ## Statuses
 

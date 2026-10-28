@@ -11,7 +11,33 @@
       "Bash(composer test:quick *)",
       "Bash(composer test:integration *)",
       "Bash(composer check:docs *)",
-      "Bash(gh label list *)"
+      "Bash(gh label list *)",
+      "Bash(composer check)",
+      "Bash(docker compose exec -u www-data app composer test:full *)",
+      "Bash(flow-check-blocking-findings:*)",
+      "Bash(flow-check-milestone-scope-drift:*)",
+      "Bash(flow-check-plan-state:*)",
+      "Bash(flow-check-review-posted:*)",
+      "Bash(flow-check-version-newer:*)",
+      "Bash(flow-check-wip-markers:*)",
+      "Bash(flow-fetch-pr-findings:*)",
+      "Bash(flow-find-milestone-branch:*)",
+      "Bash(flow-labels --missing:*)",
+      "Bash(flow-ledger-items-for-files:*)",
+      "Bash(flow-milestone-count:*)",
+      "Bash(flow-poll-review-posted:*)",
+      "Bash(flow-project-check:*)",
+      "Bash(flow-project-fact:*)",
+      "Bash(flow-repo:*)",
+      "Bash(flow-resolve-base-branch:*)",
+      "Bash(flow-review-fingerprint:*)",
+      "Bash(gh issue list:*)",
+      "Bash(gh issue view:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh repo view:*)"
     ],
     "deny": [
       "Skill(commit-commands:commit-push-pr)",
@@ -60,6 +86,18 @@
     "commit-commands@claude-plugins-official": true,
     "code-review@claude-plugins-official": true,
     "playwright@claude-plugins-official": true,
-    "claude-md-management@claude-plugins-official": false
+    "claude-md-management@claude-plugins-official": false,
+    "flow@devkit": true,
+    "asd-ste100@devkit": true
+  },
+  "extraKnownMarketplaces": {
+    "devkit": {
+      "source": {
+        "source": "github",
+        "repo": "unibrain1/devkit",
+        "ref": "v0.1.0"
+      },
+      "autoUpdate": true
+    }
   }
 }

@@ -34,3 +34,11 @@ Local admin e2e tests (`tests/playwright/e2e/admin.spec.js`,
 unset, the auth setup step skips, but the admin tests still run
 unauthenticated: tests that expect a logged-in session fail, and tests of
 public pages such as `factory.php` pass.
+
+## Writing Playwright tests
+
+- Use page objects for page logic.
+- Check CSRF and security headers in security tests.
+- Check the responsive layout in mobile tests.
+- Select elements by `data-testid` first, then by role, then by text.
+- An empty loop cannot fail. See issue #2189.

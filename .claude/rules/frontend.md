@@ -27,3 +27,10 @@ paths:
 - Read `docs/development/UI_STANDARDS.md` before any UI change.
 - **Cloudflare Rocket Loader and Email Obfuscation must remain disabled.**
   Both inject inline scripts that break the strict CSP nonce policy.
+
+## AJAX and layout
+
+- Use `ElanRegistryAPI` for new AJAX calls. Prefer it over `$.ajax()`.
+- Use Bootstrap for layout.
+- Use DataTables for tables. See `docs/development/DATATABLES.md`.
+- Load CDN assets as `docs/development/CSS_AND_ASSETS.md` describes.

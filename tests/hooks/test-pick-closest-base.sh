@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Regression test for _pick_closest_base() in scripts/lib/pick-closest-base.sh
-# (used by .githooks/pre-push and scripts/resolve-base-branch.sh). It
+# (used by .githooks/pre-push). It
 # regressed three times in review (#1751, #1767, #2029) before this test.
 #
 # Uses this repo's real origin/main plus synthetic commits, branches and refs

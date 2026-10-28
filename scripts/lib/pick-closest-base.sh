@@ -2,8 +2,8 @@
 #
 # Sourceable library: _pick_closest_base().
 #
-# WHY THIS IS A SEPARATE FILE. .githooks/pre-push and scripts/resolve-base-branch.sh
-# both need this exact function. Before this file existed, the logic lived
+# WHY THIS IS A SEPARATE FILE. .githooks/pre-push needs this exact function,
+# and the devkit flow plugin keeps a copy for flow-resolve-base-branch. Before this file existed, the logic lived
 # only in .githooks/pre-push, and tests/hooks/test-pick-closest-base.sh
 # extracted it at test time by sed-ing the function body out of that file
 # (see its own header). Keeping one copy here, sourced by both callers,
@@ -39,9 +39,9 @@ _pick_closest_base() {
     local target="$1"
     local self_remote="${2:-}" self_local="${3:-}"
     local best_base="" best_count="" best_candidate=""
-    # Also exposed to a caller that does not use a subshell, so
-    # scripts/resolve-base-branch.sh can print the winning ref name.
-    # shellcheck disable=SC2034  # read by scripts/resolve-base-branch.sh
+    # Also exposed to a caller that does not use a subshell, so it can
+    # print the winning ref name (flow-resolve-base-branch in devkit does).
+    # shellcheck disable=SC2034  # read by a caller, not in this file
     PICK_CLOSEST_CANDIDATE=""
     local candidate base count candidate_sha target_sha
 
