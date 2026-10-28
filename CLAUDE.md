@@ -95,9 +95,9 @@ only. See `DEPLOYMENT.md` for hook details.
 
 **Always, before you complete a task:**
 
-- Use the `software-developer` agent when a change affects three or more
+- Use the `flow:software-developer` agent when a change affects three or more
   files or introduces a new pattern. Edit a single-file task directly.
-- Run `/security-review` when changes touch forms, SQL queries, auth, or user
+- Run `/flow:security-review` when changes touch forms, SQL queries, auth, or user
   input.
 - Resolve lint and type errors. Pre-commit hooks run PHPStan on staged files.
 - Run the test suites for the changed functionality.
@@ -106,55 +106,32 @@ Semgrep (GitHub App managed scan) runs on every PR; the
 `semgrep-cloud-platform/scan` check fails on new issues. Triage steps are in
 `QUICK_REFERENCE.md#security-scanning-semgrep`.
 
-## Developer Workflow
+## Registry workflow notes
 
-Branches: `main` ← `milestone/vX.Y.Z` ← `issue/NNN-slug`. One PR per issue,
-targeting the milestone branch. Each command describes its own steps.
-`/execute-plan` runs the built-in `/simplify` skill itself (its Step 6.8).
+The branch model, the command order, and the hand-off rule are in the flow
+block at the end of this file. The full method is in the `flow:workflow`
+skill. These notes are for Registry only.
 
-```text
-/plan-milestone → /start-milestone
-  per issue: /start-issue → /execute-plan → /commit → /review-pr
-             → /commit-push-pr → /address-pr-comments → /finish-issue
-/finish-milestone → /review-milestone → /release-milestone
-```
-
-`/finish-milestone` runs its own review of the milestone diff (Steps 9.5 to
-9.8), so do not run `/review-pr` at the milestone boundary.
-
-Hotfix: `/start-issue <N> --hotfix`, PR base `main`. Full procedure: the `hotfix` skill.
-
-`/commit` is the plugin skill `commit-commands:commit`; this project has no
-`/commit` command. `.claude/settings.json` denies the plugin skill
-`commit-commands:commit-push-pr`, so `/commit-push-pr` is always this
-project's command (see `docs/development/ISSUE_WORKFLOW.md`, "Discoveries
-mid-issue").
-
-Cleanup finds (no change in behavior) go in the committed
-`docs/development/CLEANUP_LEDGER.md`. Fix an item and delete its line in the
-same PR. `composer check:docs` fails when a ledger heading names a file that
-no longer exists.
-
-**Hand-offs between commands.** A command's `model:` frontmatter applies
-only when the user types the command. A command that another command starts
-through the Skill tool runs on the model of the command that started it. So:
-
-- Start the next command through the Skill tool only when both commands
-  declare the same `model:` (for example `/start-issue` → `/execute-plan`).
-- Otherwise, tell the user to type the next command.
-- At an issue or milestone boundary, recommend `/clear` first. Each turn
-  re-reads the full context, so earlier work multiplies the cost of every
-  turn. In v2.30.4, one session that held the earlier milestone read about
-  5 times more tokens per turn than a cleared session.
-
-For milestone planning, ask `senior-product-manager`, `senior-architect`, and
-`security-reviewer` to analyze the work in parallel. Deploying to test and
-production is a separate manual step. Update release
-notes with a PR, from `docs/development/RELEASE_NOTES_TEMPLATE.md`.
-Planning documents live in the gitignored `docs/plans/` — never commit them.
-One named file, `docs/plans/releases/v2.30-deploy.md`, is a committed
-exception (see `.gitignore` and `.claude/rules/planning-docs.md`); it is not
-a general rule for `docs/plans/releases/`.
+- `/commit` is the plugin skill `commit-commands:commit`. This project has no
+  `/commit` command. `.claude/settings.json` denies the plugin skill
+  `commit-commands:commit-push-pr`, so use `/flow:commit-push-pr`.
+- Cleanup finds (no change in behavior) go in the committed
+  `docs/development/CLEANUP_LEDGER.md`. Fix an item and delete its line in
+  the same PR. `composer check:docs` fails when a ledger heading names a file
+  that no longer exists.
+- At an issue or milestone boundary, recommend `/clear` first. In v2.30.4,
+  one session that held the earlier milestone read about 5 times more tokens
+  per turn than a cleared session.
+- For milestone planning, ask `flow:senior-product-manager`,
+  `flow:senior-architect`, and `flow:security-reviewer` to analyze the work
+  in parallel.
+- Deploying to test and production is a separate manual step. Update
+  release notes with a PR, from `docs/development/RELEASE_NOTES_TEMPLATE.md`.
+- Planning documents live in the gitignored `docs/plans/`. Never commit
+  them. One named file, `docs/plans/releases/v2.30-deploy.md`, is a
+  committed exception (see `.gitignore` and
+  `.claude/rules/planning-docs.md`). It is not a general rule for
+  `docs/plans/releases/`.
 
 ## Quick Deployment Reference
 

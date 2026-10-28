@@ -52,6 +52,10 @@
           {
             "type": "command",
             "command": "bash .claude/hooks/guard-deploy-push.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/guard-private-paths.sh"
           }
         ]
       },

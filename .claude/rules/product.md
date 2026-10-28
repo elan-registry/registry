@@ -38,7 +38,7 @@ Use this file for product scope, issues, milestones, and labels.
 
 ## Planning and labels
 
-- `/plan-milestone` seals the issue list. Work outside it goes to a later
+- `/flow:plan-milestone` seals the issue list. Work outside it goes to a later
   milestone, or to a patch release from `main` when production is broken.
 - List labels with `gh label list -R elan-registry/registry`.
 - Label families:
