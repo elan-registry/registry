@@ -80,7 +80,6 @@ jobs:
               - "scripts/*.sh"
               - ".claude/hooks/**"
               - ".github/workflows/tests.yml"
-              - ".github/workflows/claude-code-review.yml"
 
   git-hooks:
     name: Git Hooks Regression Tests
@@ -142,11 +141,6 @@ jobs:
       #     before any scenario runs, so its `gh issue view` calls never
       #     reach the real GitHub API. Hermetic — runs with no gh credentials
       #     and no outbound network access.
-      #   - test-commit-push-pr.sh: clones this repo into a throwaway
-      #     directory and repoints the clone's "origin" at a throwaway bare
-      #     repo (not this checkout), with a stub `gh` first on PATH. Hermetic
-      #     — a scenario that runs the script for real, including one that
-      #     exercises a push, cannot reach this checkout or GitHub.
       - name: Run all git-hooks regression tests
         run: |
           fail=0
