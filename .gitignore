@@ -21,6 +21,7 @@ Elanegistry.sublime-project
 !.claude/rules/
 !.claude/hooks/
 !.claude/settings.json
+!.claude/project.md
 .claude.local.md
 
 ########################################

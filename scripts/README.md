@@ -236,99 +236,15 @@ grouped under a level-3 (`###`) heading for each file. The file's own
   the working tree: a file, or a directory for a token that ends in `/`. A
   PR that deletes or renames a file must move or delete its group.
 
-### ledger-items-for-files.sh
-
-Lists the open ledger items for a set of files. It reads
-`docs/development/CLEANUP_LEDGER.md` from the root of the git work tree that
-holds the current directory. It makes no `gh` call and no write.
-
-- stdin: one repo-relative path per line. Blank lines and a trailing CR are
-  ignored. The script takes no arguments.
-- stdout: one `path: item text` line for each open item under a matching
-  heading. An item prints once, with the first input path (in input order)
-  that matches its heading. Control characters other than TAB are removed.
-- Heading match rule: each backticked token in a `###` heading is a path. A
-  token that ends in `/` matches every path under that directory. Any other
-  token matches only the exact path. Other heading text, such as
-  `(est. −960)`, is ignored. A section ends at the next `##` or `###`
-  heading. Indented lines and other lines are ignored.
-- Empty stdin: no output, exit 0, and the note
-  `ledger-items-for-files.sh: no input paths, the ledger was not read` on
-  stderr.
-
-| Code | Meaning |
-| --- | --- |
-| 0 | The ledger was read. Empty output means no open items. |
-| 1 | Usage error: an argument was given, or stdin is a TTY. |
-| 2 | The current directory is not in a git work tree, or the ledger file is missing or cannot be read. |
-
-```bash
-# Open items for every file this branch changes
-git diff --name-only "$(git merge-base HEAD origin/main)"..HEAD | scripts/ledger-items-for-files.sh
-
-# Open items for one file
-echo "usersc/join.php" | scripts/ledger-items-for-files.sh
-```
-
-The hermetic test is `tests/hooks/test-ledger-items-for-files.sh`. It runs
-the script in a temporary git repository with a fixture ledger.
+`flow-ledger-items-for-files` in the devkit `flow` plugin lists the open
+items for a set of files.
 
 ## Milestone release checks
 
-### check-milestone-scope-drift.sh
-
-Compares a milestone's current issue membership with the issues in the
-"Issues Resolved" section of its release notes. Both
-`/finish-milestone` Step 5.5 and `/release-milestone` Step 2 call it.
-`/release-milestone` runs it again on the up-to-date milestone branch, just
-before the merge to `main`.
-
-```bash
-scripts/check-milestone-scope-drift.sh v2.30.5 107
-```
-
-- Reads `docs/releases/RELEASE_NOTES_<version>.md` from the working tree, so
-  run it from the repo root on the milestone branch.
-- Counts only the leading link of each `- [#N](https://github.com/elan-registry/registry/issues/N)`
-  or `- WIP: [#N](...)` bullet under `## Issues Resolved`. A `- WIP: [#N]`
-  bullet counts as an entry. A cross-reference later in a bullet does not
-  count.
-- Counts milestone issues in every state and skips pull requests.
-
-| Code | Meaning |
-| --- | --- |
-| 0 | The two sets match. |
-| 1 | Mismatch. One line per issue says "moved out of milestone", "added to milestone, missing from release notes", or "still has WIP prefix in release notes". |
-| 2 | Can't verify: bad arguments, no notes file, no entries, a milestone with no issues, a `gh` failure, or a tool failure. |
-
-The hermetic test is `tests/hooks/test-check-milestone-scope-drift.sh`. Its
-stub `gh` accepts only the exact API call and runs the script's own `--jq`
-filter.
-
-### check-version-newer.sh
-
-Checks that a candidate version is strictly newer than the last release tag.
-`/release-milestone` Step 3 runs it. The comparison is numeric, part by
-part, so `v2.9.0` is older than `v2.10.0`.
-
-```bash
-scripts/check-version-newer.sh v2.30.5            # against `git describe --tags --abbrev=0`
-scripts/check-version-newer.sh v2.30.4.1 v2.30.4  # against a given tag
-```
-
-- Accepts `vX.Y.Z` and the four-part patch-release tag `vX.Y.Z.N`
-  (`docs/development/DEPLOYMENT.md`, "Patch Release from main"). The `v`
-  prefix is optional. A missing fourth number counts as 0, so
-  `v2.30.5` > `v2.30.4.1` > `v2.30.4`.
-- The second argument is the last tag. Use it when the clone has no tags.
-
-| Code | Meaning |
-| --- | --- |
-| 0 | The candidate is newer than the last tag. |
-| 1 | The candidate is equal or older. |
-| 2 | The script cannot parse a version, or `git describe` failed (tags not fetched). |
-
-The hermetic test is `tests/hooks/test-check-version-newer.sh`.
+The devkit `flow` plugin provides the other milestone, release, commit,
+plan and ledger scripts as `flow-*` commands, with their tests. See
+<https://github.com/unibrain1/devkit>. The PR review readers below stay
+here until the Claude review workflow moves to devkit.
 
 ### check-deploy-sheet-fresh.sh
 
@@ -452,107 +368,6 @@ fixture JSON.
 - `check-review-posted.sh` prints the count of verdicts for the head commit
   and exits 0. It exits 1 with empty stdout when a `gh` call fails,
   including the head lookup. Test: `tests/hooks/test-check-review-posted.sh`.
-- `fetch-pr-findings.sh` returns the reviews, inline comments and failed
-  checks as one JSON object. Test: `tests/hooks/test-fetch-pr-findings.sh`.
-
-### release-milestone.sh
-
-Runs the merge, tag and publish sequence for `/release-milestone` Step 6.
-`/release-milestone` Step 5 asks the user to confirm first. The script never
-pushes to a remote named `prod` or `test`.
-
-```bash
-scripts/release-milestone.sh [--dry-run] v2.30.5 <pr-number> <milestone-number>
-```
-
-In order: it fetches `origin` and checks local `main`, saves the release notes, removes the notes file in a commit on
-the milestone branch and pushes it, pulls `main`, merges the PR, tags
-the merge commit, pushes the tag, creates a draft GitHub release, and closes
-the GitHub milestone. `--dry-run` prints each command and changes nothing.
-
-- **Fast-forward pulls.** Every pull is `--ff-only`. The script never
-  creates a merge commit when it pulls.
-- **Stray commits.** The script fetches `origin`, then counts the local
-  commits that `origin/main` does not have. This check runs before Step 6
-  pushes anything. If the count is not `0`, it stops with exit 1 and nothing
-  has changed. Move those commits to a side branch first.
-- **The tag.** The script reads the merge commit of the PR (`gh pr view
-  --json mergeCommit`). It tags that SHA, not `HEAD`. Then it checks that the
-  tag points at the SHA. An existing tag on another commit stops the run.
-
-- **Notes copy.** Before it removes the notes, the script saves them to
-  `docs/plans/releases/<version>-release-notes.md` (gitignored). The release
-  is created from that copy. If the copy is missing, the script restores it
-  from the commit before the removal commit.
-- **Resume.** After a stop, run the script again with the same arguments. It
-  skips each step whose work is done: the notes removal and PR merge, the tag
-  on the merge commit, and the GitHub release. The other steps are safe to
-  repeat.
-
-| Code | Meaning |
-| --- | --- |
-| 0 | Every step completed, or `--dry-run` printed the plan. |
-| 1 | A check stopped the run before it changed anything: bad arguments, a deploy remote, a closed PR, missing notes with no removal commit, or stray local commits on `main`. |
-| 2 | A step failed: a merge conflict, a rejected push, a pull that is not a fast-forward, or a tag on the wrong commit. |
-
-The hermetic test is `tests/hooks/test-release-milestone.sh`.
-
-## Commit and PR
-
-### commit-push-pr.sh
-
-Runs the mechanical part of `/commit-push-pr`: branch checks, staging, the
-commit, the push, and PR create or reuse. The command writes the commit
-message and the PR title and body first.
-
-```bash
-scripts/commit-push-pr.sh [--dry-run] --message-file <f> --title <t> \
-    --body-file <f> [--base <ref>] [--branch <name>]
-```
-
-- **Refusals.** The script exits 1 on `main`, `master`, or `milestone/*`, and
-  when a path is under `docs/plans/` or `_noupload/`.
-- **PR reuse.** The script reuses only an open PR. It runs
-  `gh pr list --head <branch> --state open`. It does not use `gh pr view`,
-  which also returns a merged or closed PR for the same branch name. When
-  no open PR exists, it opens a new one.
-
-| Code | Meaning |
-| --- | --- |
-| 0 | Done: commit created, branch pushed, PR created or reused. |
-| 1 | Refused by a branch rule or a forbidden path. |
-| 2 | A `git` or `gh` command failed. This includes a failed `gh pr list`. |
-| 3 | The base branch did not resolve. Ask the user. |
-
-The hermetic test is `tests/hooks/test-commit-push-pr.sh`.
-
-## Plan state
-
-### check-plan-state.sh
-
-Reports the state of an issue's plan file. `/execute-plan`, `/review-pr`,
-`/commit-push-pr` and `/finish-issue` use it to find the plan.
-
-```bash
-scripts/check-plan-state.sh        # issue number from the branch name
-scripts/check-plan-state.sh 423
-```
-
-It looks in `docs/plans/issues/issue-<N>-*.md`. If that has no match, it looks
-in the older `docs/plans/issue-<N>-*.md`. The branch must match `issue/`,
-`bug/` or `feature/` when no number is given. Stdout has three lines:
-`path:` (or `(none)`, and a comma-separated list when more than one file
-matches), `approved: yes|no`, and `checklist: <done>/<total>`. An item
-marked `- [ ] <item> — N/A: <reason>` counts as done in the `<done>` count.
-
-| Code | Meaning |
-| --- | --- |
-| 0 | A plan file exists and its status is `Approved — ready for /execute-plan`. |
-| 1 | No plan file. `docs/plans/` is gitignored, so each clone has its own copy. |
-| 2 | A plan file exists with any other status. |
-| 3 | No issue number was given and none could be derived from the branch. |
-
-The hermetic test is `tests/hooks/test-check-plan-state.sh`.
 
 ## Database
 

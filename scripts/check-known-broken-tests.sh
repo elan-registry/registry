@@ -15,7 +15,7 @@
 #   [base] — git ref to diff against, currently UNUSED (the grep runs over
 #   the working tree's tests/ directory regardless of ref, matching how
 #   both callers already invoke it). Accepted for interface stability with
-#   check-wip-markers.sh, which does use it.
+#   flow-check-wip-markers (devkit flow plugin), which does use it.
 #
 # Output (stdout): one line per match, tab-separated:
 #   <test file>\t<line>\t<cited issue number or (none)>\t<issue state or (unknown)>

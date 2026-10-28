@@ -107,8 +107,8 @@ _diff_names() {
     git -c core.quotepath=false diff --no-renames --name-only "$@"
 }
 
-# _pick_closest_base() now lives in scripts/lib/pick-closest-base.sh, shared
-# with scripts/resolve-base-branch.sh, so the two callers can't drift apart.
+# _pick_closest_base() now lives in scripts/lib/pick-closest-base.sh. The
+# devkit flow plugin keeps a copy in bin/lib/ for flow-resolve-base-branch.
 # See that file's header for the function's full contract (rejection rules,
 # self-exclusion, return value).
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
