@@ -598,15 +598,16 @@ change it, and each open then writes one `logs` row. Remove `opened`,
 
 List the webhooks with `--list-webhooks` to confirm.
 
-To register the production webhook, follow these steps.
+To register the production webhook, follow these steps. Brevo has no
+setting that turns off click-tracking for transactional email, so this
+procedure has no tracking step. See
+[Brevo Link Rewriting](EMAIL_SYSTEM.md#brevo-link-rewriting).
 
 1. Make a new token on your machine: `openssl rand -hex 32`. The value must
    differ from the test value. See
    [ENVIRONMENT.md](ENVIRONMENT.md#brevo-webhook-authentication).
 2. Set `BREVO_WEBHOOK_TOKEN` to the new value in the production `.env`.
-3. In the Brevo dashboard, turn off link click-tracking. Go to
-   Transactional, Settings, Tracking.
-4. Run the script with `--list-webhooks`. The deploy removes `scripts/`
+3. Run the script with `--list-webhooks`. The deploy removes `scripts/`
    from the server (`.deployignore`), so run each script command in these
    steps from a local checkout, with `--env=<dir>` pointing at a `.env`
    that reaches the production database. To reach it over an SSH tunnel,
@@ -614,17 +615,17 @@ To register the production webhook, follow these steps.
    replace `--env`. If a webhook for the production URL exists, delete it
    with `--delete --id=<id>`. `--create` does not check for an existing
    webhook, so a second one sends each event twice.
-5. Run the script with `--create --allow-prod`. The URL rules and the
+4. Run the script with `--create --allow-prod`. The URL rules and the
    command are in
    [scripts/README.md](../../scripts/README.md#spike-1888brevo-register-webhookphp).
-6. Run the script with `--list-webhooks`.
-7. Check the `events=` list in the output. It must be the script's
+5. Run the script with `--list-webhooks`.
+6. Check the `events=` list in the output. It must be the script's
    `CREATE_EVENTS` list: `delivered`, `softBounce`, `hardBounce`, `blocked`,
    `invalid`, `spam` and `unsubscribed`. It has no open or click event.
    Brevo sends these events with snake_case names (`softBounce` arrives as
    `soft_bounce`). The receiver accepts the names in
    [Brevo Webhook Receiver](EMAIL_SYSTEM.md#brevo-webhook-receiver-1887).
-8. Wait for one real event. Check that it creates an `er_email_events` row.
+7. Wait for one real event. Check that it creates an `er_email_events` row.
 
 Then run `app/admin/scripts/maintenance/21-Fix-Page-Permissions.php` on test
 and verify. After that, run it on production. The script sets the permissions
@@ -1206,10 +1207,10 @@ After each deployment, verify:
       is byte-identical between test and prod only if verification codes are
       meant to be portable between them (they normally are not — each
       environment should have its own secret).
-- [ ] `.user.ini` exists in the docroot and sets `error_log` to this host's
-      log (`grep error_log <docroot>/.user.ini`). Git does not track it. If it
-      is missing, PHP stops writing to that log, and nothing reports it.
-      Paths: [ENVIRONMENT.md](ENVIRONMENT.md#php-error-logging).
+- [ ] The account-level `error_log` in the cPanel PHP Selector options is
+      the file `/home/unibrain/php_error/php_error.log`, not a folder. If
+      it names a folder, PHP drops every error, and nothing reports it.
+      Details: [ENVIRONMENT.md](ENVIRONMENT.md#php-error-logging).
 - [ ] Image upload and display working
 - [ ] Search and filtering functionality
 - [ ] Mobile responsiveness maintained
