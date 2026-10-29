@@ -47,14 +47,6 @@ after an item is written.
 
 - [ ] Narrow 2 × `catch (Exception $e)` (~L29, 53) to the typed exceptions from `Car` and `CarTransferRepository` (from #1637)
 
-### `app/admin/scripts/maintenance/28-Reconcile-Brevo-Suppressions.php`
-
-- [ ] The `set_time_limit(120)` comment (~L110-132) says the network wait of a Brevo page counts toward `max_execution_time`. On Linux it counts CPU time only. The wall-clock limit is Cloudflare's, about 100 seconds. Correct the reason, or delete the call (found in #2359)
-
-### `app/admin/scripts/maintenance/30-Rerun-Deletion-Privacy-Step.php`
-
-- [ ] A live user ID typed on this page makes `AccountDeletionPrivacyStep::run()` write the deletion-incident CRITICAL refusal line under that owner's ID. Give `run()` a caller context, so that a refusal from this page logs a non-CRITICAL line that names the admin ID (found in #2419)
-
 ### `app/api/cars/list.php`
 
 - [ ] `(new CarShowcaseService())->getNewCarIds()` (~64) runs an uncached query on every DataTables request (page turn, sort, search) since #1900. Before, it ran once per page load. Memoize it per request or for a short time. Accepted as low risk for v2.30.4. (found in /finish-milestone v2.30.4)
@@ -62,18 +54,6 @@ after an item is written.
 ### `app/api/cars/save.php`
 
 - [ ] The `updateImages` and `removeImages` auth checks (about lines 233 and 244) compare `$user->data()->id != ...->user_id` with loose `!=`. Use a strict `(int)` comparison, as `removeImage()` does (found while working on #1929)
-
-### `app/api/contact/send-owner-email.php`
-
-- [ ] Six `logger()` calls (~L113, 135, 151, 186, 210, 214) log `$e->getMessage()`. `CarRepository` copies driver text into its messages. Log `ExceptionLogSummary::of($e)` instead (found in #2460)
-
-### `app/assets/js/car-edit.js`
-
-- [ ] line 344 — restates the line below it. Do it in #2045, which changes the year→model code (from #1978)
-- [ ] line 349 — restates the line below it. Do it in #2045, which changes the year→model code (from #1978)
-- [ ] line 352 — restates the line below it. Do it in #2045, which changes the year→model code (from #1978)
-- [ ] line 358 — restates the line below it. Do it in #2045, which changes the year→model code (from #1978)
-- [ ] line 361 — restates the line below it. Do it in #2045, which changes the year→model code (from #1978)
 
 ### `app/assets/js/location-picker.js`
 
@@ -106,12 +86,11 @@ after an item is written.
 ### `scripts/spike-1871/` (est. −960)
 
 - [ ] Delete the directory (capture receiver, send-test CLI, README). Its README says it stays "until #1887 ships its own fixtures". #1887 is closed, and the Brevo payload fixtures now live in `BrevoWebhookEventProcessorTest.php` and `EmailEventApplierTest.php`. `scripts/spike-1888/brevo-webhook-capture.php` covers the same capture job. (found in the #2208 audit)
-- [ ] Update the two pointers in `docs/development/EMAIL_SYSTEM.md` (~L1468, ~L1536). (found in the #2208 audit)
+- [ ] Update the pointers in the same PR: `docs/development/EMAIL_SYSTEM.md` (~L2268, ~L2336), `scripts/README.md` (~L464-467), the comments in `scripts/spike-1888/*.php`, and the wiki page `Brevo-Webhook-Configuration`. (found in the #2208 audit)
 
 ### `tests/Support/BrevoOverrideStub.php` + `tests/Support/BrevoSiteRoot.php` (test-only)
 
 - [ ] `BrevoOverrideStub` writes `"<?php\n"` and `sweep()` deletes any file with that exact content. Add a unique marker comment to the stub content (found in /finish-milestone v2.30.7)
-- [ ] `BrevoSiteRoot::PLUGIN_FILES` keeps `override.RENAME.php` only for the #2374 regression test (`VerificationSettingsTest.php` ~L656). Add a comment that says so (found in /finish-milestone v2.30.7)
 
 ### `tests/Support/SendinblueMessagesTable.php` (test-only)
 
@@ -272,11 +251,6 @@ after an item is written.
 
 - [ ] The CRITICAL line for a failed stage, its rollback-failure part, and the rerun script's catch log only the class and `(code 0)`, so a lock wait and a schema fault look the same. Use `ExceptionLogSummary::of()` (class, code, SQLSTATE, throw site, no message). Put `$db->errorString()` in the profile-delete `OwnerDatabaseException` message, and update the pinned `(code 0)` assertions (found in #2419)
 - [ ] The profile delete (~L124-127) runs raw SQL while every other stage goes through `CarRepository`. Move it to a `CarRepository::deleteProfile()` method (found in /finish-milestone v2.30.10)
-- [ ] The rollback log line prints zero row counts, which reads as "0 rows deleted". Drop the counts from the rollback line and keep "personal data remains" (found in /finish-milestone v2.30.10)
-
-### `usersc/classes/ApiResponse.php`
-
-- [ ] In `buildAndEmitHeaders()`, the `JsonException` fallback keeps the status code that was set before `json_encode()`, so a `success()` response can send HTTP 200 with a `success:false` body. Set 500 in the fallback when headers are not sent (from #1793)
 
 ### `usersc/classes/Car/CarRepository.php`
 
@@ -305,7 +279,6 @@ after an item is written.
 
 - [ ] The flag list is written three times: `SendDecision::FLAG_ORDER`, the `$all` list in `blockingFlags()`, and the table docblock. Build it once, or use a `SendFlag` enum (found in /finish-milestone v2.30.8)
 - [ ] `adminMessage()` has no sentence for `email_blocked`, which is right only for `MailKind::AdminContact`. Take the `MailKind`, or rename it `adminContactMessage()` (found in /finish-milestone v2.30.8)
-- [ ] A malformed or zero-date `email_bounced_at` makes `toDate()` (~L204) return null with no log line. The send is still refused, but the admin message has no date and the bad value stays hidden. Log it with the owner ID (the decision needs to carry it) (found in #2360)
 
 ### `usersc/classes/Car/SendResult.php`
 
@@ -420,13 +393,4 @@ after an item is written.
 
 ### `usersc/login.php` + `tests/bootstrap-integration.php`
 
-- [ ] Remove the pre-6.1.7 version guards after production runs UserSpice 6.1.7 (v2.30.9, #2088): `method_exists($loginUser, 'recordLogin')` in `$recordCompletedLogin` (call `$loginUser->recordLogin($userId)` directly), `function_exists('reauthClearConfirmed')` in `$clearReauthConfirmation`, and `method_exists($totpHandler, 'encryptionAvailable')`. Also remove the `_instance` reflection fallback in `tests/bootstrap-integration.php`, and update the guard assertions in `tests/unit/security/LoginWiringTest.php`. (found in #2253)
-
-### `usersc/scripts/after_user_deletion.php`
-
-- [ ] The car-cleanup catch (~L48) and the `findByOwner` guard (~L97) log `$e->getMessage()`. `CarRepository` copies driver text into messages. Log `ExceptionLogSummary::of($e)`, as `AccountDeletionPrivacyStep` in the same flow does (found in /finish-milestone v2.30.10)
-
-### `usersc/scripts/during_user_creation.php`
-
-- [ ] A failed automatic sign-in after sign-up (~L87) redirects with a message but writes no log row. Log it with the user id before `Redirect::to()` (found in #2378)
-- [ ] The `email_act` read (~L81) is not checked. A failed read returns `[]`, so `$e->email_act` warns, `null != 1` is true, and the hook tries the automatic sign-in. Check the read, log `LOG_CATEGORY_DATABASE_ERROR`, and skip the sign-in (found in #2378)
+- [ ] Remove the pre-6.1.7 version guards. Production runs UserSpice 6.1.7 since v2.30.10 (2026-10-28), so this can be done now: `method_exists($loginUser, 'recordLogin')` in `$recordCompletedLogin` (call `$loginUser->recordLogin($userId)` directly), `function_exists('reauthClearConfirmed')` in `$clearReauthConfirmation`, and `method_exists($totpHandler, 'encryptionAvailable')`. Also remove the `_instance` reflection fallback in `tests/bootstrap-integration.php`, and update the guard assertions in `tests/unit/security/LoginWiringTest.php`. (found in #2253)
