@@ -822,6 +822,11 @@ final class SendVerificationBatchJobTest extends TestCase
         $this->assertSame([self::PING_URL . '/fail'], $this->pingTransport->urls);
         $this->assertSame([], $GLOBALS['mockSentEmails'], 'No mail may go out when every car fails');
         $this->assertNotEmpty($this->logsContaining('0 sent, 0 unrecorded, 0 skipped, 2 failed'));
+        $failure = $this->logsContaining('every attempted send failed');
+        $this->assertCount(1, $failure);
+        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $failure[0]['category']);
+        $this->assertStringContainsString('0 sent, 0 unrecorded, 2 failed of 2 attempted', $failure[0]['message']);
+        $this->assertStringNotContainsString('@', $failure[0]['message'], 'The fault line must hold no address');
     }
 
     public function testRunPingsFailWhenASendIsUnrecorded(): void
@@ -852,6 +857,10 @@ final class SendVerificationBatchJobTest extends TestCase
 
         $this->assertSame([self::PING_URL . '/fail'], $this->pingTransport->urls);
         $this->assertNotEmpty($this->logsContaining('1 sent, 1 unrecorded, 0 skipped, 0 failed'));
+        $failure = $this->logsContaining('a send went out but was not recorded');
+        $this->assertCount(1, $failure);
+        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $failure[0]['category']);
+        $this->assertStringContainsString('1 sent, 1 unrecorded, 0 failed of 2 attempted', $failure[0]['message']);
     }
 
     public function testRunPingsSuccessWhenOnlySomeSendsFail(): void
@@ -865,6 +874,11 @@ final class SendVerificationBatchJobTest extends TestCase
         $this->assertSame([self::PING_URL], $this->pingTransport->urls);
         $this->assertCount(1, $GLOBALS['mockSentEmails']);
         $this->assertNotEmpty($this->logsContaining('1 sent, 0 unrecorded, 0 skipped, 1 failed'));
+        global $mockLogEntries;
+        $this->assertSame([], array_filter(
+            $mockLogEntries ?? [],
+            static fn (array $entry): bool => $entry['category'] === LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE
+        ), 'A partial failure must not write a CronJobFailure line');
     }
 
     public function testRunPingsSuccessWhenEveryCarIsSkipped(): void

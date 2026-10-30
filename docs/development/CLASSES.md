@@ -3096,8 +3096,9 @@ public function __construct(
   If the eligible-car query fails, it logs, calls `markRunFailed()` and
   returns, so `run()` pings `/fail`. After the batch, it calls
   `markRunFailed()` when no send succeeded and at least one send failed (a
-  full send outage), or when any send is `unrecorded`. A partial send failure
-  pings success on purpose (#2480)
+  full send outage), or when any send is `unrecorded`. Each of these two
+  cases also logs one `LOG_CATEGORY_CRON_JOB_FAILURE` line with counts only.
+  A partial send failure pings success on purpose (#2480)
 
 **Private Methods**:
 

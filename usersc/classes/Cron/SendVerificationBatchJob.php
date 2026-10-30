@@ -254,6 +254,23 @@ final class SendVerificationBatchJob extends AbstractCronJob
         // The counts and the log line above still show it.
         $fullOutage = $result['sent'] === [] && $result['unrecorded'] === [] && $result['failed'] !== [];
         if ($fullOutage || $result['unrecorded'] !== []) {
+            // The Verification tab reads only CRON_JOB_FAILURE, so without this
+            // line the tab stays clear while the ping is red. Counts only: a
+            // per-car reason can hold an address. CarVerificationSendService
+            // logs those under EMAIL_ERROR, and VerificationBatchSender logs
+            // its own under CAR_VERIFICATION.
+            logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
+                "Cron job '%s': %s — %d sent, %d unrecorded, %d failed of %d attempted. Per-car reasons are under EmailError and CarVerification.",
+                self::JOB_NAME,
+                $fullOutage
+                    ? 'every attempted send failed'
+                    : 'a send went out but was not recorded (the next run can send it again)',
+                count($result['sent']),
+                count($result['unrecorded']),
+                count($result['failed']),
+                // Skipped cars were never attempted, so they are not counted.
+                count($result['sent']) + count($result['unrecorded']) + count($result['failed'])
+            ));
             $this->markRunFailed();
         }
     }

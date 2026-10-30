@@ -1135,9 +1135,9 @@ the logs first.
 
 1. The cron status on the Verification tab.
 2. The logs under `CronJobFailure` and `HealthcheckPing`. A send-job outage
-   or `unrecorded` run logs no `CronJobFailure` line. Check the
-   `Verification send: cron batch complete` line in the `CarVerification` category
-   for its counts.
+   or `unrecorded` run logs one `CronJobFailure` line with counts only. The
+   per-car reasons are under `EmailError` (send failures) and
+   `CarVerification` (a car that could not be read, and send exceptions).
 3. The cron transport (see "Verifying the transport" above).
 
 **Pause and Resume.** The admin Pause button sets
