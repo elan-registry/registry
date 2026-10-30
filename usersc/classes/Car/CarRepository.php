@@ -90,6 +90,21 @@ class CarRepository
     public const ADMIN_BLOCK_MESSAGE_ID_PREFIX = 'suppression-import-blocklist-';
 
     /**
+     * The flag-log sources that clear `email_blocked`
+     *
+     * An event from before the latest clear is not a cause of the block that
+     * applies now. {@see CarVerificationManager::clearBlockedForOwner()} writes
+     * `admin`. {@see CarVerificationManager::clearFlagsForConfirmedEmailChange()}
+     * writes `email_change`. No other writer clears the flag.
+     *
+     * @var list<string>
+     */
+    public const BLOCK_CLEAR_SOURCES = [
+        DeliverabilityFlagLog::SOURCE_ADMIN,
+        DeliverabilityFlagLog::SOURCE_EMAIL_CHANGE,
+    ];
+
+    /**
      * SQL that normalizes a column the way
      * {@see EmailAddress::normalize()} does: strip
      * leading and trailing white space, then lower case. Wrap a column name
@@ -2321,6 +2336,30 @@ class CarRepository
     }
 
     /**
+     * Find the latest clear of the owner's block, from any source
+     *
+     * The sources are {@see self::BLOCK_CLEAR_SOURCES}. Each value is in
+     * `AppConstants::DATETIME_FORMAT`, so a string compare orders them.
+     *
+     * @param int $ownerId Owner (users.id)
+     * @return string|null The latest clear time, or null when no clear is on record
+     * @throws InvalidArgumentException If $ownerId is not more than 0
+     * @throws CarDatabaseException If a query fails
+     */
+    public function latestBlockClearAt(int $ownerId): ?string
+    {
+        $latest = null;
+        foreach (self::BLOCK_CLEAR_SOURCES as $source) {
+            $clearedAt = $this->latestFlagClearAt($ownerId, DeliverabilityFlagLog::FLAG_BLOCKED, $source);
+            if ($clearedAt !== null && ($latest === null || strcmp($clearedAt, $latest) > 0)) {
+                $latest = $clearedAt;
+            }
+        }
+
+        return $latest;
+    }
+
+    /**
      * Find an owner's most recent profile flag changes, newest first
      *
      * Reads the same `logs` rows as {@see latestFlagClearAt()}, with the same
@@ -2846,17 +2885,20 @@ class CarRepository
      * The address is normalized ({@see EmailAddress::normalize()}), as the
      * writers store it. The compare uses `COLLATE utf8mb4_bin`, because the
      * column collation would match an accent or case variant of the address.
-     * `occurred_at` is not compared: a row of any date matches. The element
+     * With `$after`, only rows with `occurred_at` after that time match, so a
+     * row from before a clear of the block does not count. The element
      * check runs first, so a non-string event throws in every case.
      *
      * @param int $userId Owner user ID. A value less than 1 issues no query.
      * @param string $email Recipient address
      * @param list<string> $events Event names. An empty list issues no query.
+     * @param string|null $after Lower bound for `occurred_at` (exclusive), in
+     *                           AppConstants::DATETIME_FORMAT. Null applies no bound.
      * @return bool True when at least one row matches
      * @throws InvalidArgumentException If an element of $events is not a string
      * @throws CarDatabaseException If the query fails
      */
-    public function hasOwnerEmailEventForAddress(int $userId, string $email, array $events): bool
+    public function hasOwnerEmailEventForAddress(int $userId, string $email, array $events, ?string $after): bool
     {
         foreach ($events as $event) {
             if (!is_string($event)) {
@@ -2870,15 +2912,18 @@ class CarRepository
         }
 
         $placeholders = implode(', ', array_fill(0, count($events), '?'));
-        $this->db->query(
-            "SELECT 1
-               FROM er_email_events
-              WHERE user_id = ?
-                AND email = ? COLLATE utf8mb4_bin
-                AND event IN ({$placeholders})
-              LIMIT 1",
-            [$userId, EmailAddress::normalize($email), ...array_values($events)]
-        );
+        $sql = "SELECT 1
+                  FROM er_email_events
+                 WHERE user_id = ?
+                   AND email = ? COLLATE utf8mb4_bin
+                   AND event IN ({$placeholders})";
+        $params = [$userId, EmailAddress::normalize($email), ...array_values($events)];
+        if ($after !== null) {
+            $sql .= ' AND occurred_at > ?';
+            $params[] = $after;
+        }
+
+        $this->db->query($sql . ' LIMIT 1', $params);
         if ($this->db->error()) {
             throw new CarDatabaseException(
                 "CarRepository::hasOwnerEmailEventForAddress failed for user={$userId}: " . $this->db->errorString()

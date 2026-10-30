@@ -66,9 +66,11 @@ use ElanRegistry\LogCategories;
  * The incremental mode's under-fetching is safe for the same reason #1889's is:
  * the window is roughly twice the guard interval so every suppression is
  * offered to at least two runs. An import writes no second event row when
- * the owner already has a row of any date for the same address and the same
- * cause group, from any source (#2502). The profile writers skip a flag that
- * already names the same address.
+ * the owner already has a row for the same address and the same cause
+ * group, from any source (#2502). For a hard bounce, a row of any date
+ * counts. For a spam, unsubscribe or admin-block cause, only a row after the
+ * latest clear of the block counts (#2529). The profile writers skip a flag
+ * that already names the same address.
  *
  * REASON-CODE MAPPING
  * -------------------

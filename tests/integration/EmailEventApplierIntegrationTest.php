@@ -6,13 +6,17 @@ require_once __DIR__ . '/IntegrationTestCase.php';
 
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationManager;
+use ElanRegistry\Car\ClearBlockOutcome;
 use ElanRegistry\Car\DeliverabilityFlagLog;
 use ElanRegistry\Car\EmailEventApplier;
 use ElanRegistry\Car\EmailEventMatch;
 use ElanRegistry\Car\EmailEventMatcher;
+use ElanRegistry\Car\EmailNoticeBuilder;
+use ElanRegistry\Email\BrevoUnblockResult;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
+use Tests\Support\FakeBrevoBlocklistClient;
 use Tests\Support\SendinblueMessagesTable;
 
 /**
@@ -161,11 +165,11 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
         $this->assertFalse($this->db->error(), 'Test setup: sent row: ' . $this->db->errorString());
     }
 
-    /** Seed the Clear Block row: the `email_blocked` log row with new = 0 and source = admin. */
-    private function seedClearBlockRow(int $ownerId): void
+    /** Seed a block clear row: the `email_blocked` log row with new = 0 and the given source (default: an admin Clear Block). */
+    private function seedClearBlockRow(int $ownerId, string $source = DeliverabilityFlagLog::SOURCE_ADMIN): void
     {
         $this->assertTrue(
-            (new DeliverabilityFlagLog())->record(0, $ownerId, DeliverabilityFlagLog::FLAG_BLOCKED, 1, 0, DeliverabilityFlagLog::SOURCE_ADMIN),
+            (new DeliverabilityFlagLog())->record(0, $ownerId, DeliverabilityFlagLog::FLAG_BLOCKED, 1, 0, $source),
             'Test setup: the Clear Block row must be written'
         );
     }
@@ -1243,7 +1247,7 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
         $userId = $this->makeOwner();
         $this->repo->insertOwnerEmailEvent($userId, 'match@example.com', 'hard_bounce', null, $this->id('has'), '2026-10-14 09:00:00');
 
-        $this->assertTrue($this->repo->hasOwnerEmailEventForAddress($userId, 'match@example.com', ['blocked', 'hard_bounce']));
+        $this->assertTrue($this->repo->hasOwnerEmailEventForAddress($userId, 'match@example.com', ['blocked', 'hard_bounce'], null));
     }
 
     public function testOwnerEmailEventForAddressIsFalseForAnotherAddress(): void
@@ -1251,7 +1255,7 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
         $userId = $this->makeOwner();
         $this->repo->insertOwnerEmailEvent($userId, 'match@example.com', 'hard_bounce', null, $this->id('has'), '2026-10-14 09:00:00');
 
-        $this->assertFalse($this->repo->hasOwnerEmailEventForAddress($userId, 'other@example.com', ['hard_bounce']));
+        $this->assertFalse($this->repo->hasOwnerEmailEventForAddress($userId, 'other@example.com', ['hard_bounce'], null));
     }
 
     public function testOwnerEmailEventForAddressIsFalseForAnAccentVariant(): void
@@ -1259,7 +1263,7 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
         $userId = $this->makeOwner();
         $this->repo->insertOwnerEmailEvent($userId, 'match@example.com', 'hard_bounce', null, $this->id('has'), '2026-10-14 09:00:00');
 
-        $this->assertFalse($this->repo->hasOwnerEmailEventForAddress($userId, 'mätch@example.com', ['hard_bounce']));
+        $this->assertFalse($this->repo->hasOwnerEmailEventForAddress($userId, 'mätch@example.com', ['hard_bounce'], null));
     }
 
     public function testOwnerEmailEventForAddressIsFalseForAnotherCause(): void
@@ -1267,7 +1271,7 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
         $userId = $this->makeOwner();
         $this->repo->insertOwnerEmailEvent($userId, 'match@example.com', 'spam', null, $this->id('has'), '2026-10-14 09:00:00');
 
-        $this->assertFalse($this->repo->hasOwnerEmailEventForAddress($userId, 'match@example.com', ['hard_bounce', 'blocked']));
+        $this->assertFalse($this->repo->hasOwnerEmailEventForAddress($userId, 'match@example.com', ['hard_bounce', 'blocked'], null));
     }
 
     public function testOwnerEmailEventForAddressIsFalseForAnotherUser(): void
@@ -1276,7 +1280,7 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
         $otherId = $this->makeOwner();
         $this->repo->insertOwnerEmailEvent($userId, 'match@example.com', 'spam', null, $this->id('has'), '2026-10-14 09:00:00');
 
-        $this->assertFalse($this->repo->hasOwnerEmailEventForAddress($otherId, 'match@example.com', ['spam']));
+        $this->assertFalse($this->repo->hasOwnerEmailEventForAddress($otherId, 'match@example.com', ['spam'], null));
     }
 
     public function testOwnerEmailEventForAddressNormalizesTheInputAddress(): void
@@ -1284,7 +1288,7 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
         $userId = $this->makeOwner();
         $this->repo->insertOwnerEmailEvent($userId, 'match@example.com', 'spam', null, $this->id('has'), '2026-10-14 09:00:00');
 
-        $this->assertTrue($this->repo->hasOwnerEmailEventForAddress($userId, ' MATCH@Example.COM ', ['spam']));
+        $this->assertTrue($this->repo->hasOwnerEmailEventForAddress($userId, ' MATCH@Example.COM ', ['spam'], null));
     }
 
     public function testOwnerEmailEventForAddressRejectsANonStringEvent(): void
@@ -1293,7 +1297,197 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
 
         $this->expectException(InvalidArgumentException::class);
         /** @phpstan-ignore argument.type */
-        $this->repo->hasOwnerEmailEventForAddress($userId, 'match@example.com', ['spam', 123]);
+        $this->repo->hasOwnerEmailEventForAddress($userId, 'match@example.com', ['spam', 123], null);
+    }
+
+    // --- #2529: the bound of a block cause row by the latest clear ---------
+
+    /** An unsubscribe import entry that is an admin block (message-ID prefix), as the sync job builds it. */
+    private function importAdminBlock(int $userId, string $hash, string $blockedAt): bool
+    {
+        return $this->applyEvent(
+            $userId,
+            'unsubscribed',
+            CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX . $hash,
+            $blockedAt,
+            $blockedAt,
+            mode: EmailEventApplier::MODE_STATE,
+            source: 'import',
+            blockedCause: CarRepository::BLOCKED_CAUSE_BLOCKLIST
+        );
+    }
+
+    /** @return array<string, array{string, ?string, bool}> */
+    public static function eventBoundProvider(): array
+    {
+        return [
+            'row before the bound' => ['2026-10-14 09:00:00', '2026-10-14 10:00:00', false],
+            'row after the bound' => ['2026-10-14 11:00:00', '2026-10-14 10:00:00', true],
+            'row at the bound second' => ['2026-10-14 10:00:00', '2026-10-14 10:00:00', false],
+            'null bound, row of any date' => [self::LONG_AGO, null, true],
+        ];
+    }
+
+    #[DataProvider('eventBoundProvider')]
+    public function testOwnerEmailEventForAddressAppliesTheExclusiveBound(string $rowAt, ?string $after, bool $expected): void
+    {
+        $userId = $this->makeOwner();
+        $this->repo->insertOwnerEmailEvent($userId, 'match@example.com', 'spam', null, $this->id('b'), $rowAt);
+
+        $this->assertSame($expected, $this->repo->hasOwnerEmailEventForAddress($userId, 'match@example.com', ['spam'], $after));
+    }
+
+    public function testStateModeSpamAfterAClearBlockWritesANewRowWhenTheOnlyEarlierRowIsBeforeTheClear(): void
+    {
+        $userId = $this->makeOwner();
+        $this->assertTrue($this->applyEvent($userId, 'spam', 'import-old-' . $userId, self::LONG_AGO, date('Y-m-d H:i:s', strtotime('-2 days')), mode: EmailEventApplier::MODE_STATE, source: 'import'));
+        $this->seedClearBlockRow($userId);
+
+        $after = date('Y-m-d H:i:s', strtotime('+1 hour'));
+        $this->assertTrue($this->applyEvent($userId, 'spam', 'import-new-' . $userId, self::LONG_AGO, $after, mode: EmailEventApplier::MODE_STATE, source: 'import'));
+
+        $this->assertCount(2, $this->eventRows($userId, 'spam'));
+        $this->assertSame('1', $this->flags($userId)['blocked'], 'The post-clear entry sets the flag again');
+    }
+
+    public function testStateModeSpamAfterAClearBlockWritesNoSecondRowWhenARowAfterTheClearExists(): void
+    {
+        $userId = $this->makeOwner();
+        $this->seedClearBlockRow($userId);
+        $this->assertTrue($this->applyEvent($userId, 'spam', 'import-a-' . $userId, self::LONG_AGO, date('Y-m-d H:i:s', strtotime('+1 hour')), mode: EmailEventApplier::MODE_STATE, source: 'import'));
+
+        $this->assertFalse($this->applyEvent($userId, 'spam', 'import-b-' . $userId, self::LONG_AGO, date('Y-m-d H:i:s', strtotime('+2 hours')), mode: EmailEventApplier::MODE_STATE, source: 'import'));
+
+        $this->assertCount(1, $this->eventRows($userId, 'spam'));
+    }
+
+    public function testStateModeAdminBlockWithTheSameBlockedAtAfterAClearWritesNoSecondRow(): void
+    {
+        $userId = $this->makeOwner();
+        $blockedAt = date('Y-m-d H:i:s', strtotime('+1 hour'));
+        $this->seedClearBlockRow($userId);
+
+        $this->assertTrue($this->importAdminBlock($userId, md5('same-' . $userId), $blockedAt));
+        $this->assertFalse($this->importAdminBlock($userId, md5('same-' . $userId), $blockedAt), 'The unique key stops the insert; the result is not new');
+
+        $this->assertCount(1, $this->eventRows($userId, 'unsubscribed'));
+    }
+
+    public function testStateModeAdminBlockAfterAClearWritesNoSecondRowWhenAnAdminBlockRowAfterTheClearExists(): void
+    {
+        $userId = $this->makeOwner();
+        $this->seedClearBlockRow($userId);
+        $this->assertTrue($this->importAdminBlock($userId, md5('a-' . $userId), date('Y-m-d H:i:s', strtotime('+1 hour'))));
+
+        // Another hash, so the unique key does not stop the insert. Only the post-clear admin-block row does.
+        $this->assertFalse($this->importAdminBlock($userId, md5('b-' . $userId), date('Y-m-d H:i:s', strtotime('+2 hours'))));
+
+        $this->assertCount(1, $this->eventRows($userId, 'unsubscribed'));
+    }
+
+    /** @return array<string, array{string}> */
+    public static function reSeenEntryProvider(): array
+    {
+        return [
+            'admin block' => ['admin'],
+            'spam' => ['spam'],
+        ];
+    }
+
+    /**
+     * Brevo still lists the entry after a successful clear (for example, the removal is not yet visible to the import).
+     * The pre-clear row is outside the bound, so only the unique key stops the second insert.
+     */
+    #[DataProvider('reSeenEntryProvider')]
+    public function testStateModeTheSameEntrySeenAgainAfterAClearWritesNoRowAndLeavesBlockedClear(string $kind): void
+    {
+        $userId = $this->makeOwner();
+        $blockedAt = date('Y-m-d H:i:s', strtotime('-2 days'));
+        $import = fn (): bool => $kind === 'admin'
+            ? $this->importAdminBlock($userId, md5('same-' . $userId), $blockedAt)
+            : $this->applyEvent($userId, 'spam', 'import-same-' . $userId, self::LONG_AGO, $blockedAt, mode: EmailEventApplier::MODE_STATE, source: 'import');
+
+        $this->assertTrue($import());
+        $outcome = (new CarVerificationManager($this->repo))->clearBlockedForOwner(
+            $userId,
+            $userId,
+            new FakeBrevoBlocklistClient(BrevoUnblockResult::removed())
+        );
+        $this->assertSame(ClearBlockOutcome::CLEARED, $outcome->kind, 'Test setup: the clear must succeed');
+
+        $this->assertFalse($import(), 'The unique key stops the insert; the result is not new');
+
+        $this->assertCount(1, $this->eventRows($userId));
+        $this->assertSame('0', $this->flags($userId)['blocked'], 'The re-seen entry must not undo the clear');
+    }
+
+    public function testStateModeAdminBlockAfterAClearWritesANewRowWhenTheOnlyEarlierAdminBlockRowIsBeforeTheClear(): void
+    {
+        $userId = $this->makeOwner();
+        $this->assertTrue($this->importAdminBlock($userId, md5('old-' . $userId), date('Y-m-d H:i:s', strtotime('-2 days'))));
+        $this->seedClearBlockRow($userId);
+
+        $this->assertTrue($this->importAdminBlock($userId, md5('new-' . $userId), date('Y-m-d H:i:s', strtotime('+1 hour'))));
+
+        $this->assertCount(2, $this->eventRows($userId, 'unsubscribed'));
+    }
+
+    public function testStateModeSuppressionAfterAnEmailChangeClearWritesANewRow(): void
+    {
+        $userId = $this->makeOwner();
+        $this->assertTrue($this->applyEvent($userId, 'unsubscribed', 'import-old-' . $userId, self::LONG_AGO, date('Y-m-d H:i:s', strtotime('-2 days')), mode: EmailEventApplier::MODE_STATE, source: 'import'));
+        $this->seedClearBlockRow($userId, DeliverabilityFlagLog::SOURCE_EMAIL_CHANGE);
+
+        $this->assertTrue($this->applyEvent($userId, 'unsubscribed', 'import-new-' . $userId, self::LONG_AGO, date('Y-m-d H:i:s', strtotime('+1 hour')), mode: EmailEventApplier::MODE_STATE, source: 'import'));
+
+        $this->assertCount(2, $this->eventRows($userId, 'unsubscribed'));
+    }
+
+    public function testStateModeHardBounceStillMatchesARowFromBeforeAClear(): void
+    {
+        $userId = $this->makeOwner();
+        $this->assertTrue($this->applyEvent($userId, 'hard_bounce', 'import-old-' . $userId, self::LONG_AGO, date('Y-m-d H:i:s', strtotime('-2 days')), mode: EmailEventApplier::MODE_STATE, source: 'import'));
+        $this->seedClearBlockRow($userId);
+
+        $this->assertFalse($this->applyEvent($userId, 'hard_bounce', 'import-new-' . $userId, self::LONG_AGO, date('Y-m-d H:i:s', strtotime('+1 hour')), mode: EmailEventApplier::MODE_STATE, source: 'import'));
+
+        $this->assertCount(1, $this->eventRows($userId, 'hard_bounce'));
+    }
+
+    public function testAnAdminBlockAfterAClearBlockAndASpamBlockIsNamedInTheNotice(): void
+    {
+        $userId = $this->makeOwner();
+        $address = $this->emailOf($userId);
+
+        // 1. The import writes an admin block before the clear.
+        $this->assertTrue($this->importAdminBlock($userId, md5('first'), date('Y-m-d H:i:s', strtotime('-2 days'))));
+        $this->assertSame('1', $this->flags($userId)['blocked'], 'Test setup: the admin block sets the flag');
+
+        // 2. Clear Block through the real writer. Its log row has logdate = now.
+        $outcome = (new CarVerificationManager($this->repo))->clearBlockedForOwner(
+            $userId,
+            $userId,
+            new FakeBrevoBlocklistClient(BrevoUnblockResult::removed())
+        );
+        $this->assertSame(ClearBlockOutcome::CLEARED, $outcome->kind, 'Test setup: the clear must succeed');
+        $this->assertSame('0', $this->flags($userId)['blocked'], 'Test setup: the flag is clear');
+
+        // 3. A spam webhook after the clear.
+        $this->assertTrue($this->applyEvent($userId, 'spam', $this->id('<spam'), self::LONG_AGO, date('Y-m-d H:i:s', strtotime('+1 hour'))));
+        $this->assertSame('spam', $this->flags($userId)['cause']);
+
+        // 4. The import sees a new admin block (another hash, after the clear).
+        $this->assertTrue(
+            $this->importAdminBlock($userId, md5('second'), date('Y-m-d H:i:s', strtotime('+2 hours'))),
+            'The pre-clear admin-block row must not stop the post-clear row'
+        );
+
+        // 5. The notice names both causes.
+        $notice = (new EmailNoticeBuilder($this->repo))->buildForOwner($userId);
+        $this->assertNotNull($notice);
+        $this->assertSame('blocked', $notice['kind']);
+        $this->assertSame($address, $notice['address']);
+        $this->assertSame([CarRepository::BLOCKED_CAUSE_SPAM, CarRepository::BLOCKED_CAUSE_BLOCKLIST], $notice['causes']);
     }
 
     // --- Live-DB guard: the affected-row count ----------------------------

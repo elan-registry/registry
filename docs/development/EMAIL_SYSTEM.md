@@ -1043,7 +1043,7 @@ need to know where to look.
 `CarRepository::effectiveEmailFlags()` for every owner. A flag for an old
 address does not show (see [Address-Match Rule](#address-match-rule-2356)).
 For a block with an address, it also calls
-`CarRepository::ownerBlockEventCauses()` and `CarRepository::latestFlagClearAt()`.
+`CarRepository::ownerBlockEventCauses()` and `CarRepository::latestBlockClearAt()`.
 It returns `null` when no flag applies. The array holds `kind`, `address`,
 `date`, `causes`, `alsoOptedOut`, `optedOutDate` and `contentHash`.
 
@@ -1113,9 +1113,6 @@ never shows the word "Brevo". The cause texts are in
   `CarRepository::BLOCKED_CAUSES` order: "Email to `<address>` is blocked
   because a message to this address was reported as spam, this address
   unsubscribed from registry email and an administrator blocked this address."
-- Known limit (#2529): after an admin Clear Block, a later admin block that
-  the import finds as a duplicate writes no new row, so the notice does not
-  name it.
 - Every notice line uses the warning style, `er-email-notice__line--problem`.
   The opted-out notice uses it too.
 - A blocked or bounced notice adds "Change your email address or contact an
@@ -1942,19 +1939,39 @@ flag step keeps the stored cause. Otherwise it sets the `blocklist` cause,
 unless a later admin Clear Block stops it. The check uses
 `CarRepository::hasOwnerEmailEventForAddress()`, or
 `CarRepository::ownerBlockEventCauses()` for an admin block. It does not compare
-`occurred_at` or the source, so a row from the webhook, the reconciliation job
-or an earlier import counts. A row from before an admin clear also counts. The result
-is not new. The address check and the flag step still run, so the import sets
-the flag again when it is clear and no guard stops it. A webhook row followed
+the source, so a row from the webhook, the reconciliation job
+or an earlier import counts. The time rule depends on the group (#2529):
+
+- For `spam`, `unsubscribed` and an admin block, `apply()` reads
+  `CarRepository::latestBlockClearAt()` once. It passes the time as an
+  exclusive bound (`occurred_at > ?`) to both repository methods. A row from
+  before the latest block clear (admin or email change) does not count. The
+  import then writes a new row after the clear. With no clear, the bound is
+  `null` and a row of any date counts.
+- For the hard-bounce group (`hard_bounce`, `blocked`, `invalid`,
+  `invalid_email`), `apply()` passes `null`. A row from before an admin clear
+  still counts (#2502).
+
+An unchanged Brevo entry after a clear has the same `blockedAt` and the same
+message ID hash. The check finds no row after the clear, but the insert hits
+the unique key. The result is not new, and no repeat row appears. A webhook
+row from before the clear no longer stops an import entry for the same block.
+If Brevo still lists that entry after the clear, the import writes one row
+with the pre-clear date. The notice ignores it, and the unique key stops a
+repeat. When a row after the bound (or any row, for a hard bounce) counts,
+the result is not new. The address check and the flag step still run, so the
+import sets the flag again when it is clear and no guard stops it. A webhook
+row followed
 by an import of the same block gives one row. When the owner's flag still
 applies, the run summary counts that contact as "already flagged" only. A
 repeat run writes no second row. `MODE_EVENT` keeps the unique-key rule
 `(user_id, brevo_message_id, event)`.
 
-The event history therefore holds one row per address and cause. A new block
-after an admin clear that only the import sees sets the flag, but writes no
-second row. The Status chip still shows it, because the chip reads the
-profile flags before the event rows.
+The event history therefore holds one row per address and cause since the
+latest block clear. A new `spam`, `unsubscribed` or admin block after a clear
+that only the import sees gets a new row, so the notice names it (#2529). A
+new hard bounce after an admin clear writes no second row. The Status chip
+still shows it, because the chip reads the profile flags before the event rows.
 A webhook row for a verification send has the `car_id` of that car. On the
 owner's other cars, the Bounced chip then shows no reason text, because no
 owner-level row exists for that block. A webhook row for other mail has no

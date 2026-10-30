@@ -698,6 +698,12 @@ to provide a focused, testable data access layer wrapping the `cars`,
   converts the BLOB `logs.metadata` (`JSON_EXTRACT(CONVERT(metadata USING utf8mb4), ...)`), matches
   `owner_id` as an integer, never reads `lognote`, and filters on `logtype` first to use
   `idx_logs_logtype_logdate`. Throws `InvalidArgumentException` for an unknown flag or source.
+- `BLOCK_CLEAR_SOURCES` - Public constant. The `logs` sources that clear a block: `admin` and
+  `email_change`.
+- `latestBlockClearAt(int $ownerId): ?string` - Time of the latest Clear Block across
+  `BLOCK_CLEAR_SOURCES`. It is the later of the latest admin Clear Block and the latest confirmed
+  email change clear. It calls `latestFlagClearAt()` once for each source. Returns `null` when no
+  clear exists (#2529). `EmailNoticeBuilder` and `EmailEventApplier` call it.
 - `recentFlagChanges(int $ownerId, int $limit): array` - The owner's latest flag-change `logs` rows,
   newest first (`logdate DESC, id DESC`). Each item has `date`, `flag`, `old`, `new`, `source` and
   `acting_user_id`, and no address. `$limit` is clamped to 1 to 100. A row with malformed metadata is
@@ -733,13 +739,16 @@ to provide a focused, testable data access layer wrapping the `cars`,
   (`resolveOccurredAt()`). `EmailEventApplier::apply()` calls it. In
   `MODE_STATE` (the suppression import), `apply()` does not call it when
   `hasOwnerEmailEventForAddress()` finds a row in the same cause group
-  (#2502)
-- `hasOwnerEmailEventForAddress(int $userId, string $email, array $events): bool` -
+  after the bound (#2502, #2529)
+- `hasOwnerEmailEventForAddress(int $userId, string $email, array $events, ?string $after): bool` -
   True when `er_email_events` has a row for the user, the normalized address
-  and one of the event names (#2502). It returns false for a `$userId` less
+  and one of the event names (#2502). With `$after`, only rows with
+  `occurred_at > ?` count. The bound is exclusive, as in
+  `ownerBlockEventCauses()`. With `null`, the method sets no bound, and a row
+  of any date matches (#2529). It returns false for a `$userId` less
   than 1 or an empty `$events` list. The query is
-  `SELECT 1 ... WHERE user_id = ? AND email = ? COLLATE utf8mb4_bin AND event IN (...) LIMIT 1`.
-  It does not compare `occurred_at`. With the `COLLATE`, the `email` index
+  `SELECT 1 ... WHERE user_id = ? AND email = ? COLLATE utf8mb4_bin AND event IN (...) [AND occurred_at > ?] LIMIT 1`.
+  With the `COLLATE`, the `email` index
   gives only a range scan, and MySQL picks an index that starts with
   `user_id`. Throws `InvalidArgumentException` for an event that is not a string
   (checked before the false cases), and `CarDatabaseException` on a query
@@ -1633,7 +1642,7 @@ It returns a plain array and renders no HTML. The partial
   causes: list<string>, alsoOptedOut: bool, optedOutDate: ?string, contentHash: string}`.
 - Takes `CarRepository` by constructor injection, so a test can supply a mock. It
   calls `CarRepository::effectiveEmailFlags()` for every owner. For a block with
-  an address, it also calls `ownerBlockEventCauses()` and `latestFlagClearAt()`.
+  an address, it also calls `ownerBlockEventCauses()` and `latestBlockClearAt()`.
   A flag stored for an old address does not show.
 - `CAUSE_TEXT`: the raw notice text for each `CarRepository::BLOCKED_CAUSE_*` value.
   `app/views/_email_paused_notice.php` reads and escapes it.
@@ -1648,7 +1657,8 @@ It returns a plain array and renders no HTML. The partial
   value, and each appears once. The profile cause (`email_blocked_cause`) comes first.
   Then the `spam` and `unsubscribed` events after the latest clear of the block add
   their causes, in `BLOCKED_CAUSES` order. The bound is the later of the latest admin
-  Clear Block and the latest confirmed email change clear (`BLOCK_CLEAR_SOURCES`:
+  Clear Block and the latest confirmed email change clear. It comes from
+  `CarRepository::latestBlockClearAt()` (sources `CarRepository::BLOCK_CLEAR_SOURCES`:
   `admin`, `email_change`). A tagged admin-block import row gives
   `blocklist`. A `blocklist` profile cause drops `unsubscribed` events, for the
   untagged admin-block rows from before the tag. An unknown profile cause adds nothing and writes a log

@@ -405,7 +405,7 @@ final class EmailEventApplierTest extends TestCase
         $this->givenState();
         $this->mockRepo->expects($this->once())
             ->method('hasOwnerEmailEventForAddress')
-            ->with(42, self::ADDRESS, ['hard_bounce', 'blocked', 'invalid', 'invalid_email'])
+            ->with(42, self::ADDRESS, ['hard_bounce', 'blocked', 'invalid', 'invalid_email'], null)
             ->willReturn(true);
         $this->mockRepo->expects($this->never())->method('insertOwnerEmailEvent');
 
@@ -427,7 +427,7 @@ final class EmailEventApplierTest extends TestCase
         $this->givenState();
         $this->mockRepo->expects($this->once())
             ->method('hasOwnerEmailEventForAddress')
-            ->with(42, self::ADDRESS, [$event])
+            ->with(42, self::ADDRESS, [$event], null)
             ->willReturn(false);
 
         $result = $this->apply($event, mode: EmailEventApplier::MODE_STATE, source: 'import');
@@ -469,6 +469,63 @@ final class EmailEventApplierTest extends TestCase
         $this->mockRepo->expects($this->never())->method('insertOwnerEmailEvent');
 
         $this->assertFalse($this->applyAdminBlock()->eventRowWritten);
+    }
+
+    private const BLOCK_CLEAR = '2026-01-01 00:03:00';
+
+    /** #2529: a row from before the latest clear must not stop the row that the notice needs. */
+    #[DataProvider('singleCauseEventProvider')]
+    public function testStateModeSpamAndUnsubscribedPassTheLatestBlockClearAsAfter(string $event): void
+    {
+        $this->givenState();
+        $this->mockRepo->expects($this->once())->method('latestBlockClearAt')->with(42)->willReturn(self::BLOCK_CLEAR);
+        $this->mockRepo->expects($this->once())
+            ->method('hasOwnerEmailEventForAddress')
+            ->with(42, self::ADDRESS, [$event], self::BLOCK_CLEAR)
+            ->willReturn(false);
+
+        $result = $this->apply($event, mode: EmailEventApplier::MODE_STATE, source: 'import');
+        $this->assertTrue($result->eventRowWritten);
+    }
+
+    public function testStateModeAdminBlockPassesTheLatestBlockClearAsAfter(): void
+    {
+        $this->givenState();
+        $this->mockRepo->expects($this->once())->method('latestBlockClearAt')->with(42)->willReturn(self::BLOCK_CLEAR);
+        $this->mockRepo->expects($this->never())->method('hasOwnerEmailEventForAddress');
+        $this->mockRepo->expects($this->once())
+            ->method('ownerBlockEventCauses')
+            ->with(42, self::ADDRESS, self::BLOCK_CLEAR)
+            ->willReturn(['blocklist']);
+        $this->mockRepo->expects($this->never())->method('insertOwnerEmailEvent');
+
+        $this->assertFalse($this->applyAdminBlock()->eventRowWritten, 'An admin-block row after the clear stops the event');
+    }
+
+    public function testStateModeHardBounceUsesNoClearBoundAndDoesNotReadIt(): void
+    {
+        $this->givenState();
+        $this->mockRepo->expects($this->never())->method('latestBlockClearAt');
+        $this->mockRepo->expects($this->once())
+            ->method('hasOwnerEmailEventForAddress')
+            ->with(42, self::ADDRESS, ['hard_bounce', 'blocked', 'invalid', 'invalid_email'], null)
+            ->willReturn(false);
+
+        $this->apply('hard_bounce', mode: EmailEventApplier::MODE_STATE, source: 'import');
+    }
+
+    /** The clear lookup is step 4 of apply(): its failure rolls back and reaches the caller. */
+    public function testStateModeBlockClearLookupFailureRollsBackAndRethrows(): void
+    {
+        $this->givenState();
+        $this->mockRepo->method('latestBlockClearAt')->willThrowException(new CarDatabaseException('lookup failed'));
+        $this->mockRepo->expects($this->once())->method('rollback');
+        $this->mockRepo->expects($this->never())->method('commit');
+        $this->mockRepo->expects($this->never())->method('insertOwnerEmailEvent');
+
+        $this->expectException(CarDatabaseException::class);
+
+        $this->apply('spam', mode: EmailEventApplier::MODE_STATE, source: 'import');
     }
 
     public function testStateModeWithNoSameCauseRowInsertsTheRow(): void
