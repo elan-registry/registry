@@ -733,7 +733,7 @@ final class CarAdministrationServiceTest extends TestCase
         $db->method('insert')->willReturn(true);
 
         $relocator = $this->createMock(CarImageRelocator::class);
-        $relocator->method('relocate')
+        $relocator->expects($this->once())->method('relocate')
             ->with(999, 1, ['src_a.jpg', 'src_b.jpg'])
             // key != value on the first entry catches a swap of keys for values.
             ->willReturn(['src_a.jpg' => 'src_a_renamed.jpg', 'src_b.jpg' => 'src_b.jpg']);

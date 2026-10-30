@@ -407,8 +407,8 @@ test anyway with no error or warning, so this is easy to get wrong silently.
 **Second CLI gotcha — CLI exclusions *replace* XML ones:** `phpunit-integration.xml` declares
 `<groups><exclude>` for `live-network` (tests making real outbound HTTP calls — `LocationServiceTest`'s
 live methods, `RobotsTxtAsServedTest`, `VendorBootstrapMapsScriptTest`) and `known-broken`. In
-PHPUnit 12 any `--exclude-group` passed on the command line **replaces** that XML list entirely
-rather than adding to it (`vendor/phpunit/phpunit/src/TextUI/Configuration/Merger.php:797-805`),
+PHPUnit 12 and 13 any `--exclude-group` passed on the command line **replaces** that XML list entirely
+rather than adding to it (`vendor/phpunit/phpunit/src/TextUI/Configuration/Merger.php:1063-1069`),
 so a `--exclude-group known-broken` on an integration run would silently re-enable `live-network`.
 That is why the integration composer scripts pass no `--exclude-group` at all and rely on the XML
 — only the `phpunit-unit.xml` scripts (`test:quick:ci`, `test:regression:ci`) use the flag, and

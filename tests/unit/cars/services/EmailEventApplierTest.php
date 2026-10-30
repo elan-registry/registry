@@ -114,7 +114,7 @@ final class EmailEventApplierTest extends TestCase
     #[DataProvider('hardBounceClassEventProvider')]
     public function testHardBounceClassEventRecordsTheRowWithTheCarAndSetsBounced(string $event): void
     {
-        $this->mockRepo->method('lockEventGuardState')->with(42)->willReturn(self::guardState());
+        $this->mockRepo->expects($this->once())->method('lockEventGuardState')->with(42)->willReturn(self::guardState());
         $this->mockRepo->expects($this->once())
             ->method('insertOwnerEmailEvent')
             ->with(42, self::ADDRESS, $event, null, 'msg-1', self::EVENT_TIME, 7)

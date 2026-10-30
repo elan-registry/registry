@@ -7,7 +7,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Issue #2160: in PHPUnit 12 a CLI --exclude-group replaces the XML
+ * Issue #2160: in PHPUnit 12 and 13 a CLI --exclude-group replaces the XML
  * <groups><exclude> list instead of merging with it, so a composer script
  * that passed one silently re-enabled the live-network tests. The
  * integration suite does not run in CI, so this unit test is the only CI
@@ -54,7 +54,7 @@ final class Issue2160RegressionTest extends TestCase
         $this->assertSame(
             [],
             $offenders,
-            "These composer scripts pass --exclude-group to phpunit-integration.xml. In PHPUnit 12 "
+            "These composer scripts pass --exclude-group to phpunit-integration.xml. In PHPUnit 12 and 13 "
                 . "that REPLACES the XML <groups><exclude> list, silently re-enabling live-network "
                 . "tests (#2160). Remove the flag and exclude groups in the XML instead:\n"
                 . implode("\n", $offenders)
