@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Tests\Unit\Cars;
 
 use ElanRegistry\Car\CarRepository;
-use ElanRegistry\Car\DeliverabilityFlagLog;
 use ElanRegistry\Car\EffectiveEmailFlags;
 use ElanRegistry\Car\EmailNoticeBuilder;
 use ElanRegistry\Exceptions\CarDatabaseException;
@@ -29,8 +28,8 @@ use ReflectionMethod;
  * - A flag with a NULL or empty address names the current `users.email`.
  * - A NULL or malformed `_at` gives a NULL date.
  * - The builder calls effectiveEmailFlags(). Only for a block with an address,
- *   it also calls latestFlagClearAt() and ownerBlockEventCauses().
- * - The latest Clear Block of any source bounds the event lookup.
+ *   it also calls latestBlockClearAt() and ownerBlockEventCauses().
+ * - The latest Clear Block (CarRepository::latestBlockClearAt()) bounds the event lookup.
  */
 #[Group('fast')]
 final class EmailNoticeBuilderTest extends TestCase
@@ -78,14 +77,14 @@ final class EmailNoticeBuilderTest extends TestCase
      * The builder calls the two block lookups only for a block with an address.
      *
      * @param list<string> $eventCauses What ownerBlockEventCauses() returns
-     * @param string|null $clearedAt What latestFlagClearAt() returns
+     * @param string|null $clearedAt What latestBlockClearAt() returns
      */
     private function builderFor(EffectiveEmailFlags $flags, array $eventCauses = [], ?string $clearedAt = null): EmailNoticeBuilder
     {
         $repo = $this->createStub(CarRepository::class);
         $repo->method('effectiveEmailFlags')->willReturn($flags);
         $repo->method('ownerBlockEventCauses')->willReturn($eventCauses);
-        $repo->method('latestFlagClearAt')->willReturn($clearedAt);
+        $repo->method('latestBlockClearAt')->willReturn($clearedAt);
 
         return new EmailNoticeBuilder($repo);
     }
@@ -350,38 +349,34 @@ final class EmailNoticeBuilderTest extends TestCase
     }
 
     /**
-     * Admin Clear Block time, email-change clear time, expected `$after`.
+     * What latestBlockClearAt() returns, which is also the expected `$after`.
+     * The repository picks the later source (CarRepository tests cover that).
      *
-     * @return array<string, array{?string, ?string, ?string}>
+     * @return array<string, array{?string}>
      */
     public static function clearTimeProvider(): array
     {
         return [
-            'admin clear is later'        => ['2026-10-01 08:00:00', '2026-09-01 08:00:00', '2026-10-01 08:00:00'],
-            'email change clear is later' => ['2026-09-01 08:00:00', '2026-10-01 08:00:00', '2026-10-01 08:00:00'],
-            'admin clear only'            => ['2026-10-01 08:00:00', null, '2026-10-01 08:00:00'],
-            'email change clear only'     => [null, '2026-10-01 08:00:00', '2026-10-01 08:00:00'],
-            'no clear'                    => [null, null, null],
+            'a clear is on record' => ['2026-10-01 08:00:00'],
+            'no clear'             => [null],
         ];
     }
 
-    /** An email change also clears a block, so the event lookup uses the later clear of the two sources. */
+    /** The event lookup uses the value that the repository gives for the latest clear. */
     #[DataProvider('clearTimeProvider')]
-    public function testTheClearBlockTimeBoundsTheEventLookup(?string $adminClear, ?string $emailChangeClear, ?string $expected): void
+    public function testTheClearBlockTimeBoundsTheEventLookup(?string $clearAt): void
     {
         $repo = $this->createMock(CarRepository::class);
         $repo->method('effectiveEmailFlags')->willReturn(
             self::flags(['blocked' => true, 'blockedAddress' => 'b@example.com'])
         );
-        $repo->expects($this->exactly(2))
-            ->method('latestFlagClearAt')
-            ->willReturnMap([
-                [7, DeliverabilityFlagLog::FLAG_BLOCKED, DeliverabilityFlagLog::SOURCE_ADMIN, $adminClear],
-                [7, DeliverabilityFlagLog::FLAG_BLOCKED, DeliverabilityFlagLog::SOURCE_EMAIL_CHANGE, $emailChangeClear],
-            ]);
+        $repo->expects($this->once())
+            ->method('latestBlockClearAt')
+            ->with(7)
+            ->willReturn($clearAt);
         $repo->expects($this->once())
             ->method('ownerBlockEventCauses')
-            ->with(7, 'b@example.com', $expected)
+            ->with(7, 'b@example.com', $clearAt)
             ->willReturn(['spam']);
 
         $result = (new EmailNoticeBuilder($repo))->buildForOwner(7);
@@ -399,7 +394,7 @@ final class EmailNoticeBuilderTest extends TestCase
             $repo = $this->createMock(CarRepository::class);
             $repo->method('effectiveEmailFlags')->willReturn($flags);
             $repo->expects($this->never())->method('ownerBlockEventCauses');
-            $repo->expects($this->never())->method('latestFlagClearAt');
+            $repo->expects($this->never())->method('latestBlockClearAt');
 
             $result = (new EmailNoticeBuilder($repo))->buildForOwner(1);
 
@@ -450,7 +445,7 @@ final class EmailNoticeBuilderTest extends TestCase
     {
         $repo = $this->createMock(CarRepository::class);
         $repo->method('effectiveEmailFlags')->willReturn(self::flags(['blocked' => true, 'blockedAddress' => $stored]));
-        $repo->method('latestFlagClearAt')->willReturn('2026-10-01 08:00:00');
+        $repo->method('latestBlockClearAt')->willReturn('2026-10-01 08:00:00');
         $repo->expects($this->once())
             ->method('ownerBlockEventCauses')
             ->with(1, self::CURRENT, '2026-10-01 08:00:00')
@@ -469,7 +464,7 @@ final class EmailNoticeBuilderTest extends TestCase
             self::flags(['blocked' => true, 'blockedAddress' => null, 'currentEmail' => null])
         );
         $repo->expects($this->never())->method('ownerBlockEventCauses');
-        $repo->expects($this->never())->method('latestFlagClearAt');
+        $repo->expects($this->never())->method('latestBlockClearAt');
 
         $result = (new EmailNoticeBuilder($repo))->buildForOwner(1);
 
@@ -604,14 +599,14 @@ final class EmailNoticeBuilderTest extends TestCase
 
     /**
      * Every other public repository method throws, so a stray call fails the test.
-     * A block with an address may also call latestFlagClearAt() and
+     * A block with an address may also call latestBlockClearAt() and
      * ownerBlockEventCauses().
      *
      * @return array<string, array{array<string, mixed>, list<string>}>
      */
     public static function guardedStateProvider(): array
     {
-        $allowedForBlock = ['effectiveEmailFlags', 'latestFlagClearAt', 'ownerBlockEventCauses'];
+        $allowedForBlock = ['effectiveEmailFlags', 'latestBlockClearAt', 'ownerBlockEventCauses'];
 
         return [
             'blocked and opted out' => [
@@ -635,8 +630,8 @@ final class EmailNoticeBuilderTest extends TestCase
     {
         $repo = $this->createStub(CarRepository::class);
         $repo->method('effectiveEmailFlags')->willReturn(self::flags($flagOverrides));
-        if (in_array('latestFlagClearAt', $allowed, true)) {
-            $repo->method('latestFlagClearAt')->willReturn(null);
+        if (in_array('latestBlockClearAt', $allowed, true)) {
+            $repo->method('latestBlockClearAt')->willReturn(null);
             $repo->method('ownerBlockEventCauses')->willReturn([]);
         }
 
@@ -670,7 +665,7 @@ final class EmailNoticeBuilderTest extends TestCase
     public static function causeLookupMethodProvider(): array
     {
         return [
-            'clear-time read fails' => ['latestFlagClearAt'],
+            'clear-time read fails' => ['latestBlockClearAt'],
             'event read fails'      => ['ownerBlockEventCauses'],
         ];
     }
@@ -686,8 +681,8 @@ final class EmailNoticeBuilderTest extends TestCase
             self::flags(['blocked' => true, 'blockedAddress' => 'b@example.com', 'blockedCause' => 'unsubscribed'])
         );
         $failure = new CarDatabaseException('boom for b@example.com');
-        $clearAt = $repo->method('latestFlagClearAt');
-        $failingMethod === 'latestFlagClearAt' ? $clearAt->willThrowException($failure) : $clearAt->willReturn(null);
+        $clearAt = $repo->method('latestBlockClearAt');
+        $failingMethod === 'latestBlockClearAt' ? $clearAt->willThrowException($failure) : $clearAt->willReturn(null);
         $events = $repo->method('ownerBlockEventCauses');
         $failingMethod === 'ownerBlockEventCauses' ? $events->willThrowException($failure) : $events->willReturn(['spam']);
 

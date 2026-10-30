@@ -9,7 +9,7 @@ bounce should stop.
 
 ## User-Facing Changes
 
-- [Filled in as issues complete.]
+- The paused-email notice on the account page names an admin block that comes back after a Clear Block.
 
 ## Admin-Facing Changes
 

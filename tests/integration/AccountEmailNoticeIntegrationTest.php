@@ -240,6 +240,56 @@ final class AccountEmailNoticeIntegrationTest extends IntegrationTestCase
         );
     }
 
+    // --- #2529: CarRepository::latestBlockClearAt() ------------------------
+
+    public function testLatestBlockClearAtIsNullWithNoClear(): void
+    {
+        $ownerId = $this->createOwner('noclear-' . uniqid() . '@example.com');
+
+        $this->assertNull($this->repo->latestBlockClearAt($ownerId));
+    }
+
+    public function testLatestBlockClearAtReturnsTheAdminClearTime(): void
+    {
+        $ownerId = $this->createOwner('adminclear-' . uniqid() . '@example.com');
+        $this->seedAdminClearBlock($ownerId, '2026-10-12 12:00:00');
+
+        $this->assertSame('2026-10-12 12:00:00', $this->repo->latestBlockClearAt($ownerId));
+    }
+
+    public function testLatestBlockClearAtReturnsTheLaterOfAnAdminAndAnEmailChangeClear(): void
+    {
+        $ownerId = $this->createOwner('both-' . uniqid() . '@example.com');
+        // The email change row has logdate = now, which is later than the admin time.
+        $this->seedAdminClearBlock($ownerId, '2026-10-12 12:00:00');
+        $this->seedEmailChangeClearBlock($ownerId);
+
+        $later = $this->repo->latestBlockClearAt($ownerId);
+
+        $this->assertNotNull($later);
+        $this->assertGreaterThan('2026-10-12 12:00:00', $later);
+    }
+
+    public function testLatestBlockClearAtReturnsTheAdminClearWhenItIsLaterThanTheEmailChangeClear(): void
+    {
+        $ownerId = $this->createOwner('adminlater-' . uniqid() . '@example.com');
+        $this->seedEmailChangeClearBlock($ownerId);
+        $future = date('Y-m-d H:i:s', strtotime('+1 day'));
+        $this->seedAdminClearBlock($ownerId, $future);
+
+        $this->assertSame($future, $this->repo->latestBlockClearAt($ownerId));
+    }
+
+    public function testLatestBlockClearAtIgnoresAnotherOwnersClear(): void
+    {
+        $ownerId = $this->createOwner('mine-' . uniqid() . '@example.com');
+        $otherId = $this->createOwner('other-' . uniqid() . '@example.com');
+        $this->seedAdminClearBlock($otherId, '2026-10-12 12:00:00');
+        $this->seedEmailChangeClearBlock($otherId);
+
+        $this->assertNull($this->repo->latestBlockClearAt($ownerId));
+    }
+
     /**
      * @return list<string> The class attribute of each notice line element (not the CSS text)
      */

@@ -276,8 +276,10 @@ tables. `cars.user_id`'s own FK was dropped in
   The column name has the table prefix, because the `INSERT ... SELECT` source
   also has an `id` column.
   The suppression import (`MODE_STATE`) adds a rule: it writes no row when
-  the owner already has a row of any date for the same address and the same
-  cause group (#2502). `MODE_EVENT` uses the unique key only.
+  the owner already has a row for the same address and the same cause group
+  (#2502). For `spam`, `unsubscribed` and admin-block causes, only a row
+  after the owner's latest Clear Block counts (#2529). For the hard-bounce
+  group, a row of any date counts. `MODE_EVENT` uses the unique key only.
 - `(user_id, occurred_at)` serves the soft-bounce count
   (`CarRepository::countSoftBouncesSinceLastDelivered()`), which reads one
   owner's events after a start time.

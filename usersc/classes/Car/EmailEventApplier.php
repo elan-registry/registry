@@ -187,16 +187,17 @@ class EmailEventApplier
      *    any clear counts. With no such clear, the run time applies.
      * 4. Insert the event row. A duplicate changes nothing and is not new.
      *    {@see self::MODE_STATE}: when the owner already has a row of any
-     *    date and source for the same address and cause group, write no
-     *    row and treat the event as not new
+     *    source for the same address and cause group, write no row and
+     *    treat the event as not new
      *    ({@see CarRepository::hasOwnerEmailEventForAddress()}). The
      *    import's message ID never matches a webhook row (#2502). All hard
-     *    bounce names are one group ({@see self::causeGroup()}). An admin
-     *    block (message-ID prefix
+     *    bounce names are one group ({@see self::causeGroup()}), and a row
+     *    of any date stops them. An admin block (message-ID prefix
      *    {@see CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX}) is a group of
      *    its own: only an earlier admin-block row stops it, not a plain
-     *    `unsubscribed` row ({@see self::hasSameCauseRow()}). The flag
-     *    step still runs.
+     *    `unsubscribed` row. For `spam`, `unsubscribed` and an admin block,
+     *    only a row after the latest clear of the block stops the event
+     *    ({@see self::hasSameCauseRow()}, #2529). The flag step still runs.
      * 5. No `profiles` row: keep the row, log the user ID, set no flag.
      * 6. The flag changes only when the event address is the current
      *    `users.email`. {@see self::MODE_EVENT}: only for a new row.
@@ -503,19 +504,34 @@ class EmailEventApplier
      * `$messageId` (another `blockedAt`), so the unique key alone does not
      * stop a second row (#2502).
      *
-     * @throws CarDatabaseException If the query fails
+     * For a block cause (`spam`, `unsubscribed` or an admin block), only a
+     * row after the latest clear of the block counts
+     * ({@see CarRepository::latestBlockClearAt()}). The notice names only
+     * the causes after that clear. So a row from before the clear must not
+     * stop the row that the notice needs (#2529). When the import sees the
+     * same Brevo entry again after a clear, and its earlier row is from
+     * before the clear, the check finds no row, but the unique key stops
+     * the insert. A hard bounce does not use the block clear, so a row of
+     * any date counts.
+     *
+     * @throws CarDatabaseException If a query fails
      */
     private function hasSameCauseRow(int $userId, string $address, string $event, string $messageId): bool
     {
-        if (str_starts_with($messageId, CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX)) {
+        $isAdminBlock = str_starts_with($messageId, CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX);
+        $after = $isAdminBlock || in_array($event, self::SUPPRESSION_EVENTS, true)
+            ? $this->repo->latestBlockClearAt($userId)
+            : null;
+
+        if ($isAdminBlock) {
             return in_array(
                 CarRepository::BLOCKED_CAUSE_BLOCKLIST,
-                $this->repo->ownerBlockEventCauses($userId, $address, null),
+                $this->repo->ownerBlockEventCauses($userId, $address, $after),
                 true
             );
         }
 
-        return $this->repo->hasOwnerEmailEventForAddress($userId, $address, self::causeGroup($event));
+        return $this->repo->hasOwnerEmailEventForAddress($userId, $address, self::causeGroup($event), $after);
     }
 
     /**
