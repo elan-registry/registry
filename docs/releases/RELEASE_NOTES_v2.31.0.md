@@ -17,7 +17,7 @@ bounce should stop.
 
 ## Issues Resolved
 
-- WIP: [#2551](https://github.com/elan-registry/registry/issues/2551) — Migrate the test suite to PHPUnit 13.
+- [#2551](https://github.com/elan-registry/registry/issues/2551) — Migrate the test suite to PHPUnit 13.
 - WIP: [#2515](https://github.com/elan-registry/registry/issues/2515) — A failed car commit is logged as a commit failure, not as a rollback.
 - WIP: [#2449](https://github.com/elan-registry/registry/issues/2449) — Rollback and logger calls no longer hide the first failure.
 - WIP: [#2466](https://github.com/elan-registry/registry/issues/2466) — The verification failed-send log names connection errors and plugin precondition failures.
