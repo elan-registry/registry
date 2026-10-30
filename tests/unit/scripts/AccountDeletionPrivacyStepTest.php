@@ -51,14 +51,26 @@ final class AccountDeletionPrivacyStepTest extends TestCase
 
     private function assertLogged(string $needle): void
     {
+        $this->assertLogLine(static fn (string $message): bool => str_contains($message, $needle), "contains: {$needle}");
+    }
+
+    /** The detail ends in the throw site, so a pin uses a pattern and does not pin the line number. */
+    private function assertLoggedMatches(string $pattern): void
+    {
+        $this->assertLogLine(static fn (string $message): bool => preg_match($pattern, $message) === 1, "matches: {$pattern}");
+    }
+
+    /** @param callable(string): bool $matches */
+    private function assertLogLine(callable $matches, string $description): void
+    {
         foreach ($this->userDeletionLogs() as $message) {
-            if (str_contains($message, $needle)) {
+            if ($matches($message)) {
                 $this->addToAssertionCount(1);
 
                 return;
             }
         }
-        $this->fail("No user-deletion log line contains: {$needle}");
+        $this->fail("No user-deletion log line {$description}");
     }
 
     public function testPluginTableAbsentLogsAndStillDeletesEventsAndProfile(): void
@@ -150,9 +162,9 @@ final class AccountDeletionPrivacyStepTest extends TestCase
         $this->assertNotNull($db->indexOf('ROLLBACK'));
         $this->assertNull($db->indexOf('COMMIT'));
         $this->assertNull($db->indexOf('DELETE FROM profiles'), 'A rolled-back step must not reach the profile delete');
-        $this->assertLogged(
-            'CRITICAL: privacy step failed for user 77 at stage event delete, rolled back, personal data remains: '
-            . 'ElanRegistry\Exceptions\CarDatabaseException (code 0)'
+        $this->assertLoggedMatches(
+            '/^CRITICAL: privacy step failed for user 77 at stage event delete, rolled back, personal data remains: '
+            . 'ElanRegistry\\\\Exceptions\\\\CarDatabaseException \\(code 0\\) at CarRepository\\.php:\\d+$/'
         );
         foreach ($this->userDeletionLogs() as $message) {
             $this->assertStringNotContainsString('owner@example.com', $message, 'A log line must not hold an address');
@@ -171,10 +183,49 @@ final class AccountDeletionPrivacyStepTest extends TestCase
 
         $this->assertFalse($result->committed);
         $this->assertSame('event delete', $result->failedStage);
-        $this->assertLogged(
-            'CRITICAL: privacy step failed for user 77 at stage event delete, rollback failed: PDOException (code 2006), '
-            . 'personal data remains: ElanRegistry\Exceptions\CarDatabaseException (code 0)'
+        $this->assertLoggedMatches(
+            '/^CRITICAL: privacy step failed for user 77 at stage event delete, '
+            . 'rollback failed: PDOException \\(code 2006\\) at UserDeletionHookFakeDatabase\\.php:\\d+, '
+            . 'personal data remains: ElanRegistry\\\\Exceptions\\\\CarDatabaseException \\(code 0\\) at CarRepository\\.php:\\d+$/'
         );
+    }
+
+    /**
+     * A commit that throws may have landed on the server. The line must not
+     * say "rolled back", and the rollback must still run to end the open
+     * transaction (#2515).
+     */
+    public function testCommitFailureLogsUnknownTransactionState(): void
+    {
+        $db = new UserDeletionHookFakeDatabase(commitThrows: true);
+
+        $result = (new AccountDeletionPrivacyStep($db))->run(self::USER_ID);
+
+        $this->assertFalse($result->committed);
+        $this->assertSame('commit', $result->failedStage);
+        $commitAt = $db->indexOf('COMMIT');
+        $rollbackAt = $db->indexOf('ROLLBACK');
+        $this->assertNotNull($commitAt);
+        $this->assertNotNull($rollbackAt, 'The rollback must end the transaction that the failed commit left open');
+        $this->assertGreaterThan($commitAt, $rollbackAt);
+        $this->assertFalse($db->inTransaction());
+        $this->assertLoggedMatches(
+            '/^CRITICAL: privacy step failed for user 77 at stage commit, transaction state unknown, personal data may remain: '
+            . 'PDOException \\(code 2006\\) at UserDeletionHookFakeDatabase\\.php:\\d+$/'
+        );
+    }
+
+    /** A commit failure and a rollback failure both appear in the one CRITICAL line. */
+    public function testCommitFailureWithFailedRollbackLogsBoth(): void
+    {
+        $db = new UserDeletionHookFakeDatabase(rollbackThrows: true, commitThrows: true);
+
+        $result = (new AccountDeletionPrivacyStep($db))->run(self::USER_ID);
+
+        $this->assertFalse($result->committed);
+        $this->assertSame('commit', $result->failedStage);
+        $this->assertLogged('at stage commit, transaction state unknown, rollback failed: PDOException (code 2006) at UserDeletionHookFakeDatabase.php:');
+        $this->assertLogged(', personal data may remain: PDOException (code 2006) at UserDeletionHookFakeDatabase.php:');
     }
 
     /**

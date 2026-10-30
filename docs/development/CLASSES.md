@@ -355,7 +355,8 @@ in production; `find()` returning `bool` covers the not-found case.)
 `create()`/`update()` wrap their writes in `beginTransaction()`/`commit()`/
 `rollback()` (an ownership-flag transaction guard mirroring
 `CarRepository`'s pattern) and catch `\Throwable`, guaranteeing rollback on
-any failure including a PHP `\Error`. Their post-write reload call is
+any failure including a PHP `\Error`. The flag clears only after the driver
+call returns, so after a failed `commit()` the `rollback()` still runs. Their post-write reload call is
 wrapped in its own local `try/catch (OwnerDatabaseException $e)` — a reload
 failure after a successful write is logged, not propagated.
 
@@ -603,7 +604,9 @@ to provide a focused, testable data access layer wrapping the `cars`,
 - Chassis-based and verification-code-based car lookups
 - Car history (`cars_hist`) read/write/transfer
 - Factory serial-number lookup and suffix-code decoding
-- Nested-transaction-safe `beginTransaction()`/`commit()`/`rollback()` (no-op when participating in an outer transaction already begun by the caller)
+- Nested-transaction-safe `beginTransaction()`/`commit()`/`rollback()` (no-op when participating in an outer transaction already begun by the caller).
+  The ownership flag clears only after the driver call returns. A throw keeps
+  ownership, so a `rollback()` after a failed `commit()` still runs (#2515)
 
 **Methods**:
 
@@ -1036,7 +1039,8 @@ to provide a focused, testable data access layer wrapping the `cars`,
 - `getFactoryInfo(string $chassis, int $suffixLength): ?object` - Look up factory info by full chassis serial, falling back to a suffix-length search
 - `suffixToText(string $suffix): string` - Static; convert a factory suffix code to descriptive text
 - `getFilterOptions(): array` - Distinct series/type/variant values from `car_models` for listing filter pills
-- `beginTransaction()`/`commit()`/`rollback(): void` - Nested-transaction-safe wrappers; no-op when an outer transaction already owns the transaction
+- `beginTransaction()`/`commit()`/`rollback(): void` - Nested-transaction-safe wrappers; no-op when an outer transaction already owns the transaction.
+  A throw from the driver keeps ownership
 - `lastId(): int` - Last inserted ID
 - `errorString(): string` - Last DB error message
 
@@ -3753,8 +3757,10 @@ mail rows, the `er_email_events` rows, the `profiles` row, and the
     writes a CRITICAL log line. On a refusal, `after_user_deletion.php` stops
     and skips the car cleanup.
   - If the rollback itself throws, the CRITICAL line says `rollback failed`
-    with that exception's class and code in place of `rolled back`, and
-    `run()` still returns.
+    with that exception's summary in place of `rolled back`, and `run()`
+    still returns.
+  - A failure at the `commit` stage says `transaction state unknown` and
+    `personal data may remain`, because the server may have committed.
   - Otherwise it runs these stages in one transaction:
     `lockProfileAndFindAddresses()`, the plugin delete
     (`deleteSendinblueMessagesForUser()`, only when
@@ -3767,9 +3773,10 @@ mail rows, the `er_email_events` rows, the `profiles` row, and the
     that names the stage.
   - After the transaction it logs the outcome and the row counts, and that the
     plugin table is absent when that is so. All lines use
-    `LOG_CATEGORY_USER_DELETION`. A log line names the user ID, the stage, the
-    exception class and code only, never the exception message, because a
-    message can contain an address.
+    `LOG_CATEGORY_USER_DELETION`. A log line names the user ID, the stage and
+    the `ExceptionLogSummary::of()` summary (class, code, SQLSTATE, throw
+    site), never the exception message, because a message can contain an
+    address.
 
 **Used By**:
 

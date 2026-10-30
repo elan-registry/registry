@@ -96,6 +96,10 @@ after an item is written.
 
 - [ ] The seven integration classes that use `createIfMissing()` drop `plg_sendinblue_messages` in `tearDownAfterClass()` and do not check `->error()`. A failed drop leaves a test-made table, and a later class then gets `false` from `createIfMissing()` and treats it as a plugin table it must not drop. Add a static `drop()` that throws on a DB error, and use it in the seven classes (found in #2420)
 
+### `tests/Support/UserDeletionHookFakeDatabase.php` (test-only)
+
+- [ ] `rollBack()` sets `open = false` before it throws for `rollbackThrows`, but PDO keeps its in-transaction flag when `rollBack()` throws. Set `open = false` only on success, as `commit()` does for `commitThrows` (found in #2515)
+
 ### `tests/integration/AdminClearBlockAndOptOutTest.php` (test coverage)
 
 - [ ] Only the `CLEARED` outcome runs an import afterwards. Add one after a shared-address (and moved-address) Clear Block: Brevo's entry with its original `blockedAt` and with none; the flag stays clear and the other account does not change (found in /finish-milestone v2.30.9)
@@ -190,6 +194,10 @@ after an item is written.
 
 - [ ] The test reads `app/admin/index.php` source with `file_get_contents` and slices a block out of it. Replace it with a behavior test of the queue URL state, for example through `IntegrationTestCase::invokeEndpoint()` (found in #2330)
 
+### `tests/unit/cars/services/CarAdministrationServiceTest.php` (test coverage)
+
+- [ ] No test checks that the merge "files NOT restored" warning reaches `error_log()` exactly once when the commit throws and the rollback succeeds. Capture `error_log` in `testMergeDoesNotRestoreFilesWhenCommitItselfThrows` and assert one occurrence (found in #2515)
+
 ### `tests/unit/cars/services/CarRepositoryTest.php` (test coverage)
 
 - [ ] No case has `user_email => null` (orphan profile). Assert that a stored block or bounce with an address returns 0 and is written, and one with an empty address returns 1 (found in /finish-milestone v2.30.7)
@@ -249,7 +257,6 @@ after an item is written.
 
 ### `usersc/classes/AccountDeletionPrivacyStep.php`
 
-- [ ] The CRITICAL line for a failed stage, its rollback-failure part, and the rerun script's catch log only the class and `(code 0)`, so a lock wait and a schema fault look the same. Use `ExceptionLogSummary::of()` (class, code, SQLSTATE, throw site, no message). Put `$db->errorString()` in the profile-delete `OwnerDatabaseException` message, and update the pinned `(code 0)` assertions (found in #2419)
 - [ ] The profile delete (~L124-127) runs raw SQL while every other stage goes through `CarRepository`. Move it to a `CarRepository::deleteProfile()` method (found in /finish-milestone v2.30.10)
 
 ### `usersc/classes/Car/CarRepository.php`

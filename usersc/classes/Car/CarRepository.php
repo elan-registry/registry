@@ -4023,6 +4023,9 @@ class CarRepository
      * When participating in an outer transaction (begun by the caller before
      * this repository), this method is a no-op.
      *
+     * If the driver commit() throws, ownership stays, so a later rollback()
+     * still calls the driver rollBack() and ends the open transaction.
+     *
      * @return void
      */
     public function commit(): void
@@ -4030,10 +4033,10 @@ class CarRepository
         if (!$this->transactionOwner) {
             return; // Outer transaction manages commit — no-op
         }
-        $this->transactionOwner = false;
         if ($this->db->inTransaction()) {
             $this->db->commit();
         }
+        $this->transactionOwner = false;
     }
 
     /**
@@ -4042,6 +4045,9 @@ class CarRepository
      * When participating in an outer transaction (begun by the caller before
      * this repository), this method is a no-op.
      *
+     * If the driver rollBack() throws, ownership stays, so a later rollback()
+     * still calls the driver rollBack() and ends the open transaction.
+     *
      * @return void
      */
     public function rollback(): void
@@ -4049,10 +4055,10 @@ class CarRepository
         if (!$this->transactionOwner) {
             return; // Outer transaction manages rollback — no-op
         }
-        $this->transactionOwner = false;
         if ($this->db->inTransaction()) {
             $this->db->rollBack();
         }
+        $this->transactionOwner = false;
     }
 
     /**

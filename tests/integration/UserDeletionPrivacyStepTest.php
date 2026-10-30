@@ -191,6 +191,19 @@ final class UserDeletionPrivacyStepTest extends IntegrationTestCase
         return $notes;
     }
 
+    /**
+     * The CRITICAL line for a plugin-delete failure on a missing column. The
+     * throw site ends in a line number, so the pattern does not pin it.
+     */
+    private static function pluginDeleteFailurePattern(int $userId): string
+    {
+        return '/^' . preg_quote(sprintf(
+            'CRITICAL: privacy step failed for user %d at stage plugin delete, rolled back, personal data remains: %s',
+            $userId,
+            \ElanRegistry\Exceptions\CarDatabaseException::class
+        ), '/') . ' \\(code 0, SQLSTATE 42S22\\) at CarRepository\\.php:\\d+$/';
+    }
+
     // --- Plugin rows by message ID, and by each address source ------------------
 
     public function testPluginRowsWhoseMessageIdIsInTheUsersEventsAreDeleted(): void
@@ -503,14 +516,10 @@ final class UserDeletionPrivacyStepTest extends IntegrationTestCase
         $notes = $this->deletionLogNotes($userId);
         $failure = array_values(array_filter($notes, static fn (string $note): bool => str_starts_with($note, 'CRITICAL: privacy step failed')));
         $this->assertCount(1, $failure);
-        $this->assertSame(
-            sprintf(
-                'CRITICAL: privacy step failed for user %d at stage plugin delete, rolled back, personal data remains: %s (code 0)',
-                $userId,
-                \ElanRegistry\Exceptions\CarDatabaseException::class
-            ),
+        $this->assertMatchesRegularExpression(
+            self::pluginDeleteFailurePattern($userId),
             $failure[0],
-            'The log names the user ID, the stage, the exception class and code, and no message text'
+            'The log names the user ID, the stage, the exception class, code, SQLSTATE and throw site, and no message text'
         );
         $this->assertStringNotContainsString('brevo_message_id', $failure[0]);
 
@@ -778,12 +787,8 @@ final class UserDeletionPrivacyStepTest extends IntegrationTestCase
             static fn (string $note): bool => str_starts_with($note, 'CRITICAL: privacy step failed')
         ));
         $this->assertCount(1, $failure);
-        $this->assertSame(
-            sprintf(
-                'CRITICAL: privacy step failed for user %d at stage plugin delete, rolled back, personal data remains: %s (code 0)',
-                $owner['id'],
-                \ElanRegistry\Exceptions\CarDatabaseException::class
-            ),
+        $this->assertMatchesRegularExpression(
+            self::pluginDeleteFailurePattern($owner['id']),
             $failure[0]
         );
         foreach (['email', 'pending', 'stale'] as $key) {

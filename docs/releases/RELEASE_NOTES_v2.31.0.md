@@ -13,13 +13,12 @@ bounce should stop.
 
 ## Admin-Facing Changes
 
-- [Filled in as issues complete.]
+- The account-deletion privacy log names the SQLSTATE and throw site, and flags a failed commit as unknown state.
 
 ## Issues Resolved
 
 - [#2551](https://github.com/elan-registry/registry/issues/2551) — Migrate the test suite to PHPUnit 13.
-- WIP: [#2515](https://github.com/elan-registry/registry/issues/2515) — A failed car commit is logged as a commit failure, not as a rollback.
-- WIP: [#2449](https://github.com/elan-registry/registry/issues/2449) — Rollback and logger calls no longer hide the first failure.
+- WIP: [#2515](https://github.com/elan-registry/registry/issues/2515) — A failed commit no longer skips the rollback, and the privacy step logs it as unknown state.
 - WIP: [#2466](https://github.com/elan-registry/registry/issues/2466) — The verification failed-send log names connection errors and plugin precondition failures.
 - WIP: [#2529](https://github.com/elan-registry/registry/issues/2529) — The paused-email notice names an admin block set after a Clear Block.
 - WIP: [#2480](https://github.com/elan-registry/registry/issues/2480) — Cron runs report the correct outcome in four failure cases.

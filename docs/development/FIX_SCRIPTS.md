@@ -159,14 +159,25 @@ It is a repeatable maintenance script. An admin runs it. An editor cannot.
 Run it when the `UserDeletion` log has this CRITICAL line for a user:
 
 ```text
-CRITICAL: privacy step failed for user N at stage S, rolled back, personal data remains: ExceptionClass (code C)
+CRITICAL: privacy step failed for user N at stage S, rolled back, personal data remains: ExceptionClass (code C[, SQLSTATE X]) at File.php:L
 ```
 
-`N` is the user ID. `S` is the stage that failed. If the rollback also
-failed, the line says `rollback failed: ExceptionClass (code C)` in place of
-`rolled back`. Run the script in both cases. The personal data of that
-user then remains: the plugin mail rows, the email events, the profile and the
-holding row in `er_deleted_user_addresses`. The log line holds no address.
+`N` is the user ID. `S` is the stage that failed. The part after the colon
+gives the exception class, code, SQLSTATE (when known) and throw site, never
+the message. If the rollback also failed, the line says
+`rollback failed: <same summary>` in place of `rolled back`.
+
+When `S` is `commit`, the line says `transaction state unknown` and
+`personal data may remain`. The server may have committed the deletes. If the
+rollback also failed, the line says
+`transaction state unknown, rollback failed: <same summary>`. The summary line
+after it still says `rolled back`.
+
+Run the script in all these cases. When the step rolled back, the personal
+data of that user remains: the plugin mail rows, the email events, the profile
+and the holding row in `er_deleted_user_addresses`. When the commit landed, the
+rerun finds no rows, commits 0 deletes, and shows that no holding row was
+found. The log line holds no address.
 
 Also run it for each user ID that the daily retention run names in the
 `RetentionPurge` log line "Account-deletion privacy step not complete". The
