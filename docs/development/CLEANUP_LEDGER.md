@@ -212,14 +212,6 @@ after an item is written.
 
 - [ ] Only the `DatabaseInterface` branch is tested. Add the `PDO` branch: `prepare()` returns false, `execute()` returns false, and a `PDOException` comes back as the previous exception of `OwnerDatabaseException` (found in #2358 review)
 
-### `tests/unit/cron/BrevoEventReconciliationClientTest.php` (test coverage)
-
-- [ ] No test reaches the poll catch of `BrevoEventReconciliationClient::fetchEvents()` with an address in the exception message. Add a protected `createApi()` seam, as in `BrevoSuppressionSyncClient`, and a test that shows no log row holds the address (found in #2420)
-
-### `tests/unit/cron/SendVerificationBatchJobTest.php` (test coverage)
-
-- [ ] The #2363 clamp test calls `runNow()`, which never pings. Add a `run()` test with stored `batch_size = 255`: one success ping, one `VERIFICATION_CONFIG_WARNING`, `findVerificationEligible(25, 0)` (found in /finish-milestone v2.30.9)
-
 ### `tests/unit/cron/VerificationSwitchGateSourceTest.php`
 
 - [ ] The source check that the webhook does not read the switch (~L101) repeats behavior tests (`BrevoWebhookEndpointTest` ~L351, `BrevoEventPathParityIntegrationTest` ~L556, ~L605, ~L621). Delete it. Keep the convention scans at ~L63 and ~L110 (found in /finish-milestone v2.30.8)

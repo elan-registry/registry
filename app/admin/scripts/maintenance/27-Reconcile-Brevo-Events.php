@@ -138,7 +138,7 @@ if (!isAdmin()) {
                                             $summary->skippedCount,
                                             $summary->invalidAddressCount,
                                             $summary->pagesFetched,
-                                            $summary->pollFailed ? ', a Brevo poll failed' : '',
+                                            $summary->pollFailed ? ', a Brevo poll failed or could not start' : '',
                                             $summary->counterFailureCount > 0
                                                 ? sprintf(', %d unmatched-recipient counter update(s) failed', $summary->counterFailureCount)
                                                 : ''
@@ -150,8 +150,8 @@ if (!isAdmin()) {
                                     ?>
                                     <?php if ($summary->pollFailed): ?>
                                     <div class="alert alert-warning">
-                                        <h5 class="mb-2"><i class="fa fa-exclamation-triangle"></i> Reconciliation incomplete — Brevo poll failed</h5>
-                                        <p class="mb-0">A request to Brevo failed, so the events of at least one type were not fetched this run. The failure is logged under <code>CronJobFailure</code>. Re-run this script once Brevo is reachable — events already reconciled are re-applied harmlessly.</p>
+                                        <h5 class="mb-2"><i class="fa fa-exclamation-triangle"></i> Reconciliation incomplete — Brevo poll failed or could not start</h5>
+                                        <p class="mb-0">Either a request to Brevo failed, or the poll could not start because the <code>plg_sendinblue</code> settings read or the Brevo SDK load failed. The events of at least one type were not fetched this run. The <code>CronJobFailure</code> log line names the cause. Fix that cause, then re-run this script — events already reconciled are re-applied harmlessly.</p>
                                     </div>
                                     <?php endif; ?>
 

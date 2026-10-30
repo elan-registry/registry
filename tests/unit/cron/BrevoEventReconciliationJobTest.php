@@ -6,6 +6,7 @@ use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\EmailEventApplier;
 use ElanRegistry\Car\EmailEventMatch;
 use ElanRegistry\Car\EmailEventMatcher;
+use ElanRegistry\Cron\BrevoClientReadiness;
 use ElanRegistry\Cron\BrevoEventReconciliationJob;
 use ElanRegistry\Cron\HealthcheckPinger;
 use ElanRegistry\Exceptions\CarDatabaseException;
@@ -136,6 +137,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
      * @param FakeBrevoEventReconciliationClient|null $client Out: the job's client
      * @param AbstractCronJobFakeDatabase|null $db Out: the job's database
      * @param list<string> $failingTypes Event types whose poll fails
+     * @param BrevoClientReadiness $readiness What the client's readiness() returns
      * @param-out FakeBrevoEventReconciliationClient $client
      * @param-out AbstractCronJobFakeDatabase $db
      */
@@ -147,8 +149,9 @@ final class BrevoEventReconciliationJobTest extends TestCase
         bool $unmatchedCounterUpdateSucceeds = true,
         array $failingTypes = [],
         bool $applyTypeFilter = true,
+        BrevoClientReadiness $readiness = BrevoClientReadiness::READY,
     ): BrevoEventReconciliationJob {
-        $client = new FakeBrevoEventReconciliationClient($events, $failingTypes, $applyTypeFilter);
+        $client = new FakeBrevoEventReconciliationClient($events, $failingTypes, $applyTypeFilter, $readiness);
         $db = new AbstractCronJobFakeDatabase(
             verificationEnabled: $verificationEnabled,
             unmatchedCounterUpdateSucceeds: $unmatchedCounterUpdateSucceeds,
@@ -1126,6 +1129,108 @@ final class BrevoEventReconciliationJobTest extends TestCase
         $this->makeJob([], failingTypes: ['softBounces'])->runNow();
 
         $this->assertSame([], $this->pingTransport->urls);
+    }
+
+    /**
+     * Brevo is not set up (#2480): the client logs a skip line, no poll runs,
+     * and the run pings success, because there is nothing to fail.
+     */
+    public function testRunPingsSuccessAndPollsNothingWhenBrevoIsNotConfigured(): void
+    {
+        global $mockLogEntries;
+
+        $this->expectRepoCalls()->expects($this->once())->method('deleteEmailEventsOlderThan')->willReturn(0);
+
+        $this->makeJob(
+            [new FakeBrevoEvent()],
+            $client,
+            readiness: BrevoClientReadiness::NOT_CONFIGURED,
+        )->run();
+
+        $this->assertSame([self::PING_URL], $this->pingTransport->urls);
+        $this->assertSame(0, $client->fetchCalls, 'No poll may run when Brevo is not configured');
+        $this->assertSame([], $this->applier->calls);
+        $failures = array_filter(
+            $mockLogEntries ?? [],
+            static fn (array $entry): bool => $entry['category'] === LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE
+        );
+        $this->assertSame([], array_values($failures), 'Not configured is not a job failure');
+    }
+
+    /** A failed settings read is a real failure: the run pings /fail. */
+    public function testRunPingsFailWhenTheBrevoSettingsReadFails(): void
+    {
+        $this->expectRepoCalls()->expects($this->once())->method('deleteEmailEventsOlderThan')->willReturn(0);
+
+        $this->makeJob([new FakeBrevoEvent()], $client, readiness: BrevoClientReadiness::FAILED)->run();
+
+        $this->assertSame([self::PING_URL . '/fail'], $this->pingTransport->urls);
+        $this->assertSame(0, $client->fetchCalls);
+    }
+
+    public function testFailedSettingsReadSetsPollFailedInTheSummary(): void
+    {
+        $summary = $this->makeJob([new FakeBrevoEvent()], $client, readiness: BrevoClientReadiness::FAILED)
+            ->runNowWithSummary();
+
+        $this->assertTrue($summary->pollFailed);
+        $this->assertSame(0, $client->fetchCalls);
+        $this->assertSame(0, $summary->eventsExamined);
+    }
+
+    public function testNotConfiguredLeavesPollFailedUnset(): void
+    {
+        $summary = $this->makeJob([new FakeBrevoEvent()], $client, readiness: BrevoClientReadiness::NOT_CONFIGURED)
+            ->runNowWithSummary();
+
+        $this->assertFalse($summary->pollFailed);
+        $this->assertSame(0, $summary->eventsExamined);
+        $this->assertSame(0, $summary->pagesFetched);
+    }
+
+    /**
+     * An event with no usable Brevo date is stamped with the run time. The
+     * applier must know, so it does not compare that time with a Clear Block.
+     */
+    #[DataProvider('unusableEventDates')]
+    public function testUnusableEventDateIsPassedAsAFallbackInEventMode(mixed $date): void
+    {
+        $this->makeJob([new FakeBrevoEvent(date: $date)])->runNow();
+
+        $this->assertCount(1, $this->applier->calls);
+        $this->assertSame(self::NOW, $this->applier->calls[0]['occurredAt']);
+        $this->assertTrue($this->applier->calls[0]['occurredAtIsFallback']);
+        $this->assertSame(EmailEventApplier::MODE_EVENT, $this->applier->calls[0]['mode']);
+    }
+
+    /** @return array<string, array{mixed}> */
+    public static function unusableEventDates(): array
+    {
+        return [
+            'missing date' => [null],
+            'unparseable date' => ['not-a-date'],
+            'more than 300 s in the future' => ['2026-09-09 03:06:00 America/Los_Angeles'],
+        ];
+    }
+
+    public function testUsableEventDateIsNotPassedAsAFallback(): void
+    {
+        $this->makeJob([new FakeBrevoEvent(date: self::EVENT_DATE_UTC)])->runNow();
+
+        $this->assertCount(1, $this->applier->calls);
+        $this->assertSame(self::EVENT_DATE_LOCAL, $this->applier->calls[0]['occurredAt']);
+        $this->assertFalse($this->applier->calls[0]['occurredAtIsFallback']);
+        $this->assertSame(EmailEventApplier::MODE_EVENT, $this->applier->calls[0]['mode']);
+    }
+
+    /** A fallback date is logged, not a failure: the run pings success. */
+    public function testRunPingsSuccessWhenAFallbackDatedEventIsApplied(): void
+    {
+        $this->makeJob([new FakeBrevoEvent(date: 'not-a-date')])->run();
+
+        $this->assertCount(1, $this->applier->calls);
+        $this->assertTrue($this->applier->calls[0]['occurredAtIsFallback']);
+        $this->assertSame([self::PING_URL], $this->pingTransport->urls);
     }
 
     // --- Helpers ---------------------------------------------------------

@@ -76,7 +76,7 @@ final class Issue2245RegressionTest extends TestCase
         return [
             'BrevoEventReconciliationClient' => [
                 'usersc/classes/Cron/BrevoEventReconciliationClient.php',
-                'fetchEvents',
+                'createApi',
             ],
             'BrevoApiFactory' => [
                 'usersc/classes/Email/BrevoApiFactory.php',
@@ -168,12 +168,12 @@ final class Issue2245RegressionTest extends TestCase
         $mutatedPath = $this->mutateRealSource(
             'usersc/classes/Cron/BrevoEventReconciliationClient.php',
             'if ($hostOverride = \ElanRegistry\Email\BrevoDevOverride::hostOverride()) {'
-                . "\n                \$credentials->setHost(\$hostOverride);\n            }",
+                . "\n            \$credentials->setHost(\$hostOverride);\n        }",
             '// if ($hostOverride = \ElanRegistry\Email\BrevoDevOverride::hostOverride()) {'
-                . "\n            //     \$credentials->setHost(\$hostOverride);\n            // }"
+                . "\n        //     \$credentials->setHost(\$hostOverride);\n        // }"
         );
 
-        $methodBody = $this->uncommentedMethodBody($mutatedPath, 'fetchEvents');
+        $methodBody = $this->uncommentedMethodBody($mutatedPath, 'createApi');
         $failures = $this->findMethodBodyViolations($methodBody, 'mutated');
 
         $this->assertNotSame([], $failures, 'A commented-out hostOverride() call must be rejected.');
@@ -192,7 +192,7 @@ final class Issue2245RegressionTest extends TestCase
             'if (false && ($hostOverride = \ElanRegistry\Email\BrevoDevOverride::hostOverride())) {'
         );
 
-        $methodBody = $this->uncommentedMethodBody($mutatedPath, 'fetchEvents');
+        $methodBody = $this->uncommentedMethodBody($mutatedPath, 'createApi');
         $failures = $this->findMethodBodyViolations($methodBody, 'mutated');
 
         $this->assertNotSame([], $failures, 'A call guarded by "if (false && ...)" must be rejected.');
@@ -206,7 +206,7 @@ final class Issue2245RegressionTest extends TestCase
     public function testOverrideAfterSdkConstructionFails(): void
     {
         $overrideBlock = 'if ($hostOverride = \ElanRegistry\Email\BrevoDevOverride::hostOverride()) {'
-            . "\n                \$credentials->setHost(\$hostOverride);\n            }";
+            . "\n            \$credentials->setHost(\$hostOverride);\n        }";
 
         $original = file_get_contents(dirname(__DIR__, 3) . '/usersc/classes/Cron/BrevoEventReconciliationClient.php');
         $this->assertIsString($original);
@@ -217,18 +217,18 @@ final class Issue2245RegressionTest extends TestCase
         $withoutOverride = str_replace($overrideBlock . "\n\n", '', $original);
         $this->assertNotSame($original, $withoutOverride, 'Fixture setup: could not remove the override block.');
 
-        $constructionEnd = '                $credentials' . "\n            );\n";
+        $constructionEnd = '            $credentials' . "\n        );\n";
         $insertPos = strpos($withoutOverride, $constructionEnd);
         $this->assertIsInt($insertPos, 'Fixture setup: could not locate the end of the SDK construction call.');
         $insertPos += strlen($constructionEnd);
 
         $mutatedSource = substr($withoutOverride, 0, $insertPos)
-            . "\n            " . $overrideBlock . "\n"
+            . "\n        " . $overrideBlock . "\n"
             . substr($withoutOverride, $insertPos);
 
         $mutatedPath = $this->writeMutatedSource($mutatedSource);
 
-        $methodBody = $this->uncommentedMethodBody($mutatedPath, 'fetchEvents');
+        $methodBody = $this->uncommentedMethodBody($mutatedPath, 'createApi');
         $failures = $this->findMethodBodyViolations($methodBody, 'mutated');
 
         $this->assertNotSame(
@@ -246,7 +246,7 @@ final class Issue2245RegressionTest extends TestCase
     public function testDecoyCommentAboveMethodWithCallDeletedFails(): void
     {
         $overrideBlock = 'if ($hostOverride = \ElanRegistry\Email\BrevoDevOverride::hostOverride()) {'
-            . "\n                \$credentials->setHost(\$hostOverride);\n            }";
+            . "\n            \$credentials->setHost(\$hostOverride);\n        }";
 
         $original = file_get_contents(dirname(__DIR__, 3) . '/usersc/classes/Cron/BrevoEventReconciliationClient.php');
         $this->assertIsString($original);
@@ -267,7 +267,7 @@ final class Issue2245RegressionTest extends TestCase
 
         $mutatedPath = $this->writeMutatedSource($mutatedSource);
 
-        $methodBody = $this->uncommentedMethodBody($mutatedPath, 'fetchEvents');
+        $methodBody = $this->uncommentedMethodBody($mutatedPath, 'createApi');
         $failures = $this->findMethodBodyViolations($methodBody, 'mutated');
 
         $this->assertNotSame(

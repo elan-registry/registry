@@ -55,8 +55,11 @@ final readonly class ReconciliationSummary
      *                                              run — one for each event type whose poll
      *                                              succeeded, so 0 to
      *                                              `count(BrevoEventReconciliationJob::EVENT_TYPES)`
-     * @param bool               $pollFailed        True when at least one `fetchEvents()` call failed (mirrors
-     *                                              {@see SuppressionSyncSummary}'s `pollFailed`)
+     * @param bool               $pollFailed        True when the client's pre-flight check failed
+     *                                              (the `plg_sendinblue` read or the SDK load, so
+     *                                              no request went out) or at least one
+     *                                              `fetchEvents()` call failed (#2480). Mirrors
+     *                                              {@see SuppressionSyncSummary}'s `pollFailed`
      * @param int                $counterFailureCount Unmatched events whose dashboard
      *                                              unmatched-recipient counter increment did NOT
      *                                              land — a subset of `unmatchedCount`, never

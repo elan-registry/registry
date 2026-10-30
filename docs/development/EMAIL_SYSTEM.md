@@ -1353,7 +1353,8 @@ column, so a dropped event leaves a trace.
   already cleared does not set the flag.
 - A spam or unsubscribe event passes this last guard. It sets `email_blocked`
   only when its `occurred_at` is later than the user's latest admin Clear Block
-  log row. An earlier event is recorded and sets nothing.
+  log row. An earlier event is recorded and sets nothing. With a fallback event
+  time in `MODE_EVENT`, the message time is compared instead (#2480).
 
 #### `sendinblueRecordEvent()`
 
@@ -1495,8 +1496,10 @@ call it once for each matched event.
 5. A user with no `profiles` row keeps the event row, gets a log line with
    the user ID, and gets no flag.
 6. It sets the flag only when the event address is the current `users.email`.
-7. `email_blocked` changes only when the event time is later than the owner's
-   latest admin Clear Block.
+7. `email_blocked` changes only when the compare time is later than the owner's
+   latest admin Clear Block. The compare time is the event time. With a
+   fallback event time in `MODE_EVENT`, it is the message time (#2480). The
+   event row still stores the event time.
 8. It commits. A failure rolls back the event row, the flag and the audit row,
    and throws a `CarDatabaseException`. The webhook then returns 500.
 
@@ -1506,6 +1509,16 @@ Two modes set the flag rule:
   event row is new. A replayed event changes nothing, and it leaves
   `email_bounced_at` and `email_blocked_at` as they are. The join and address
   guards use the message time.
+  - A fallback event time has no usable date from Brevo. For the webhook, that
+    means no usable `ts_event` or `ts`, or a `ts_event` more than 5 minutes
+    after receipt. For the reconciliation job, it means a missing, unparseable,
+    or future date. The event row stores the receipt or run time.
+  - With a fallback event time, the Clear Block compare in step 7 uses the
+    message time. An event comes after its send, so a message sent at or
+    before the latest admin Clear Block sets no block. A message sent after
+    the clear sets the block, if the other guards pass (#2480).
+  - The clear check in step 3 (`clearIsOnRecord()`) runs in `MODE_STATE`
+    only. In `MODE_EVENT`, the bounce guard already uses the message time.
 - `MODE_STATE` (suppression import). Brevo's blocklist is a current state, not
   an event. The flag changes when it is clear, or when its stored address
   differs from the event address under the matching rule. The join and
@@ -1513,8 +1526,8 @@ Two modes set the flag rule:
   current address. The bounce guard and the Clear Block bound compare Brevo's
   `blockedAt`. When `blockedAt` is not usable, the job passes the run time with
   the `$occurredAtIsFallback` argument. Then an admin clear on record stops the
-  event. `$occurredAtIsFallback` is valid only with `MODE_STATE`. With
-  `MODE_EVENT`, `apply()` throws an `InvalidArgumentException`.
+  event. `$occurredAtIsFallback` is accepted in both modes (#2480). Its
+  clear check runs only in `MODE_STATE`.
 
 The optional `$blockedCause` argument sets the `email_blocked_cause` that the
 profile stores. It is allowed only for a suppression event in `MODE_STATE`.
@@ -1870,7 +1883,8 @@ verification switch off.
 - **Input checks.** The job skips an address longer than 155 bytes, or one that
   fails `FILTER_VALIDATE_EMAIL`, and counts it in `invalidAddressCount`. It
   treats an event date more than 5 minutes after the run time as missing, and
-  uses the run time.
+  uses the run time. It passes that run time to `apply()` as a fallback. The
+  Clear Block compare then uses the message time (#2480).
 - **Unmatched events.** The job increments the unmatched recipient counter only
   for a `car_verification`-tagged event of our mail with no single user.
 - **Bad stored data.** A stored value that cannot be parsed (for example a

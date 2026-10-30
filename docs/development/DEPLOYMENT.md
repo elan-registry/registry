@@ -1101,9 +1101,30 @@ plus the grace time. One of these causes applies:
 - The job's `er_cron_job_runs` row is missing or unreadable. See the
   `CronJobFailure` logs.
 
-**What a `/fail` means.** The job reported a failure. Either `execute()`
-threw, or a soft failure occurred: the eligible-car query failed or the Brevo
-poll failed.
+**What a `/fail` means.** The job reported a failure. The run sends `/fail`
+in these cases:
+
+- `execute()` threw an exception.
+- The send job (`SendVerificationBatchJob`) failed its eligible-car query.
+- The send job had a full send outage. No send succeeded, and at least one
+  send failed.
+- The send job has `unrecorded > 0`. The mail went out, but the write that
+  marks the car as sent failed. The car stays eligible, so the next run can
+  send it again.
+- The reconciliation job (`BrevoEventReconciliationJob`) had a Brevo poll
+  fail.
+- The reconciliation job could not read the `plg_sendinblue` settings, or the
+  Brevo SDK did not load. The client logs `CronJobFailure`.
+
+The run sends success in these cases:
+
+- Brevo is not set up here. The `plg_sendinblue` table is absent, the API
+  key is empty, or the SDK autoloader is absent. The client logs
+  `CronJobSkipped`. No poll runs. The prune still runs.
+- Some sends failed and some sent. This is deliberate. One bad car record
+  must not give a red check each night. The batch log line and the `failed`
+  count still show the failures.
+- The eligible set is empty. The send job logs a routine line and sends nothing.
 
 A soft failure sends `/fail` but does not stamp `last_failure_at`. The admin
 Verification tab can show a green run while healthchecks.io shows a failure
@@ -1113,7 +1134,10 @@ the logs first.
 **What to check first:**
 
 1. The cron status on the Verification tab.
-2. The logs under `CronJobFailure` and `HealthcheckPing`.
+2. The logs under `CronJobFailure` and `HealthcheckPing`. A send-job outage
+   or `unrecorded` run logs one `CronJobFailure` line with counts only. The
+   per-car reasons are under `EmailError` (send failures) and
+   `CarVerification` (a car that could not be read, and send exceptions).
 3. The cron transport (see "Verifying the transport" above).
 
 **Pause and Resume.** The admin Pause button sets

@@ -216,7 +216,8 @@ final class BrevoWebhookEventProcessor
                 $messageId,
                 $occurredAt,
                 DeliverabilityFlagLog::SOURCE_WEBHOOK,
-                EmailEventApplier::MODE_EVENT
+                EmailEventApplier::MODE_EVENT,
+                occurredAtIsFallback: $timeFallback !== null
             );
         } catch (ProfileFlagValueException $e) {
             // Defensive. The applier calls only the profile writers, which

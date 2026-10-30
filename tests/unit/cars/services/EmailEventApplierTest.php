@@ -75,17 +75,21 @@ final class EmailEventApplierTest extends TestCase
         ?int $carId = null,
         string $address = self::ADDRESS,
         ?string $blockedCause = null,
+        bool $occurredAtIsFallback = false,
+        string $messageTime = self::MESSAGE_TIME,
+        string $occurredAt = self::EVENT_TIME,
     ): EmailEventApplyResult {
         return $this->applier->apply(
-            EmailEventMatch::matched($userId, $carId, self::MESSAGE_TIME),
+            EmailEventMatch::matched($userId, $carId, $messageTime),
             $address,
             $event,
             $reason,
             'msg-1',
-            self::EVENT_TIME,
+            $occurredAt,
             $source,
             $mode,
-            $blockedCause
+            $blockedCause,
+            $occurredAtIsFallback
         );
     }
 
@@ -689,6 +693,89 @@ final class EmailEventApplierTest extends TestCase
         $this->mockManager->expects($this->once())->method('setSuppressedFromEvent');
 
         $this->apply('unsubscribed');
+    }
+
+    // --- #2480: fallback event time in MODE_EVENT ---------------------------
+
+    /** The run time is later than every Clear Block, so only the message time can decide. */
+    private const FALLBACK_RUN_TIME = '2026-01-01 00:30:00';
+
+    /** T11 */
+    public function testEventModeFallbackSpamSentBeforeTheClearBlockSetsNoBlock(): void
+    {
+        $this->givenState();
+        $this->mockRepo->expects($this->once())
+            ->method('latestFlagClearAt')
+            ->with(42, 'email_blocked', 'admin')
+            ->willReturn('2026-01-01 00:20:00');
+        $this->mockRepo->expects($this->once())
+            ->method('insertOwnerEmailEvent')
+            ->with(42, self::ADDRESS, 'spam', null, 'msg-1', self::FALLBACK_RUN_TIME)
+            ->willReturn(1);
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
+
+        $result = $this->apply(
+            'spam',
+            occurredAtIsFallback: true,
+            messageTime: '2026-01-01 00:10:00',
+            occurredAt: self::FALLBACK_RUN_TIME
+        );
+        $this->assertTrue($result->eventRowWritten, 'The event row is recorded');
+        $this->assertTrue($result->flagApplied, 'The flag step runs');
+    }
+
+    /** T11 boundary: a message sent at the clear time is not after it. */
+    public function testEventModeFallbackSpamSentAtTheClearBlockTimeSetsNoBlock(): void
+    {
+        $this->givenState();
+        $this->mockRepo->method('latestFlagClearAt')->willReturn('2026-01-01 00:10:00');
+        $this->mockManager->expects($this->never())->method('setSuppressedFromEvent');
+
+        $this->apply(
+            'spam',
+            occurredAtIsFallback: true,
+            messageTime: '2026-01-01 00:10:00',
+            occurredAt: self::FALLBACK_RUN_TIME
+        );
+    }
+
+    /** T12 */
+    public function testEventModeFallbackSpamSentAfterTheClearBlockSetsTheBlockWithTheRunTime(): void
+    {
+        $this->givenState();
+        $this->mockRepo->method('latestFlagClearAt')->willReturn('2026-01-01 00:10:00');
+        $this->mockManager->expects($this->once())
+            ->method('setSuppressedFromEvent')
+            ->with(42, self::ADDRESS, 'spam', self::FALLBACK_RUN_TIME, 'webhook');
+
+        $this->apply(
+            'spam',
+            occurredAtIsFallback: true,
+            messageTime: '2026-01-01 00:15:00',
+            occurredAt: self::FALLBACK_RUN_TIME
+        );
+    }
+
+    /** T13: clearIsOnRecord() does not run in event mode, so the message-time guard decides. */
+    public function testEventModeFallbackHardBounceSentAfterTheBounceClearSetsBounced(): void
+    {
+        $this->givenState([
+            'email_address_since' => '2020-01-01 00:00:00',
+            'email_bounce_cleared_at' => '2026-01-01 00:10:00',
+        ]);
+        $this->mockManager->expects($this->once())
+            ->method('setBouncedFromEvent')
+            ->with(42, self::ADDRESS, self::FALLBACK_RUN_TIME, 'webhook')
+            ->willReturn(true);
+
+        $result = $this->apply(
+            'hard_bounce',
+            occurredAtIsFallback: true,
+            messageTime: '2026-01-01 00:15:00',
+            occurredAt: self::FALLBACK_RUN_TIME
+        );
+        $this->assertTrue($result->eventRowWritten);
+        $this->assertTrue($result->flagApplied);
     }
 
     // --- Reason, transaction and arguments --------------------------------

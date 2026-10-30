@@ -779,6 +779,146 @@ final class SendVerificationBatchJobTest extends TestCase
     }
 
     /**
+     * A repository stub whose cars send for real and are recorded (sent).
+     * Ids in $throwingIds make findById() throw, so those cars fail.
+     *
+     * @param list<int> $ids
+     * @param list<int> $throwingIds
+     * @return CarRepository&\PHPUnit\Framework\MockObject\Stub
+     */
+    private function makeSendingRepo(array $ids, array $throwingIds = []): CarRepository
+    {
+        $repo = $this->createStub(CarRepository::class);
+        $repo->method('findVerificationEligible')->willReturn(
+            array_map(static fn (int $id): object => (object) ['id' => $id], $ids)
+        );
+        $repo->method('findById')->willReturnCallback(
+            function (int $id) use ($throwingIds): object {
+                if (in_array($id, $throwingIds, true)) {
+                    throw new CarDatabaseException('findById failed');
+                }
+
+                return $this->makeSendableCar($id);
+            }
+        );
+        $repo->method('effectiveEmailFlags')->willReturn(
+            new \ElanRegistry\Car\EffectiveEmailFlags(true, false, null, false, null, null, null, false, null, null, 'owner@example.com')
+        );
+        $repo->method('updateVerificationCode')->willReturn(true);
+        $repo->method('updateVerificationSentAt')->willReturn(true);
+        $repo->method('insertEmailEvent')->willReturn(1);
+        $repo->method('incrementVerificationAttempts')->willReturn(true);
+
+        return $repo;
+    }
+
+    public function testRunPingsFailWhenEverySendFails(): void
+    {
+        $repo = $this->makeSendingRepo([1, 2], throwingIds: [1, 2]);
+        $sendSvc = $this->makeSendSvc($repo);
+
+        $this->makeJob($this->makeSettings(), $sendSvc, $this->makeSender($repo, $sendSvc))->run();
+
+        $this->assertSame([self::PING_URL . '/fail'], $this->pingTransport->urls);
+        $this->assertSame([], $GLOBALS['mockSentEmails'], 'No mail may go out when every car fails');
+        $this->assertNotEmpty($this->logsContaining('0 sent, 0 unrecorded, 0 skipped, 2 failed'));
+        $failure = $this->logsContaining('every attempted send failed');
+        $this->assertCount(1, $failure);
+        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $failure[0]['category']);
+        $this->assertStringContainsString('0 sent, 0 unrecorded, 2 failed of 2 attempted', $failure[0]['message']);
+        $this->assertStringNotContainsString('@', $failure[0]['message'], 'The fault line must hold no address');
+    }
+
+    public function testRunPingsFailWhenASendIsUnrecorded(): void
+    {
+        // Car 1 sends and is recorded; car 2 sends but its bookkeeping throws.
+        $repo = $this->createStub(CarRepository::class);
+        $repo->method('findVerificationEligible')->willReturn([(object) ['id' => 1], (object) ['id' => 2]]);
+        $repo->method('findById')->willReturnCallback(fn (int $id): object => $this->makeSendableCar($id));
+        $repo->method('effectiveEmailFlags')->willReturn(
+            new \ElanRegistry\Car\EffectiveEmailFlags(true, false, null, false, null, null, null, false, null, null, 'owner@example.com')
+        );
+        $repo->method('updateVerificationCode')->willReturn(true);
+        $repo->method('updateVerificationSentAt')->willReturn(true);
+        $repo->method('insertEmailEvent')->willReturnCallback(
+            static function (mixed ...$args): int {
+                static $calls = 0;
+                if (++$calls === 2) {
+                    throw new RuntimeException('DB connection lost');
+                }
+
+                return 1;
+            }
+        );
+        $repo->method('incrementVerificationAttempts')->willReturn(true);
+        $sendSvc = $this->makeSendSvc($repo);
+
+        $this->makeJob($this->makeSettings(), $sendSvc, $this->makeSender($repo, $sendSvc))->run();
+
+        $this->assertSame([self::PING_URL . '/fail'], $this->pingTransport->urls);
+        $this->assertNotEmpty($this->logsContaining('1 sent, 1 unrecorded, 0 skipped, 0 failed'));
+        $failure = $this->logsContaining('a send went out but was not recorded');
+        $this->assertCount(1, $failure);
+        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $failure[0]['category']);
+        $this->assertStringContainsString('1 sent, 1 unrecorded, 0 failed of 2 attempted', $failure[0]['message']);
+    }
+
+    public function testRunPingsSuccessWhenOnlySomeSendsFail(): void
+    {
+        // Car 1 sends; car 2 fails. A partial failure must not turn the check red.
+        $repo = $this->makeSendingRepo([1, 2], throwingIds: [2]);
+        $sendSvc = $this->makeSendSvc($repo);
+
+        $this->makeJob($this->makeSettings(), $sendSvc, $this->makeSender($repo, $sendSvc))->run();
+
+        $this->assertSame([self::PING_URL], $this->pingTransport->urls);
+        $this->assertCount(1, $GLOBALS['mockSentEmails']);
+        $this->assertNotEmpty($this->logsContaining('1 sent, 0 unrecorded, 0 skipped, 1 failed'));
+        global $mockLogEntries;
+        $this->assertSame([], array_filter(
+            $mockLogEntries ?? [],
+            static fn (array $entry): bool => $entry['category'] === LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE
+        ), 'A partial failure must not write a CronJobFailure line');
+    }
+
+    public function testRunPingsSuccessWhenEveryCarIsSkipped(): void
+    {
+        // A skip is not an attempted send, so a batch of skips is no outage.
+        $repo = $this->createStub(CarRepository::class);
+        $repo->method('findVerificationEligible')->willReturn([(object) ['id' => 1], (object) ['id' => 2]]);
+        $repo->method('findById')->willReturn(null); // -> skipped, no exception anywhere.
+        $sendSvc = $this->makeSendSvc($repo);
+
+        $this->makeJob($this->makeSettings(), $sendSvc, $this->makeSender($repo, $sendSvc))->run();
+
+        $this->assertSame([self::PING_URL], $this->pingTransport->urls);
+        $this->assertNotEmpty($this->logsContaining('0 sent, 0 unrecorded, 2 skipped, 0 failed'));
+    }
+
+    /**
+     * runNow() never pings, so testExecuteClampsAnOutOfRangeStoredBatchSizeToTwentyFive
+     * cannot show the ping. This drives the same clamp through run().
+     */
+    public function testRunClampsAStoredBatchSizeOf255AndPingsSuccess(): void
+    {
+        $repo = $this->createMock(CarRepository::class);
+        $repo->expects($this->once())
+            ->method('findVerificationEligible')
+            ->with(25, 0)
+            ->willReturn([]);
+        $sendSvc = $this->makeSendSvc($repo);
+
+        $this->makeJob($this->makeSettings(batchSize: 255), $sendSvc, $this->makeSender($repo, $sendSvc))->run();
+
+        $this->assertSame([self::PING_URL], $this->pingTransport->urls);
+        $warnings = array_values(array_filter(
+            $GLOBALS['mockLogEntries'] ?? [],
+            static fn (array $entry): bool => $entry['category'] === LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING
+        ));
+        $this->assertCount(1, $warnings);
+    }
+
+    /**
      * @return array<string, array{0: int|null}>
      */
     public static function brokenPingProvider(): array
