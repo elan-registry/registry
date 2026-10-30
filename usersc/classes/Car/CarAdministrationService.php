@@ -605,10 +605,10 @@ class CarAdministrationService
      * connection, so a warning written inside a transaction that then rolls
      * back is erased along with it.
      *
-     * The message also goes to error_log() (here, or earlier through
-     * errorLogFileWarning() when $errorLogDone is true) because a database log is
-     * the wrong last line of defence for a message about database/filesystem
-     * divergence: logger() delegates to DB::insert(), which returns false on
+     * The message goes to error_log() exactly once: here, or earlier by the
+     * caller when $errorLogDone is true. A database log is the wrong last
+     * line of defence for a message about database/filesystem divergence:
+     * logger() delegates to DB::insert(), which returns false on
      * failure rather than throwing, so the catch below cannot see a quiet
      * failed insert. These call sites are the only record that image files are
      * misplaced, so they are written somewhere that does not depend on the
@@ -618,7 +618,7 @@ class CarAdministrationService
      * @param string $message      Full description, including both car IDs and
      *                             the relevant rename map as JSON.
      * @param bool   $errorLogDone True when the caller already wrote the
-     *                             message with errorLogFileWarning()
+     *                             message to error_log() before its rollback().
      * @return void
      */
     private function logFileWarning(int $adminUserId, string $message, bool $errorLogDone = false): void

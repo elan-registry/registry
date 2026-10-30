@@ -188,7 +188,7 @@ final class CarRepositoryTest extends TestCase
         $repo->rollback();         // no-op: $transactionOwner = false
     }
 
-    // #2515: a driver throw must keep ownership, or the catch block's rollback() skips the open transaction.
+    // A driver throw must keep ownership, or the catch block's rollback() skips the open transaction.
 
     /**
      * A mock whose inTransaction() turns true at beginTransaction(). commit() and

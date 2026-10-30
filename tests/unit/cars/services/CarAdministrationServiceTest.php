@@ -795,7 +795,7 @@ final class CarAdministrationServiceTest extends TestCase
             return $call === 1 ? $lockedTargetData : $sourceData;
         });
         $db->method('insert')->willReturn(true);
-        // #2515: the commit failure keeps ownership, so rollback() ends the open transaction.
+        // The commit failure keeps ownership, so rollback() ends the open transaction.
         $db->expects($this->once())->method('rollBack');
 
         $relocator = $this->createMock(CarImageRelocator::class);

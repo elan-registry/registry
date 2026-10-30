@@ -355,8 +355,9 @@ in production; `find()` returning `bool` covers the not-found case.)
 `create()`/`update()` wrap their writes in `beginTransaction()`/`commit()`/
 `rollback()` (an ownership-flag transaction guard mirroring
 `CarRepository`'s pattern) and catch `\Throwable`, guaranteeing rollback on
-any failure including a PHP `\Error`. The flag clears only after the driver
-call returns, so after a failed `commit()` the `rollback()` still runs. Their post-write reload call is
+any failure including a PHP `\Error`. `Owner::commit()` and `rollback()`
+clear the flag only after the driver call returns, so after a failed
+`commit()` the `rollback()` still runs. Their post-write reload call is
 wrapped in its own local `try/catch (OwnerDatabaseException $e)` — a reload
 failure after a successful write is logged, not propagated.
 
@@ -606,7 +607,7 @@ to provide a focused, testable data access layer wrapping the `cars`,
 - Factory serial-number lookup and suffix-code decoding
 - Nested-transaction-safe `beginTransaction()`/`commit()`/`rollback()` (no-op when participating in an outer transaction already begun by the caller).
   The ownership flag clears only after the driver call returns. A throw keeps
-  ownership, so a `rollback()` after a failed `commit()` still runs (#2515)
+  ownership, so a `rollback()` after a failed `commit()` still runs
 
 **Methods**:
 
@@ -1040,7 +1041,7 @@ to provide a focused, testable data access layer wrapping the `cars`,
 - `suffixToText(string $suffix): string` - Static; convert a factory suffix code to descriptive text
 - `getFilterOptions(): array` - Distinct series/type/variant values from `car_models` for listing filter pills
 - `beginTransaction()`/`commit()`/`rollback(): void` - Nested-transaction-safe wrappers; no-op when an outer transaction already owns the transaction.
-  A throw from the driver keeps ownership
+  If the driver call throws, ownership stays, so a later `rollback()` still runs
 - `lastId(): int` - Last inserted ID
 - `errorString(): string` - Last DB error message
 

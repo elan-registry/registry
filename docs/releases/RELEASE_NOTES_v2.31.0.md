@@ -13,7 +13,7 @@ bounce should stop.
 
 ## Admin-Facing Changes
 
-- The account-deletion privacy log names the SQLSTATE and throw site, and flags a failed commit as unknown state.
+- The account-deletion privacy log shows the SQLSTATE and the place of the error, and logs a failed commit as "transaction state unknown".
 
 ## Issues Resolved
 

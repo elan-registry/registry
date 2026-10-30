@@ -170,8 +170,9 @@ the message. If the rollback also failed, the line says
 When `S` is `commit`, the line says `transaction state unknown` and
 `personal data may remain`. The server may have committed the deletes. If the
 rollback also failed, the line says
-`transaction state unknown, rollback failed: <same summary>`. The summary line
-after it still says `rolled back`.
+`transaction state unknown, rollback failed: <same summary>`. The separate
+summary line that follows, `Privacy step for user N: …`, still says
+`rolled back`.
 
 Run the script in all these cases. When the step rolled back, the personal
 data of that user remains: the plugin mail rows, the email events, the profile
