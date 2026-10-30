@@ -227,7 +227,7 @@ final class SendPolicyTest extends TestCase
     #[DataProvider('kindProvider')]
     public function test_forAddress_zeroMatches_isRefusedWithNoMatchForEveryKind(MailKind $kind): void
     {
-        $this->repo->method('findUserIdsByAddress')->with('nobody@example.com')->willReturn([]);
+        $this->repo->expects($this->once())->method('findUserIdsByAddress')->with('nobody@example.com')->willReturn([]);
         $this->repo->expects($this->never())->method('effectiveEmailFlags');
 
         $decision = $this->policy->forAddress($kind, 'nobody@example.com');

@@ -23,7 +23,8 @@ use PHPUnit\Framework\Attributes\Group;
  * ApiResponse and unable to reach a subclass-only wrapper method without an
  * unsound cast. Since buildAndEmitHeaders() is protected (not private), it
  * is reachable on any ApiResponse instance via a same-class-scoped Closure
- * instead — no subclassing or casting required.
+ * instead — no subclassing or casting required. The private outputBufferFloor
+ * is read and set through ReflectionProperty.
  */
 final class TestableApiResponse
 {
@@ -50,6 +51,34 @@ final class TestableApiResponse
         }
 
         return $call($response);
+    }
+
+    /**
+     * Set $response's private outputBufferFloor.
+     *
+     * @param ApiResponse $response Response to change
+     * @param int         $floor    Output buffer level to clean down to
+     *
+     * @return void
+     */
+    public static function setOutputBufferFloor(ApiResponse $response, int $floor): void
+    {
+        (new \ReflectionProperty(ApiResponse::class, 'outputBufferFloor'))->setValue($response, $floor);
+    }
+
+    /**
+     * Read $response's private outputBufferFloor.
+     *
+     * @param ApiResponse $response Response to read
+     *
+     * @return int Output buffer level that buildAndEmitHeaders() cleans down to
+     */
+    public static function getOutputBufferFloor(ApiResponse $response): int
+    {
+        $floor = (new \ReflectionProperty(ApiResponse::class, 'outputBufferFloor'))->getValue($response);
+        \assert(is_int($floor));
+
+        return $floor;
     }
 }
 
@@ -797,21 +826,13 @@ final class ApiResponseTest extends TestCase
     }
 
     /**
-     * Invoke buildAndEmitHeaders() while genuinely exercising its
-     * headers-not-sent branch — including the pre-existing
-     * `while (ob_get_level() > 0) { ob_end_clean(); }` buffer-cleanup loop —
-     * without tripping PHPUnit's "closed output buffers other than its own"
-     * risky-test detector.
+     * Invoke buildAndEmitHeaders() on its headers-not-sent branch without
+     * closing PHPUnit's own output buffer.
      *
-     * PHPUnit enters every test with its own output buffer already open
-     * (ob_get_level() === 1) and flags a test as risky only when the buffer
-     * level differs from that starting snapshot once the test finishes —
-     * it does not care how many buffers were pushed or popped in between, as
-     * long as the level is restored. buildAndEmitHeaders()'s cleanup loop
-     * drains every open buffer (including PHPUnit's own) down to level 0, so
-     * this helper re-establishes the starting level afterward rather than
-     * merely pushing one extra buffer beforehand (which still nets out to a
-     * level PHPUnit didn't expect).
+     * PHPUnit 13 marks a test risky when the test closes PHPUnit's buffer,
+     * even if the test opens a new one after. In production the cleanup loop
+     * cleans every buffer to level 0. This helper sets the floor to the
+     * current level, so the loop stops before PHPUnit's buffer.
      *
      * @param ApiResponse $response Response to invoke buildAndEmitHeaders() on
      *
@@ -819,15 +840,51 @@ final class ApiResponseTest extends TestCase
      */
     private function invokeBuildAndEmitHeaders(ApiResponse $response): string
     {
-        $startLevel = ob_get_level();
+        TestableApiResponse::setOutputBufferFloor($response, ob_get_level());
+
+        return TestableApiResponse::exposedBuildAndEmitHeaders($response);
+    }
+
+    /**
+     * A response from a factory cleans every output buffer (floor 0). The
+     * test seam must not change the production default.
+     *
+     * @return void
+     */
+    #[Group('fast')]
+    public function testOutputBufferFloorDefaultsToZero(): void
+    {
+        $response = ApiResponse::success('Done');
+
+        $this->assertSame(0, TestableApiResponse::getOutputBufferFloor($response));
+    }
+
+    /**
+     * The cleanup loop discards every buffer above the floor, with its
+     * content, so stray output cannot reach the JSON body. The other tests
+     * that reach the loop set the floor to the current level, so the loop has
+     * no work there.
+     *
+     * @return void
+     */
+    #[Group('fast')]
+    public function testBuildAndEmitHeadersDiscardsBuffersAboveTheFloor(): void
+    {
+        unset($GLOBALS['mockHeadersSent']);
+
+        $response = ApiResponse::success('Done');
+        $floor = ob_get_level();
+        TestableApiResponse::setOutputBufferFloor($response, $floor);
+
+        $this->expectOutputString('');
+
+        ob_start();
+        echo 'stray output';
 
         $json = TestableApiResponse::exposedBuildAndEmitHeaders($response);
 
-        while (ob_get_level() < $startLevel) {
-            ob_start();
-        }
-
-        return $json;
+        $this->assertSame($floor, ob_get_level());
+        $this->assertEquals($response->toArray(), json_decode($json, true));
     }
 
     /**

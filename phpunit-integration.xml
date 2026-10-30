@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/12.0/phpunit.xsd"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/13.4/phpunit.xsd"
          bootstrap="tests/bootstrap-integration.php"
          colors="true"
          processIsolation="false"
@@ -27,9 +27,9 @@
              known-broken: pre-existing failures with an open tracking issue,
              tagged as a temporary, visible escape hatch (see tests/README.md).
 
-             CAUTION: in PHPUnit 12, a CLI exclude-group flag REPLACES this
+             CAUTION: in PHPUnit 12 and 13, a CLI exclude-group flag REPLACES this
              list outright rather than adding to it
-             (vendor/phpunit/phpunit/src/TextUI/Configuration/Merger.php:797-805),
+             (vendor/phpunit/phpunit/src/TextUI/Configuration/Merger.php:1063-1069),
              so composer scripts running this config must not pass that flag
              at all — doing so would silently re-enable live-network. The
              group flag still opts a group back in; tests/README.md's

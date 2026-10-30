@@ -74,6 +74,13 @@ class ApiResponse
     private ?array $pendingLog = null;
 
     /**
+     * @var int Output buffer level that buildAndEmitHeaders() cleans down to.
+     *          Production keeps 0 and cleans every buffer. Unit tests raise it
+     *          so that PHPUnit's own buffer is not closed.
+     */
+    private int $outputBufferFloor = 0;
+
+    /**
      * Private constructor - use factory methods instead
      *
      * @param bool   $success    Whether the operation was successful
@@ -332,8 +339,8 @@ class ApiResponse
                 );
             }
         } else {
-            // Clean any existing output buffers
-            while (ob_get_level() > 0) {
+            // Clean existing output buffers down to the floor (0 in production)
+            while (ob_get_level() > $this->outputBufferFloor) {
                 ob_end_clean();
             }
 
