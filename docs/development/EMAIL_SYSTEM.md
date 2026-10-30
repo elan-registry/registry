@@ -1444,14 +1444,26 @@ the HTTP status as its code.
 
 `usersc/classes/Car/CarVerificationSendService.php` also follows the rule. When
 `email()` fails, its log line does not copy the `sendinblueLastError()` text.
-That text can be a raw Brevo `ApiException` message. The line gives
-`Mailer error: HTTP <status>` when the text starts with the SDK's `[NNN]`
-prefix, `reported (text not logged)` for other text, and `none reported` when
-the plugin reports nothing. A code that is not three digits, such as `[0]`,
-also gives `reported (text not logged)`. So does a connection failure: the SDK
-does not wrap a Guzzle `ConnectException`, so its text starts `cURL error`. The
-plugin's own `sendinblue` log row still holds the text. That row is upstream
-UserSpice code.
+That text can be a raw Brevo `ApiException` message. The line gives a fixed
+label after `Mailer error:`:
+
+| Plugin text | Label |
+| --- | --- |
+| Starts with the SDK's `[NNN]` prefix (three digits) | `HTTP <status>` |
+| Starts with `cURL error NN:` or `[0] cURL error NN:` | `no HTTP response (cURL error NN)` |
+| Other text that starts with `[0]` | `no HTTP response` |
+| `FAILED: Attempted to send without all required fields` | `plugin: missing required fields` |
+| `FAILED: No usable recipient address` | `plugin: no usable recipient address` |
+| `FAILED: The Brevo API key is not configured` | `plugin: Brevo API key not configured` |
+| Any other text | `reported (text not logged)` |
+| No text | `none reported` |
+
+The SDK does not wrap a Guzzle `ConnectException` (timeout, DNS failure,
+refused connection), so its text starts `cURL error` with no `[0]` prefix. The
+label keeps only the cURL errno. A `FAILED:` text gets its label only on an
+exact match. When `email()` returns a value that is not a boolean or `null`,
+the line gives only its type (for example `string`), not the value. The plugin's own
+`sendinblue` log row still holds the text. That row is upstream UserSpice code.
 
 No response body on any status. Brevo parses no body, only the HTTP status.
 The webhook never acknowledges (2xx) before the `er_email_events` write

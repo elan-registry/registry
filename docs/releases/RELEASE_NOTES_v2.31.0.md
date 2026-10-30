@@ -14,6 +14,7 @@ bounce should stop.
 ## Admin-Facing Changes
 
 - The account-deletion privacy log shows the SQLSTATE and the place of the error, and logs a failed commit as "transaction state unknown".
+- The verification failed-send log names a plugin precondition failure, or a connection error with its cURL number when known.
 
 ## Issues Resolved
 
