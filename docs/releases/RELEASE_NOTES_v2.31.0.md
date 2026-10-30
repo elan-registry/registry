@@ -23,7 +23,7 @@ bounce should stop.
 - [#2515](https://github.com/elan-registry/registry/issues/2515) — A failed commit no longer skips the rollback, and the privacy step logs it as unknown state.
 - [#2466](https://github.com/elan-registry/registry/issues/2466) — The verification failed-send log names connection errors and plugin precondition failures.
 - [#2529](https://github.com/elan-registry/registry/issues/2529) — The paused-email notice names an admin block set after a Clear Block.
-- WIP: [#2480](https://github.com/elan-registry/registry/issues/2480) — Cron runs report the correct outcome in four failure cases.
+- [#2480](https://github.com/elan-registry/registry/issues/2480) — Cron runs report the correct outcome in four failure cases.
 - WIP: [#2411](https://github.com/elan-registry/registry/issues/2411) — An admin email edit no longer lets a later verification clear the owner's block and bounce.
 - WIP: [#2488](https://github.com/elan-registry/registry/issues/2488) — Clear Block reports a broken Brevo SDK instead of telling the admin to retry.
 - WIP: [#2457](https://github.com/elan-registry/registry/issues/2457) — The Verification tab shows fault states as faults, not guessed values.
