@@ -95,7 +95,7 @@
       "source": {
         "source": "github",
         "repo": "unibrain1/devkit",
-        "ref": "v1.0.1"
+        "ref": "v1.0.2"
       },
       "autoUpdate": true
     }
