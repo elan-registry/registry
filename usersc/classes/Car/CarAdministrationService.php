@@ -362,13 +362,12 @@ class CarAdministrationService
         // is nothing left here to undo.
         $renameMap = [];
 
-        // CarRepository::commit() clears its transactionOwner flag *before*
-        // calling the driver's commit(), so a throw from the driver leaves the
-        // catch block's rollback() a no-op — and the server-side commit may
-        // well have landed anyway. Compensating in that state would move every
-        // file back to the deleted source car's directory while the database
-        // shows the merge as done, which is worse than the failure itself. This
-        // flag lets the catch block tell the two cases apart.
+        // When the driver's commit() throws, the server-side commit may have
+        // landed anyway. The catch block's rollback() cannot undo a commit that
+        // landed. Compensating in that state would move every file back to the
+        // deleted source car's directory while the database shows the merge as
+        // done, which is worse than the failure itself. This flag lets the
+        // catch block tell the two cases apart.
         $committed = false;
 
         try {
@@ -493,13 +492,12 @@ class CarAdministrationService
             }
 
             // Set BEFORE the call, not after: the ambiguous window is the
-            // commit itself. CarRepository::commit() clears transactionOwner
-            // before delegating to the driver, so a throw from inside it leaves
-            // rollback() a no-op over a transaction the server may already have
-            // committed durably. Setting this afterwards would leave it false in
-            // exactly that case, sending the catch block down the compensating
-            // branch — moving every file back to a source car the database says
-            // is deleted, which is the corruption this flag exists to prevent.
+            // commit itself. A throw from inside it can come after the server
+            // committed durably, and rollback() cannot undo that. Setting this
+            // afterwards would leave it false in exactly that case, sending the
+            // catch block down the compensating branch — moving every file back
+            // to a source car the database says is deleted, which is the
+            // corruption this flag exists to prevent.
             $committed = true;
             $repo->commit();
 
@@ -528,24 +526,28 @@ class CarAdministrationService
             $commitFailureWarning = null;
 
             if ($committed) {
-                // The commit itself threw. rollback() below is a no-op (the
-                // repository already cleared transactionOwner), and the
-                // server-side commit may have succeeded, so the database state
-                // is indeterminate. Restoring here could move the files back to
-                // a car the database says no longer exists — the compensation
-                // would create the corruption it exists to prevent. Leave the
-                // files where they are and make sure a human hears about it.
-                // The log itself is deferred until after rollback() for the
-                // same durability reason as the unrestored-files warning below:
-                // if the commit threw before the server actually committed, the
-                // transaction is still open and a log written here would be
-                // rolled back with it.
+                // The commit itself threw. The server-side commit may have
+                // succeeded, so the database state is indeterminate. The
+                // rollback() below ends a transaction that is still open, but
+                // it cannot undo a commit that landed. Restoring here could
+                // move the files back to a car the database says no longer
+                // exists — the compensation would create the corruption it
+                // exists to prevent. Leave the files where they are and make
+                // sure a human hears about it.
+                // error_log() goes first: on a lost connection the rollback()
+                // below throws too, and this line holds the only record of the
+                // moved files. The database log waits until after rollback()
+                // for the same durability reason as the unrestored-files
+                // warning below: if the commit threw before the server
+                // actually committed, the transaction is still open and a log
+                // row written here would be rolled back with it.
                 $commitFailureWarning =
                     'Car merge commit failed after relocating image files from car ' . $oldCarId
                     . ' to car ' . $newCarId . '. Files were deliberately NOT restored because the'
                     . ' database state is indeterminate; manual verification of both the cars rows'
                     . ' and the image directories is required. Relocated old => new names: '
                     . json_encode($renameMap);
+                $this->errorLogFileWarning($commitFailureWarning);
             } else {
                 // Compensate before rollback so the filesystem and the database
                 // are both restored to their pre-merge state. restore() never
@@ -556,7 +558,7 @@ class CarAdministrationService
             $repo->rollback();
 
             if ($commitFailureWarning !== null) {
-                $this->logFileWarning($adminUserId, $commitFailureWarning);
+                $this->logFileWarning($adminUserId, $commitFailureWarning, errorLogDone: true);
             }
 
             if ($unrestored !== []) {
@@ -603,28 +605,44 @@ class CarAdministrationService
      * connection, so a warning written inside a transaction that then rolls
      * back is erased along with it.
      *
-     * The message additionally goes to error_log() because a database log is
-     * the wrong last line of defence for a message about database/filesystem
-     * divergence: logger() delegates to DB::insert(), which returns false on
+     * The message goes to error_log() exactly once: here, or earlier by the
+     * caller when $errorLogDone is true. A database log is the wrong last
+     * line of defence for a message about database/filesystem divergence:
+     * logger() delegates to DB::insert(), which returns false on
      * failure rather than throwing, so the catch below cannot see a quiet
      * failed insert. These call sites are the only record that image files are
      * misplaced, so they are written somewhere that does not depend on the
      * database being healthy.
      *
-     * @param int    $adminUserId Admin performing the merge.
-     * @param string $message     Full description, including both car IDs and
-     *                            the relevant rename map as JSON.
+     * @param int    $adminUserId  Admin performing the merge.
+     * @param string $message      Full description, including both car IDs and
+     *                             the relevant rename map as JSON.
+     * @param bool   $errorLogDone True when the caller already wrote the
+     *                             message to error_log() before its rollback().
      * @return void
      */
-    private function logFileWarning(int $adminUserId, string $message): void
+    private function logFileWarning(int $adminUserId, string $message, bool $errorLogDone = false): void
     {
-        error_log('ElanRegistry car merge image warning: ' . $message);
+        if (!$errorLogDone) {
+            $this->errorLogFileWarning($message);
+        }
 
         try {
             logger($adminUserId, LogCategories::LOG_CATEGORY_FILE_ERROR, $message);
         } catch (\Throwable) {
             // Deliberately swallowed — see the docblock above.
         }
+    }
+
+    /**
+     * Write a file warning to the PHP error log, which needs no database.
+     *
+     * @param string $message Full description, as for logFileWarning()
+     * @return void
+     */
+    private function errorLogFileWarning(string $message): void
+    {
+        error_log('ElanRegistry car merge image warning: ' . $message);
     }
 
     /**

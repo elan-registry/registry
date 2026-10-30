@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\AccountDeletionPrivacyStep;
+use ElanRegistry\Exceptions\ExceptionLogSummary;
 use ElanRegistry\Input;
 use ElanRegistry\LogCategories;
 
@@ -174,12 +175,11 @@ $userIdRejected = $is_exec && $targetUserId === false;
                                         <?php
                                     }
                                 } catch (\Throwable $e) {
-                                    // The exception message can contain an address, so only the class and code go to the log and the page.
+                                    // The exception message can contain an address, so the log gets a summary without the message and the page gets the class only.
                                     logger($adminId, LogCategories::LOG_CATEGORY_FIX_SCRIPT_ERROR, sprintf(
-                                        'Deletion privacy step rerun failed for user %d: %s (code %s)',
+                                        'Deletion privacy step rerun failed for user %d: %s',
                                         $targetUserId,
-                                        get_class($e),
-                                        (string) $e->getCode()
+                                        ExceptionLogSummary::of($e)
                                     ));
                                     ?>
                                     <div class="alert alert-danger mb-0">

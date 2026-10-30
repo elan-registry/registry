@@ -795,6 +795,8 @@ final class CarAdministrationServiceTest extends TestCase
             return $call === 1 ? $lockedTargetData : $sourceData;
         });
         $db->method('insert')->willReturn(true);
+        // The commit failure keeps ownership, so rollback() ends the open transaction.
+        $db->expects($this->once())->method('rollBack');
 
         $relocator = $this->createMock(CarImageRelocator::class);
         $relocator->method('relocate')->willReturn(['src_a.jpg' => 'src_a.jpg']);
@@ -811,6 +813,68 @@ final class CarAdministrationServiceTest extends TestCase
         }
 
         $this->assertTrue($threw, 'merge() must surface the commit failure');
+    }
+
+    /**
+     * On a lost connection the rollback after a failed commit throws too
+     * (#2515). The "files NOT restored" warning must already be in the PHP
+     * error log, because it is the only record of the moved files.
+     */
+    public function testMergeCommitFailureWarningReachesErrorLogWhenRollbackAlsoThrows(): void
+    {
+        $targetCarData = (object) ['id' => 1, 'chassis' => 'TARGET01'];
+        $sourceData = (object) ['id' => 999, 'chassis' => 'SOURCE01', 'image' => '["src_a.jpg"]'];
+        $lockedTargetData = (object) ['id' => 1, 'chassis' => 'TARGET01', 'image' => '["tgt_existing.jpg"]'];
+
+        $inTransaction = false;
+        $db = $this->createMock(DatabaseInterface::class);
+        $db->method('inTransaction')->willReturnCallback(function () use (&$inTransaction): bool {
+            return $inTransaction;
+        });
+        $db->expects($this->once())->method('beginTransaction')
+            ->willReturnCallback(function () use (&$inTransaction): bool {
+                $inTransaction = true;
+                return true;
+            });
+        $db->expects($this->once())->method('commit')
+            ->willThrowException(new \PDOException('server has gone away during commit'));
+        $db->method('query')->willReturn($db);
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(1);
+        $db->method('first')->willReturnCallback(function () use ($sourceData, $lockedTargetData) {
+            static $call = 0;
+            $call++;
+            return $call === 1 ? $lockedTargetData : $sourceData;
+        });
+        $db->method('insert')->willReturn(true);
+        $db->expects($this->once())->method('rollBack')
+            ->willThrowException(new \PDOException('server has gone away during rollback'));
+
+        $relocator = $this->createMock(CarImageRelocator::class);
+        $relocator->method('relocate')->willReturn(['src_a.jpg' => 'src_a.jpg']);
+        $relocator->expects($this->never())->method('restore');
+
+        $repo = new CarRepository($db);
+        $service = new CarAdministrationService($relocator);
+
+        $errorLogFile = tempnam(sys_get_temp_dir(), 'merge-error-log-');
+        $previousErrorLog = ini_set('error_log', $errorLogFile);
+        try {
+            $threw = false;
+            try {
+                $service->merge($targetCarData, 999, 'Test merge', 1, $repo);
+            } catch (\Throwable) {
+                $threw = true;
+            }
+            $errorLog = (string) file_get_contents($errorLogFile);
+        } finally {
+            ini_set('error_log', $previousErrorLog === false ? '' : $previousErrorLog);
+            unlink($errorLogFile);
+        }
+
+        $this->assertTrue($threw, 'merge() must surface the failure');
+        $this->assertStringContainsString('Files were deliberately NOT restored', $errorLog);
+        $this->assertStringContainsString('"src_a.jpg":"src_a.jpg"', $errorLog, 'The warning must hold the rename map');
     }
 
     /** A CAS miss after relocate() must run restore() before rollback. */

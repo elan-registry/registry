@@ -42,6 +42,7 @@ class UserDeletionHookFakeDatabase extends FakeDatabase
      * @param array{0: string, 1: int, 2: string} $failInfo PDO errorInfo() triple of the failure
      * @param list<int> $liveUserIds IDs for which `SELECT id FROM users WHERE id = ?` finds a row
      * @param bool $rollbackThrows True to make rollBack() throw, as PDO does on a lost connection
+     * @param bool $commitThrows True to make commit() throw, as PDO does on a lost connection
      * @param array<string, int> $countBySql count() for a statement that contains the key text. The first match wins.
      */
     public function __construct(
@@ -50,6 +51,7 @@ class UserDeletionHookFakeDatabase extends FakeDatabase
         private readonly array $failInfo = ['HY000', 1234, 'simulated failure'],
         private readonly array $liveUserIds = [],
         private readonly bool $rollbackThrows = false,
+        private readonly bool $commitThrows = false,
         private readonly array $countBySql = [],
     ) {
     }
@@ -140,6 +142,10 @@ class UserDeletionHookFakeDatabase extends FakeDatabase
     public function commit(): bool
     {
         $this->events[] = 'COMMIT';
+        if ($this->commitThrows) {
+            // PDO keeps its in-transaction flag set when commit() fails.
+            throw new \PDOException('simulated commit failure', 2006);
+        }
         $this->open = false;
 
         return true;

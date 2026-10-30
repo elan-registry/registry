@@ -141,6 +141,9 @@ class Owner
      * When participating in an outer transaction (begun by the caller before
      * this Owner instance), this method is a no-op.
      *
+     * If the driver commit() throws, ownership stays, so a later rollback()
+     * still calls the driver rollBack() and ends the open transaction.
+     *
      * @return void
      */
     public function commit(): void
@@ -148,10 +151,10 @@ class Owner
         if (!$this->transactionOwner) {
             return; // Outer transaction manages commit — no-op
         }
-        $this->transactionOwner = false;
         if ($this->_db->inTransaction()) {
             $this->_db->commit();
         }
+        $this->transactionOwner = false;
     }
 
     /**
@@ -160,6 +163,9 @@ class Owner
      * When participating in an outer transaction (begun by the caller before
      * this Owner instance), this method is a no-op.
      *
+     * If the driver rollBack() throws, ownership stays, so a later rollback()
+     * still calls the driver rollBack() and ends the open transaction.
+     *
      * @return void
      */
     public function rollback(): void
@@ -167,10 +173,10 @@ class Owner
         if (!$this->transactionOwner) {
             return; // Outer transaction manages rollback — no-op
         }
-        $this->transactionOwner = false;
         if ($this->_db->inTransaction()) {
             $this->_db->rollBack();
         }
+        $this->transactionOwner = false;
     }
 
     /**

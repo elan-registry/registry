@@ -188,6 +188,82 @@ final class CarRepositoryTest extends TestCase
         $repo->rollback();         // no-op: $transactionOwner = false
     }
 
+    // A driver throw must keep ownership, or the catch block's rollback() skips the open transaction.
+
+    /**
+     * A mock whose inTransaction() turns true at beginTransaction(). commit() and
+     * rollBack() do not reset it, as PDO keeps its in-transaction flag when either throws.
+     *
+     * @return DatabaseInterface&\PHPUnit\Framework\MockObject\MockObject
+     */
+    private function makeTransactionDb(): DatabaseInterface&\PHPUnit\Framework\MockObject\MockObject
+    {
+        $db = $this->createMock(DatabaseInterface::class);
+
+        $inTransaction = false;
+        $db->method('inTransaction')->willReturnCallback(function () use (&$inTransaction): bool {
+            return $inTransaction;
+        });
+        $db->method('beginTransaction')->willReturnCallback(function () use (&$inTransaction): bool {
+            $inTransaction = true;
+            return true;
+        });
+
+        return $db;
+    }
+
+    public function testCommitThatThrowsKeepsOwnershipSoRollbackRuns(): void
+    {
+        $db = $this->makeTransactionDb();
+        // PDO keeps its in-transaction flag set when commit() fails.
+        $db->method('commit')->willThrowException(new \PDOException('simulated commit failure', 2006));
+        $db->expects($this->once())->method('rollBack');
+
+        $repo = new CarRepository($db);
+        $repo->beginTransaction();
+        try {
+            $repo->commit();
+            $this->fail('commit() must re-throw the driver exception');
+        } catch (\PDOException) {
+            $repo->rollback();
+        }
+    }
+
+    public function testRollbackThatThrowsKeepsOwnership(): void
+    {
+        $db = $this->makeTransactionDb();
+        $calls = 0;
+        $db->expects($this->exactly(2))->method('rollBack')->willReturnCallback(function () use (&$calls): bool {
+            $calls++;
+            if ($calls === 1) {
+                throw new \PDOException('simulated rollback failure', 2006);
+            }
+            return true;
+        });
+
+        $repo = new CarRepository($db);
+        $repo->beginTransaction();
+        try {
+            $repo->rollback();
+            $this->fail('rollback() must re-throw the driver exception');
+        } catch (\PDOException) {
+            $repo->rollback();
+        }
+    }
+
+    public function testSuccessfulCommitReleasesOwnership(): void
+    {
+        $db = $this->makeTransactionDb();
+        // Keep inTransaction() true after the commit, so only the ownership flag stops the rollBack().
+        $db->expects($this->once())->method('commit')->willReturn(true);
+        $db->expects($this->never())->method('rollBack');
+
+        $repo = new CarRepository($db);
+        $repo->beginTransaction();
+        $repo->commit();
+        $repo->rollback();
+    }
+
     public function testGetHistoryReturnsEmptyArrayWhenNoneFound(): void
     {
         $repo   = new CarRepository($this->makeEmptyResultDb());
