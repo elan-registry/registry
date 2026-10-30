@@ -1373,6 +1373,54 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
         $this->assertCount(1, $this->eventRows($userId, 'unsubscribed'));
     }
 
+    public function testStateModeAdminBlockAfterAClearWritesNoSecondRowWhenAnAdminBlockRowAfterTheClearExists(): void
+    {
+        $userId = $this->makeOwner();
+        $this->seedClearBlockRow($userId);
+        $this->assertTrue($this->importAdminBlock($userId, md5('a-' . $userId), date('Y-m-d H:i:s', strtotime('+1 hour'))));
+
+        // Another hash, so the unique key does not stop the insert. Only the post-clear admin-block row does.
+        $this->assertFalse($this->importAdminBlock($userId, md5('b-' . $userId), date('Y-m-d H:i:s', strtotime('+2 hours'))));
+
+        $this->assertCount(1, $this->eventRows($userId, 'unsubscribed'));
+    }
+
+    /** @return array<string, array{string}> */
+    public static function reSeenEntryProvider(): array
+    {
+        return [
+            'admin block' => ['admin'],
+            'spam' => ['spam'],
+        ];
+    }
+
+    /**
+     * Brevo still lists the entry after a successful clear (for example, the removal is not yet visible to the import).
+     * The pre-clear row is outside the bound, so only the unique key stops the second insert.
+     */
+    #[DataProvider('reSeenEntryProvider')]
+    public function testStateModeTheSameEntrySeenAgainAfterAClearWritesNoRowAndLeavesBlockedClear(string $kind): void
+    {
+        $userId = $this->makeOwner();
+        $blockedAt = date('Y-m-d H:i:s', strtotime('-2 days'));
+        $import = fn (): bool => $kind === 'admin'
+            ? $this->importAdminBlock($userId, md5('same-' . $userId), $blockedAt)
+            : $this->applyEvent($userId, 'spam', 'import-same-' . $userId, self::LONG_AGO, $blockedAt, mode: EmailEventApplier::MODE_STATE, source: 'import');
+
+        $this->assertTrue($import());
+        $outcome = (new CarVerificationManager($this->repo))->clearBlockedForOwner(
+            $userId,
+            $userId,
+            new FakeBrevoBlocklistClient(BrevoUnblockResult::removed())
+        );
+        $this->assertSame(ClearBlockOutcome::CLEARED, $outcome->kind, 'Test setup: the clear must succeed');
+
+        $this->assertFalse($import(), 'The unique key stops the insert; the result is not new');
+
+        $this->assertCount(1, $this->eventRows($userId));
+        $this->assertSame('0', $this->flags($userId)['blocked'], 'The re-seen entry must not undo the clear');
+    }
+
     public function testStateModeAdminBlockAfterAClearWritesANewRowWhenTheOnlyEarlierAdminBlockRowIsBeforeTheClear(): void
     {
         $userId = $this->makeOwner();
