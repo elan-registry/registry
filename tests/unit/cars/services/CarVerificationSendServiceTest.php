@@ -827,7 +827,8 @@ final class CarVerificationSendServiceTest extends TestCase
     {
         return [
             'FAILED: text with extra data' => ['FAILED: The Brevo API key is not configured for leak-test-2466@example.org'],
-            'cURL error not at the start' => ['Brevo said cURL error 28 for leak-test-2466@example.org'],
+            'cURL error not at the start' => ['Brevo said cURL error 28: timeout for leak-test-2466@example.org'],
+            '[0] not at the start' => ['Brevo said [0] for leak-test-2466@example.org'],
         ];
     }
 
