@@ -1215,29 +1215,63 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
         $this->assertSame(self::RUN_TIME, $flags[$flag . '_at']);
     }
 
-    public function testFallbackMarkerWithEventModeThrows(): void
+    /** Apply one event-mode `unsubscribed` event whose time is the fallback run time (#2480). */
+    private function applyEventModeFallback(int $userId, string $messageTime): \ElanRegistry\Car\EmailEventApplyResult
+    {
+        return $this->applier->apply(
+            EmailEventMatch::matched($userId, null, $messageTime),
+            $this->emailOf($userId),
+            'unsubscribed',
+            null,
+            $this->id('fallback-event-mode'),
+            self::RUN_TIME,
+            'reconciliation',
+            EmailEventApplier::MODE_EVENT,
+            null,
+            true
+        );
+    }
+
+    /** Count the flag-log rows that set `email_blocked` for the owner, from the given source. */
+    private function blockSetLogRows(int $userId, string $source): int
+    {
+        // The flag-log row has the acting user (0) in user_id, so match by note text.
+        return (int) $this->db->query(
+            'SELECT COUNT(*) AS n FROM logs WHERE id > ? AND lognote = ?',
+            [$this->logIdFloor, "Owner {$userId} email_blocked changed from 0 to 1 (source: {$source})"]
+        )->first()->n;
+    }
+
+    /** T14 */
+    public function testEventModeFallbackWithMessageSentBeforeTheClearBlockSetsNoBlock(): void
     {
         $userId = $this->makeOwner();
+        $this->seedClearBlockRowAt($userId, self::CLEARED_AT);
 
-        try {
-            $this->applier->apply(
-                EmailEventMatch::matched($userId, null, self::LONG_AGO),
-                $this->emailOf($userId),
-                'spam',
-                null,
-                $this->id('fallback-event-mode'),
-                self::RUN_TIME,
-                'webhook',
-                EmailEventApplier::MODE_EVENT,
-                null,
-                true
-            );
-            $this->fail('InvalidArgumentException expected');
-        } catch (\InvalidArgumentException $e) {
-            $this->assertStringContainsString('fallback event time', $e->getMessage());
-        }
-        $this->assertSame([], $this->eventRows($userId), 'Nothing is written');
-        $this->assertNoFlags($userId, 'Nothing is written');
+        $result = $this->applyEventModeFallback($userId, '2026-09-09 00:30:00');
+
+        $this->assertTrue($result->eventRowWritten, 'The event row is recorded');
+        $this->assertTrue($result->flagApplied);
+        $this->assertCount(1, $this->eventRows($userId, 'unsubscribed'));
+        $this->assertSame(self::RUN_TIME, $this->eventRows($userId, 'unsubscribed')[0]->occurred_at, 'The row keeps the run time');
+        $this->assertNoFlags($userId, 'A message sent before the Clear Block cannot block the owner again');
+        $this->assertSame(0, $this->blockSetLogRows($userId, 'reconciliation'));
+    }
+
+    /** T15 */
+    public function testEventModeFallbackWithMessageSentAfterTheClearBlockSetsTheBlock(): void
+    {
+        $userId = $this->makeOwner();
+        $this->seedClearBlockRowAt($userId, self::CLEARED_AT);
+
+        $result = $this->applyEventModeFallback($userId, '2026-09-09 01:30:00');
+
+        $this->assertTrue($result->eventRowWritten);
+        $this->assertTrue($result->flagApplied);
+        $flags = $this->flags($userId);
+        $this->assertSame('1', $flags['blocked']);
+        $this->assertSame(self::RUN_TIME, $flags['blocked_at']);
+        $this->assertSame(1, $this->blockSetLogRows($userId, 'reconciliation'), 'One flag-log row, source reconciliation');
     }
 
     // --- #2502: hasOwnerEmailEventForAddress -------------------------------

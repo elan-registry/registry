@@ -158,6 +158,11 @@ final class SendVerificationBatchJob extends AbstractCronJob
      * check to make. The work is deliberately thin: pick the batch size, ask
      * the repository for that many eligible cars, hand the ids to
      * {@see VerificationBatchSender}, record what came back.
+     *
+     * The run pings `/fail` (via {@see AbstractCronJob::markRunFailed()}) when
+     * the eligible query fails, when every attempted send fails, or when any
+     * send is unrecorded. An empty eligible set and a partial failure ping
+     * success.
      */
     protected function execute(): void
     {
@@ -239,6 +244,18 @@ final class SendVerificationBatchJob extends AbstractCronJob
             count($result['skipped']),
             count($result['failed'])
         ));
+
+        // processBatch() contains each car's failure and returns normally, so
+        // without these calls every batch pings success. A full send outage
+        // (nothing sent, something failed) and an unrecorded send (the mail
+        // went out but the car stays eligible, so the next run can send it
+        // again) both need an operator. A partial failure pings success on
+        // purpose: one bad car record must not give a red check each night.
+        // The counts and the log line above still show it.
+        $fullOutage = $result['sent'] === [] && $result['unrecorded'] === [] && $result['failed'] !== [];
+        if ($fullOutage || $result['unrecorded'] !== []) {
+            $this->markRunFailed();
+        }
     }
 
     /**

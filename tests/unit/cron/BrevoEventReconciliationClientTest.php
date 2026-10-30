@@ -2,9 +2,12 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Cron\BrevoClientReadiness;
 use ElanRegistry\Cron\BrevoEventReconciliationClient;
 use ElanRegistry\LogCategories;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Tests\Support\SendinblueSettingsFakeDatabase;
 
@@ -89,19 +92,117 @@ final class BrevoEventReconciliationClientTest extends TestCase
         $this->assertStringContainsString('no Brevo API key configured', $mockLogEntries[0]['message']);
     }
 
-    // NOTE: there is deliberately no test that passes a *valid* key through
-    // fetchEvents(). The Brevo SDK is vendored in this working tree and its
-    // classes autoload, so getting past apiKey() and loadSdk() reaches the
-    // real `new GuzzleHttp\Client()` and makes a live HTTPS call to
-    // api.brevo.com — verified: an early draft of this file did exactly that
-    // and failed on Brevo's 401. A unit test must not depend on the network,
-    // so every case here is one that returns before the HTTP call.
+    /**
+     * @return array<string, array{SendinblueSettingsFakeDatabase, BrevoClientReadiness, string}>
+     */
+    public static function readinessWithoutKeyProvider(): array
+    {
+        return [
+            'table absent (42S02)' => [
+                new SendinblueSettingsFakeDatabase(sqlState: '42S02'),
+                BrevoClientReadiness::NOT_CONFIGURED,
+                LogCategories::LOG_CATEGORY_CRON_JOB_SKIPPED,
+            ],
+            'empty key' => [
+                new SendinblueSettingsFakeDatabase(key: ''),
+                BrevoClientReadiness::NOT_CONFIGURED,
+                LogCategories::LOG_CATEGORY_CRON_JOB_SKIPPED,
+            ],
+            'no row' => [
+                new SendinblueSettingsFakeDatabase(key: null),
+                BrevoClientReadiness::NOT_CONFIGURED,
+                LogCategories::LOG_CATEGORY_CRON_JOB_SKIPPED,
+            ],
+            'other DB error (HY000)' => [
+                new SendinblueSettingsFakeDatabase(sqlState: 'HY000'),
+                BrevoClientReadiness::FAILED,
+                LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE,
+            ],
+        ];
+    }
+
+    /** T9: each no-key cause maps to one readiness case and one log row of the matching category. */
+    #[DataProvider('readinessWithoutKeyProvider')]
+    public function testReadinessWithoutKeyMapsCauseToCaseAndLogCategory(
+        SendinblueSettingsFakeDatabase $db,
+        BrevoClientReadiness $expected,
+        string $expectedCategory
+    ): void {
+        global $mockLogEntries;
+
+        $this->assertSame($expected, (new BrevoEventReconciliationClient($db))->readiness());
+
+        $this->assertCount(1, $mockLogEntries);
+        $this->assertSame($expectedCategory, $mockLogEntries[0]['category']);
+    }
+
+    /**
+     * T9: key present and SDK class loaded gives READY with no log row.
+     *
+     * Separate process: when the SDK is not installed the test defines a stub
+     * class, which must not leak into other tests.
+     */
+    #[RunInSeparateProcess]
+    public function testReadinessWithKeyAndSdkLoadedIsReady(): void
+    {
+        global $mockLogEntries;
+
+        if (!class_exists('\Brevo\Client\Api\TransactionalEmailsApi')) {
+            eval('namespace Brevo\\Client\\Api; class TransactionalEmailsApi {}');
+        }
+
+        $client = new BrevoEventReconciliationClient(new SendinblueSettingsFakeDatabase(key: 'test-api-key'));
+
+        $this->assertSame(BrevoClientReadiness::READY, $client->readiness());
+        $this->assertSame([], $mockLogEntries);
+    }
+
+    /**
+     * T10 (found in #2420): a poll that throws with an address in the
+     * message reaches the poll catch, returns null, and logs no address.
+     */
+    public function testFetchEventsExceptionMessageAddressIsNotLogged(): void
+    {
+        global $mockLogEntries;
+
+        $client = new class (new SendinblueSettingsFakeDatabase(key: 'test-api-key')) extends BrevoEventReconciliationClient {
+            /** @return object */
+            protected function createApi(string $apiKey): object
+            {
+                return new class {
+                    public function getEmailEventReport(mixed ...$args): never
+                    {
+                        throw new \RuntimeException('Brevo rejected the request for owner@example.com');
+                    }
+                };
+            }
+        };
+
+        $result = $client->fetchEvents(
+            new DateTimeImmutable('2026-09-07'),
+            new DateTimeImmutable('2026-09-09'),
+            1000,
+            0,
+            'hardBounces'
+        );
+
+        $this->assertNull($result);
+        $this->assertNotEmpty($mockLogEntries);
+        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $mockLogEntries[0]['category']);
+        foreach ($mockLogEntries as $entry) {
+            $this->assertStringNotContainsString('owner@example.com', (string) json_encode($entry));
+        }
+    }
+
+    // NOTE: no test passes a valid key through the real createApi(). Where the
+    // Brevo SDK autoloads, that reaches the real `new GuzzleHttp\Client()` and
+    // makes a live HTTPS call to api.brevo.com. A unit test must not depend
+    // on the network, so the poll path is tested through the createApi() seam
+    // (#2480) and the READY case through a stub SDK class.
     //
-    // loadSdk()'s three branches are consequently not unit-testable: which one
-    // is taken depends on whether a real file exists at a path fixed by a
-    // private class constant, and the "SDK present" branch falls through to
-    // that live call. They are single log-and-return-false statements, left to
-    // code review and manual verification rather than reshaping the class to
-    // make a constant injectable purely for a test. The integration suite
-    // covers the job end to end with the client substituted.
+    // loadSdk()'s "autoloader missing" and "autoloader throws" branches are
+    // still not unit-testable: the branch depends on whether a real file
+    // exists at a path fixed by a private class constant. They are single
+    // log-and-return statements, left to code review rather than reshaping
+    // the class to make a constant injectable purely for a test.
 }

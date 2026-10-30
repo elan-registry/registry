@@ -175,9 +175,10 @@ class EmailEventApplier
      *    event uses `$occurredAt` (Brevo's `blockedAt`) for the
      *    `email_bounce_cleared_at` guard. A NULL column sets no bound. A
      *    failed guard records nothing, and logs the user ID and the guard.
-     *    With `$occurredAtIsFallback` (#2426), `$occurredAt` is the import's
-     *    run time, not Brevo's date. Then a clear after `email_address_since`
-     *    (#2482) for the flag that the event sets records nothing, and logs
+     *    With `$occurredAtIsFallback` in {@see self::MODE_STATE} (#2426),
+     *    `$occurredAt` is the import's run time, not Brevo's date. Then a
+     *    clear after `email_address_since` (#2482) for the flag that the
+     *    event sets records nothing, and logs
      *    the user ID: a hard bounce checks `email_bounce_cleared_at`, and
      *    `spam` or `unsubscribed` checks
      *    {@see CarRepository::latestFlagClearAt()} for an admin Clear Block.
@@ -185,6 +186,8 @@ class EmailEventApplier
      *    not after `email_address_since`, so that clear never counts. When
      *    `email_address_since` is NULL or a date is not a valid datetime,
      *    any clear counts. With no such clear, the run time applies.
+     *    {@see self::MODE_EVENT} skips this check: its bounce guard uses the
+     *    message time, so a real bounce after the clear is kept (#2480).
      * 4. Insert the event row. A duplicate changes nothing and is not new.
      *    {@see self::MODE_STATE}: when the owner already has a row of any
      *    source for the same address and cause group, write no row and
@@ -205,7 +208,11 @@ class EmailEventApplier
      *    address (the profile writers skip a repeat of the same address).
      * 7. `email_blocked` changes only when `$occurredAt` is later than the
      *    latest admin Clear Block ({@see CarRepository::latestFlagClearAt()}),
-     *    in both modes. The compare uses wall time. `$blockedCause`, when
+     *    in both modes. In {@see self::MODE_EVENT} with
+     *    `$occurredAtIsFallback`, the message time is compared instead
+     *    (#2480): an event comes after its send, so a message sent after the
+     *    clear proves the event is after it. The event row still stores
+     *    `$occurredAt`. The compare uses wall time. `$blockedCause`, when
      *    set, replaces the cause that the event name gives.
      * 8. Commit. A failure rolls back the event row, the flag and its audit
      *    row, then the exception goes to the caller.
@@ -226,8 +233,9 @@ class EmailEventApplier
      *                                  it for Brevo's `adminBlocked` (`blocklist`),
      *                                  which it records as `unsubscribed`.
      * @param bool $occurredAtIsFallback True when `$occurredAt` is a fallback
-     *                                   time, not a date from Brevo. Only for
-     *                                   {@see self::MODE_STATE}.
+     *                                   time (the run or receipt time), not a
+     *                                   date from Brevo. Permitted in both
+     *                                   modes. See steps 3 and 7.
      * @return EmailEventApplyResult Whether the call wrote a new event row,
      *                               and whether it ran the flag step for the
      *                               current address (false for no users row,
@@ -237,10 +245,9 @@ class EmailEventApplier
      *                               same-cause row on record gives no new row,
      *                               and the flag step still runs.
      * @throws \InvalidArgumentException If the match is not a matched result,
-     *                                   the source or mode is not permitted,
-     *                                   `$blockedCause` is not permitted here, or
-     *                                   `$occurredAtIsFallback` is set in
-     *                                   {@see self::MODE_EVENT} (nothing is written)
+     *                                   the source or mode is not permitted, or
+     *                                   `$blockedCause` is not permitted here
+     *                                   (nothing is written)
      * @throws CarValidationException If `$occurredAt` or the message time is
      *                                not a valid datetime (nothing is written)
      * @throws CarDatabaseException If a read or a write fails (all writes are rolled back)
@@ -260,11 +267,6 @@ class EmailEventApplier
         DeliverabilityFlagLog::assertValidSource($source);
         if ($mode !== self::MODE_EVENT && $mode !== self::MODE_STATE) {
             throw new \InvalidArgumentException("EmailEventApplier::apply: unknown mode '{$mode}'");
-        }
-        if ($occurredAtIsFallback && $mode !== self::MODE_STATE) {
-            throw new \InvalidArgumentException(
-                'EmailEventApplier::apply: a fallback event time is permitted only in state mode'
-            );
         }
         if ($blockedCause !== null) {
             if ($mode !== self::MODE_STATE || !isset(self::SUPPRESSION_EVENT_CAUSES[$event])) {
@@ -368,7 +370,9 @@ class EmailEventApplier
         }
 
         // $state is not null here: a null state fails the guard above.
-        if ($occurredAtIsFallback && $this->clearIsOnRecord($userId, $state, $event)) {
+        // MODE_STATE only: in MODE_EVENT the bounce guard already used the
+        // message time, and step 7 compares the message time with the clear.
+        if ($occurredAtIsFallback && $mode === self::MODE_STATE && $this->clearIsOnRecord($userId, $state, $event)) {
             logger($userId, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
                 'Brevo: event "%s" for owner %d not recorded: no usable event date and a clear for the current address is on record.',
                 $event,
@@ -418,7 +422,10 @@ class EmailEventApplier
             return new EmailEventApplyResult($isNew, false);
         }
 
-        $this->applyFlag($userId, $address, $event, $eventTime, $source, $blockedCause);
+        // A fallback time is the run or receipt time, which is always after a
+        // Clear Block. The message time is a real lower bound for the event.
+        $clearCompareTime = $occurredAtIsFallback && $messageTime !== null ? $messageTime : $eventTime;
+        $this->applyFlag($userId, $address, $event, $eventTime, $clearCompareTime, $source, $blockedCause);
 
         return new EmailEventApplyResult($isNew, true);
     }
@@ -551,6 +558,10 @@ class EmailEventApplier
     /**
      * Set the flag that an event implies (steps 6 and 7 of {@see apply()})
      *
+     * @param string $eventTime Normalized `$occurredAt`, written as the flag time
+     * @param string $clearCompareTime Time compared with the latest admin Clear
+     *                                 Block: the message time in MODE_EVENT with
+     *                                 a fallback event time, else `$eventTime`
      * @throws CarDatabaseException If a read or a write fails
      */
     private function applyFlag(
@@ -558,6 +569,7 @@ class EmailEventApplier
         string $address,
         string $event,
         string $eventTime,
+        string $clearCompareTime,
         string $source,
         ?string $blockedCause
     ): void {
@@ -581,7 +593,7 @@ class EmailEventApplier
         // Read after the profile lock, so a Clear Block that committed
         // before the lock is visible here.
         $clearedAt = $this->repo->latestFlagClearAt($userId, DeliverabilityFlagLog::FLAG_BLOCKED, DeliverabilityFlagLog::SOURCE_ADMIN);
-        if ($clearedAt !== null && strcmp($eventTime, self::wallTime($clearedAt, 'cleared_at')) <= 0) {
+        if ($clearedAt !== null && strcmp($clearCompareTime, self::wallTime($clearedAt, 'cleared_at')) <= 0) {
             return;
         }
 

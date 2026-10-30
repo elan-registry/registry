@@ -2420,8 +2420,10 @@ same rules.
     also only records the row. No caller passes another name: the webhook
     logs and drops an event that is not a delivery event
   - `spam` sets the owner's `email_blocked` with cause `spam`, and
-    `unsubscribed` sets it with cause `unsubscribed`. The event must be later
-    than the owner's latest admin Clear Block
+    `unsubscribed` sets it with cause `unsubscribed`. The compare time must be
+    later than the owner's latest admin Clear Block. It is the event time,
+    or the message time when the event time is a fallback in `MODE_EVENT`
+    (#2480)
 - The flag changes only when the event address is the owner's current
   `users.email`
 - `HARD_BOUNCE_EVENTS` and `SUPPRESSION_EVENTS` are `public const`, so
@@ -2431,7 +2433,8 @@ same rules.
 **Constants**: `MODE_EVENT = 'event'` and `MODE_STATE = 'state'`.
 
 - `MODE_EVENT` (webhook, reconciliation): the flag changes only when the event
-  row is new.
+  row is new. With a fallback event time, the Clear Block compare uses the
+  message time (#2480).
 - `MODE_STATE` (suppression import): Brevo's blocklist is a current state. The
   flag changes when it is clear, or when its stored address differs from the
   event address. The `join_date` and `email_address_since` guards do not
@@ -2471,24 +2474,30 @@ public function apply(
   only for a suppression event in `MODE_STATE`, and must be one of
   `CarRepository::BLOCKED_CAUSES`. The import passes `blocklist` for Brevo's
   `adminBlocked`, while the event row stays `unsubscribed`.
-- `$occurredAtIsFallback` is true when `$occurredAt` is the import's run time
-  and not a date from Brevo (#2426). It is valid only with `MODE_STATE`.
-  When it is set and a clear that counts is on record for the flag that the
-  event sets, `apply()` writes no event row and no flag. It logs the event
-  name and the user ID, and returns `EmailEventApplyResult(false, false)`.
-  A hard bounce checks `email_bounce_cleared_at`. `spam` and `unsubscribed`
-  check `CarRepository::latestFlagClearAt()` for an admin Clear Block. A clear
-  counts only when it is later than `email_address_since` (#2482). When
-  `email_address_since` is NULL or not a valid datetime, or the clear time is
-  not a valid datetime, the clear counts. With no clear that counts, the run
-  time applies.
+- `$occurredAtIsFallback` is true when `$occurredAt` is a fallback time, not
+  a date from Brevo. It is allowed in both modes (#2426, #2480). The
+  fallback is the import's run time, or the run or receipt time for the
+  reconciliation job and the webhook.
+  - `MODE_STATE`: when the fallback is set and a clear that counts is on
+    record for the flag that the event sets, `apply()` writes no event row
+    and no flag. It logs the event name and the user ID, and returns
+    `EmailEventApplyResult(false, false)`. A hard bounce checks
+    `email_bounce_cleared_at`. `spam` and `unsubscribed` check
+    `CarRepository::latestFlagClearAt()` for an admin Clear Block. A clear
+    counts only when it is later than `email_address_since` (#2482). When
+    `email_address_since` is NULL or not a valid datetime, or the clear time is
+    not a valid datetime, the clear counts. With no clear that counts, the run
+    time applies.
+  - `MODE_EVENT`: this check does not run. The bounce guard already uses the
+    message time. Step 7 compares the message time with the latest admin
+    Clear Block. A message sent at or before the clear sets no block. The
+    event row still stores `$occurredAt`.
 - Returns an `EmailEventApplyResult` with `eventRowWritten` (true when a new
   event row was written) and `flagApplied` (true when the flag step ran for
   the current address; false for a skipped step such as no profile row, address
   mismatch, or date guard failure).
 - Throws `InvalidArgumentException` for an unmatched result, an unknown source
-  or mode, a cause that is not allowed, or `$occurredAtIsFallback` with
-  `MODE_EVENT` (nothing is written).
+  or mode, or a cause that is not allowed (nothing is written).
   Throws `CarValidationException` for an invalid datetime (nothing is written).
   Throws `CarDatabaseException` when a read or write fails (all writes roll back).
 
@@ -2639,7 +2648,10 @@ public function __construct(
   `BrevoSuppressionSyncJob` keeps the default.
 - `final protected markRunFailed(): void` — A job calls this for a soft failure
   (a failure it handles without throwing). `run()` then pings `/fail`
-  instead of success. It does not stamp `last_failure_at` and does not change
+  instead of success. Callers: `SendVerificationBatchJob::execute()` (eligible
+  query failed, full send outage, `unrecorded > 0`) and
+  `BrevoEventReconciliationJob::execute()` (poll failed, or Brevo settings
+  read failed). It does not stamp `last_failure_at` and does not change
   the dashboard badge.
 - `run()` pings success after `execute()` returns without a failure flag. It
   pings `/fail` when `execute()` throws or when `markRunFailed()` was called.
@@ -2803,6 +2815,39 @@ boolean.
 - `AbstractCronJob` — Logs the three non-enabled cases distinctly
 - `CronJobRunsReader` — Display-side counterpart reading the same table for admin UI
 - [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_CRON_JOB_SKIPPED` (DISABLED), `LOG_CATEGORY_CRON_JOB_FAILURE` (MISSING/UNREADABLE)
+
+---
+
+### BrevoClientReadiness (enum)
+
+**Location**: `/usersc/classes/Cron/BrevoClientReadiness.php`
+
+**Namespace**: `ElanRegistry\Cron`
+
+**Purpose**: Outcome of the pre-flight checks in `BrevoEventReconciliationClient`.
+`fetchEvents()` returns `null` both when Brevo is not set up here and when the
+settings read fails. The job must tell them apart, because they call for
+opposite pings (#2480).
+
+**Cases**:
+
+- `READY` — The API key is set and the SDK loaded. The client can poll.
+- `NOT_CONFIGURED` — The `plg_sendinblue` table is absent, the API key is
+  empty, or the SDK autoloader file is absent. The client logs
+  `CronJobSkipped`. The job pings success.
+- `FAILED` — The `plg_sendinblue` read failed, or the SDK autoloader does not
+  load the API class. The client logs `CronJobFailure`. The job pings `/fail`.
+
+**Used By**:
+
+- `BrevoEventReconciliationClient::readiness()` — Returns one case
+- `BrevoEventReconciliationJob::backfillEvents()` — Chooses the polls and
+  whether to mark the run failed
+
+**See Also**:
+
+- `CronJobEnabledState` — The same closed tri-state pattern
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_CRON_JOB_SKIPPED`, `LOG_CATEGORY_CRON_JOB_FAILURE`
 
 ---
 
@@ -3049,7 +3094,10 @@ public function __construct(
   hand ids to `VerificationBatchSender::processBatch()`, persist outcome
   counts, log a routine completion line under `LOG_CATEGORY_CAR_VERIFICATION`.
   If the eligible-car query fails, it logs, calls `markRunFailed()` and
-  returns, so `run()` pings `/fail`
+  returns, so `run()` pings `/fail`. After the batch, it calls
+  `markRunFailed()` when no send succeeded and at least one send failed (a
+  full send outage), or when any send is `unrecorded`. A partial send failure
+  pings success on purpose (#2480)
 
 **Private Methods**:
 
@@ -3248,8 +3296,8 @@ holding cron runs open indefinitely.
 - Defensive reads of the API key from `plg_sendinblue`, with distinct
   logging: `SKIPPED` for "no API key" (expected), `FAILURE` for
   "key may exist but the read or call failed" (infrastructure fault). The
-  client checks only the key. It does not run the six-check readiness gate
-  of `VerificationSettings::brevoReady()`
+  client checks the key and the SDK (see `readiness()`). It does not run the
+  six-check readiness gate of `VerificationSettings::brevoReady()`
 - Idempotent SDK autoloader with `require_once` and `class_exists()` short-circuit
 
 **Constructor**:
@@ -3266,15 +3314,29 @@ public function __construct(private readonly DatabaseInterface $db)
   for each call, because a mixed page lets a high-volume type push a bounce
   out of the page. Returns
   `\Brevo\Client\Model\GetEmailEventReportEvents[]` on success (empty array if
-  Brevo returned no events), or `null` if the poll itself failed (never
-  throws)
+  Brevo returned no events), or `null` if the poll failed or Brevo is not set
+  up here (never throws). `readiness()` tells the two `null` causes apart
+- `readiness(): BrevoClientReadiness` — Run the pre-flight checks of
+  `fetchEvents()` and return the outcome: `READY`, `NOT_CONFIGURED` or
+  `FAILED`. It makes no API call. It writes the same log lines as those
+  checks, and no others. The job calls it once before the type loop (#2480)
+
+**Protected Methods**:
+
+- `createApi(string $apiKey): ?object` — Build the `TransactionalEmailsApi`
+  client, or return `null` if the SDK did not load. A test seam, as in
+  `BrevoSuppressionSyncClient::createApi()`. A subclass can return a double
+  that throws, to reach the poll `catch` of `fetchEvents()` (#2480)
 
 **Private Methods**:
 
-- `apiKey(): ?string` — Read Brevo API key from plugin settings; null if
-  there is no API key or the row is unreadable
-- `loadSdk(): bool` — Load vendored SDK autoloader; idempotent, safe to call
-  when already loaded
+- `apiKey(): array{key: ?string, readiness: BrevoClientReadiness}` — Read the
+  Brevo API key from plugin settings. Returns the key with `READY`. Returns a
+  null key with `NOT_CONFIGURED` (no table, or no key) or `FAILED` (any other
+  read error)
+- `loadSdk(): BrevoClientReadiness` — Load vendored SDK autoloader; idempotent,
+  safe to call when already loaded. Returns `NOT_CONFIGURED` when the autoloader
+  file is absent, and `FAILED` when it throws or does not load the API class
 
 **Used By**:
 
@@ -3333,7 +3395,13 @@ applies events of all registry mail (#2359). It passes the source
   user, then calls `EmailEventApplier::apply()` once. An event that is not ours
   is skipped silently. An address longer than 155 bytes or one that fails
   `FILTER_VALIDATE_EMAIL` is skipped and counted. A date more than 5 minutes
-  after the run time is treated as missing
+  after the run time is treated as missing. The run time is then passed to
+  `apply()` as a fallback (`occurredAtIsFallback`) (#2480)
+- **Brevo setup check** (#2480): `backfillEvents()` calls
+  `BrevoEventReconciliationClient::readiness()` once, before the type loop.
+  `NOT_CONFIGURED` polls nothing and gives an empty summary, and `run()` pings
+  success. `FAILED` polls nothing, sets `pollFailed`, and `run()` pings `/fail`.
+  `READY` polls each type as before. The prune runs in all three cases
 - **Unmatched counter**: `countUnmatched()` increments the unmatched recipient
   counter only for a verification-tagged event with no single user
 - **No address in logs**: lines name the user ID or the address hash prefix.
@@ -3379,8 +3447,9 @@ The `$now` parameter is injectable for testing; defaults to wall-clock time.
   because this job always pings
 - `execute(): void` — Backfill one page, prune expired rows in a `finally`
   block, then log a one-line summary (with a distinct suffix if the poll
-  failed). The prune logs its count. A failed poll calls `markRunFailed()`,
-  so `run()` pings `/fail`
+  failed). The prune logs its count. A failed poll, or a `FAILED` Brevo setup
+  check, calls `markRunFailed()`, so `run()` pings `/fail`. A `NOT_CONFIGURED`
+  check does not (#2480)
 - `runNowWithSummary(): ReconciliationSummary` — Sibling to the inherited
   `final runNow()` for the manual "run now" admin path (#2061). Not an
   override — `runNow()` stays `final`/void. Wraps the backfill and prune in
@@ -3391,8 +3460,9 @@ The `$now` parameter is injectable for testing; defaults to wall-clock time.
 
 **Private Methods**:
 
-- `backfillEvents(): ReconciliationSummary` — Fetch one page of each event type
-  and apply each event, returning the run's counts
+- `backfillEvents(): ReconciliationSummary` — Check the Brevo setup once with
+  `readiness()`. Then fetch one page of each event type and apply each event,
+  returning the run's counts. With `NOT_CONFIGURED` it fetches nothing (#2480)
 - `applyEvent(object $event, string $apiEventType, string $eventName, array &$counts, array &$eventTypeCounts): void`
   — Apply one Brevo statistics-API event (field and address validation,
   `EmailEventMatcher::matchByMessageId()`, `EmailEventApplier::apply()`),
@@ -3403,9 +3473,12 @@ The `$now` parameter is injectable for testing; defaults to wall-clock time.
   verification-tagged one
 - `pruneExpiredEvents(): void` — Call `CarRepository::deleteEmailEventsOlderThan()`
   with the two cutoffs
-- `resolveOccurredAt(mixed $rawDate, int $userId, string $eventName): string` —
-  Parse Brevo's UTC date string into a PHP-default-timezone DATETIME string,
-  with logged fallback to "now" on parse failure or out-of-range value
+- `resolveOccurredAt(mixed $rawDate, int $userId, string $eventName): array{occurredAt: string, usable: bool}` —
+  Parse Brevo's UTC date string into a PHP-default-timezone DATETIME string.
+  On a parse failure or an out-of-range value, log and use the run time with
+  `usable: false`. `applyEvent()` passes `!usable` as `occurredAtIsFallback`.
+  The applier then compares the message time with an admin Clear Block, not
+  the run time (#2480)
 
 **Used By**:
 
