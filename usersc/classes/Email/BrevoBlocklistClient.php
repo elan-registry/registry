@@ -25,7 +25,8 @@ use ElanRegistry\Exceptions\ExceptionLogSummary;
  * body can echo the address. The caller logs the owner ID and the result's
  * reason, HTTP status and detail only. The detail is an
  * {@see ExceptionLogSummary}, or a {@see BrevoApiFactory} cause code
- * (followed by ": <ExceptionLogSummary>" when the SDK autoloader threw).
+ * (followed by " (SQLSTATE <code>)" for a failed key query, or by
+ * ": <ExceptionLogSummary>" when the SDK autoloader threw).
  *
  * Not `final`: the protected {@see self::createApi()} seam lets a unit test
  * replace the SDK API object, so the test makes no network call and needs no
@@ -67,9 +68,12 @@ class BrevoBlocklistClient
      * `no_api_key`, `no_sdk` (no SDK autoloader file), `sdk_load_failed` (the
      * autoloader threw, or it did not define the API class), `http` (with the
      * status) or `transport` (no HTTP answer, or a throw before the call).
-     * A key or SDK failure has the factory cause as its detail, followed by
-     * ": <ExceptionLogSummary>" when the SDK autoloader threw. An `http` or
-     * `transport` failure has the {@see ExceptionLogSummary} as its detail.
+     * A `db_error` failure has the factory cause as its detail, followed by
+     * " (SQLSTATE <code>)" when the query gave a valid SQLSTATE. The detail
+     * never holds the database error string. Another key or SDK failure has
+     * the factory cause as its detail, followed by ": <ExceptionLogSummary>"
+     * when the SDK autoloader threw. An `http` or `transport` failure has the
+     * {@see ExceptionLogSummary} as its detail.
      *
      * @param string $address The address to unblock, not URL-encoded
      * @return BrevoUnblockResult The result, with no address and no exception message
@@ -85,13 +89,19 @@ class BrevoBlocklistClient
             $apiKey = $keyRead['key'];
             if ($apiKey === null) {
                 // A failed query is not a missing key: the admin gets the retry text.
-                return BrevoUnblockResult::failed(
-                    $keyRead['cause'] === BrevoApiFactory::CAUSE_DB_ERROR
-                        ? BrevoUnblockResult::REASON_DB_ERROR
-                        : BrevoUnblockResult::REASON_NO_API_KEY,
-                    null,
-                    $keyRead['cause']
-                );
+                // The detail holds the SQLSTATE only, never the error string,
+                // because the error string can hold SQL text.
+                if ($keyRead['cause'] === BrevoApiFactory::CAUSE_DB_ERROR) {
+                    return BrevoUnblockResult::failed(
+                        BrevoUnblockResult::REASON_DB_ERROR,
+                        null,
+                        $keyRead['sqlState'] !== null
+                            ? $keyRead['cause'] . ' (SQLSTATE ' . $keyRead['sqlState'] . ')'
+                            : $keyRead['cause']
+                    );
+                }
+
+                return BrevoUnblockResult::failed(BrevoUnblockResult::REASON_NO_API_KEY, null, $keyRead['cause']);
             }
 
             $this->sdkLoadCause = null;
@@ -141,7 +151,8 @@ class BrevoBlocklistClient
      *
      * Only a missing autoloader file means that the SDK is not installed. An
      * autoloader that threw, or that did not define the API class, is a fault
-     * in an installed SDK, so the admin gets the retry text, not the setup text.
+     * in an installed SDK, so the admin gets the plugin-fault text, not the
+     * setup text.
      *
      * @param string|null $cause The {@see BrevoApiFactory} `CAUSE_*` constant, or null
      * @param string $detail The factory's log-safe detail, or an empty string

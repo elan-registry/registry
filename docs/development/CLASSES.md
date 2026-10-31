@@ -1427,7 +1427,8 @@ clear, read under the `profiles` lock) and `$stillOptedOut` (true when
 | `CLEARED_ADDRESS_MOVED` | `clearedAddressMoved(bool $stillBounced, bool $stillOptedOut = false)` | The blocked address is not the owner's address. No Brevo call. The flag is cleared |
 | `CLEARED_SHARED_ADDRESS` | `clearedSharedAddress(bool $stillBounced, bool $stillOptedOut = false)` | Another account uses the address. No Brevo call. The flag is cleared |
 | `BREVO_FAILED` | `brevoFailed()` | The Brevo call failed (HTTP or transport), or the API key query failed. No write |
-| `BREVO_NOT_SET_UP` | `brevoNotSetUp()` | No Brevo API key, or the SDK did not load. No write |
+| `BREVO_NOT_SET_UP` | `brevoNotSetUp()` | No Brevo API key, or no SDK autoloader file. No write |
+| `BREVO_PLUGIN_FAULT` | `brevoPluginFault()` | The SDK is installed but did not load. This is a fault in the Brevo plugin. No write |
 | `ADDRESS_CHANGED` | `addressChanged()` | The stored block changed during this action. The transaction rolled back |
 
 **Methods**: `isCleared(): bool` - True for the four `CLEARED*` kinds.
@@ -3183,7 +3184,9 @@ step returns a reason code, so each caller logs in its own category.
 
 - `__construct(DatabaseInterface $db)`
 - `readApiKey(): array` - Reads the key from the `plg_sendinblue` row. Returns
-  `key`, `reason`, `cause` and `detail`. On failure `key` is null, `reason` is
+  `key`, `reason`, `cause`, `detail` and `sqlState`. `sqlState` is the
+  5-character SQLSTATE (`string|null`) when the query failed, else null. It is
+  present on every return path. On failure `key` is null, `reason` is
   `REASON_NO_API_KEY`, and `cause` is `CAUSE_TABLE_ABSENT`, `CAUSE_DB_ERROR` or
   `CAUSE_KEY_NOT_SET`
 - `loadSdk(): array` - Loads the vendored SDK autoloader in the sendinblue
@@ -3228,8 +3231,10 @@ message. The SDK puts the request URL, with the address, in its messages.
   status) or `transport` (no HTTP answer, or a throw before the call). A
   failed result carries a log-safe detail: the `BrevoApiFactory` cause for a
   key or SDK failure (followed by the factory's `ExceptionLogSummary` when the
-  SDK autoloader threw), or `ExceptionLogSummary::of()` for `http` and
-  `transport`
+  SDK autoloader threw). For `db_error`, the detail is
+  `db_error (SQLSTATE <x>)` when `readApiKey()` returns a `sqlState`, else
+  `db_error`. It never holds `errorString()` text. For `http` and `transport`,
+  the detail is `ExceptionLogSummary::of()`
 - `createApi(string $apiKey): ?object` - Protected seam. Loads the SDK and
   builds the API object through `BrevoApiFactory`. Returns null when the SDK
   did not load
@@ -3264,8 +3269,8 @@ message.
   `REASON_SDK_LOAD_FAILED`, `REASON_HTTP`, `REASON_TRANSPORT`,
   `REASON_DB_ERROR` or `REASON_NO_ADDRESS` for a failed result.
   Null on success. `CarVerificationManager` reports `REASON_NO_API_KEY` and
-  `REASON_NO_SDK` as "Brevo is not set up", and every other reason as a
-  Brevo failure
+  `REASON_NO_SDK` as "Brevo is not set up", `REASON_SDK_LOAD_FAILED` as a
+  Brevo plugin fault, and every other reason as a Brevo failure
 - `httpStatus(): ?int` - The status that Brevo sent, or null
 - `detail(): ?string` - For a failed result, an `ExceptionLogSummary`, or a
   `BrevoApiFactory` cause code (followed by `: <ExceptionLogSummary>` when

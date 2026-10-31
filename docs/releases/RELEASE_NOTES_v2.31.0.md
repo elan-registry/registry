@@ -17,6 +17,7 @@ bounce should stop.
 - The verification failed-send log names a plugin precondition failure, or a connection error with its cURL number when known.
 - Cron health checks report send outages correctly, and an event with a bad date no longer re-blocks a cleared owner.
 - After an admin edits an owner's email, a block or bounce for the new address stays set after verification.
+- Clear Block reports a Brevo plugin fault and tells the admin to check the logs, not to try again.
 
 ## Issues Resolved
 

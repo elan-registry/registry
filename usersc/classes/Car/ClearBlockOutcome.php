@@ -19,8 +19,9 @@ namespace ElanRegistry\Car;
  * - CLEARED_NO_ADDRESS: no address to unblock. No Brevo call. The flag is cleared.
  * - CLEARED_ADDRESS_MOVED: the blocked address is not the owner's address. No Brevo call. The flag is cleared.
  * - CLEARED_SHARED_ADDRESS: another account uses the address. No Brevo call. The flag is cleared.
- * - BREVO_FAILED: the Brevo call failed, the API key query failed, or the SDK is installed but did not load. No write.
+ * - BREVO_FAILED: the Brevo call failed, or the API key query failed. No write.
  * - BREVO_NOT_SET_UP: no Brevo API key, or no SDK autoloader file. No call, no write.
+ * - BREVO_PLUGIN_FAULT: the SDK is installed but did not load. No call, no write.
  * - ADDRESS_CHANGED: the stored block changed during this action. The transaction rolled back.
  *
  * @package ElanRegistry\Car
@@ -36,6 +37,7 @@ final readonly class ClearBlockOutcome
     public const CLEARED_SHARED_ADDRESS = 'cleared_shared_address';
     public const BREVO_FAILED           = 'brevo_failed';
     public const BREVO_NOT_SET_UP       = 'brevo_not_set_up';
+    public const BREVO_PLUGIN_FAULT     = 'brevo_plugin_fault';
     public const ADDRESS_CHANGED        = 'address_changed';
 
     /**
@@ -110,11 +112,20 @@ final readonly class ClearBlockOutcome
     }
 
     /**
-     * Brevo is not set up: no API key, or the SDK did not load. No call and no write.
+     * Brevo is not set up: no API key, or no SDK autoloader file. No call and no write.
      */
     public static function brevoNotSetUp(): self
     {
         return new self(self::BREVO_NOT_SET_UP, false);
+    }
+
+    /**
+     * The SDK is installed but did not load: a fault in the Brevo plugin.
+     * No call and no write.
+     */
+    public static function brevoPluginFault(): self
+    {
+        return new self(self::BREVO_PLUGIN_FAULT, false);
     }
 
     /**
