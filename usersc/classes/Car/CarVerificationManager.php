@@ -455,10 +455,10 @@ class CarVerificationManager
      * Calls {@see CarRepository::clearFlagsForConfirmedEmailChange()}, which
      * locks the profile row and clears `email_bounced` and `email_blocked`
      * only when the normalized `users.email` differs from
-     * `email_address_seen`. The opt-out stays. For each flag that changes
-     * from 1 to 0, this method writes one audit row with source
-     * `email_change`. The verifySuccess hook (sync_owner_email_on_verify.php)
-     * is the only caller.
+     * `email_address_seen`. A flag stored for the current address stays
+     * (#2411). The opt-out stays. For each flag that the repository clears,
+     * this method writes one audit row with source `email_change`. The
+     * verifySuccess hook (sync_owner_email_on_verify.php) is the only caller.
      *
      * A cleared flag that had no recorded address is a data anomaly. This
      * method logs it with the user ID and the flag name only.
@@ -471,7 +471,7 @@ class CarVerificationManager
      *
      * @param int $actingUserId User who made the change (the owner)
      * @param int $userId       Owner user ID
-     * @return bool True when one or more flags changed from 1 to 0
+     * @return bool True when this call cleared one or more flags
      * @throws CarDatabaseException If a query or an audit row insert fails.
      *                              Nothing is written.
      */
@@ -480,9 +480,8 @@ class CarVerificationManager
         $this->repo->beginTransaction();
         try {
             $result = $this->repo->clearFlagsForConfirmedEmailChange($userId);
-            $changed = $result !== null && $result['changed'];
-            $bouncedCleared = $changed && $result['bounced'] === 1;
-            $blockedCleared = $changed && $result['blocked'] === 1;
+            $bouncedCleared = $result !== null && $result['bouncedCleared'];
+            $blockedCleared = $result !== null && $result['blockedCleared'];
 
             if ($bouncedCleared) {
                 $this->flagLog->record(

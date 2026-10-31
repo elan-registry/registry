@@ -866,9 +866,11 @@ to provide a focused, testable data access layer wrapping the `cars`,
   same compare that `Owner::update()` makes. If they are equal, it writes nothing. If they differ, it clears
   `email_bounced` (with address and date, and sets `email_bounce_cleared_at`), clears `email_blocked`
   (with address, date and cause), and sets `email_address_since` to now and `email_address_seen` to the
-  normalized address. It keeps `email_opted_out`. Returns `array{bounced: int, blocked: int,
-  bouncedHadNoAddress: bool, blockedHadNoAddress: bool, changed: bool}` with the flag values from
-  before the call, or `null` when the owner has no `profiles` row or no `users` row. Used by
+  normalized address. A flag whose stored address is the current `users.email` stays set (#2411).
+  It keeps `email_opted_out`. Returns `array{bounced: int, blocked: int,
+  bouncedHadNoAddress: bool, blockedHadNoAddress: bool, changed: bool, bouncedCleared: bool,
+  blockedCleared: bool}` with the flag values from before the call and which flags it cleared,
+  or `null` when the owner has no `profiles` row or no `users` row. Used by
   `CarVerificationManager::clearFlagsForConfirmedEmailChange()`.
 - `transferEmailEvents(int $fromCarId, int $toCarId): bool` - Move
   `er_email_events` rows from one car to another by changing `car_id` only.
@@ -1294,9 +1296,10 @@ on success.
 - `clearFlagsForConfirmedEmailChange(int $actingUserId, int $userId): bool` -
   Clear the bounce and the block after a confirmed email change to a new address (#2356). Calls
   `CarRepository::clearFlagsForConfirmedEmailChange()`. It keeps the opt-out. Writes one audit row
-  with source `email_change` for each flag that changed from 1 to 0. If a cleared flag had no
+  with source `email_change` for each flag that the repository cleared. A flag stored for the current
+  address stays and gets no audit row (#2411). If a cleared flag had no
   recorded address, it logs the anomaly after the commit. The log row holds the user ID and the flag
-  name, and no address. Runs its own transaction. Returns true when at least one flag changed. The
+  name, and no address. Runs its own transaction. Returns true when it cleared at least one flag. The
   `verifySuccess` hook (`sync_owner_email_on_verify.php`) is the only caller. The `email_act == 0`
   path in `usersc/user_settings.php` does not call it.
 - `clearFlagsForConfirmedEmailChange()` and `clearBlockedForOwner()` run their own transaction. The other owner

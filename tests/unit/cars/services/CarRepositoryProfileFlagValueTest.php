@@ -308,14 +308,14 @@ final class CarRepositoryProfileFlagValueTest extends TestCase
             ],
             'clearFlagsForConfirmedEmailChange (bounced)' => [
                 $changed('bounced'),
-                ['email_bounced' => 2, 'email_address_seen' => 'old@example.com'],
+                ['email_bounced' => 2, 'email_bounced_address' => 'old@example.com', 'email_address_seen' => 'old@example.com'],
                 'email_bounced',
                 'email_bounced = 0',
                 1,
             ],
             'clearFlagsForConfirmedEmailChange (blocked)' => [
                 $changed('blocked'),
-                ['email_blocked' => 2, 'email_address_seen' => 'old@example.com'],
+                ['email_blocked' => 2, 'email_blocked_address' => 'old@example.com', 'email_address_seen' => 'old@example.com'],
                 'email_blocked',
                 'email_blocked = 0',
                 1,

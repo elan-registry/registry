@@ -198,12 +198,6 @@ after an item is written.
 
 - [ ] No test checks that the merge "files NOT restored" warning reaches `error_log()` exactly once when the commit throws and the rollback succeeds. Capture `error_log` in `testMergeDoesNotRestoreFilesWhenCommitItselfThrows` and assert one occurrence (found in #2515)
 
-### `tests/unit/cars/services/CarRepositoryTest.php` (test coverage)
-
-- [ ] No case has `user_email => null` (orphan profile). Assert that a stored block or bounce with an address returns 0 and is written, and one with an empty address returns 1 (found in /finish-milestone v2.30.7)
-- [ ] Only the block writer has the "stored flag applies, new flag for another address" case (~L1144). Add the bounce version: return 1 and a write (found in /finish-milestone v2.30.7)
-- [ ] No case covers a repeat for the same old address that is not `users.email`. Assert a return of 1 and no write, so a later change of that early return cannot log a 0 to 1 change that did not happen (found in /finish-milestone v2.30.7)
-
 ### `tests/unit/classes/Email/BrevoDevOverrideTest.php` (test coverage)
 
 - [ ] `BrevoDevOverrideTest.php:198`: the fixture SDK keeps its host by design, so "survives setApiKey" cannot fail there; only the real-SDK test at :212 proves it, and it skips where the plugin vendor dir is missing (CI). (found in /finish-milestone v2.30.6)

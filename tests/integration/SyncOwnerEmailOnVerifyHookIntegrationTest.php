@@ -458,6 +458,36 @@ final class SyncOwnerEmailOnVerifyHookIntegrationTest extends IntegrationTestCas
         );
     }
 
+    /**
+     * #2411: an admin edit on the upstream user page changes users.email and
+     * leaves seen at the old address. A block and a bounce that the event
+     * path stores for the new address must survive the next verifySuccess.
+     */
+    public function testHookKeepsEventPathFlagsForTheNewAddressAfterAnAdminEmailEdit(): void
+    {
+        $userId = $this->createTestUser(['email' => self::OLD_ADDRESS], true);
+        $this->setEmailAddressSinceSeen($userId, self::OLD_ADDRESS, self::OLD_SINCE);
+        $this->setUserEmailRaw($userId, self::NEW_ADDRESS);
+        $repo = new CarRepository($this->db);
+        $this->assertSame(0, $repo->setProfileBlocked($userId, self::NEW_ADDRESS, 'spam', '2026-02-03 04:05:06'), 'Test setup: block stored (no block applied before)');
+        $this->assertSame(0, $repo->setProfileBounced($userId, self::NEW_ADDRESS, '2026-03-04 05:06:07'), 'Test setup: bounce stored (no bounce applied before)');
+        $this->assertSame(self::OLD_ADDRESS, $this->getOwnerEmailFlags($userId)['email_address_seen'], 'Test setup: seen still holds the old address');
+
+        $this->runVerifySuccessHook($userId);
+
+        $after = $this->getOwnerEmailFlags($userId);
+        $this->assertSame('1', (string) $after['email_blocked'], 'The block for the new address stays');
+        $this->assertSame(self::NEW_ADDRESS, $after['email_blocked_address']);
+        $this->assertSame('1', (string) $after['email_bounced'], 'The bounce for the new address stays');
+        $this->assertSame(self::NEW_ADDRESS, $after['email_bounced_address']);
+        $this->assertSame(self::NEW_ADDRESS, $after['email_address_seen']);
+        $changes = array_values(array_filter(
+            $repo->recentFlagChanges($userId, 100),
+            static fn (array $c): bool => $c['source'] === 'email_change'
+        ));
+        $this->assertSame([], $changes, 'No email_change log row');
+    }
+
     public function testHookLeavesAnOwnerWithNoFlagUnchangedAndWritesNoLogRow(): void
     {
         $userId = $this->createTestUser(['email' => self::NEW_ADDRESS], true);

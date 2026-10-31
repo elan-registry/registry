@@ -83,7 +83,7 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
         'users/views/_admin_user.php' => [
             'exception',
             'Accepted risk: the upstream admin user form changes users.email and runs no hook. '
-                . 'The next verifySuccess counts the change.',
+                . 'The next verifySuccess counts the change, and a flag stored for the current address stays (#2411).',
         ],
         'users/user_settings.php' => [
             'exception',
