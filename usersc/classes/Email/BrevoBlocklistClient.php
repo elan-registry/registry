@@ -25,7 +25,7 @@ use ElanRegistry\Exceptions\ExceptionLogSummary;
  * body can echo the address. The caller logs the owner ID and the result's
  * reason, HTTP status and detail only. The detail is an
  * {@see ExceptionLogSummary}, or a {@see BrevoApiFactory} cause code
- * (followed by " (SQLSTATE <code>)" for a failed key query, or by
+ * (followed by " (SQLSTATE <code>)" for a `db_error` key query failure, or by
  * ": <ExceptionLogSummary>" when the SDK autoloader threw).
  *
  * Not `final`: the protected {@see self::createApi()} seam lets a unit test
@@ -88,8 +88,9 @@ class BrevoBlocklistClient
             $keyRead = (new BrevoApiFactory($this->db))->readApiKey();
             $apiKey = $keyRead['key'];
             if ($apiKey === null) {
-                // A failed query is not a missing key: the admin gets the retry text.
-                // The detail holds the SQLSTATE only, never the error string,
+                // A failed query (other than a missing table) is not a missing
+                // key: the admin gets the retry text.
+                // The detail holds the cause and SQLSTATE, never the error string,
                 // because the error string can hold SQL text.
                 if ($keyRead['cause'] === BrevoApiFactory::CAUSE_DB_ERROR) {
                     return BrevoUnblockResult::failed(

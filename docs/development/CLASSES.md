@@ -3273,8 +3273,9 @@ message.
   Brevo plugin fault, and every other reason as a Brevo failure
 - `httpStatus(): ?int` - The status that Brevo sent, or null
 - `detail(): ?string` - For a failed result, an `ExceptionLogSummary`, or a
-  `BrevoApiFactory` cause code (followed by `: <ExceptionLogSummary>` when
-  the SDK autoloader threw). Null on success
+  `BrevoApiFactory` cause code (followed by `(SQLSTATE <code>)` for a
+  `db_error` key query failure, or by `: <ExceptionLogSummary>` when the SDK
+  autoloader threw). Null on success
 
 **Used By**: `BrevoBlocklistClient`, `CarVerificationManager::clearBlockedForOwner()`
 

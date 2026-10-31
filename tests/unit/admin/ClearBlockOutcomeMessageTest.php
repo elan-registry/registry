@@ -44,7 +44,7 @@ final class ClearBlockOutcomeMessageTest extends TestCase
         $this->assertSame(1, $found, 'The match must have a BREVO_PLUGIN_FAULT arm');
         $this->assertSame('true', $arm[1], 'A plugin fault must show as an error');
         $this->assertStringContainsString('Check the logs', $arm[2]);
-        $this->assertStringNotContainsString('Try again', $arm[2], 'A retry cannot fix a plugin fault');
+        $this->assertStringNotContainsStringIgnoringCase('try again', $arm[2], 'A retry cannot fix a plugin fault');
     }
 
     public function testEveryOutcomeKindHasAnArm(): void

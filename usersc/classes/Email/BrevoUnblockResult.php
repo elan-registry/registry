@@ -14,8 +14,9 @@ namespace ElanRegistry\Email;
  *
  * A failed result holds a reason code, the HTTP status when Brevo sent
  * one, and a log-safe detail: an {@see \ElanRegistry\Exceptions\ExceptionLogSummary},
- * or a {@see BrevoApiFactory} cause code (followed by ": <ExceptionLogSummary>"
- * when the SDK autoloader threw). It holds no address, no response
+ * or a {@see BrevoApiFactory} cause code (followed by " (SQLSTATE <code>)" for
+ * a `db_error` key query failure, or by ": <ExceptionLogSummary>" when the SDK
+ * autoloader threw). It holds no address, no response
  * body and no exception message, because the SDK puts the request URL, with
  * the address, in its messages.
  *
@@ -88,7 +89,8 @@ final class BrevoUnblockResult
      * @param int|null    $httpStatus The HTTP status for {@see self::REASON_HTTP}, or null
      * @param string|null $detail     A log-safe detail: an ExceptionLogSummary,
      *                                or a BrevoApiFactory cause code, optionally
-     *                                followed by ": <ExceptionLogSummary>". Never
+     *                                followed by " (SQLSTATE <code>)" or by
+     *                                ": <ExceptionLogSummary>". Never
      *                                an exception message or an address.
      * @return self The result
      */

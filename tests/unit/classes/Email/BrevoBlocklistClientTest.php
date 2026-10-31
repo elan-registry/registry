@@ -227,6 +227,8 @@ final class BrevoBlocklistClientTest extends TestCase
         $result = $client->unblock('owner@example.org');
 
         $this->assertSame(BrevoUnblockResult::REASON_NO_API_KEY, $result->reason());
+        // Only a db_error detail gets the SQLSTATE suffix.
+        $this->assertSame(BrevoApiFactory::CAUSE_TABLE_ABSENT, $result->detail());
         $this->assertSame(0, $client->createApiCalls);
     }
 
