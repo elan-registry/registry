@@ -9,6 +9,7 @@ use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\LogCategories;
 use ElanRegistry\Transfer\TransferEmailService;
+use ElanRegistry\Transfer\TransferNoticeOutcome;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -241,13 +242,13 @@ final class TransferEmailServiceTest extends TestCase
     // Early-exit (not-found) tests — existing coverage
     // -------------------------------------------------------------------------
 
-    public function testSendRequestReturnsFalseWhenTransferNotFound(): void
+    public function testSendRequestReturnsFailedWhenTransferNotFound(): void
     {
         $db      = $this->createMockDb(0);
         $mailer  = function (): bool { return false; };
         $service = new TransferEmailService($db, $mailer, $this->allowAllPolicy());
 
-        $this->assertFalse($service->sendRequest(999));
+        $this->assertSame(TransferNoticeOutcome::Failed, $service->sendRequest(999));
     }
 
     public function testSendAdminAlertReturnsFalseWhenTransferNotFound(): void
@@ -304,7 +305,7 @@ final class TransferEmailServiceTest extends TestCase
         $service = new TransferEmailService($db, $mailer, $this->allowAllPolicy());
         $result  = $service->sendRequest(1);
 
-        $this->assertTrue($result);
+        $this->assertSame(TransferNoticeOutcome::Sent, $result);
         // 'test@example.com' is the email carried by makeUserRow(), which the
         // db double returns for Owner::find() — update both together.
         $this->assertSame('test@example.com', $capturedTo);
@@ -314,7 +315,7 @@ final class TransferEmailServiceTest extends TestCase
      * With no policy argument, the service builds its own
      * SendPolicy(new CarRepository($db)). The flag read then goes through the
      * same database double, and an opted-out current owner gets no notice.
-     * The send still returns true: a skip is not a failure.
+     * The send returns Skipped, which is neither a send nor a failure.
      *
      * Fails without the #2463 change: TransferNotice is not yet a policy kind
      * and the default policy does not gate the send, so the mailer is called.
@@ -371,7 +372,7 @@ final class TransferEmailServiceTest extends TestCase
         // No third argument: the production default policy.
         $service = new TransferEmailService($db, $mailer);
 
-        $this->assertTrue($service->sendRequest(1));
+        $this->assertSame(TransferNoticeOutcome::Skipped, $service->sendRequest(1));
         $this->assertSame(1, $flagReads, 'The default policy read the owner flags through the database');
         $this->assertSame(0, $mailerCalls, 'An opted-out owner gets no transfer notice');
         $this->assertCount(1, $this->skipLogEntries());
@@ -564,7 +565,7 @@ final class TransferEmailServiceTest extends TestCase
         $this->assertNotEmpty($matches, "Expected a log entry containing \"$needle\", got: " . json_encode($logEntries));
     }
 
-    public function testSendRequestReturnsFalseWhenCurrentOwnerNotFound(): void
+    public function testSendRequestReturnsFailedWhenCurrentOwnerNotFound(): void
     {
         global $mockLogEntries;
         $mockLogEntries = [];
@@ -578,12 +579,48 @@ final class TransferEmailServiceTest extends TestCase
 
         $service = new TransferEmailService($db, $mailer, $this->allowAllPolicy());
 
-        $this->assertFalse($service->sendRequest(1));
+        $this->assertSame(TransferNoticeOutcome::Failed, $service->sendRequest(1));
         $this->assertFalse($called, 'Mailer must not be called when the current owner cannot be found');
         $this->assertLogContains($mockLogEntries, 'Current owner ID 0 not found');
     }
 
-    public function testSendRequestReturnsFalseWhenRequesterNotFound(): void
+    public function testSendRequestReturnsFailedWhenCarNotFound(): void
+    {
+        // The transfer row exists, but the car query finds no row.
+        $db          = $this->createStub(DatabaseInterface::class);
+        $transferRow = $this->makeTransferRow();
+        $rowCount    = 0;
+        $db->method('query')->willReturnCallback(
+            function (string $sql) use ($db, &$rowCount): DatabaseInterface {
+                $rowCount = str_contains($sql, 'car_transfer_requests') ? 1 : 0;
+                return $db;
+            }
+        );
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturnCallback(function () use (&$rowCount): int {
+            return $rowCount;
+        });
+        $db->method('first')->willReturn($transferRow);
+        $subjects = [];
+        $service  = new TransferEmailService($db, $this->recordingMailer($subjects), $this->allowAllPolicy());
+
+        $this->assertSame(TransferNoticeOutcome::Failed, $service->sendRequest(1));
+        $this->assertSame([], $subjects, 'Mailer must not be called when the car cannot be found');
+        $this->assertLogContains($this->logEntries(), 'Car ID 10 not found');
+    }
+
+    public function testSendRequestReturnsFailedWhenMailerReturnsFalse(): void
+    {
+        $db       = $this->createFoundMockDb($this->makeTransferRow(), $this->makeCarRow());
+        $subjects = [];
+        $service  = new TransferEmailService($db, $this->recordingMailer($subjects, [1 => false]), $this->allowAllPolicy());
+
+        $this->assertSame(TransferNoticeOutcome::Failed, $service->sendRequest(1));
+        $this->assertCount(1, $subjects);
+        $this->assertLogContains($this->logEntries(), 'Failed to send transfer request notification to current owner: user 1');
+    }
+
+    public function testSendRequestReturnsFailedWhenRequesterNotFound(): void
     {
         global $mockLogEntries;
         $mockLogEntries = [];
@@ -597,7 +634,7 @@ final class TransferEmailServiceTest extends TestCase
 
         $service = new TransferEmailService($db, $mailer, $this->allowAllPolicy());
 
-        $this->assertFalse($service->sendRequest(1));
+        $this->assertSame(TransferNoticeOutcome::Failed, $service->sendRequest(1));
         $this->assertFalse($called, 'Mailer must not be called when the requester cannot be found');
         $this->assertLogContains($mockLogEntries, 'Requester ID 0 not found');
     }
@@ -739,7 +776,7 @@ final class TransferEmailServiceTest extends TestCase
         };
     }
 
-    public function testSendRequestOptedOutCurrentOwnerSkipsMailerReturnsTrueAndLogsUserId(): void
+    public function testSendRequestOptedOutCurrentOwnerSkipsMailerReturnsSkippedAndLogsUserId(): void
     {
         $db       = $this->createFoundMockDb($this->makeTransferRow(), $this->makeCarRow());
         $subjects = [];
@@ -747,7 +784,7 @@ final class TransferEmailServiceTest extends TestCase
 
         $result = $service->sendRequest(1);
 
-        $this->assertTrue($result, 'A skipped notice is not a failure');
+        $this->assertSame(TransferNoticeOutcome::Skipped, $result, 'A skipped notice is neither a send nor a failure');
         $this->assertSame([], $subjects, 'The mailer must not be called for an opted-out owner');
         $skips = $this->skipLogEntries();
         $this->assertCount(1, $skips);
@@ -779,7 +816,7 @@ final class TransferEmailServiceTest extends TestCase
         $subjects = [];
         $service  = new TransferEmailService($db, $this->recordingMailer($subjects), $this->policy([1 => [$flag]]));
 
-        $this->assertTrue($service->sendRequest(1));
+        $this->assertSame(TransferNoticeOutcome::Skipped, $service->sendRequest(1));
         $this->assertSame([], $subjects);
         $skips = $this->skipLogEntries();
         $this->assertCount(1, $skips);
@@ -792,7 +829,7 @@ final class TransferEmailServiceTest extends TestCase
         $subjects = [];
         $service  = new TransferEmailService($db, $this->recordingMailer($subjects), $this->policy());
 
-        $this->assertTrue($service->sendRequest(1));
+        $this->assertSame(TransferNoticeOutcome::Sent, $service->sendRequest(1));
         $this->assertSame([5], $this->askedUserIds, 'Only the current owner (5), not the requester (2)');
         $this->assertCount(1, $subjects);
     }
@@ -918,13 +955,13 @@ final class TransferEmailServiceTest extends TestCase
         return new CarDatabaseException('ERROR #HY000: lock wait for owner@example.com');
     }
 
-    public function testSendRequestPolicyReadFailureReturnsFalseWithoutMailAndLogsSummary(): void
+    public function testSendRequestPolicyReadFailureReturnsFailedWithoutMailAndLogsSummary(): void
     {
         $db       = $this->createFoundMockDb($this->makeTransferRow(), $this->makeCarRow());
         $subjects = [];
         $service  = new TransferEmailService($db, $this->recordingMailer($subjects), $this->policy([], [1 => $this->readFailure()]));
 
-        $this->assertFalse($service->sendRequest(1));
+        $this->assertSame(TransferNoticeOutcome::Failed, $service->sendRequest(1));
         $this->assertSame([], $subjects);
         $entries = $this->logEntries();
         $this->assertCount(1, $entries);
@@ -1051,7 +1088,7 @@ final class TransferEmailServiceTest extends TestCase
         $mailer   = $this->recordingMailer($subjects, [], [1 => new \RuntimeException('smtp rejected owner@example.com')]);
         $service  = new TransferEmailService($db, $mailer, $this->policy());
 
-        $this->assertFalse($service->sendRequest(1));
+        $this->assertSame(TransferNoticeOutcome::Failed, $service->sendRequest(1));
 
         $entries = $this->logEntries();
         $this->assertCount(1, $entries);
@@ -1077,5 +1114,69 @@ final class TransferEmailServiceTest extends TestCase
         $message = array_values($failures)[0]['message'];
         $this->assertStringContainsString('admin #2 of 3', $message);
         $this->assertStringNotContainsString('a2@example.com', $message);
+    }
+
+    // -------------------------------------------------------------------------
+    // Admin alert names a missing owner notice (#2476)
+    // -------------------------------------------------------------------------
+
+    private const OWNER_NOT_NOTIFIED = 'The registry sent no notice of this request to the current owner.';
+
+    /**
+     * Send the admin alert to one address and return the body.
+     *
+     * @param TransferNoticeOutcome|null $ownerNotice Null uses the default argument
+     */
+    private function adminAlertBody(?TransferNoticeOutcome $ownerNotice): string
+    {
+        $GLOBALS['mockAdminEmails'] = 'admin@example.com';
+        $db     = $this->createFoundMockDb($this->makeTransferRow(), $this->makeCarRow());
+        $bodies = [];
+        $mailer = function (string $to, string $subject, string $body) use (&$bodies): bool {
+            $bodies[] = $body;
+            return true;
+        };
+        $service = new TransferEmailService($db, $mailer, $this->allowAllPolicy());
+
+        $result = $ownerNotice === null ? $service->sendAdminAlert(1) : $service->sendAdminAlert(1, $ownerNotice);
+
+        $this->assertTrue($result);
+        $this->assertCount(1, $bodies);
+        return $bodies[0];
+    }
+
+    /**
+     * @return array<string, array{0: TransferNoticeOutcome}>
+     */
+    public static function ownerNotNotifiedProvider(): array
+    {
+        return [
+            'skipped' => [TransferNoticeOutcome::Skipped],
+            'failed'  => [TransferNoticeOutcome::Failed],
+        ];
+    }
+
+    /** Fails when the admin alert omits the no-notice sentence. */
+    #[DataProvider('ownerNotNotifiedProvider')]
+    public function testSendAdminAlertBodyNamesTheMissingOwnerNotice(TransferNoticeOutcome $ownerNotice): void
+    {
+        $body = $this->adminAlertBody($ownerNotice);
+
+        $this->assertSame(1, substr_count($body, self::OWNER_NOT_NOTIFIED));
+        $this->assertLessThan(
+            strpos($body, 'Transfer Request Details'),
+            strpos($body, self::OWNER_NOT_NOTIFIED),
+            'The sentence comes before the request details box'
+        );
+    }
+
+    public function testSendAdminAlertBodyOmitsTheSentenceWhenTheOwnerWasNotified(): void
+    {
+        $this->assertStringNotContainsString(self::OWNER_NOT_NOTIFIED, $this->adminAlertBody(TransferNoticeOutcome::Sent));
+    }
+
+    public function testSendAdminAlertBodyOmitsTheSentenceForTheDefaultArgument(): void
+    {
+        $this->assertStringNotContainsString(self::OWNER_NOT_NOTIFIED, $this->adminAlertBody(null));
     }
 }

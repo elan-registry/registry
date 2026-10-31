@@ -3634,15 +3634,22 @@ $emailService = new TransferEmailService(
   `email_bounced`, `email_opted_out` or `email_blocked`.
 - On a skip, the service logs one line in the `EMAIL_ERROR` category. The
   line names the user ID and the flag names, and never an email address.
-- `sendRequest()` returns `true` on a skip, so the caller does not log the
-  skip as a failure. `sendResponse()` returns `true` only when at least one
-  notice was sent. A skip counts as not sent, so the caller logs "No transfer
-  ... notification sent" when each notice failed or was skipped.
+- `sendRequest()` returns `TransferNoticeOutcome::Skipped` on a skip. The
+  endpoint logs "Owner notification skipped by the send policy ... owner may
+  not be aware of this request" and passes the outcome to `sendAdminAlert()`.
+  For `Skipped` or `Failed`, the admin alert says "The registry sent no notice
+  of this request to the current owner."
+- `sendResponse()` returns `true` only when at least one notice was sent. A
+  skip counts as not sent, so the caller logs "No transfer ... notification
+  sent" when each notice failed or was skipped.
 
 **Public Methods**:
 
-- `sendRequest(int $transferRequestId): bool` — Notify the current car owner that a transfer has been requested
-- `sendAdminAlert(int $transferRequestId): bool` — Alert admin(s) to review a pending transfer request
+- `sendRequest(int $transferRequestId): TransferNoticeOutcome` — Notify the current car owner that a transfer
+  has been requested. Returns `Sent`, `Skipped` (send policy) or `Failed` (lookup failure, mailer false, or an error)
+- `sendAdminAlert(int $transferRequestId, TransferNoticeOutcome $ownerNotice = TransferNoticeOutcome::Sent): bool`
+  — Alert admin(s) to review a pending transfer request. When `$ownerNotice` is not `Sent`, the alert says that
+  the current owner got no notice
 - `sendResponse(int $transferRequestId, bool $isApproved, string $adminNotes = '', ?int $previousOwnerId = null): bool`
   — Send approval or denial to requester and notify the previous/current owner
   (uses `$previousOwnerId` for approvals, car's current `user_id` for denials)
@@ -3655,8 +3662,8 @@ use ElanRegistry\Transfer\TransferEmailService;
 $emailService = new TransferEmailService(dbi(), 'email');
 
 // When transfer request is created
-$emailService->sendRequest($transferRequestId);
-$emailService->sendAdminAlert($transferRequestId);
+$ownerNotice = $emailService->sendRequest($transferRequestId);
+$emailService->sendAdminAlert($transferRequestId, $ownerNotice);
 
 // When admin approves transfer
 $emailService->sendResponse($transferRequestId, true, 'Approved', $previousOwnerId);
@@ -3692,12 +3699,30 @@ $mockDb = new class {
 };
 $mockMailer = fn($to, $subject, $body) => true;
 $service = new TransferEmailService($mockDb, $mockMailer);
-$this->assertFalse($service->sendRequest(999));
+$this->assertSame(TransferNoticeOutcome::Failed, $service->sendRequest(999));
 ```
 
 **See Also**:
 
 - [ERROR_HANDLING.md](ERROR_HANDLING.md) - Exception patterns for email failures
+
+---
+
+### TransferNoticeOutcome (enum)
+
+**Location**: `/usersc/classes/Transfer/TransferNoticeOutcome.php`
+
+**Namespace**: `ElanRegistry\Transfer`
+
+**Purpose**: The result of `TransferEmailService::sendRequest()` (#2476). A
+bool cannot tell a send policy skip from a delivery. The endpoint and the
+admin alert must know when the current owner got no notice.
+
+| Case | Value | Meaning | `ownerWasNotified()` |
+| --- | --- | --- | --- |
+| `Sent` | `sent` | The mailer accepted the notice | `true` |
+| `Skipped` | `skipped` | `SendPolicy` refused the notice (no profile, bounced, opted out, blocked) | `false` |
+| `Failed` | `failed` | A lookup failed, the mailer returned false, or an error occurred | `false` |
 
 ---
 
