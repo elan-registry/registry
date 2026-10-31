@@ -276,7 +276,10 @@ final class VerificationStatusPanelRenderTest extends TestCase
     #[Group('regression')]
     public function test_panel_settingsProbeFailed_rendersUnavailableInsteadOfTheSwitch(bool $canToggle): void
     {
-        $xp = self::dom(self::renderHtml(self::build(['probeFailed' => true]), $canToggle));
+        $xp = self::dom(self::renderHtml(
+            self::build(['probeFailed' => true, 'enabled' => null, 'cronReady' => null]),
+            $canToggle
+        ));
 
         $this->assertSame(0, $xp->query('//input[@id="verificationEnabledSwitch"]')?->length);
         $badge = $xp->query('//span[@id="verificationSwitchUnavailable"]')?->item(0);
@@ -292,14 +295,55 @@ final class VerificationStatusPanelRenderTest extends TestCase
         $this->assertSame('verificationToggleHelp', $badge->getAttribute('aria-describedby'));
     }
 
-    /** When the settings probe fails, only an admin sees the incident steps. */
-    #[DataProvider('viewerProvider')]
+    /** A switch state read before a later read threw is real, so an admin can still turn it off. */
     #[Group('regression')]
-    public function test_panel_settingsProbeFailed_showsIncidentStepsToAdminOnly(bool $canToggle): void
+    public function test_panel_probeFailedAfterSwitchOnWasRead_rendersACheckedUsableSwitchForAnAdmin(): void
     {
-        $xp = self::dom(self::renderHtml(self::build(['probeFailed' => true]), $canToggle));
+        $xp = self::dom(self::renderHtml(self::build(['probeFailed' => true, 'cronReady' => null]), true));
 
-        $this->assertSame($canToggle ? 1 : 0, $xp->query('//small[@id="verificationIncidentSteps"]')?->length);
+        $input = $xp->query('//input[@id="verificationEnabledSwitch"]')?->item(0);
+        $this->assertInstanceOf(DOMElement::class, $input);
+        $this->assertTrue($input->hasAttribute('checked'));
+        $this->assertFalse($input->hasAttribute('disabled'));
+        $this->assertSame(0, $xp->query('//span[@id="verificationSwitchUnavailable"]')?->length);
+    }
+
+    /**
+     * @return array<string, array{array<string, mixed>, bool, int}>
+     */
+    public static function incidentStepsProvider(): array
+    {
+        $unread = ['probeFailed' => true, 'enabled' => null, 'cronReady' => null];
+
+        return [
+            'healthy, admin'                        => [[], true, 1],
+            'healthy, editor'                       => [[], false, 0],
+            'Brevo not ready, switch off, admin'    => [['brevoReason' => 'x', 'enabled' => false], true, 0],
+            'Brevo not ready, switch on, admin'     => [['brevoReason' => 'x'], true, 1],
+            'switch not read, admin'                => [$unread, true, 1],
+            'switch not read, editor'               => [$unread, false, 0],
+            'switch read, later read threw, admin'  => [['probeFailed' => true, 'cronReady' => null], true, 1],
+            'switch off, later read threw, admin'   => [['probeFailed' => true, 'enabled' => false, 'cronReady' => null], true, 1],
+            'switch off, later read threw, editor'  => [['probeFailed' => true, 'enabled' => false, 'cronReady' => null], false, 0],
+        ];
+    }
+
+    /**
+     * The incident steps are the only manual stop procedure. An admin sees
+     * them when the switch has no reason to show, or when a probe failed.
+     *
+     * @param array<string, mixed> $overrides
+     */
+    #[DataProvider('incidentStepsProvider')]
+    #[Group('regression')]
+    public function test_panel_incidentSteps_showOnlyToAnAdminWhoMayNeedThem(
+        array $overrides,
+        bool $canToggle,
+        int $expected
+    ): void {
+        $xp = self::dom(self::renderHtml(self::build($overrides), $canToggle));
+
+        $this->assertSame($expected, $xp->query('//small[@id="verificationIncidentSteps"]')?->length);
     }
 
     #[Group('regression')]

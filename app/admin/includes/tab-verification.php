@@ -102,28 +102,22 @@ $vsEligible       = [];
 // A failed query or a missing row does not throw. batchSize() returns 5 then.
 $vsBatchSize      = null;
 $vsEligibleError  = null;
-$vsSettings       = null;
 $vsEligibleLoadError = 'The list of eligible cars could not be loaded. Check the system log for details.';
 
-// Read separately from (and before) the eligible-car query below: the
-// Automatic Sending panel renders this in the Batch size
-// field, and a preview-query failure must not prevent that render.
-// (batchSize() itself already fails closed to 5 on an ordinary DB error,
-// so this split doesn't change that outcome — it only avoids re-running
-// batchSize()'s own error-log line a second time for the same read.)
+// Read before, and apart from, the eligible-car query below. The Batch size
+// field renders this value, so a preview-query failure must not stop that
+// render. One read also keeps batchSize() from logging the same fault twice.
 try {
-    $vsSettings  = new VerificationSettings(dbi());
-    $vsBatchSize = $vsSettings->batchSize();
+    $vsBatchSize = (new VerificationSettings(dbi()))->batchSize();
 } catch (\Throwable $e) {
-    // Without a batch size the preview would run with LIMIT 0 and show
-    // "no cars are due". Clear the settings so the preview shows an error.
-    $vsSettings = null;
+    // $vsBatchSize stays null, so the preview below is skipped and shows an
+    // error, not "no cars are due".
     logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
         'Verification tab: could not read the configured batch size: ' . $e->getMessage());
 }
 
 // Only the Eligible queue view shows this preview, so other views skip the query.
-if ($vsIsEligibleView && $verificationSendSvc !== null && $vsSettings !== null && $vsBatchSize !== null) {
+if ($vsIsEligibleView && $verificationSendSvc !== null && $vsBatchSize !== null) {
     try {
         $vsEligible = $verificationSendSvc->findEligible($vsBatchSize, 0);
     } catch (\Throwable $e) {
@@ -135,7 +129,7 @@ if ($vsIsEligibleView && $verificationSendSvc !== null && $vsSettings !== null &
         ));
     }
 } elseif ($vsIsEligibleView) {
-    // Without the send service or the settings there is no preview. Say so,
+    // Without the send service or the batch size there is no preview. Say so,
     // so that an empty list does not read as "no cars are due".
     $vsEligibleError = $vsEligibleLoadError;
 }

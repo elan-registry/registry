@@ -116,8 +116,10 @@ $vsPanelEsc   = static fn (string $value): string => htmlspecialchars($value, EN
         <?php } ?>
 
         <?php // The switch does not stop event writes, so these manual steps are the only way.
-        // Only an admin gets them. Other viewers get a non-empty disabledReason.
-        if ($vsSwitch['disabledReason'] === '' || ($vsSwitch['unavailable'] && $vsCanToggle)) { ?>
+        // They show when the switch has no reason to show, which is never true
+        // for an editor. A failed probe also shows them to an admin, because
+        // the panel cannot tell the real state, and a fault is when they matter.
+        if ($vsSwitch['disabledReason'] === '' || ($vsCanToggle && $vsStatus->probeFailed())) { ?>
             <small class="form-text text-muted d-block mt-2"
                    id="verificationIncidentSteps">
                 <i class="fas fa-exclamation-triangle"></i>

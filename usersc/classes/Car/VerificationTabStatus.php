@@ -24,10 +24,11 @@ use ElanRegistry\LogCategories;
  *
  * {@see self::read()} runs each probe in its own fault domain, so one failure
  * does not stop the other probes. A failed settings probe shows "Not ready"
- * on the Brevo row and "Unavailable" on the cron and unmatched rows, and the
- * feature switch is unavailable. {@see self::allHealthy()} lists which probe
- * failures make the tab unhealthy. An unreadable value is never shown as a
- * green zero, because a zero tells an admin to stop looking.
+ * on the Brevo row. The feature switch, the cron row and the unmatched row
+ * show "Unavailable" only when the probe did not read their value.
+ * {@see self::allHealthy()} lists which probe failures make the tab
+ * unhealthy. An unreadable value is never shown as a green zero, because a
+ * zero tells an admin to stop looking.
  *
  * The class does not check permissions. The tab is admin and editor only,
  * and the toggle endpoint checks its own permission.
@@ -50,9 +51,12 @@ final readonly class VerificationTabStatus
 
     /**
      * @param bool                   $probeFailed         True when the VerificationSettings probe threw
-     * @param bool                   $enabled             The site-wide verification switch
+     * @param bool|null              $enabled             The site-wide verification switch, or null when the
+     *                                                    settings probe threw before it read the switch
      * @param string|null            $brevoNotReadyReason Admin-facing reason Brevo is not ready, or null when ready
-     * @param bool                   $cronReady           True when cron ran recently
+     *                                                    or when the probe threw before it read the reason
+     * @param bool|null              $cronReady           True when cron ran recently, or null when the
+     *                                                    settings probe threw before it read the cron state
      * @param DateTimeImmutable|null $lastCronAt          When cron was last seen, or null if never
      * @param int|null               $unmatchedCount      Unmatched-recipient counter, or null when unreadable
      * @param array{state: CronJobEnabledState, lastRunAt: ?DateTimeImmutable, lastFailureAt: ?DateTimeImmutable} $reconciliation
@@ -68,9 +72,9 @@ final readonly class VerificationTabStatus
      */
     public function __construct(
         private bool $probeFailed,
-        private bool $enabled,
+        private ?bool $enabled,
         private ?string $brevoNotReadyReason,
-        private bool $cronReady,
+        private ?bool $cronReady,
         private ?DateTimeImmutable $lastCronAt,
         private ?int $unmatchedCount,
         private array $reconciliation,
@@ -93,9 +97,11 @@ final readonly class VerificationTabStatus
     public static function read(DatabaseInterface $db, int $userId): self
     {
         $probeFailed    = false;
-        $enabled        = false;
+        // Null until each read returns, so a later throw does not hide a value
+        // that was already read. The switch needs this to stay usable.
+        $enabled        = null;
         $brevoReason    = null;
-        $cronReady      = false;
+        $cronReady      = null;
         $lastCronAt     = null;
         $unmatchedCount = null;
 
@@ -232,9 +238,9 @@ final readonly class VerificationTabStatus
     public function allHealthy(): bool
     {
         return !$this->probeFailed
-            && $this->enabled
+            && $this->enabled === true
             && $this->brevoReady()
-            && $this->cronReady
+            && $this->cronReady === true
             && $this->unmatchedCount === 0
             && $this->cronFailureCount() === 0
             && self::jobStateReadable($this->reconciliation['state'])
@@ -247,8 +253,11 @@ final readonly class VerificationTabStatus
      * Turning on is blocked while Brevo is not ready. Turning off is never
      * blocked, so an admin can always stop verification in an incident.
      *
-     * A failed settings probe does not know the switch state, so the switch
-     * is `unavailable` for every viewer. An unchecked switch would be a guess.
+     * The switch is `unavailable` for every viewer only when the settings
+     * probe threw before it read the switch state. An unchecked switch would
+     * be a guess. When the probe read the switch state and a later read threw,
+     * the switch shows the real state, and an admin can still turn it off.
+     * Turning on stays blocked, because the Brevo status is not known.
      *
      * @param bool $canToggle True when the viewer is an admin
      * @return array{checked: bool, disabled: bool, disabledReason: string, unavailable: bool}
@@ -256,7 +265,7 @@ final readonly class VerificationTabStatus
      */
     public function featureSwitch(bool $canToggle): array
     {
-        if ($this->probeFailed) {
+        if ($this->enabled === null) {
             return [
                 'checked'        => false,
                 'disabled'       => true,
@@ -469,12 +478,14 @@ final readonly class VerificationTabStatus
     /**
      * The Brevo reason to show
      *
-     * Both callers run only when the probe worked and Brevo is not ready, so
-     * the reason is set. The fallback only narrows the type to string.
+     * Both callers run only when Brevo is not ready. The reason is null only
+     * after a failed settings probe. The probe may have read Brevo as ready
+     * before a later read threw, so the fallback names the probe failure,
+     * not the Brevo status.
      */
     private function brevoReasonText(): string
     {
-        return $this->brevoNotReadyReason ?? 'The Brevo status could not be checked.';
+        return $this->brevoNotReadyReason ?? 'Some verification settings could not be read.';
     }
 
     /**
@@ -502,13 +513,13 @@ final readonly class VerificationTabStatus
         if ($this->brevoReady()) {
             return self::row('brevo', 'Brevo ready', 'Ready', 'badge text-bg-success', 'fa-check-circle');
         }
-        // A failed probe does not know the switch state, so it must not say
+        // A failed probe may not know the switch state, so it must not say
         // "switch is off".
         if ($this->probeFailed) {
             return self::row('brevo', 'Brevo ready', 'Not ready', 'badge text-bg-danger', 'fa-exclamation-circle',
                 'The Brevo status could not be checked. Check the system log for VerificationConfigWarning.');
         }
-        if (!$this->enabled) {
+        if ($this->enabled !== true) {
             return self::row('brevo', 'Brevo ready', 'Not checked (switch is off)', 'text-muted', 'fa-circle');
         }
 
@@ -522,8 +533,9 @@ final readonly class VerificationTabStatus
      */
     private function cronRow(): array
     {
-        // The probe did not read the cron state, so "Stalled" would be a guess.
-        if ($this->probeFailed) {
+        // The probe threw before it read the cron state, so "Stalled" would be
+        // a guess. A cron state that was read before a later throw is real.
+        if ($this->cronReady === null) {
             return self::row('cron', 'Cron running', 'Unavailable', 'badge text-bg-danger',
                 'fa-exclamation-circle',
                 'The cron state could not be read. Check the system log for'

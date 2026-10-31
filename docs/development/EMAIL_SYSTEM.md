@@ -472,10 +472,12 @@ The System Status panel shows 7 rows in this order:
 2. **Cron running** — badge `text-bg-success` ("Running") with a "last seen"
    timestamp if `cronReady()` is true. Badge `text-bg-warning` ("Stalled")
    with last seen timestamp or "no cron request has ever been logged" if false.
-   If the settings probe threw: badge `text-bg-danger` ("Unavailable") with
-   the reason "The cron state could not be read." plus a hint to check the
-   system log for `VerificationConfigWarning`. The row does not show "Stalled"
-   in this case, because the cron state is unknown.
+   If the settings probe threw before it read the cron state: badge
+   `text-bg-danger` ("Unavailable") with the reason "The cron state could not
+   be read." plus a hint to check the system log for
+   `VerificationConfigWarning`. The row does not show "Stalled" in this case,
+   because the cron state is unknown. If the probe read the cron state and a
+   later read threw, the row shows the real state.
 3. **Webhook receiver** — badge `text-bg-success` ("Live"). Static row,
    always healthy. Records delivery events from all registry mail in real
    time; the nightly reconciliation job catches anything the webhook missed.
@@ -502,13 +504,19 @@ The System Status panel shows 7 rows in this order:
 **Toggle Control:**
 
 - Located on the Verification System tab
-- If the settings probe threw, the switch state is unknown. The panel shows a
-  `text-bg-danger` "Unavailable" badge (`#verificationSwitchUnavailable`) and
-  the reason "The switch state could not be read." The panel does not render
-  `#verificationEnabledSwitch`. This applies to every viewer, admin and editor.
+- If the settings probe threw before it read the switch state, the state is
+  unknown. The panel shows a `text-bg-danger` "Unavailable" badge
+  (`#verificationSwitchUnavailable`) and the reason "The switch state could
+  not be read." The panel does not render `#verificationEnabledSwitch`. This
+  applies to every viewer, admin and editor.
+- If the probe read the switch state and a later read threw, the panel
+  renders the switch with its real state. An admin can turn it off. Turning
+  it on is blocked, because `brevoReady()` is false after a probe failure.
+  When the probe did not give a Brevo reason, the reason is "Some
+  verification settings could not be read."
 - Disabled (with explanatory text) when current user is not admin, or when admin but attempting to enable while `brevoReady()` is false
 - Label always explains which prerequisite failed if the enable direction is blocked (for Brevo, the `brevoNotReadyReason()` text)
-- Disabling is never blocked — the switch can always be turned off
+- Disabling is never blocked — when the switch state was read, an admin can always turn the switch off
 
 **Dashboard Banner:**
 

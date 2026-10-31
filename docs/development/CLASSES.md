@@ -1880,11 +1880,15 @@ other probes.
   job state does not count
 - `featureSwitch(bool $canToggle): array` - Give the feature switch state for the
   panel. Returns `['checked' => bool, 'disabled' => bool, 'disabledReason' =>
-  string, 'unavailable' => bool]`. When the settings probe failed, the switch
-  state is unknown. The method then returns `unavailable` as `true`, `checked`
-  as `false`, `disabled` as `true`, and a reason for every viewer. The panel
-  then shows a red "Unavailable" badge and no switch. `cronRow()` also shows a
-  red "Unavailable" badge in this case, not "Stalled".
+  string, 'unavailable' => bool]`. When the settings probe threw before it
+  read the switch state, the state is unknown. The method then returns
+  `unavailable` as `true`, `checked` as `false`, `disabled` as `true`, and a
+  reason for every viewer. The panel then shows a red "Unavailable" badge and
+  no switch. When the probe read the switch state and a later read threw, the
+  method returns the real `checked` value. An admin can then turn the switch
+  off, but not on, because the Brevo status is not known. The cron row shows
+  a red "Unavailable" badge, not "Stalled", only when the probe threw before
+  it read the cron state.
 - `autoSendState(): CronJobEnabledState` - The automatic send job's enabled state
 - `autoSendLastRunAt(): ?DateTimeImmutable` - When the automatic send job last
   claimed a run, or `null` if never
