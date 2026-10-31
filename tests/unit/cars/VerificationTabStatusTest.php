@@ -299,6 +299,22 @@ final class VerificationTabStatusTest extends TestCase
         $this->assertSame('', $row['detailIcon']);
     }
 
+    /** A failed probe did not read the cron state, so "Stalled" would be a guess. */
+    #[DataProvider('switchStateProvider')]
+    public function test_cronRow_settingsProbeThrew_isUnavailableWithAReason(bool $enabled): void
+    {
+        $row = self::row('cron', ['probeFailed' => true, 'enabled' => $enabled, 'cronReady' => false, 'lastCronAt' => null]);
+
+        $this->assertSame('Unavailable', $row['badgeText']);
+        $this->assertSame('badge text-bg-danger', $row['badgeClass']);
+        $this->assertSame('fa-exclamation-circle', $row['icon']);
+        $this->assertSame(
+            'The cron state could not be read. Check the system log for VerificationConfigWarning entries.',
+            $row['detail']
+        );
+        $this->assertSame('', $row['detailIcon']);
+    }
+
     // ---- Webhook row ----
 
     public function test_webhookRow_isAlwaysLive(): void
@@ -542,16 +558,52 @@ final class VerificationTabStatusTest extends TestCase
         $this->assertFalse(self::makeStatus($override)->allHealthy());
     }
 
-    /** The reconciliation and suppression-sync badges are shown but are not health conditions. */
-    public function test_allHealthy_failedJobBadgesDoNotChangeIt(): void
+    /**
+     * A failed last run counts through the cron failure log, a pause is an
+     * admin decision, and the automatic send job has its own card.
+     */
+    public function test_allHealthy_failedPausedOrAutoSendJobStatesDoNotChangeIt(): void
     {
         $status = self::makeStatus([
             'reconciliation'  => self::job(CronJobEnabledState::ENABLED, '2026-10-18 02:00:00', '2026-10-18 02:00:01'),
-            'suppressionSync' => self::job(CronJobEnabledState::UNREADABLE, null),
+            'suppressionSync' => self::job(CronJobEnabledState::DISABLED, null),
             'autoSend'        => self::job(CronJobEnabledState::UNREADABLE, null),
         ]);
 
         $this->assertTrue($status->allHealthy());
+    }
+
+    /** @return array<string, array{string, CronJobEnabledState}> */
+    public static function unknownJobStateProvider(): array
+    {
+        return [
+            'reconciliation unreadable'   => ['reconciliation', CronJobEnabledState::UNREADABLE],
+            'reconciliation missing'      => ['reconciliation', CronJobEnabledState::MISSING],
+            'suppression sync unreadable' => ['suppressionSync', CronJobEnabledState::UNREADABLE],
+            'suppression sync missing'    => ['suppressionSync', CronJobEnabledState::MISSING],
+        ];
+    }
+
+    #[DataProvider('unknownJobStateProvider')]
+    #[Group('regression')]
+    public function test_allHealthy_jobStateUnknown_isNotHealthy(string $job, CronJobEnabledState $state): void
+    {
+        $this->assertFalse(self::makeStatus([$job => self::job($state, null)])->allHealthy());
+    }
+
+    /** @return array<string, array{string}> */
+    public static function healthJobProvider(): array
+    {
+        return [
+            'reconciliation'   => ['reconciliation'],
+            'suppression sync' => ['suppressionSync'],
+        ];
+    }
+
+    #[DataProvider('healthJobProvider')]
+    public function test_allHealthy_pausedJob_staysHealthy(string $job): void
+    {
+        $this->assertTrue(self::makeStatus([$job => self::job(CronJobEnabledState::DISABLED, null)])->allHealthy());
     }
 
     // ---- Feature switch ----
@@ -559,7 +611,7 @@ final class VerificationTabStatusTest extends TestCase
     public function test_featureSwitch_adminWithBrevoReady_isEnabledAndHasNoReason(): void
     {
         $this->assertSame(
-            ['checked' => true, 'disabled' => false, 'disabledReason' => ''],
+            ['checked' => true, 'disabled' => false, 'disabledReason' => '', 'unavailable' => false],
             self::makeStatus()->featureSwitch(true)
         );
     }
@@ -567,7 +619,12 @@ final class VerificationTabStatusTest extends TestCase
     public function test_featureSwitch_viewerWhoCannotToggle_isDisabledWithTheAdminOnlyReason(): void
     {
         $this->assertSame(
-            ['checked' => true, 'disabled' => true, 'disabledReason' => 'Only administrators can change this setting.'],
+            [
+                'checked'        => true,
+                'disabled'       => true,
+                'disabledReason' => 'Only administrators can change this setting.',
+                'unavailable'    => false,
+            ],
             self::makeStatus()->featureSwitch(false)
         );
     }
@@ -596,12 +653,32 @@ final class VerificationTabStatusTest extends TestCase
         $this->assertSame('', $switch['disabledReason']);
     }
 
-    public function test_featureSwitch_settingsProbeThrewWhileOff_usesTheCouldNotBeCheckedReason(): void
+    /** @return array<string, array{bool, bool}> */
+    public static function probeFailedSwitchProvider(): array
     {
-        $switch = self::makeStatus(['probeFailed' => true, 'enabled' => false])->featureSwitch(true);
+        return [
+            'admin, switch off'  => [true, false],
+            'admin, switch on'   => [true, true],
+            'editor, switch off' => [false, false],
+            'editor, switch on'  => [false, true],
+        ];
+    }
 
-        $this->assertTrue($switch['disabled']);
-        $this->assertStringContainsString('The Brevo status could not be checked.', $switch['disabledReason']);
+    /** The switch state is unknown, so no viewer sees a guessed state or the admin-only reason. */
+    #[DataProvider('probeFailedSwitchProvider')]
+    #[Group('regression')]
+    public function test_featureSwitch_settingsProbeThrew_isUnavailableWithTheUnreadableReason(bool $canToggle, bool $enabled): void
+    {
+        $this->assertSame(
+            [
+                'checked'        => false,
+                'disabled'       => true,
+                'disabledReason' => 'The switch state could not be read. Check the system log for'
+                    . ' VerificationConfigWarning entries.',
+                'unavailable'    => true,
+            ],
+            self::makeStatus(['probeFailed' => true, 'enabled' => $enabled])->featureSwitch($canToggle)
+        );
     }
 
     // ---- Automatic Sending card state (#1885, #2148) ----
@@ -877,7 +954,7 @@ final class VerificationTabStatusTest extends TestCase
     /**
      * One failed job read marks only that job's row Unavailable
      *
-     * Job state is not part of allHealthy(); test_allHealthy_failedJobBadgesDoNotChangeIt pins that.
+     * test_allHealthy_jobStateUnknown_isNotHealthy pins the allHealthy() side.
      */
     #[DataProvider('failedJobRowProvider')]
     #[Group('regression')]
@@ -1032,10 +1109,11 @@ final class VerificationTabStatusTest extends TestCase
 
     /**
      * read() leaves the switch value false when the settings probe throws.
-     * The real switch state is unknown, so the row must not say "switch is off".
+     * The real switch state is unknown, so the row must not say "switch is off",
+     * and the switch and cron row must not show a guessed value.
      */
     #[Group('regression')]
-    public function test_read_settingsProbeThrows_brevoRowIsNotReadyWithTheCheckTheLogHint(): void
+    public function test_read_settingsProbeThrows_brevoRowIsNotReadyAndSwitchAndCronAreUnavailable(): void
     {
         $db = self::healthyJobsDb();
         $db->throwOnSettings = true;
@@ -1052,13 +1130,15 @@ final class VerificationTabStatusTest extends TestCase
         );
 
         $switch = $status->featureSwitch(true);
+        $this->assertTrue($switch['unavailable']);
         $this->assertFalse($switch['checked']);
         $this->assertTrue($switch['disabled']);
         $this->assertSame(
-            'Verification cannot be enabled until Brevo is ready. The Brevo status could not be checked.'
-                . ' Fix this, then reload this page.',
+            'The switch state could not be read. Check the system log for VerificationConfigWarning entries.',
             $switch['disabledReason']
         );
+
+        $this->assertSame('Unavailable', self::badgesByKey($status)['cron']['badgeText']);
     }
 
     public function test_read_logsAreAttributedToTheActingUser(): void

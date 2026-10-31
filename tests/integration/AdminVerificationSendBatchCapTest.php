@@ -14,8 +14,10 @@ use PHPUnit\Framework\Attributes\Group;
  * The cut writes one log row and shows one admin message.
  *
  * The request runs the real page through invokeEndpoint(). No submitted id is
- * positive, so no car is read and no email is sent. The test needs no Brevo
- * setup.
+ * a positive car id, so no car is read and no email is sent. The test needs no
+ * Brevo setup.
+ *
+ * #2457: a nested car_ids[] element is rejected by its type, not cast to car 1.
  *
  * The test changes `er_verification_settings.batch_size` and the
  * `er_cron_job_runs.enabled` flag of the send job. tearDown restores both.
@@ -81,7 +83,7 @@ final class AdminVerificationSendBatchCapTest extends IntegrationTestCase
     /**
      * Run app/admin/index.php as the admin with a POST of verification_send_batch.
      *
-     * @param list<string> $carIds
+     * @param list<string|list<string>> $carIds
      * @return array{exitCode: int, raw: string}
      */
     private function postSendBatch(array $carIds): array
@@ -132,5 +134,44 @@ final class AdminVerificationSendBatchCapTest extends IntegrationTestCase
             $this->adminId
         );
         $this->assertSame(0, $count, 'Control: two ids with batch size two write no cut row');
+    }
+
+    public function testNestedCarIdElementLogsANonScalarRowAndReadsNoCar(): void
+    {
+        $result = $this->postSendBatch(['0', ['7']]);
+
+        $this->assertSame(0, $result['exitCode'], 'The page must run to the end: ' . substr($result['raw'], 0, 500));
+
+        $nonScalarRows = $this->countMatchingLogs(
+            LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
+            'Verification send: non-scalar car id in car_ids[]: array',
+            $this->adminId
+        );
+        $this->assertSame(1, $nonScalarRows, 'The nested element writes one row that names its type');
+
+        $nonPositiveRows = $this->countMatchingLogs(
+            LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
+            'Verification send: non-positive car id in car_ids[]%',
+            $this->adminId
+        );
+        $this->assertSame(1, $nonPositiveRows, 'The scalar 0 keeps its non-positive row');
+
+        // An (int) cast turns ['7'] into car 1. A car read writes one of these rows.
+        $carReadRows = $this->countMatchingLogs(
+            LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
+            'Verification send: car %',
+            $this->adminId
+        ) + $this->countMatchingLogs(
+            LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
+            'Verification send: findById threw%',
+            $this->adminId
+        );
+        $this->assertSame(0, $carReadRows, 'No submitted value reaches findById()');
+
+        $this->assertSame(1, $this->countMatchingLogs(
+            LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
+            'Verification send: batch complete — 0 sent, 0 unrecorded, 2 skipped, 0 failed',
+            $this->adminId
+        ), 'Each rejected value is one skipped row');
     }
 }

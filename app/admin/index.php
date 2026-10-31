@@ -564,8 +564,8 @@ if (ElanInput::existsPost()) {
 
                     // \Input::get() sanitizes arrays recursively (see
                     // users/classes/Input.php::sanitize()), the same way the
-                    // "merge" case above relies on for its `cars` field. Values
-                    // are cast to int below regardless.
+                    // "merge" case above relies on for its `cars` field. Nested
+                    // arrays survive it, so filterCarIds() below checks each value.
                     /** @var array<int, mixed> $submittedIds */
                     $submittedIds = (array) ElanInput::get('car_ids', []);
 
@@ -591,25 +591,23 @@ if (ElanInput::existsPost()) {
                         $errors[] = $vsCap['adminMessage'];
                     }
 
-                    // Non-positive ids are filtered here, before the batch
+                    // Invalid ids are filtered here, before the batch
                     // reaches VerificationBatchSender — that class assumes
                     // every id it is given is a positive int, matching
                     // findById()'s contract.
-                    $sendCarIds = [];
-                    foreach ($submittedIds as $submittedId) {
-                        $sendCarId = (int) $submittedId;
+                    $vsFiltered = VerificationBatchSender::filterCarIds($submittedIds);
+                    $sendCarIds = $vsFiltered['ids'];
 
-                        if ($sendCarId <= 0) {
-                            logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
-                                'Verification send: non-positive car id in car_ids[]: ' . var_export($submittedId, true));
-                            $sendReportSkipped[] = [
-                                'car'    => (object) ['id' => 0, 'chassis' => '', 'email' => ''],
-                                'reason' => 'Invalid car reference',
-                            ];
-                            continue;
-                        }
-
-                        $sendCarIds[] = $sendCarId;
+                    foreach ($vsFiltered['rejected'] as $rejectedId) {
+                        // Only a scalar is exported. A non-scalar value is logged by its type alone.
+                        $rejectedLog = is_scalar($rejectedId)
+                            ? 'Verification send: non-positive car id in car_ids[]: ' . var_export($rejectedId, true)
+                            : 'Verification send: non-scalar car id in car_ids[]: ' . get_debug_type($rejectedId);
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $rejectedLog);
+                        $sendReportSkipped[] = [
+                            'car'    => (object) ['id' => 0, 'chassis' => '', 'email' => ''],
+                            'reason' => 'Invalid car reference',
+                        ];
                     }
 
                     // The per-car loop (findById() re-read, eligibility

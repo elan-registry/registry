@@ -47,6 +47,10 @@ after an item is written.
 
 - [ ] Narrow 2 × `catch (Exception $e)` (~L29, 53) to the typed exceptions from `Car` and `CarTransferRepository` (from #1637)
 
+### `app/admin/index.php`
+
+- [ ] `verification_send_batch` logs a rejected scalar `car_ids` value with `var_export()` and no length limit or control-character strip, so an admin can put CR/LF into the log line. Cut the value to a fixed length and remove `[\x00-\x1F\x7F]` before the log call (found in #2457)
+
 ### `app/api/cars/list.php`
 
 - [ ] `(new CarShowcaseService())->getNewCarIds()` (~64) runs an uncached query on every DataTables request (page turn, sort, search) since #1900. Before, it ran once per page load. Memoize it per request or for a short time. Accepted as low risk for v2.30.4. (found in /finish-milestone v2.30.4)
@@ -189,6 +193,10 @@ after an item is written.
 ### `tests/unit/admin/VerificationBannerReasonTest.php` (test coverage)
 
 - [ ] The "never echo unescaped" regexes miss `<?= htmlspecialchars($y) . $verificationBrevoNotReadyReason ?>` and `printf(...)`, and `[^;]*` can match across lines into comment text. Count the variable's uses in `app/admin/index.php` and assert each one is known. (found in /finish-milestone v2.30.6)
+
+### `tests/unit/admin/VerificationBatchSizeFieldRenderTest.php` + `tests/unit/admin/VerificationStatusPanelRenderTest.php` + `tests/unit/regression/Issue2184VerificationTagRegressionTest.php` (test-only)
+
+- [ ] Each file has its own copy of the include-and-capture harness (error handler, `ob_start()`, path override) and the `DOMXPath` loader. Move them to one shared trait in `tests/Support/` and use it in all three (found in #2457)
 
 ### `tests/unit/cars/services/AdminVerificationQueueUrlStateTest.php` (test quality)
 

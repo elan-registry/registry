@@ -80,6 +80,14 @@ $vsPanelEsc   = static fn (string $value): string => htmlspecialchars($value, EN
 
         <div id="verificationToggleFeedback" class="mb-2" role="alert" aria-live="polite"></div>
 
+        <?php if ($vsSwitch['unavailable']) { ?>
+        <!-- No switch: its state is unknown, and a toggle with an unknown state is not safe. -->
+        <span class="badge text-bg-danger" id="verificationSwitchUnavailable"
+              aria-describedby="verificationToggleHelp">
+            <i class="fas fa-exclamation-circle"></i>
+            Unavailable
+        </span>
+        <?php } else { ?>
         <div class="form-check form-switch">
             <input class="form-check-input" type="checkbox"
                    id="verificationEnabledSwitch"
@@ -90,6 +98,7 @@ $vsPanelEsc   = static fn (string $value): string => htmlspecialchars($value, EN
                 Verification system enabled
             </label>
         </div>
+        <?php } ?>
 
         <?php if ($vsSwitch['disabledReason'] !== '') { ?>
             <small id="verificationToggleHelp" class="form-text text-muted d-block mt-1">
@@ -104,7 +113,13 @@ $vsPanelEsc   = static fn (string $value): string => htmlspecialchars($value, EN
                 write delivery events and bounce or suppression state. It can always be turned off, even
                 while Brevo or cron are unavailable.
             </small>
-            <small class="form-text text-muted d-block mt-2">
+        <?php } ?>
+
+        <?php // The switch does not stop event writes, so these manual steps are the only way.
+        // Only an admin gets them. Other viewers get a non-empty disabledReason.
+        if ($vsSwitch['disabledReason'] === '' || ($vsSwitch['unavailable'] && $vsCanToggle)) { ?>
+            <small class="form-text text-muted d-block mt-2"
+                   id="verificationIncidentSteps">
                 <i class="fas fa-exclamation-triangle"></i>
                 To stop event writes in an incident, do all three steps:
             </small>

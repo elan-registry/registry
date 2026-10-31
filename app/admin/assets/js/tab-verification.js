@@ -13,8 +13,6 @@
     var toggle   = document.getElementById('verificationEnabledSwitch');
     var feedback = document.getElementById('verificationToggleFeedback');
 
-    if (!toggle) return;
-
     function showFeedback(message, variant) {
         if (!feedback) return;
         feedback.innerHTML = '';
@@ -34,32 +32,36 @@
         feedback.appendChild(alert);
     }
 
-    toggle.addEventListener('change', function () {
-        var desired  = toggle.checked;
-        var previous = !desired;
+    // The switch is absent when the settings probe fails; the queue and
+    // activity forms below must still bind.
+    if (toggle) {
+        toggle.addEventListener('change', function () {
+            var desired  = toggle.checked;
+            var previous = !desired;
 
-        toggle.disabled = true;
-        showFeedback('', 'info');
+            toggle.disabled = true;
+            showFeedback('', 'info');
 
-        new ElanRegistryAPI()
-            .post(ENDPOINT, { enabled: desired ? 1 : 0 })
-            .then(function (result) {
-                showFeedback(
-                    result.message || (desired ? 'Verification enabled.' : 'Verification disabled.'),
-                    'success'
-                );
-                toggle.disabled = false;
-            })
-            .catch(function (error) {
-                // Never leave the checkbox showing a state the server did not accept.
-                toggle.checked  = previous;
-                toggle.disabled = false;
-                showFeedback(
-                    error && error.message ? error.message : 'Could not change the verification setting.',
-                    'danger'
-                );
-            });
-    });
+            new ElanRegistryAPI()
+                .post(ENDPOINT, { enabled: desired ? 1 : 0 })
+                .then(function (result) {
+                    showFeedback(
+                        result.message || (desired ? 'Verification enabled.' : 'Verification disabled.'),
+                        'success'
+                    );
+                    toggle.disabled = false;
+                })
+                .catch(function (error) {
+                    // Never leave the checkbox showing a state the server did not accept.
+                    toggle.checked  = previous;
+                    toggle.disabled = false;
+                    showFeedback(
+                        error && error.message ? error.message : 'Could not change the verification setting.',
+                        'danger'
+                    );
+                });
+        });
+    }
 
     // Window/Show/Activity-window controls are plain GET forms: the browser
     // can submit them with no JS at all. The one gap is that a plain GET

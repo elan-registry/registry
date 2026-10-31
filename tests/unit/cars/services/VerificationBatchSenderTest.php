@@ -648,6 +648,73 @@ final class VerificationBatchSenderTest extends TestCase
         $this->assertSame(['v', 2], $untouched['ids']);
         $this->assertNull($untouched['logMessage']);
     }
+
+    // --- filterCarIds() (#2457) ------------------------------------------
+
+    /** @return array<string, array{0: mixed}> One submitted value that is not a positive car id */
+    public static function rejectedCarIdProvider(): array
+    {
+        return [
+            'nested array'           => [['5']],
+            'empty nested array'     => [[]],
+            'object'                 => [new \stdClass()],
+            'null'                   => [null],
+            'true'                   => [true],
+            'false'                  => [false],
+            'float'                  => [3.0],
+            'non-numeric string'     => ['abc'],
+            'numeric prefix string'  => ['3abc'],
+            'int zero'               => [0],
+            'negative int'           => [-1],
+            'string zero'            => ['0'],
+            'negative string'        => ['-4'],
+            'decimal string'         => ['1.5'],
+            'leading space string'   => [' 3'],
+            'plus sign string'       => ['+3'],
+            'leading zero string'    => ['03'],
+            'past PHP_INT_MAX'       => ['99999999999999999999'],
+            'empty string'           => [''],
+        ];
+    }
+
+    #[AllowMockObjectsWithoutExpectations]
+    #[\PHPUnit\Framework\Attributes\DataProvider('rejectedCarIdProvider')]
+    public function testFilterCarIdsRejectsAValueThatIsNotAPositiveCarId(mixed $value): void
+    {
+        $result = VerificationBatchSender::filterCarIds([$value]);
+
+        $this->assertSame([], $result['ids']);
+        $this->assertSame([$value], $result['rejected']);
+    }
+
+    /** @return array<string, array{0: int|string, 1: int}> [submitted value, kept car id] */
+    public static function acceptedCarIdProvider(): array
+    {
+        return [
+            'int'            => [42, 42],
+            'numeric string' => ['42', 42],
+            'string one'     => ['1', 1],
+        ];
+    }
+
+    #[AllowMockObjectsWithoutExpectations]
+    #[\PHPUnit\Framework\Attributes\DataProvider('acceptedCarIdProvider')]
+    public function testFilterCarIdsKeepsAPositiveCarIdAsAnInt(int|string $value, int $expected): void
+    {
+        $result = VerificationBatchSender::filterCarIds([$value]);
+
+        $this->assertSame([$expected], $result['ids']);
+        $this->assertSame([], $result['rejected']);
+    }
+
+    #[AllowMockObjectsWithoutExpectations]
+    public function testFilterCarIdsKeepsTheSubmittedOrderOfBothLists(): void
+    {
+        $result = VerificationBatchSender::filterCarIds(['30', ['x'], 10, '0', '20', null, 5]);
+
+        $this->assertSame([30, 10, 20, 5], $result['ids']);
+        $this->assertSame([['x'], '0', null], $result['rejected']);
+    }
 }
 
 // The seam CarVerificationSendService::sendOne()'s `new Owner((int)
