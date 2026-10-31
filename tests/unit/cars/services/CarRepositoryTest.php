@@ -1383,6 +1383,89 @@ final class CarRepositoryTest extends TestCase
         $this->assertSame([], $writes);
     }
 
+    /** The old value is the bounce that applied: here the stored bounce is for the current address. */
+    public function testSetProfileBouncedReturnsOneWhenTheReplacedBounceAppliedToTheCurrentAddress(): void
+    {
+        $writes = [];
+        $repo = new CarRepository($this->makeProfileDb(
+            self::profileRow(['email_bounced' => 1, 'email_bounced_address' => 'owner@example.com']),
+            $writes
+        ));
+
+        $this->assertSame(1, $repo->setProfileBounced(42, 'other@example.com', '2026-09-01 10:00:00'));
+        $this->assertCount(1, $writes);
+        $this->assertSame(['other@example.com', '2026-09-01 10:00:00', 42], $writes[0]['params']);
+    }
+
+    /**
+     * @return array<string, array{string}> flag (bounced or blocked)
+     */
+    public static function profileFlagWriterProvider(): array
+    {
+        return ['bounce' => ['bounced'], 'block' => ['blocked']];
+    }
+
+    private static function setProfileFlag(CarRepository $repo, string $flag, string $address): ?int
+    {
+        return $flag === 'bounced'
+            ? $repo->setProfileBounced(42, $address, '2026-09-01 10:00:00')
+            : $repo->setProfileBlocked(42, $address, null, '2026-09-01 10:00:00');
+    }
+
+    /**
+     * A repeat for a stored old address returns 1 and writes nothing. A
+     * change of that early return must not log a 0 to 1 change that did not
+     * happen.
+     */
+    #[DataProvider('profileFlagWriterProvider')]
+    public function testSetProfileFlagRepeatForAnOldAddressReturnsOneAndWritesNothing(string $flag): void
+    {
+        $writes = [];
+        $repo = new CarRepository($this->makeProfileDb(
+            self::profileRow(["email_{$flag}" => 1, "email_{$flag}_address" => 'old@example.com']),
+            $writes
+        ));
+
+        $this->assertSame(1, self::setProfileFlag($repo, $flag, 'OLD@example.com'));
+        $this->assertSame([], $writes);
+    }
+
+    /**
+     * @return array<string, array{string, ?string, int}> flag, stored flag address, expected old value
+     */
+    public static function orphanProfileFlagProvider(): array
+    {
+        return [
+            'bounce with an address'  => ['bounced', 'old@example.com', 0],
+            'bounce with no address'  => ['bounced', '', 1],
+            'block with an address'   => ['blocked', 'old@example.com', 0],
+            'block with no address'   => ['blocked', '', 1],
+        ];
+    }
+
+    /**
+     * An orphan profile (no users row, so user_email is NULL) has an empty
+     * current address. A stored address does not match it, and an empty
+     * stored address applies (fail closed).
+     */
+    #[DataProvider('orphanProfileFlagProvider')]
+    public function testSetProfileFlagOnAnOrphanProfileWritesAndReturnsWhetherTheOldFlagApplied(
+        string $flag,
+        ?string $stored,
+        int $expectedOld
+    ): void {
+        $writes = [];
+        $repo = new CarRepository($this->makeProfileDb(
+            self::profileRow(["email_{$flag}" => 1, "email_{$flag}_address" => $stored, 'user_email' => null]),
+            $writes
+        ));
+
+        $this->assertSame($expectedOld, self::setProfileFlag($repo, $flag, 'new@example.com'));
+        $this->assertCount(1, $writes);
+        $this->assertStringContainsString("email_{$flag} = 1", $writes[0]['sql']);
+        $this->assertSame('new@example.com', $writes[0]['params'][0]);
+    }
+
     /**
      * @return array<string, array{string, string}>
      */
@@ -1871,7 +1954,10 @@ final class CarRepositoryTest extends TestCase
         $result = $repo->clearFlagsForConfirmedEmailChange(42);
 
         $this->assertSame(
-            ['bounced' => 1, 'blocked' => 1, 'bouncedHadNoAddress' => false, 'blockedHadNoAddress' => false, 'changed' => true],
+            [
+                'bounced' => 1, 'blocked' => 1, 'bouncedHadNoAddress' => false, 'blockedHadNoAddress' => false,
+                'changed' => true, 'bouncedCleared' => true, 'blockedCleared' => true,
+            ],
             $result
         );
         $this->assertCount(4, $queries, 'Lock, bounce clear, block clear, since/seen');
@@ -1985,6 +2071,63 @@ final class CarRepositoryTest extends TestCase
         $this->assertNotNull($result);
         $this->assertTrue($result['blockedHadNoAddress']);
         $this->assertFalse($result['bouncedHadNoAddress'], 'A flag that is not set has no anomaly');
+    }
+
+    /**
+     * @return array<string, array{string, string, int}> flag (bounced or blocked), stored flag address, stored flag value
+     */
+    public static function flagForTheCurrentAddressProvider(): array
+    {
+        return [
+            'bounce, same address'       => ['bounced', 'new@example.com', 1],
+            'bounce, other case, spaces' => ['bounced', "  NEW@Example.com\t", 1],
+            'block, same address'        => ['blocked', 'new@example.com', 1],
+            'block, other case, spaces'  => ['blocked', "  NEW@Example.com\t", 1],
+            // A bad value reads as set. It stays unrepaired, and the readers refuse it.
+            'bounce, bad value'          => ['bounced', 'new@example.com', 2],
+            'block, bad value'           => ['blocked', 'new@example.com', 2],
+        ];
+    }
+
+    /**
+     * The admin form changes users.email and not email_address_seen, so a
+     * flag set later for the new address must stay (#2411).
+     */
+    #[DataProvider('flagForTheCurrentAddressProvider')]
+    public function testConfirmedChangeKeepsAFlagStoredForTheCurrentAddress(string $flag, string $stored, int $value): void
+    {
+        $queries = [];
+        $row = self::lockRow(["email_{$flag}" => $value, "email_{$flag}_address" => $stored]);
+        $repo = new CarRepository($this->makeRecordingDb($row, $queries));
+
+        $result = $repo->clearFlagsForConfirmedEmailChange(42);
+
+        $this->assertCount(2, $queries, 'Lock and since/seen, no flag clear');
+        $this->assertStringStartsWith('UPDATE profiles SET email_address_since = ?, email_address_seen = ?', $queries[1]['sql']);
+        $this->assertSame('new@example.com', $queries[1]['params'][1]);
+        $this->assertNotNull($result);
+        $this->assertTrue($result['changed']);
+        $this->assertSame(1, $result[$flag], 'The old value is still reported');
+        $this->assertFalse($result["{$flag}Cleared"]);
+    }
+
+    public function testConfirmedChangeClearsAnOldAddressFlagAndKeepsACurrentAddressFlag(): void
+    {
+        $queries = [];
+        $row = self::lockRow([
+            'email_bounced' => 1, 'email_bounced_address' => 'new@example.com',
+            'email_blocked' => 1, 'email_blocked_address' => 'old@example.com',
+        ]);
+        $repo = new CarRepository($this->makeRecordingDb($row, $queries));
+
+        $result = $repo->clearFlagsForConfirmedEmailChange(42);
+
+        $this->assertCount(3, $queries, 'Lock, block clear, since/seen');
+        $this->assertStringStartsWith('UPDATE profiles SET email_blocked = 0', $queries[1]['sql']);
+        $this->assertStringStartsWith('UPDATE profiles SET email_address_since = ?', $queries[2]['sql']);
+        $this->assertNotNull($result);
+        $this->assertFalse($result['bouncedCleared']);
+        $this->assertTrue($result['blockedCleared']);
     }
 
     public function testConfirmedChangeReturnsNullAndWritesNothingWithoutARow(): void

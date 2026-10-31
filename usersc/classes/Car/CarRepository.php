@@ -1063,25 +1063,34 @@ class CarRepository
      * they differ, it does these steps:
      *
      * 1. Clears `email_bounced` with its address and date, and sets
-     *    `email_bounce_cleared_at`, if the bounce is set.
+     *    `email_bounce_cleared_at`, if the bounce is set and its stored
+     *    address is not the normalized `users.email`.
      * 2. Clears `email_blocked` with its address, date and cause, if the
-     *    block is set.
+     *    block is set and its stored address is not the normalized
+     *    `users.email`.
      * 3. Sets `email_address_since` to now and `email_address_seen` to the
      *    normalized `users.email`.
+     *
+     * When they differ, a flag stored for the current address stays. The
+     * UserSpice admin form changes `users.email` and does not write
+     * `email_address_seen`, so a flag set later for the new address must not
+     * clear here (#2411). When they differ, a flag with no stored address
+     * clears.
      *
      * `email_opted_out` stays. The caller writes the flag-change log rows and
      * logs the no-address anomaly.
      *
-     * A stored value other than 0 or 1 is always written over, and the
-     * return value is the opposite of the value written ({@see writerFlagValue()}).
+     * A stored value other than 0 or 1 reads as set, so its returned value
+     * is 1 ({@see writerFlagValue()}). It is written over only when this call
+     * clears that flag.
      *
      * @param int $userId Owner user ID
-     * @return array{bounced: int, blocked: int, bouncedHadNoAddress: bool, blockedHadNoAddress: bool, changed: bool}|null
+     * @return array{bounced: int, blocked: int, bouncedHadNoAddress: bool, blockedHadNoAddress: bool, changed: bool, bouncedCleared: bool, blockedCleared: bool}|null
      *         The flag values before the call and whether the address changed.
-     *         A flag was cleared only when `changed` is true and its old value
-     *         is 1. A `...HadNoAddress` value is true when that flag was set
-     *         with a NULL or empty address. Null when the owner has no
-     *         profiles row or no users row (nothing is written).
+     *         `bouncedCleared` and `blockedCleared` are true when this call
+     *         cleared that flag. A `...HadNoAddress` value is true when that
+     *         flag was set with a NULL or empty address. Null when the owner
+     *         has no profiles row or no users row (nothing is written).
      * @throws CarDatabaseException If a query fails
      */
     public function clearFlagsForConfirmedEmailChange(int $userId): ?array
@@ -1109,21 +1118,24 @@ class CarRepository
             return null;
         }
 
-        // A bad value reads as set, so an address change clears it. With no
-        // change it stays, and the decision readers keep refusing it.
+        // A bad value reads as set, so an address change clears it, unless its
+        // stored address is the current address. When it stays, the decision
+        // readers keep refusing it.
         [$bounced, $bouncedValid] = self::writerFlagValue($row->email_bounced, 'email_bounced', $userId, 1);
         [$blocked, $blockedValid] = self::writerFlagValue($row->email_blocked, 'email_blocked', $userId, 1);
         $current = EmailAddress::normalize(self::nullableString($row->user_email));
         $changed = EmailAddress::isChange(self::nullableString($row->email_address_seen), $current);
+        $bouncedCleared = $changed && $bounced === 1 && !self::sameAddress($row->email_bounced_address, $current);
+        $blockedCleared = $changed && $blocked === 1 && !self::sameAddress($row->email_blocked_address, $current);
 
         if ($changed) {
-            if ($bounced === 1) {
+            if ($bouncedCleared) {
                 if (!$bouncedValid) {
                     self::logFlagRepair($row->email_bounced, 'email_bounced', $userId);
                 }
                 $this->writeProfileBounceClear($userId, 'clearFlagsForConfirmedEmailChange');
             }
-            if ($blocked === 1) {
+            if ($blockedCleared) {
                 if (!$blockedValid) {
                     self::logFlagRepair($row->email_blocked, 'email_blocked', $userId);
                 }
@@ -1145,6 +1157,8 @@ class CarRepository
             'bouncedHadNoAddress' => $bouncedValid && $bounced === 1 && self::isEmptyAddress($row->email_bounced_address),
             'blockedHadNoAddress' => $blockedValid && $blocked === 1 && self::isEmptyAddress($row->email_blocked_address),
             'changed'             => $changed,
+            'bouncedCleared'      => $bouncedCleared,
+            'blockedCleared'      => $blockedCleared,
         ];
     }
 

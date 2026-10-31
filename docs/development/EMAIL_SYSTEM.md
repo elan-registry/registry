@@ -1792,12 +1792,18 @@ repository does these steps:
 4. If they differ, it clears `email_bounced` with its address and date, and sets
    `email_bounce_cleared_at`. It clears `email_blocked` with its address, date
    and cause. It sets `email_address_since` to now and `email_address_seen` to
-   the normalized address.
+   the normalized address. A flag whose stored address is the current
+   `users.email` stays set. Only a flag for another address, or a flag with no
+   stored address, is cleared (#2411).
+
+The upstream admin user form changes `users.email` and does not update
+`email_address_seen`. So the next `verifySuccess` must not clear a flag set
+for the new address after an admin edit.
 
 `email_opted_out` stays set. The hook does not pass the address, because the
 repository reads `users.email` under the lock.
 
-**Logging:** For each flag that changes from 1 to 0, the manager writes one
+**Logging:** For each flag that the repository clears, the manager writes one
 flag-change `logs` row with source `email_change`. After the commit, it logs a
 cleared flag that had no recorded address as a data-integrity anomaly under
 `LOG_CATEGORY_EMAIL_BOUNCED`. This applies to `email_bounced` and to

@@ -1239,4 +1239,27 @@ final class CarVerificationManagerTest extends TestCase
         $this->assertStringNotContainsString('rb lost', $mockLogEntries[0]['message']);
         $this->assertStringNotContainsString('owner@example.org', $mockLogEntries[0]['message']);
     }
+
+    /**
+     * A bounce that the repository keeps (stored for the current address)
+     * gets no audit row, even when the address changed (#2411).
+     */
+    public function testClearFlagsForConfirmedEmailChangeWritesNoAuditRowForAFlagTheRepositoryKept(): void
+    {
+        $this->mockRepo->expects($this->once())->method('clearFlagsForConfirmedEmailChange')->with(42)->willReturn([
+            'bounced'             => 1,
+            'blocked'             => 0,
+            'bouncedHadNoAddress' => false,
+            'blockedHadNoAddress' => false,
+            'changed'             => true,
+            'bouncedCleared'      => false,
+            'blockedCleared'      => false,
+        ]);
+        $this->mockRepo->expects($this->once())->method('commit');
+
+        $this->assertFalse($this->manager->clearFlagsForConfirmedEmailChange(9, 42));
+        $this->assertSame([], $this->flagLogRows, 'No flag-change row for a flag that stays');
+        global $mockLogEntries;
+        $this->assertSame([], $mockLogEntries, 'No anomaly line for a flag that stays');
+    }
 }
