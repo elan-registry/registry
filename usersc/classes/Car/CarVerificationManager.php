@@ -630,13 +630,13 @@ class CarVerificationManager
                     $unblock->httpStatus() === null ? 'none' : (string) $unblock->httpStatus(),
                     $unblock->detail() ?? 'none'
                 ));
-                // A retry cannot fix a missing key or SDK, so the admin gets other text.
-                $notSetUp = in_array(
-                    $unblock->reason(),
-                    [BrevoUnblockResult::REASON_NO_API_KEY, BrevoUnblockResult::REASON_NO_SDK],
-                    true
-                );
-                return $notSetUp ? ClearBlockOutcome::brevoNotSetUp() : ClearBlockOutcome::brevoFailed();
+                // A retry cannot fix a missing setup or a plugin fault.
+                return match ($unblock->reason()) {
+                    BrevoUnblockResult::REASON_NO_API_KEY,
+                    BrevoUnblockResult::REASON_NO_SDK => ClearBlockOutcome::brevoNotSetUp(),
+                    BrevoUnblockResult::REASON_SDK_LOAD_FAILED => ClearBlockOutcome::brevoPluginFault(),
+                    default => ClearBlockOutcome::brevoFailed(),
+                };
             }
             // Logged before the registry write: if that write throws, or
             // ends in addressChanged or notBlocked, this line is the only

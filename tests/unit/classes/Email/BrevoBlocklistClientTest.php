@@ -227,6 +227,8 @@ final class BrevoBlocklistClientTest extends TestCase
         $result = $client->unblock('owner@example.org');
 
         $this->assertSame(BrevoUnblockResult::REASON_NO_API_KEY, $result->reason());
+        // Only a db_error detail gets the SQLSTATE suffix.
+        $this->assertSame(BrevoApiFactory::CAUSE_TABLE_ABSENT, $result->detail());
         $this->assertSame(0, $client->createApiCalls);
     }
 
@@ -238,6 +240,33 @@ final class BrevoBlocklistClientTest extends TestCase
         $result = $client->unblock('owner@example.org');
 
         $this->assertSame(BrevoUnblockResult::OUTCOME_FAILED, $result->outcome());
+        $this->assertSame(BrevoUnblockResult::REASON_DB_ERROR, $result->reason());
+        $this->assertSame('db_error (SQLSTATE HY000)', $result->detail());
+        $this->assertStringNotContainsString('simulated DB error', (string) $result->detail());
+        $this->assertSame(0, $client->createApiCalls);
+    }
+
+    /**
+     * @return array<string, array{mixed}>
+     */
+    public static function malformedSqlStateProvider(): array
+    {
+        return [
+            'null' => [null],
+            'empty string' => [''],
+            'too short' => ['bad'],
+            'lower case' => ['hy000'],
+            'integer zero' => [0],
+        ];
+    }
+
+    #[DataProvider('malformedSqlStateProvider')]
+    public function test_unblock_apiKeyQueryFailsWithAMalformedSqlState_returnsPlainDbErrorDetail(mixed $sqlState): void
+    {
+        $client = new RecordingSeamBrevoBlocklistClient(new MalformedSqlStateSendinblueDatabase($sqlState));
+
+        $result = $client->unblock('owner@example.org');
+
         $this->assertSame(BrevoUnblockResult::REASON_DB_ERROR, $result->reason());
         $this->assertSame(BrevoApiFactory::CAUSE_DB_ERROR, $result->detail());
         $this->assertSame(0, $client->createApiCalls);
@@ -421,6 +450,27 @@ final class ThrowingQuerySendinblueDatabase extends SendinblueSettingsFakeDataba
     public function query(string $sql, array $params = []): self
     {
         throw new \RuntimeException('connection lost while reading settings for owner@example.org');
+    }
+}
+
+/**
+ * Settings database whose query fails with a SQLSTATE that is not a
+ * 5-character code, or not a string.
+ *
+ * Named class, not anonymous: see FakeDatabase (`impureMethod.pure`). Not
+ * final: PHPStan reports the pure `errorInfo()` override of a final class as
+ * `impureMethod.pure`.
+ */
+class MalformedSqlStateSendinblueDatabase extends SendinblueSettingsFakeDatabase
+{
+    public function __construct(private readonly mixed $malformedSqlState)
+    {
+        parent::__construct('k', 'HY000');
+    }
+
+    public function errorInfo(): array
+    {
+        return [$this->malformedSqlState, 1146, 'simulated DB error'];
     }
 }
 

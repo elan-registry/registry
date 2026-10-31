@@ -257,6 +257,7 @@ after an item is written.
 ### `usersc/classes/Car/CarVerificationManager.php`
 
 - [ ] No test makes `logger()` throw on the Clear Block "unblock done" line. Add a case in `tests/unit/cars/services/CarVerificationManagerTest.php`: the registry write still runs, the outcome is `CLEARED`, and `error_log` gets the summary (found in /finish-milestone v2.30.9)
+- [ ] `clearBlockedForOwner()` maps an unlisted `BrevoUnblockResult::REASON_*` to `brevoFailed()` through a `default` arm, so a new reason gets the retry text without a test failure. List each reason and drop `default`, then add a reflection test over the `REASON_*` constants like `tests/unit/admin/ClearBlockOutcomeMessageTest.php` (found in #2488)
 
 ### `usersc/classes/Car/ClearBlockOutcome.php` + `usersc/classes/Email/BrevoUnblockResult.php`
 
@@ -302,6 +303,7 @@ after an item is written.
 
 - [ ] The `reason` key of `readApiKey()` and `loadSdk()` never varies within each method. Use `cause !== null` as the failure test, define `no_api_key` and `no_sdk` only in `BrevoUnblockResult`, and drop the `REASON_*` aliases. Do it together with moving `BrevoEventReconciliationClient` onto the factory (found in #2426)
 - [ ] Replace the `array{reason, cause, detail}` returns of `readApiKey()` and `loadSdk()` with two small readonly result types (or PHPStan shape aliases) (found in /finish-milestone v2.30.9)
+- [ ] No test calls `readApiKey()` directly. Add `tests/unit/classes/Email/BrevoApiFactoryTest.php` with `SendinblueSettingsFakeDatabase`: success, key not set, `42S02` and `HY000`, each with the `sqlState` value (found in #2488)
 
 ### `usersc/classes/Email/BrevoBlocklistClient.php`
 

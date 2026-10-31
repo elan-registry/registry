@@ -734,8 +734,9 @@ final class CarVerificationManagerTest extends TestCase
         return [
             'no API key' => [BrevoUnblockResult::REASON_NO_API_KEY, ClearBlockOutcome::BREVO_NOT_SET_UP],
             'no SDK' => [BrevoUnblockResult::REASON_NO_SDK, ClearBlockOutcome::BREVO_NOT_SET_UP],
-            // An installed SDK that did not load is a fault, not a missing setup.
-            'SDK load failed' => [BrevoUnblockResult::REASON_SDK_LOAD_FAILED, ClearBlockOutcome::BREVO_FAILED],
+            // An installed SDK that did not load is a plugin fault: not a
+            // missing setup, and a retry cannot fix it.
+            'SDK load failed' => [BrevoUnblockResult::REASON_SDK_LOAD_FAILED, ClearBlockOutcome::BREVO_PLUGIN_FAULT],
             'HTTP error' => [BrevoUnblockResult::REASON_HTTP, ClearBlockOutcome::BREVO_FAILED],
             'transport error' => [BrevoUnblockResult::REASON_TRANSPORT, ClearBlockOutcome::BREVO_FAILED],
             // A failed key query is not a missing key: a retry can work.

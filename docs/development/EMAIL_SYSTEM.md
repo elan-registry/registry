@@ -898,7 +898,8 @@ So a missing modal fails closed. Each log row of these two actions records
 | Another user has the address as `users.email` (`CarRepository::findUserIdsByAddress()`) | No | Cleared | "... cleared of the block in the registry. Another account uses this address. The Brevo block stays." |
 | Address is the owner's current `users.email` and no other user has it | Yes | Cleared on 2xx or 404 | "... cleared of the block. Brevo no longer blocks this address." |
 | Same as above, and the Brevo call fails (not 404) | Yes | Not changed | "Brevo did not remove the block. Try again later." |
-| Same as above, and Brevo is not set up (no API key, or the SDK did not load). A failed query on the key also gives the text of the row above, with no call made | No | Not changed | "Brevo is not set up on this site, so the block was not removed. The registry flag did not change." |
+| Same as above, and Brevo is not set up (no API key, or no SDK autoloader file). A failed query on the key also gives the text of the row above, with no call made | No | Not changed | "Brevo is not set up on this site, so the block was not removed. The registry flag did not change." |
+| Same as above, and the SDK is installed but does not load | No | Not changed | "Brevo did not remove the block because of a fault in the Brevo plugin. The registry flag did not change. Check the logs." |
 
 The owner label replaces the "..." in the table. The rules
 keep the action from removing a Brevo block that belongs to another person.

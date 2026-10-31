@@ -1012,6 +1012,7 @@ if (ElanInput::existsPost()) {
                                 ClearBlockOutcome::CLEARED_SHARED_ADDRESS => [false, 'cleared of the block in the registry. Another account uses this address. The Brevo block stays.'],
                                 ClearBlockOutcome::BREVO_FAILED => [true, 'Brevo did not remove the block. Try again later.'],
                                 ClearBlockOutcome::BREVO_NOT_SET_UP => [true, 'Brevo is not set up on this site, so the block was not removed. The registry flag did not change.'],
+                                ClearBlockOutcome::BREVO_PLUGIN_FAULT => [true, 'Brevo did not remove the block because of a fault in the Brevo plugin. The registry flag did not change. Check the logs.'],
                                 ClearBlockOutcome::ADDRESS_CHANGED => [true, 'The block changed during this action. The registry flag did not change. Try again.'],
                             };
 
