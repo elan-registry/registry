@@ -1767,8 +1767,8 @@ unit test (needs the full UserSpice bootstrap).
   different layer.
 - Not a general-purpose service — assumes the ids it receives already
   passed the admin authorization check and CSRF validation one layer up
-  (`app/admin/index.php` filters non-positive ids before calling this
-  class). Performs no authorization of its own.
+  (`app/admin/index.php` filters invalid ids with `filterCarIds()` before
+  calling this class). Performs no authorization of its own.
 
 **Methods**:
 
@@ -1778,6 +1778,22 @@ unit test (needs the full UserSpice bootstrap).
   'adminMessage' => ?string]`. Messages
   are `null` when no truncation happened. Called before filtering to prevent
   hand-crafted POSTs from starting more blocking Brevo calls than allowed.
+- `filterCarIds(array $submitted): array` - Static and pure. Split submitted
+  ids into valid car ids and rejected values. Returns
+  `['ids' => list<int>, 'rejected' => list<mixed>]`. Both lists keep the
+  submitted order. The caller runs it after `capToBatchSize()`. A value is
+  accepted only if it is a positive `int`, or a string that is the canonical
+  decimal form of a positive int (`'12'`). A value is rejected if it is an
+  array, object, `null`, bool, or float. A string is rejected if it is
+  `'abc'`, `'3abc'`, `'1.5'`, `' 3'`, `'+3'`, `'03'`, or past `PHP_INT_MAX`.
+  A plain `(int)` cast is not safe: it turns a nested array into 1 and
+  `'3abc'` into 3, and both are real car ids. For each rejected value,
+  `verification_send_batch` writes one `LOG_CATEGORY_CAR_VERIFICATION` log
+  entry and adds one "Invalid car reference" row to the skipped report. The
+  log text is `Verification send: non-positive car id in car_ids[]: <value>`
+  for a scalar. For a non-scalar it is
+  `Verification send: non-scalar car id in car_ids[]: <type>`, with the type
+  from `get_debug_type()` and no value
 - `processBatch(array $carIds): array` - Given positive car ids, re-reads
   each via `CarRepository::findById()`, re-checks eligibility via
   `VerificationEligibility::skipReason()`, sends via
@@ -1830,7 +1846,8 @@ other probes.
   and recent failure entries
 - `allHealthy()` is `false` when the settings probe failed, the switch is off,
   Brevo is not ready, cron is not running, the unmatched-recipient count is not
-  0 (or unreadable), or the cron failure count is not 0 (or unreadable)
+  0 (or unreadable), the cron failure count is not 0 (or unreadable), or the
+  reconciliation or suppression sync job state is `UNREADABLE` or `MISSING`
 - `autoSendState()`, `autoSendLastRunAt()`, `autoSendBadge()`, `autoSendPaused()`,
   `autoSendLastRunFailed()`, `autoSendCounts()`, `autoSendCountsUnreadable()`,
   `autoSendNextEligibleAt()`, `autoSendDesiredState()` give the automatic send job
@@ -1857,10 +1874,21 @@ other probes.
   `detailIcon`, and `recent` (list of recent failure entries)
 - `allHealthy(): bool` - True when the settings probe worked, the switch is on,
   Brevo is ready, cron runs, the unmatched count is 0, and the cron failure
-  count is 0. An unreadable counter or failure log is not healthy.
-  Reconciliation, suppression sync and automatic send job states do not count
+  count is 0. An unreadable counter or failure log is not healthy. A
+  reconciliation or suppression sync state that is `UNREADABLE` or `MISSING`
+  is not healthy. A paused (`DISABLED`) job stays healthy. The automatic send
+  job state does not count
 - `featureSwitch(bool $canToggle): array` - Give the feature switch state for the
-  panel. Returns `['checked' => bool, 'disabled' => bool, 'disabledReason' => string]`
+  panel. Returns `['checked' => bool, 'disabled' => bool, 'disabledReason' =>
+  string, 'unavailable' => bool]`. When the settings probe threw before it
+  read the switch state, the state is unknown. The method then returns
+  `unavailable` as `true`, `checked` as `false`, `disabled` as `true`, and a
+  reason for every viewer. The panel then shows a red "Unavailable" badge and
+  no switch. When the probe read the switch state and a later read threw, the
+  method returns the real `checked` value. An admin can then turn the switch
+  off, but not on, because the Brevo status is not known. The cron row shows
+  a red "Unavailable" badge, not "Stalled", only when the probe threw before
+  it read the cron state.
 - `autoSendState(): CronJobEnabledState` - The automatic send job's enabled state
 - `autoSendLastRunAt(): ?DateTimeImmutable` - When the automatic send job last
   claimed a run, or `null` if never

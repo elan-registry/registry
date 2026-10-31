@@ -472,6 +472,12 @@ The System Status panel shows 7 rows in this order:
 2. **Cron running** — badge `text-bg-success` ("Running") with a "last seen"
    timestamp if `cronReady()` is true. Badge `text-bg-warning` ("Stalled")
    with last seen timestamp or "no cron request has ever been logged" if false.
+   If the settings probe threw before it read the cron state: badge
+   `text-bg-danger` ("Unavailable") with the reason "The cron state could not
+   be read." plus a hint to check the system log for
+   `VerificationConfigWarning`. The row does not show "Stalled" in this case,
+   because the cron state is unknown. If the probe read the cron state and a
+   later read threw, the row shows the real state.
 3. **Webhook receiver** — badge `text-bg-success` ("Live"). Static row,
    always healthy. Records delivery events from all registry mail in real
    time; the nightly reconciliation job catches anything the webhook missed.
@@ -498,9 +504,19 @@ The System Status panel shows 7 rows in this order:
 **Toggle Control:**
 
 - Located on the Verification System tab
+- If the settings probe threw before it read the switch state, the state is
+  unknown. The panel shows a `text-bg-danger` "Unavailable" badge
+  (`#verificationSwitchUnavailable`) and the reason "The switch state could
+  not be read." The panel does not render `#verificationEnabledSwitch`. This
+  applies to every viewer, admin and editor.
+- If the probe read the switch state and a later read threw, the panel
+  renders the switch with its real state. An admin can turn it off. Turning
+  it on is blocked, because `brevoReady()` is false after a probe failure.
+  When the probe did not give a Brevo reason, the reason is "Some
+  verification settings could not be read."
 - Disabled (with explanatory text) when current user is not admin, or when admin but attempting to enable while `brevoReady()` is false
 - Label always explains which prerequisite failed if the enable direction is blocked (for Brevo, the `brevoNotReadyReason()` text)
-- Disabling is never blocked — the switch can always be turned off
+- Disabling is never blocked — when the switch state was read, an admin can always turn the switch off
 
 **Dashboard Banner:**
 
@@ -536,8 +552,11 @@ parts appear in this order, from top to bottom:
    `<details>` element. It always renders directly above the Automatic Sending
    section, regardless of health. It is open when the system is not healthy
    (any state other than: switch on, Brevo ready, cron ready, unmatched-recipient
-   count is 0, cron failure count is 0, and no probe failed). Otherwise it is
-   collapsed.
+   count is 0, cron failure count is 0, no probe failed, and the reconciliation
+   and suppression sync job states can be read). A job state that is
+   `UNREADABLE` or `MISSING` makes the system unhealthy. A paused (`DISABLED`)
+   job stays healthy, because an admin chose it. The automatic send job is not
+   part of this rule. Otherwise the panel is collapsed.
 3. **Automatic Sending panel.** Shows the job state, the last-run counts,
    the batch size, **Send Batch Now**, and Pause/Resume. A "Next eligible"
    line shows `last_run_at` plus `SendVerificationBatchJob::GUARD_INTERVAL_HOURS`
@@ -545,6 +564,10 @@ parts appear in this order, from top to bottom:
    send time is the first cron heartbeat after that time. **Send Batch Now**
    is a link to the Eligible queue view. It does not send. The send happens
    only when the admin presses **Send batch** in that view.
+   If the batch size read throws, the Batch size row shows a
+   `text-bg-danger` "Unavailable" badge and no Save form for every viewer.
+   The form would post a placeholder value over the real setting. A failed
+   query or a missing row does not throw: `batchSize()` returns 5 for those.
 4. **Verification Queue.** One table with eight filter pills and the Window
    and Show controls. See [Verification Queue](#verification-queue).
 5. **Recent Activity.** The latest 20 `cars_hist` rows with operation

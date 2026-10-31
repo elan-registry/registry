@@ -18,6 +18,7 @@ bounce should stop.
 - Cron health checks report send outages correctly, and an event with a bad date no longer re-blocks a cleared owner.
 - After an admin edits an owner's email, a block or bounce for the new address stays set after verification.
 - Clear Block reports a Brevo plugin fault and tells the admin to check the logs, not to try again.
+- The Verification tab shows "Unavailable" when it cannot read a setting, and does not show "All healthy" for an unreadable job.
 
 ## Issues Resolved
 

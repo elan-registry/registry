@@ -98,30 +98,26 @@ $vsStatus = VerificationTabStatus::read(dbi(), $currentUserId);
 // ---------------------------------------------------------------------------
 /** @var array<int, object> $vsEligible */
 $vsEligible       = [];
-$vsBatchSize      = 0;
+// Null means the read threw: the Batch size field then shows no form (#2457).
+// A failed query or a missing row does not throw. batchSize() returns 5 then.
+$vsBatchSize      = null;
 $vsEligibleError  = null;
-$vsSettings       = null;
 $vsEligibleLoadError = 'The list of eligible cars could not be loaded. Check the system log for details.';
 
-// Read separately from (and before) the eligible-car query below: the
-// Automatic Sending panel renders this as the value of an editable
-// field, and a preview-query failure must not prevent that render.
-// (batchSize() itself already fails closed to 5 on an ordinary DB error,
-// so this split doesn't change that outcome — it only avoids re-running
-// batchSize()'s own error-log line a second time for the same read.)
+// Read before, and apart from, the eligible-car query below. The Batch size
+// field renders this value, so a preview-query failure must not stop that
+// render. One read also keeps batchSize() from logging the same fault twice.
 try {
-    $vsSettings  = new VerificationSettings(dbi());
-    $vsBatchSize = $vsSettings->batchSize();
+    $vsBatchSize = (new VerificationSettings(dbi()))->batchSize();
 } catch (\Throwable $e) {
-    // Without a batch size the preview would run with LIMIT 0 and show
-    // "no cars are due". Clear the settings so the preview shows an error.
-    $vsSettings = null;
+    // $vsBatchSize stays null, so the preview below is skipped and shows an
+    // error, not "no cars are due".
     logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
         'Verification tab: could not read the configured batch size: ' . $e->getMessage());
 }
 
 // Only the Eligible queue view shows this preview, so other views skip the query.
-if ($vsIsEligibleView && $verificationSendSvc !== null && $vsSettings !== null) {
+if ($vsIsEligibleView && $verificationSendSvc !== null && $vsBatchSize !== null) {
     try {
         $vsEligible = $verificationSendSvc->findEligible($vsBatchSize, 0);
     } catch (\Throwable $e) {
@@ -133,7 +129,7 @@ if ($vsIsEligibleView && $verificationSendSvc !== null && $vsSettings !== null) 
         ));
     }
 } elseif ($vsIsEligibleView) {
-    // Without the send service or the settings there is no preview. Say so,
+    // Without the send service or the batch size there is no preview. Say so,
     // so that an empty list does not read as "no cars are due".
     $vsEligibleError = $vsEligibleLoadError;
 }
@@ -452,31 +448,7 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
 
             <dt class="col-sm-4">Batch size</dt>
             <dd class="col-sm-8">
-                <?php if ($vsCanToggle) { ?>
-                <form action="index.php?tab=verification" method="POST" class="row g-2 align-items-center">
-                    <input type="hidden" name="csrf" value="<?= vsEsc($csrfToken) ?>">
-                    <input type="hidden" name="command" value="verification_set_batch_size">
-                    <div class="col-auto">
-                        <label class="visually-hidden" for="verificationBatchSize">Batch size</label>
-                        <input type="number" class="form-control form-control-sm"
-                               id="verificationBatchSize" name="batch_size"
-                               min="1" max="25" style="width: 6rem;"
-                               value="<?= vsEsc((string) $vsBatchSize) ?>">
-                    </div>
-                    <div class="col-auto">
-                        <button type="submit" class="btn btn-sm btn-outline-primary">
-                            <i class="fas fa-save"></i> Save
-                        </button>
-                    </div>
-                </form>
-                <small class="form-text text-muted d-block mt-1">
-                    <i class="fas fa-info-circle"></i>
-                    Cars per run, for both the automatic job and the manual send below.
-                    Values outside 1&ndash;25 are clamped when saved.
-                </small>
-                <?php } else { ?>
-                    <?= vsEsc((string) $vsBatchSize) ?> cars per run
-                <?php } ?>
+                <?php require __DIR__ . '/verification-batch-size-field.php'; ?>
             </dd>
 
         </dl>
