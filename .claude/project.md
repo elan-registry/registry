@@ -18,3 +18,4 @@ backticks. The keys are in
 - issue_checks: `scripts/check-baseline-hygiene.sh`
 - milestone_checks: `scripts/check-deploy-sheet-fresh.sh`
 - release_checks: `scripts/check-deploy-sheet-fresh.sh`
+- release: `draft`
