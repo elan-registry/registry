@@ -19,7 +19,7 @@ jobs:
       issues: write
       id-token: write
       actions: read
-    uses: unibrain1/devkit/.github/workflows/claude.yml@fce7629968e2a46230ced7293792b3e43dd7a2f6 # v1.0.2
+    uses: unibrain1/devkit/.github/workflows/claude.yml@871d2eaa25dfc8d1aa242ef6f1918487993b59bc # v1.2.0
     with:
       extra_allowed_tools: "Bash(php -l *),Bash(npm run lint)"
     secrets:

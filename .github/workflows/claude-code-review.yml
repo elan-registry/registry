@@ -24,7 +24,7 @@ jobs:
       pull-requests: write
       issues: read
       id-token: write
-    uses: unibrain1/devkit/.github/workflows/claude-review.yml@fce7629968e2a46230ced7293792b3e43dd7a2f6 # v1.0.2
+    uses: unibrain1/devkit/.github/workflows/claude-review.yml@871d2eaa25dfc8d1aa242ef6f1918487993b59bc # v1.2.0
     with:
       pr_number: ${{ inputs.pr_number }}
       extra_allowed_tools: "Bash(php -l *),Bash(npm run lint)"
