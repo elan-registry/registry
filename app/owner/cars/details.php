@@ -70,7 +70,7 @@ if (!empty($_GET)) {
     if (!empty($carData->purchasedate)) {
         try {
             $purchaseDate = new DateTime($carData->purchasedate);
-        } catch (Exception $e) {
+        } catch (DateMalformedStringException $e) {
             logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "Invalid purchase date format for car ID $carID: " . $carData->purchasedate);
             $purchaseDate = null;
         }
@@ -370,7 +370,8 @@ if ($carSchemaJson === false) {
                                                         try {
                                                             $date = new DateTime($lastDate);
                                                             echo $date->format('M j, Y');
-                                                        } catch (Exception $e) {
+                                                        } catch (DateMalformedStringException $e) {
+                                                            logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "Invalid last update date format for car ID $carID: " . $lastDate);
                                                             echo 'Unknown';
                                                         }
                                                     } else {
@@ -392,7 +393,8 @@ if ($carSchemaJson === false) {
                                                         try {
                                                             $date = new DateTime($firstDate);
                                                             echo $date->format('M j, Y');
-                                                        } catch (Exception $e) {
+                                                        } catch (DateMalformedStringException $e) {
+                                                            logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "Invalid first registry date format for car ID $carID: " . $firstDate);
                                                             echo 'Unknown';
                                                         }
                                                     } else {

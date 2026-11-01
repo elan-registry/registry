@@ -2,8 +2,8 @@
 if (count(get_included_files()) == 1) { die(); }
 
 /**
- * Factory Data card, shared by app/owner/cars/details.php,
- * usersc/account.php, and app/views/cars/_verify_landing.php.
+ * Factory Data card, shared by app/owner/cars/details.php and
+ * usersc/account.php.
  *
  * Caller must set:
  *   $factoryData object Factory row (Car::factory()). A null value logs an

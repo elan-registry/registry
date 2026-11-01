@@ -63,7 +63,7 @@ if ($ownerData !== null) {
     if (!empty($ownerData->join_date)) {
         try {
             $signupDate = new DateTime($ownerData->join_date);
-        } catch (\Exception) {
+        } catch (DateMalformedStringException) {
             logger($ownerId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "Invalid join date format for owner ID $ownerId: " . $ownerData->join_date);
         }
     }
@@ -71,7 +71,7 @@ if ($ownerData !== null) {
     if (!empty($ownerData->last_login)) {
         try {
             $lastLogin = new DateTime($ownerData->last_login);
-        } catch (\Exception) {
+        } catch (DateMalformedStringException) {
             logger($ownerId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "Invalid last login format for owner ID $ownerId: " . $ownerData->last_login);
         }
     }
@@ -256,7 +256,7 @@ $_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
                 if (!empty($carData->purchasedate)) {
                     try {
                         $purchaseDate = new DateTime($carData->purchasedate);
-                    } catch (\Exception) {
+                    } catch (DateMalformedStringException) {
                         logger($ownerId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "Invalid purchase date format for car ID $carId: " . $carData->purchasedate);
                     }
                 }

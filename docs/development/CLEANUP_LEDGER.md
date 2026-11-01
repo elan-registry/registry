@@ -73,7 +73,7 @@ after an item is written.
 
 ### `app/views/cars/` (section partials)
 
-- [ ] The section partials (`_vehicle_info_card`, `_owner_info_card`, `_location_map_card`, `_photos_card`, `_factory_data_card`) link the card level to the heading level. Only `h4` gets `card-header-er-l2`, so a nested `h3` card cannot use L2 styling (UI_STANDARDS "Card Hierarchy"). Give the card level its own variable (found in #2495)
+- [ ] `_vehicle_info_card` and `_factory_data_card` link the card level to the heading level. Only `h4` gets `card-header-er-l2`, so a nested `h3` card cannot use L2 styling (UI_STANDARDS "Card Hierarchy"). `_owner_info_card`, `_location_map_card` and `_photos_card` always use a plain `card-header`. Give all five partials a card-level variable (found in #2495)
 
 ### `app/views/cars/_factory_data_card.php`
 
@@ -84,9 +84,12 @@ after an item is written.
 - [ ] Both files copy the same "has map" lat/lon rule, and only a comment keeps them the same. Put the rule in one helper (for example `CarView::hasMapPosition()`) with a unit test (found in #2495)
 - [ ] MapLibre already sets `role="region"` and `aria-label="Map"` on its canvas, so the `role` and `aria-label` on `#map` make a nested, duplicate landmark. Keep one label (remove it from `#map`, or set `Map.Title` through the map `locale`). The label says "the car's" location, but `cars.lat`/`lon` are the owner's location (found in #2495)
 
+### `app/views/cars/_owner_info_card.php`
+
+- [ ] Add a render test (as in `tests/unit/views/FactoryDataCardTest.php`): the Registry Owner ID shows when `$showOwnerId` is true and is hidden by default, `fname` and `city` with `<script>` come out escaped, and a `javascript:` website is not linked. The details-page wiring check in `SharedCarPartialsTest` is source text only (found in #2495)
+
 ### `app/views/cars/_verify_landing.php`
 
-- [ ] The purchase-date parse (~L79) catches bare `Exception`. Catch `DateMalformedStringException`, as `_factory_data_card.php` does (found in #2495)
 - [ ] The "Back to all options" `btn-link` is about 38px high, below the 44px touch target. The `#verify-actions` target cannot take focus, so a screen reader announces nothing after the jump. Add `tabindex="-1"` and a group label (found in #2495)
 
 ### `database/migrations/20260915000000_add_cars_verification_attempts_columns.php`

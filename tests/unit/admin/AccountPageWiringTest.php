@@ -227,7 +227,7 @@ final class AccountPageWiringTest extends TestCase
         $content = $this->readEndpointSource(self::ACCOUNT_ENDPOINT);
 
         $matched = preg_match(
-            '/' . preg_quote($tryStatement, '/') . '\s*\}\s*catch\s*\(\\\\Exception\)\s*\{(.*?)\}/s',
+            '/' . preg_quote($tryStatement, '/') . '\s*\}\s*catch\s*\(\\\\?DateMalformedStringException\)\s*\{(.*?)\}/s',
             $content,
             $matches
         );

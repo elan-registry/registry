@@ -1567,11 +1567,14 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     public function testGetLandingHasNoFactoryDataCardEvenWhenFactoryRowExists(): void
     {
         $this->seedFactoryRow();
+        $factory = (new \ElanRegistry\Car\Car($this->testCarId))->factory();
+        $this->assertNotNull($factory, 'Test sanity: the seeded factory row must match the car, or this test proves nothing');
+        $this->assertSame('Test Green', $factory->color ?? null, 'Test sanity: the car must match the seeded row, not another one');
         $result = $this->get('vericode=' . $this->issueVericode());
 
         $this->assertSame(200, $result['status']);
         $this->assertStringContainsString(self::MARKER_LANDING, $result['body'], 'Test sanity: the landing rendered');
-        // The card title and the old intro note both contain "Factory Data".
+        // "Factory Data" is in the card title, so it must not be anywhere on the page.
         $this->assertStringNotContainsString('Factory Data', $result['body']);
         $this->assertStringNotContainsString('fa-industry', $result['body']);
         $this->assertStringNotContainsString('Test Green', $result['body']);

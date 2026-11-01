@@ -30,10 +30,9 @@ if (count(get_included_files()) == 1) { die(); }
  * owner-contact columns synced onto every car row (see DATABASE.md's `cars`
  * table note) — $verifyCar (a plain `cars` row from
  * CarRepository::findByVerificationCode()) already carries them, so no
- * additional Owner lookup is needed to render Owner Information here. This
- * is the same data the verification email itself already sent the owner
- * (see the email mockup's Owner Information / Car Information boxes), so
- * showing it back to the vericode holder discloses nothing new.
+ * additional Owner lookup is needed to render Owner Information here. The
+ * public car details page shows the same owner and car data, photos and map
+ * to any visitor, so showing it to the vericode holder discloses nothing new.
  *
  * Caller must set:
  *   $verifyCar         object  Car row resolved from the vericode
@@ -73,9 +72,9 @@ $purchaseDate = null;
 if (!empty($verifyCar->purchasedate)) {
     try {
         $purchaseDate = new DateTime($verifyCar->purchasedate);
-    } catch (Exception $e) {
+    } catch (DateMalformedStringException $e) {
         logger(0, ElanRegistry\LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
-            "verify_car.php: invalid purchase date format for car {$verifyCar->id}: {$verifyCar->purchasedate}");
+            "_verify_landing.php: invalid purchase date format for car {$verifyCar->id}: {$verifyCar->purchasedate}");
         $purchaseDate = null;
     }
 }
@@ -85,7 +84,7 @@ if (!empty($verifyCar->purchasedate)) {
 $soldDate    = ElanRegistry\Car\CarBadges::soldDate($verifyCar->solddate ?? null, $verifyCar->id ?? null);
 $alreadySold = ElanRegistry\Car\CarBadges::isSold($verifyCar->solddate ?? null);
 
-// The shared partials read $car and $showOwnerId.
+// _photos_card.php reads $car. _owner_info_card.php reads $showOwnerId.
 $car         = $verifyCarModel;
 $showOwnerId = false;
 ?>

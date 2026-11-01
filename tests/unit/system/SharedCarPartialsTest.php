@@ -72,7 +72,8 @@ final class SharedCarPartialsTest extends TestCase
     }
 
     /**
-     * The landing has no Factory Data section. Only the details page shows it.
+     * The landing has no Factory Data section. The details page and the
+     * account page show it.
      */
     public function testVerifyLandingDoesNotIncludeFactoryDataCard(): void
     {
