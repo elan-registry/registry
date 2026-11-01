@@ -69,7 +69,7 @@ after an item is written.
 
 ### `app/owner/contact/owner.php`
 
-- [ ] Replace `$db->get('cars', ...)` (~L25) with `CarRepository::findById()`. Catch `CarDatabaseException`: an uncaught one turns a logged redirect into a 500. Keep the redirect to `/` on not-found (from #2002)
+- [ ] Replace `$db->get('cars', ...)` (~L25) with `CarRepository::findById()`. Keep the redirect to `/` on not-found (from #2002)
 
 ### `database/migrations/20260915000000_add_cars_verification_attempts_columns.php`
 
@@ -96,14 +96,6 @@ after an item is written.
 
 - [ ] `BrevoOverrideStub` writes `"<?php\n"` and `sweep()` deletes any file with that exact content. Add a unique marker comment to the stub content (found in /finish-milestone v2.30.7)
 
-### `tests/Support/SendinblueMessagesTable.php` (test-only)
-
-- [ ] The seven integration classes that use `createIfMissing()` drop `plg_sendinblue_messages` in `tearDownAfterClass()` and do not check `->error()`. A failed drop leaves a test-made table, and a later class then gets `false` from `createIfMissing()` and treats it as a plugin table it must not drop. Add a static `drop()` that throws on a DB error, and use it in the seven classes (found in #2420)
-
-### `tests/Support/UserDeletionHookFakeDatabase.php` (test-only)
-
-- [ ] `rollBack()` sets `open = false` before it throws for `rollbackThrows`, but PDO keeps its in-transaction flag when `rollBack()` throws. Set `open = false` only on success, as `commit()` does for `commitThrows` (found in #2515)
-
 ### `tests/integration/AdminClearBlockAndOptOutTest.php` (test coverage)
 
 - [ ] Only the `CLEARED` outcome runs an import afterwards. Add one after a shared-address (and moved-address) Clear Block: Brevo's entry with its original `blockedAt` and with none; the flag stays clear and the other account does not change (found in /finish-milestone v2.30.9)
@@ -113,17 +105,9 @@ after an item is written.
 - [ ] The class has its own `php -r` subprocess copy of the endpoint runner. Use `IntegrationTestCase::invokeEndpoint()` and delete the copy. `invokeEndpoint()` needs GET/HTML or session-flash support first (found in #2165)
 - [ ] The runner reads a missing `___EXIT:` marker as exit code 0 (`array_pad(..., '0')`, ~L161), and it ignores a failed `$loggedInUser->find()` (~L142), so an unknown user runs logged out. The class docblock (~L15) names `VerificationToggleEndpointBehaviorTest` as the model runner, but that class now uses `invokeEndpoint()`. The migration item above fixes all three. (found in #2165)
 
-### `tests/integration/BrevoWebhookEndpointTest.php`
-
-- [ ] Fault-injection `ALTER TABLE` on the shared test schema (~L1012, renames `er_email_events.reason`). The `finally` restores it, but a failed restore breaks the schema for every later test. Move the fault onto a throwaway schema. The #2167 sandbox harness gives a raw PDO only, so the test also needs a way to point `DB::getInstance()` at the sandbox (found in #2167)
-
 ### `tests/integration/CarEditOwnerColumnRefreshTest.php`
 
 - [ ] `testOwnerSelfEditSetsOwnerLastUpdatedButAdminEditDoesNot` only checks that the new `owner_last_updated` is later than a date two years ago, and does not count `cars_hist` rows. Bound it with `assertEqualsWithDelta(time(), ..., 60)` and assert one new history row (found while working on #1929)
-
-### `tests/integration/CronJobFailureRoundTripTest.php`
-
-- [ ] Fault-injection `ALTER TABLE` on the shared test schema (~L200, drops `er_cron_job_runs.last_failure_at`). The `finally` restores it, but a failed restore breaks the schema for every later test. Move the fault onto a throwaway schema. The #2167 sandbox harness gives a raw PDO only, so the test also needs a way to point `DB::getInstance()` at the sandbox (found in #2167)
 
 ### `tests/integration/EmailEventRekeyReportAuthTest.php` (test coverage)
 
@@ -137,20 +121,11 @@ after an item is written.
 
 - [ ] Replace the hand-written DB proxy (~L55) with `PassThroughDatabase` (from #2169)
 
-### `tests/integration/UserCreationHookAutoLoginTest.php`
-
-- [ ] `setUp()` does not check the `us_ip_list` SELECT, and `tearDown()` does not check the re-insert. A failure deletes the developer's IP row with no error. Assert both results (found in #2378)
-- [ ] No test covers the `$readError` suffix in `usersc/scripts/during_user_creation.php` when the `users` SELECT itself fails. Force the failure with `PassThroughDatabase` and assert the error text in the log row (found in #2378)
-
 ### `tests/integration/UserDeletionPrivacyStepTest.php` + `tests/integration/admin/RerunDeletionPrivacyStepScriptTest.php`
 
 - [ ] `uniqueAddress`, `insertPluginRow`, `pluginRowExists`, `profileCount`, `deleteUsersRowOnly` and the holding-row reader are near-copies in both files (about 60 lines). Move them to a shared trait in `tests/Support/` (found in #2419)
 - [ ] No test runs the retention purge and the deletion privacy step on the same `plg_sendinblue_messages` rows. Add a case: purge clears an old row of user A and of user B, then delete A; A's row is gone by message ID, B's cleared row stays (found in /finish-milestone v2.30.10)
 - [ ] The rerun-page note about car-only addresses is asserted on the committed path only. Assert it is absent on the refused and failed paths (found in /finish-milestone v2.30.10)
-
-### `tests/integration/UserDeletionReassignmentTest.php`
-
-- [ ] Fault-injection `ALTER TABLE` on the shared test schema (~L380, renames `car_transfer_requests.admin_notes`). The `finally` restores it, but a failed restore breaks the schema for every later test. Move the fault onto a throwaway schema. The #2167 sandbox harness gives a raw PDO only, so the test also needs a way to point `DB::getInstance()` at the sandbox (found in #2167)
 
 ### `tests/integration/UserSettingsResumeVerificationEndpointTest.php`
 
@@ -177,8 +152,6 @@ after an item is written.
 
 - [ ] No self-test covers the `migrateTo()` unknown-version pre-check (~L190) or the `phinxlog` post-check (~L209), the non-PDO guard in `connect()` (~L455), or the drop-on-failure path in `MigrationSandboxTestCase::setUpBeforeClass()`. A later edit can remove a guard and the suite stays green (found in #2167)
 - [ ] `testFingerprintDetectsAColumnChange` changes a column only. Add a `DROP TRIGGER` case, so a broken `TRIGGERS` query in `fingerprint()` fails a test (found in #2167)
-- [ ] When the cleanup drop also fails, `create()` (~L132) and `MigrationSandboxTestCase::setUpBeforeClass()` keep the drop error as message text only, not as an exception. The `setUpBeforeClass()` message does not name the leaked schema itself (found in #2167)
-- [ ] `getMigrations('default')` (~L190) runs outside the `try`, so a Phinx error there has no sandbox or version context (found in #2167)
 - [ ] `migrateTo(0)` is refused, although Phinx reads 0 as "roll back all": document it in `@throws` (found in #2167)
 - [ ] Only 4 migrations have a sandbox test, so about 28 reversible `down()` methods never run in a test. Add one sandbox class that rolls back through `Manager::rollback()` to `20260709000000` (its `down()` is irreversible), then migrates to latest again, and compares `fingerprint()` at each end. The 5 `change()`-only migrations also never run in reverse, and this test covers them too. `fingerprint()` hashes columns and triggers only, so it cannot see the engine, charset and index changes of `20260710181528`, `20260710200000` and `20260913205636` (found in #2167)
 
@@ -202,17 +175,9 @@ after an item is written.
 
 - [ ] The test reads `app/admin/index.php` source with `file_get_contents` and slices a block out of it. Replace it with a behavior test of the queue URL state, for example through `IntegrationTestCase::invokeEndpoint()` (found in #2330)
 
-### `tests/unit/cars/services/CarAdministrationServiceTest.php` (test coverage)
-
-- [ ] No test checks that the merge "files NOT restored" warning reaches `error_log()` exactly once when the commit throws and the rollback succeeds. Capture `error_log` in `testMergeDoesNotRestoreFilesWhenCommitItselfThrows` and assert one occurrence (found in #2515)
-
 ### `tests/unit/classes/Email/BrevoDevOverrideTest.php` (test coverage)
 
 - [ ] `BrevoDevOverrideTest.php:198`: the fixture SDK keeps its host by design, so "survives setApiKey" cannot fail there; only the real-SDK test at :212 proves it, and it skips where the plugin vendor dir is missing (CI). (found in /finish-milestone v2.30.6)
-
-### `tests/unit/classes/EmailEventRekeyQueriesFailureTest.php` (test coverage)
-
-- [ ] Only the `DatabaseInterface` branch is tested. Add the `PDO` branch: `prepare()` returns false, `execute()` returns false, and a `PDOException` comes back as the previous exception of `OwnerDatabaseException` (found in #2358 review)
 
 ### `tests/unit/cron/VerificationSwitchGateSourceTest.php`
 
@@ -230,10 +195,6 @@ after an item is written.
 ### `tests/unit/regression/JoinFailureReportUsesDedicatedRateLimitBucketRegressionTest.php`
 
 - [ ] Rename `testExactlyOneConfigEntryExistsPerAction`. It asserts presence, not uniqueness (from #2169)
-
-### `tests/unit/scripts/AfterUserDeletionHookDecisionsTest.php` (test coverage)
-
-- [ ] The "findByOwner fails" path has only an integration test. Add a unit case with `failOnSql: 'SELECT id FROM cars WHERE user_id = ?'`: no `noowner` lookup runs and no transaction stays open (found in /finish-milestone v2.30.10)
 
 ### `tests/unit/security/AdminAjaxGuardTest.php`
 
@@ -264,7 +225,6 @@ after an item is written.
 
 ### `usersc/classes/Car/CarVerificationManager.php`
 
-- [ ] No test makes `logger()` throw on the Clear Block "unblock done" line. Add a case in `tests/unit/cars/services/CarVerificationManagerTest.php`: the registry write still runs, the outcome is `CLEARED`, and `error_log` gets the summary (found in /finish-milestone v2.30.9)
 - [ ] `clearBlockedForOwner()` maps an unlisted `BrevoUnblockResult::REASON_*` to `brevoFailed()` through a `default` arm, so a new reason gets the retry text without a test failure. List each reason and drop `default`, then add a reflection test over the `REASON_*` constants like `tests/unit/admin/ClearBlockOutcomeMessageTest.php` (found in #2488)
 
 ### `usersc/classes/Car/ClearBlockOutcome.php` + `usersc/classes/Email/BrevoUnblockResult.php`
@@ -345,7 +305,7 @@ after an item is written.
 
 ### `usersc/classes/Owner.php` + `usersc/user_settings.php` + `app/verify/verify_car.php` + `usersc/classes/Car/CarVerificationManager.php` + `usersc/classes/Car/EmailEventApplier.php`
 
-- [ ] The `try { logger() } catch { error_log('[ElanRegistry] ...') }` guard is copied at about 8 sites, the rollback guards included. Add one helper in `usersc/classes/` (for example `SafeLog::write($userId, $category, $message)`) and use it at each site (found in #2393)
+- [ ] The `try { logger() } catch { error_log('[ElanRegistry] ...') }` guard is copied at about 10 sites, the rollback guards included. Remove the guards and call `logger()` directly: `logger()` throws only when the database already failed the request (see #2449, #2561). Update `UserSettingsResumeVerificationEndpointTest`, which checks the "logger failed" text (found in #2393)
 
 ### `usersc/classes/OwnerView.php` + `app/admin/includes/tab-owner_mgmt.php` (est. −11)
 
