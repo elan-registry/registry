@@ -71,6 +71,27 @@ after an item is written.
 
 - [ ] Replace `$db->get('cars', ...)` (~L25) with `CarRepository::findById()`. Keep the redirect to `/` on not-found (from #2002)
 
+### `app/views/cars/` (section partials)
+
+- [ ] `_vehicle_info_card` and `_factory_data_card` link the card level to the heading level. Only `h4` gets `card-header-er-l2`, so a nested `h3` card cannot use L2 styling (UI_STANDARDS "Card Hierarchy"). `_owner_info_card`, `_location_map_card` and `_photos_card` always use a plain `card-header`. Give all five partials a card-level variable (found in #2495)
+
+### `app/views/cars/_factory_data_card.php`
+
+- [ ] "Factory Notes" is an `h6` under the `h3` card heading, so it skips levels. Use a `p` with `fw-semibold`, or a heading one level below `$headingTag` (found in #2495)
+
+### `app/views/cars/_location_map_card.php` `app/views/cars/_location_map_scripts.php`
+
+- [ ] Both files copy the same "has map" lat/lon rule, and only a comment keeps them the same. Put the rule in one helper (for example `CarView::hasMapPosition()`) with a unit test (found in #2495)
+- [ ] MapLibre already sets `role="region"` and `aria-label="Map"` on its canvas, so the `role` and `aria-label` on `#map` make a nested, duplicate landmark. Keep one label (remove it from `#map`, or set `Map.Title` through the map `locale`). The label says "the car's" location, but `cars.lat`/`lon` are the owner's location (found in #2495)
+
+### `app/views/cars/_owner_info_card.php`
+
+- [ ] Add a render test (as in `tests/unit/views/FactoryDataCardTest.php`): the Registry Owner ID shows when `$showOwnerId` is true and is hidden by default, `fname` and `city` with `<script>` come out escaped, and a `javascript:` website is not linked. The details-page wiring check in `SharedCarPartialsTest` is source text only (found in #2495)
+
+### `app/views/cars/_verify_landing.php`
+
+- [ ] The "Back to all options" `btn-link` is about 38px high, below the 44px touch target. The `#verify-actions` target cannot take focus, so a screen reader announces nothing after the jump. Add `tabindex="-1"` and a group label (found in #2495)
+
 ### `database/migrations/20260915000000_add_cars_verification_attempts_columns.php`
 
 - [ ] The `down()` comment (~L84) says "MySQL refuses to DROP a column that a trigger body still references". MySQL 8 allows the drop; the next INSERT, UPDATE or DELETE on `cars` then fails with 1054. The restore-first order is still right. Correct the reason in the comment (found in #2167)
@@ -78,6 +99,10 @@ after an item is written.
 ### `docs/development/ERROR_HANDLING.md`
 
 - [ ] The exception table (~L127-157) lists `AdminVerificationException`, which has no file in `usersc/classes/Exceptions/`, and omits `VerificationConfigException`. Check the table against the directory and correct the count in the heading (found in /finish-milestone v2.30.10)
+
+### `docs/development/UI_STANDARDS.md`
+
+- [ ] No doc lists the shared car section partials in `app/views/cars/` and their caller variables (`$headingTag`, `$showOwnerId`, `$carId`). Add one short paragraph next to the `_vehicle_info_card.php` text (found in #2495)
 
 ### `error/500.php`
 
@@ -131,6 +156,10 @@ after an item is written.
 
 - [ ] The class has its own `php -r` subprocess copy of the endpoint runner. Use `IntegrationTestCase::invokeEndpoint()` and delete the copy. `invokeEndpoint()` needs GET/HTML or session-flash support first (found in #2165)
 - [ ] The runner reads a missing `___EXIT:` marker as exit code 0 (`array_pad(..., '0')`, ~L196). The migration item above fixes it. (found in #2165)
+
+### `tests/integration/VerifyCarLandingPageTest.php` (test coverage)
+
+- [ ] Add a render test (as in `tests/unit/views/VehicleInfoCardTest.php`) for the not-an-object log in `_location_map_card.php` (found in #2495)
 
 ### `tests/integration/VerificationToggleEndpointBehaviorTest.php`
 
@@ -249,6 +278,10 @@ after an item is written.
 ### `usersc/classes/Car/VerificationTabStatus.php`
 
 - [ ] `chip()` takes several positional bool and nullable-string flags that a caller can swap with no error. Pass one readonly owner-flags value object, shared with `SendPolicy::verificationReason()` and `EmailNoticeBuilder::buildForOwner()` (found in /finish-milestone v2.30.10)
+
+### `usersc/classes/CarView.php`
+
+- [ ] The no-photo placeholder in `displayCarousel()` is an `h5` under the `h3` Photos card, so it skips levels. Its `fa-camera` icon has no `aria-hidden="true"` (found in #2495)
 
 ### `usersc/classes/Cron/BrevoSuppressionSyncJob.php`
 

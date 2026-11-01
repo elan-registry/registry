@@ -63,7 +63,7 @@ if ($ownerData !== null) {
     if (!empty($ownerData->join_date)) {
         try {
             $signupDate = new DateTime($ownerData->join_date);
-        } catch (\Exception) {
+        } catch (DateMalformedStringException) {
             logger($ownerId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "Invalid join date format for owner ID $ownerId: " . $ownerData->join_date);
         }
     }
@@ -71,7 +71,7 @@ if ($ownerData !== null) {
     if (!empty($ownerData->last_login)) {
         try {
             $lastLogin = new DateTime($ownerData->last_login);
-        } catch (\Exception) {
+        } catch (DateMalformedStringException) {
             logger($ownerId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "Invalid last login format for owner ID $ownerId: " . $ownerData->last_login);
         }
     }
@@ -256,19 +256,11 @@ $_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
                 if (!empty($carData->purchasedate)) {
                     try {
                         $purchaseDate = new DateTime($carData->purchasedate);
-                    } catch (\Exception) {
+                    } catch (DateMalformedStringException) {
                         logger($ownerId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "Invalid purchase date format for car ID $carId: " . $carData->purchasedate);
                     }
                 }
                 $soldDate = CarBadges::soldDate($carData->solddate ?? null, $carId);
-                $buildDate = null;
-                if ($factoryData && !empty($factoryData->builddate)) {
-                    try {
-                        $buildDate = new DateTime($factoryData->builddate);
-                    } catch (\Exception) {
-                        logger($ownerId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "Invalid build date format for car ID $carId: " . $factoryData->builddate);
-                    }
-                }
                 $isExpanded   = $carCount === 1;
 
                 // 4th quick-fact: Sold date or owner location
