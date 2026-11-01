@@ -32,4 +32,5 @@ bounce should stop.
 - [#2488](https://github.com/elan-registry/registry/issues/2488) — Clear Block reports a broken Brevo SDK instead of telling the admin to retry.
 - [#2457](https://github.com/elan-registry/registry/issues/2457) — The Verification tab shows fault states as faults, not guessed values.
 - [#2476](https://github.com/elan-registry/registry/issues/2476) — The transfer admin alert says when policy skipped the owner's notice.
+- [#2561](https://github.com/elan-registry/registry/issues/2561) — The cleanup ledger no longer lists items that only guard core UserSpice and database calls.
 - WIP: [#2495](https://github.com/elan-registry/registry/issues/2495) — The verification landing page shows the car as the details page does.
