@@ -207,8 +207,9 @@ final class AccountPageWiringTest extends TestCase
     }
 
     /**
-     * A bad purchasedate or builddate must not fail silently: each catch logs
-     * the value, like app/owner/cars/details.php does. solddate does not use
+     * A bad purchasedate must not fail silently: the catch logs the value, like
+     * app/owner/cars/details.php does. The builddate parse lives in the shared
+     * _factory_data_card.php: see testFactoryCardLogsBadBuildDate(). solddate does not use
      * a try/catch: see testSoldDateUsesCarBadgesParseSoldDate().
      *
      * @return array<string, array{string, string}>
@@ -217,7 +218,6 @@ final class AccountPageWiringTest extends TestCase
     {
         return [
             'purchasedate' => ['$purchaseDate = new DateTime($carData->purchasedate);', 'Invalid purchase date format'],
-            'builddate'    => ['$buildDate = new DateTime($factoryData->builddate);', 'Invalid build date format'],
         ];
     }
 
@@ -236,6 +236,40 @@ final class AccountPageWiringTest extends TestCase
             '/logger\(\$ownerId,\s*LogCategories::LOG_CATEGORY_SYSTEM_ERROR,\s*"' . preg_quote($logMessage, '/') . '/',
             $matches[1],
             "The catch for {$tryStatement} must log, not swallow the error"
+        );
+    }
+
+    /**
+     * The shared Factory Data card parses builddate for every page that
+     * includes it. A bad value must be logged under LOG_CATEGORY_SYSTEM_ERROR,
+     * not swallowed.
+     */
+    public function testFactoryCardLogsBadBuildDate(): void
+    {
+        $content = $this->readEndpointSource('app/views/cars/_factory_data_card.php');
+
+        $matched = preg_match(
+            '/\$buildDate = new DateTime\(\$factoryData->builddate\);\s*\}\s*catch\s*\(\\\\?DateMalformedStringException \$e\)\s*\{(.*?)\}/s',
+            $content,
+            $matches
+        );
+        $this->assertSame(1, $matched, '_factory_data_card.php must wrap the builddate parse in a try/catch');
+        $this->assertMatchesRegularExpression(
+            '/logger\(0,\s*ElanRegistry\\\\LogCategories::LOG_CATEGORY_SYSTEM_ERROR,\s*"[^"]*invalid build date format/i',
+            $matches[1],
+            'The builddate catch must log, not swallow the error'
+        );
+        $this->assertStringContainsString(
+            '$e->getMessage()',
+            $matches[1],
+            'The builddate log line must carry the parser message'
+        );
+
+        $account = $this->readEndpointSource(self::ACCOUNT_ENDPOINT);
+        $this->assertStringNotContainsString(
+            'new DateTime($factoryData->builddate)',
+            $account,
+            'account.php must not parse builddate again'
         );
     }
 

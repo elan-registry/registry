@@ -35,6 +35,9 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     private int $testUserId = 0;
     private int $testCarId = 0;
 
+    /** @var list<string> elan_factory_info serials seeded by a test, deleted in tearDown() */
+    private array $factorySerials = [];
+
     public static function setUpBeforeClass(): void
     {
         parent::setUpBeforeClass();
@@ -71,6 +74,11 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     protected function tearDown(): void
     {
         if ($this->databaseConnected) {
+            foreach ($this->factorySerials as $serial) {
+                $this->db->query('DELETE FROM elan_factory_info WHERE serial = ?', [$serial]);
+            }
+            $this->factorySerials = [];
+
             // Clear rate-limit rows this test may have seeded/generated for the
             // verification_code_attempt action so runs stay independent.
             $this->db->query("DELETE FROM us_rate_limits WHERE action = 'verification_code_attempt'");
@@ -114,7 +122,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     // ------------------------------------------------------------------
 
     /**
-     * @return array{status: int, body: string, location: ?string}
+     * @return array{status: int, body: string, location: ?string, csp: ?string}
      */
     private function get(string $queryString): array
     {
@@ -123,7 +131,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
 
     /**
      * @param array<string, string> $fields
-     * @return array{status: int, body: string, location: ?string}
+     * @return array{status: int, body: string, location: ?string, csp: ?string}
      */
     private function post(string $queryString, array $fields): array
     {
@@ -131,7 +139,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     }
 
     /**
-     * @return array{status: int, body: string, location: ?string}
+     * @return array{status: int, body: string, location: ?string, csp: ?string}
      */
     private function request(string $method, string $queryString, ?string $body): array
     {
@@ -173,7 +181,12 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
             $location = trim($matches[1]);
         }
 
-        return ['status' => $status, 'body' => $responseBody, 'location' => $location];
+        $csp = null;
+        if (preg_match('/^Content-Security-Policy:\s*(.+)$/mi', $rawHeaders, $cspMatches) === 1) {
+            $csp = trim($cspMatches[1]);
+        }
+
+        return ['status' => $status, 'body' => $responseBody, 'location' => $location, 'csp' => $csp];
     }
 
     // ------------------------------------------------------------------
@@ -192,6 +205,15 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         $this->assertFalse($this->db->error(), 'Test setup: failed to seed vericode fixture');
 
         return $plaintext;
+    }
+
+    /**
+     * The CSP nonce differs on every request, so two bodies can match only
+     * after the nonce value is set to a fixed string.
+     */
+    private function normalizeNonce(string $body): string
+    {
+        return (string) preg_replace('/nonce="[^"]*"/', 'nonce="NONCE"', $body);
     }
 
     /**
@@ -839,7 +861,7 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
 
         // No enumeration signal: identical body to a wholly-unknown vericode.
         $unknownResult = $this->get('vericode=' . bin2hex(random_bytes(16)));
-        $this->assertSame($result['body'], $unknownResult['body'], 'Ownerless-car and unknown-code responses must be identical (no enumeration signal)');
+        $this->assertSame($this->normalizeNonce($result['body']), $this->normalizeNonce($unknownResult['body']), 'Ownerless-car and unknown-code responses must be identical (no enumeration signal)');
     }
 
     public function testCarReassignedToNoownerWithValidUnexpiredVericodeRendersInvalidLink(): void
@@ -946,8 +968,8 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
 
         $unknownResult = $this->get('vericode=' . bin2hex(random_bytes(16)));
         $this->assertSame(
-            $unknownResult['body'],
-            $result['body'],
+            $this->normalizeNonce($unknownResult['body']),
+            $this->normalizeNonce($result['body']),
             'A throttled (429) response and an unknown-vericode (404) response must render identical bodies — '
                 . 'only the transport-level status may differ, per verify_car.php\'s no-enumeration-signal contract'
         );
@@ -1199,8 +1221,8 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
 
             $this->assertSame(200, $page['status']);
             $this->assertSame(
-                str_replace($cleanCode, 'CODE', $clean['body']),
-                str_replace($code, 'CODE', $page['body']),
+                $this->normalizeNonce(str_replace($cleanCode, 'CODE', $clean['body'])),
+                $this->normalizeNonce(str_replace($code, 'CODE', $page['body'])),
                 "An owner with only email_{$state} must see the same opt-out page as a clean owner"
             );
         }
@@ -1460,6 +1482,255 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         $this->db->query('UPDATE cars SET vericode_sent_at = NULL WHERE id = ?', [$this->testCarId]);
         $this->assertFalse($this->db->error(), 'Test setup: failed to clear vericode_sent_at after the opt-out');
         $this->assertNotContains($this->testCarId, $this->allVerificationEligibleCarIds(), 'Opted-out car must leave the eligible set');
+    }
+
+    // ------------------------------------------------------------------
+    // #2495: landing page shows the shared car detail sections
+    // ------------------------------------------------------------------
+
+    private function seedLatLon(float $lat, float $lon): void
+    {
+        $this->db->query('UPDATE cars SET lat = ?, lon = ? WHERE id = ?', [$lat, $lon, $this->testCarId]);
+        $this->assertFalse($this->db->error(), 'Test setup: failed to seed lat/lon');
+    }
+
+    /**
+     * Seeds an elan_factory_info row that Car::find() matches by the last five
+     * chassis characters. The serial starts with Q, so it cannot match a real row.
+     *
+     * @param array<string, string> $fields Extra elan_factory_info columns
+     */
+    private function seedFactoryRow(array $fields = []): void
+    {
+        $serial = 'Q' . strtoupper(bin2hex(random_bytes(2)));
+        $this->db->query('UPDATE cars SET chassis = ? WHERE id = ?', ['T' . substr(uniqid(), -8) . $serial, $this->testCarId]);
+        $this->assertFalse($this->db->error(), 'Test setup: failed to set chassis');
+        $this->db->insert('elan_factory_info', ['serial' => $serial, 'year' => '1968', 'color' => 'Test Green'] + $fields);
+        $this->assertFalse($this->db->error(), 'Test setup: failed to seed elan_factory_info');
+        $this->factorySerials[] = $serial;
+    }
+
+    public function testGetLandingWithLatLonRendersLocationMapCard(): void
+    {
+        $this->seedLatLon(51.5074, -0.1278);
+        $result = $this->get('vericode=' . $this->issueVericode());
+
+        $this->assertSame(200, $result['status']);
+        $this->assertStringContainsString('id="map"', $result['body']);
+        $this->assertStringContainsString('carDetailsMapConfig', $result['body']);
+        $this->assertStringContainsString('car-details-map.min.js', $result['body']);
+        $this->assertStringContainsString('maplibre-gl.min.js?v=', $result['body']);
+        // car-details-map.js reads #map at once, so the box must come first.
+        $this->assertLessThan(
+            strpos($result['body'], 'car-details-map.min.js'),
+            strpos($result['body'], 'id="map"'),
+            'The #map box must come before car-details-map.min.js'
+        );
+    }
+
+    public function testGetLandingWithoutLatLonRendersPlaceholderAndLoadsNoMaplibre(): void
+    {
+        $result = $this->get('vericode=' . $this->issueVericode());
+
+        $this->assertSame(200, $result['status']);
+        $this->assertStringContainsString('Location information not available', $result['body']);
+        $this->assertStringNotContainsString('maplibre-gl', $result['body']);
+        $this->assertStringNotContainsString('id="map"', $result['body']);
+        $this->assertStringNotContainsString('carDetailsMapConfig', $result['body']);
+    }
+
+    public function testGetLandingWithZeroLatLonRendersPlaceholderNotEmptyMapBox(): void
+    {
+        $this->seedLatLon(0.0, 0.0);
+        $result = $this->get('vericode=' . $this->issueVericode());
+
+        $this->assertSame(200, $result['status']);
+        $this->assertStringContainsString('Location information not available', $result['body']);
+        $this->assertStringNotContainsString('id="map"', $result['body']);
+        $this->assertStringNotContainsString('maplibre-gl', $result['body']);
+        $this->assertStringNotContainsString('carDetailsMapConfig', $result['body']);
+    }
+
+    public function testGetLandingRendersPhotosCard(): void
+    {
+        $result = $this->get('vericode=' . $this->issueVericode());
+
+        $this->assertSame(200, $result['status']);
+        $this->assertStringContainsString('fa-images', $result['body']);
+        $this->assertMatchesRegularExpression('/Photos\s*<\/h3>/', $result['body']);
+    }
+
+    /**
+     * The details page shows Factory Data. The landing does not, even when a
+     * factory row matches the chassis.
+     */
+    public function testGetLandingHasNoFactoryDataCardEvenWhenFactoryRowExists(): void
+    {
+        $this->seedFactoryRow();
+        $result = $this->get('vericode=' . $this->issueVericode());
+
+        $this->assertSame(200, $result['status']);
+        $this->assertStringContainsString(self::MARKER_LANDING, $result['body'], 'Test sanity: the landing rendered');
+        // The card title and the old intro note both contain "Factory Data".
+        $this->assertStringNotContainsString('Factory Data', $result['body']);
+        $this->assertStringNotContainsString('fa-industry', $result['body']);
+        $this->assertStringNotContainsString('Test Green', $result['body']);
+    }
+
+    public function testGetLandingDoesNotRenderHistorySection(): void
+    {
+        $this->db->insert('cars_hist', [
+            'operation' => 'TEST',
+            'car_id' => $this->testCarId,
+            'model' => 'Elan',
+            'series' => 'S4',
+            'variant' => 'SE',
+            'type' => 'FHC',
+            'chassis' => 'HIST' . uniqid(),
+            'user_id' => $this->testUserId,
+        ]);
+        $this->assertFalse($this->db->error(), 'Test setup: failed to seed cars_hist');
+        $this->assertGreaterThan(0, $this->countCarsHistRows($this->testCarId), 'Test sanity: history row exists');
+
+        $result = $this->get('vericode=' . $this->issueVericode());
+
+        $this->assertSame(200, $result['status']);
+        $this->assertStringContainsString(self::MARKER_LANDING, $result['body'], 'Test sanity: the landing rendered');
+        $this->assertStringNotContainsString('historyCard', $result['body']);
+        $this->assertStringNotContainsString('Car Update History', $result['body']);
+        // The Vehicle Information card has its own fa-history icon (text-secondary).
+        // The details-page History card uses text-primary.
+        $this->assertStringNotContainsString('fa-history text-primary', $result['body']);
+    }
+
+    public function testGetLandingSectionOrderIsVehiclePhotosOwnerLocation(): void
+    {
+        $this->seedLatLon(51.5074, -0.1278);
+        $result = $this->get('vericode=' . $this->issueVericode());
+
+        $this->assertSame(200, $result['status']);
+        // Card icons are unique per card; the Location and Photos titles are not unique text.
+        $markers = ['Vehicle Information', 'fa-images', 'Owner Information', 'fa-map-marked-alt'];
+        $positions = [];
+        foreach ($markers as $marker) {
+            $pos = strpos($result['body'], $marker);
+            $this->assertNotFalse($pos, "{$marker} must be on the landing page");
+            $positions[] = $pos;
+        }
+        $sorted = $positions;
+        sort($sorted);
+        $this->assertSame($sorted, $positions, 'Sections must be Vehicle, Photos, Owner, Location');
+        $this->assertCount(4, array_unique($positions));
+    }
+
+    public function testGetLandingInlineScriptNonceMatchesCspHeader(): void
+    {
+        $this->seedLatLon(51.5074, -0.1278);
+        $result = $this->get('vericode=' . $this->issueVericode());
+
+        $this->assertSame(200, $result['status']);
+        $this->assertNotNull($result['csp'], 'Test sanity: response carries a CSP header');
+        $this->assertSame(1, preg_match("/'nonce-([^']+)'/", (string) $result['csp'], $header), 'CSP must carry a nonce');
+
+        $matched = preg_match_all('/<script nonce="([^"]*)"/', $result['body'], $scripts);
+        $this->assertGreaterThan(0, $matched, 'The landing must have nonce inline scripts (map config and footer)');
+        $this->assertStringNotContainsString('nonce=""', $result['body']);
+        foreach ($scripts[1] as $nonce) {
+            $this->assertSame(htmlspecialchars($header[1], ENT_QUOTES), $nonce);
+        }
+        $this->assertStringContainsString('<script nonce="' . $header[1] . '">' . "\nwindow.carDetailsMapConfig", $result['body']);
+    }
+
+    public function testGetLandingStillLinksConfirmSoldAndReview(): void
+    {
+        $code = $this->issueVericode();
+        $result = $this->get('vericode=' . $code);
+
+        $this->assertSame(200, $result['status']);
+        $this->assertStringContainsString('vericode=' . $code . '&amp;action=verify', $result['body']);
+        $this->assertStringContainsString('vericode=' . $code . '&amp;action=sold', $result['body']);
+        $this->assertStringContainsString('usersc/login.php', $result['body'], 'Review link (login when logged out)');
+    }
+
+    public function testGetLandingOwnerCardHasNoRegistryOwnerId(): void
+    {
+        $result = $this->get('vericode=' . $this->issueVericode());
+
+        $this->assertSame(200, $result['status']);
+        $this->assertStringContainsString('Owner Information', $result['body']);
+        $this->assertStringNotContainsString('Registry Owner ID', $result['body']);
+    }
+
+    /**
+     * The vericode is a credential. The map markup must not echo it.
+     */
+    public function testGetLandingMapScriptsDoNotContainVericode(): void
+    {
+        $this->seedLatLon(51.5074, -0.1278);
+        $code = $this->issueVericode();
+        $result = $this->get('vericode=' . $code);
+
+        $start = strpos($result['body'], 'maplibre-gl.css');
+        $end = strpos($result['body'], '.elan-marker.unknown');
+        $this->assertNotFalse($start);
+        $this->assertNotFalse($end);
+        $this->assertStringNotContainsString($code, substr($result['body'], $start, $end - $start));
+    }
+
+    /**
+     * The owner reads the cards, then confirms without a scroll back to the
+     * top. The bottom Confirm must go to the same place as the top one.
+     */
+    public function testGetLandingRepeatsConfirmBelowTheSectionsWithTheSameTarget(): void
+    {
+        $this->seedLatLon(51.5074, -0.1278);
+        $result = $this->get('vericode=' . $this->issueVericode());
+        $body = $result['body'];
+
+        $this->assertSame(200, $result['status']);
+        $matched = preg_match_all(
+            '/<a class="([^"]*)"\s+href="([^"]*)">\s*<i class="fas fa-check me-1" aria-hidden="true"><\/i>\s*'
+            . 'Yes, everything (below|above) is still correct/',
+            $body,
+            $confirms,
+            PREG_SET_ORDER | PREG_OFFSET_CAPTURE
+        );
+        $this->assertSame(2, $matched, 'The landing must have a top and a bottom Confirm');
+        [$top, $bottom] = $confirms;
+        $this->assertSame('below', $top[3][0]);
+        $this->assertSame('above', $bottom[3][0]);
+        $this->assertSame($top[2][0], $bottom[2][0], 'Both Confirm links must have the same href');
+        $this->assertStringContainsString('&amp;action=verify', $bottom[2][0]);
+        $this->assertSame('btn btn-primary btn-lg', $bottom[1][0]);
+        $this->assertSame($top[1][0], $bottom[1][0]);
+
+        $bottomAt = $bottom[0][1];
+        $this->assertGreaterThan(strpos($body, 'fa-map-marked-alt'), $bottomAt, 'Bottom Confirm must follow the Location card');
+        $this->assertGreaterThan(strpos($body, 'car-details-map.min.js'), $bottomAt, 'Bottom Confirm must follow the map scripts');
+    }
+
+    public function testGetLandingBackLinkJumpsToTheTopActionGroup(): void
+    {
+        $result = $this->get('vericode=' . $this->issueVericode());
+        $body = $result['body'];
+
+        $this->assertSame(200, $result['status']);
+        $idAt = strpos($body, 'id="verify-actions"');
+        $this->assertNotFalse($idAt, 'The top action group must carry the anchor id');
+        $topConfirmAt = strpos($body, 'Yes, everything below is still correct');
+        $this->assertNotFalse($topConfirmAt);
+        $this->assertLessThan($topConfirmAt, $idAt, 'The anchor id must be on the group that holds the top Confirm');
+        $this->assertSame(1, substr_count($body, 'id="verify-actions"'));
+
+        $this->assertMatchesRegularExpression(
+            '/<a class="btn btn-link" href="#verify-actions">Back to all options<\/a>/',
+            $body
+        );
+        $this->assertGreaterThan(
+            strpos($body, 'Yes, everything above is still correct'),
+            strpos($body, 'Back to all options'),
+            'The back link must sit below the bottom Confirm'
+        );
     }
 
     /**

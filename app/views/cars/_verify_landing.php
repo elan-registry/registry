@@ -7,15 +7,21 @@ if (count(get_included_files()) == 1) { die(); }
  * The no-action landing page for app/verify/verify_car.php — what an owner
  * sees when they open the verification link itself rather than one of its
  * two action links. Offers the full option set: Verify, Sold, and Review &
- * Update, followed by the full Vehicle Information and Owner Information
- * detail (reusing app/views/cars/_vehicle_info_card.php, the same partial
- * app/owner/cars/details.php uses) so the owner can review everything the
- * registry holds before deciding.
+ * Update, followed by the car detail so the owner can review everything the
+ * registry holds before deciding. The sections, in order, use the same
+ * partials as app/owner/cars/details.php:
+ *   Vehicle Information  _vehicle_info_card.php
+ *   Photos               _photos_card.php
+ *   Owner Information    _owner_info_card.php (no Registry Owner ID)
+ *   Location             _location_map_card.php, then _location_map_scripts.php
+ * There is no History section (#2144) and no Factory Data section.
  *
  * The CTA buttons are placed ABOVE the detail cards deliberately: the
  * decision (still accurate / sold / needs a full edit) is the reason the
  * owner is here, and the detail below is reference material to check before
  * confirming, not a gate the owner must scroll past to find the buttons.
+ * The cards make the page long on a phone, so the Confirm button repeats
+ * after the last card, with a link back to all the options at the top.
  *
  * Every option here is a plain GET link to a confirmation step; nothing on
  * this page mutates.
@@ -30,15 +36,19 @@ if (count(get_included_files()) == 1) { die(); }
  * showing it back to the vericode holder discloses nothing new.
  *
  * Caller must set:
- *   $verifyCar     object  Car row resolved from the vericode
- *   $verifyPhoto   ?string Primary photo URL (-resized-300 variant) or null
- *   $verifyCode    string  The plaintext vericode (already format-validated)
- *   $verifySelfUrl string  URL of this page, without query string
- *   $verifyEditUrl string  Edit-page URL, or the login URL when logged out
- *                          (the caller has already called safelyCaptureDest())
+ *   $verifyCar         object  Car row resolved from the vericode
+ *   $verifyCarModel    Car     The same car as an ElanRegistry\Car\Car
+ *   $verifyPhoto       ?string Primary photo URL (-resized-300 variant) or null
+ *   $verifyCode        string  The plaintext vericode (already format-validated)
+ *   $verifySelfUrl     string  URL of this page, without query string
+ *   $verifyEditUrl     string  Edit-page URL, or the login URL when logged out
+ *                              (the caller has already called safelyCaptureDest())
+ *   $us_url_root       string  UserSpice URL root
+ *   $userspice_nonce   string  CSP nonce for the inline map config script
  */
 
 $verifyCar ??= null;
+$verifyCarModel ??= null;
 $verifyPhoto ??= null;
 $verifyCode ??= '';
 $verifySelfUrl ??= '';
@@ -70,16 +80,14 @@ if (!empty($verifyCar->purchasedate)) {
     }
 }
 
-// Named $soldDate (not $verifySoldDate) deliberately — this is
-// _vehicle_info_card.php's actual expected variable name (see its own
-// docblock). verify_car.php's dispatch-time globals ($soldDateValue,
-// $soldDateMin, $soldDateMax, $soldDateError) are all distinct names, so
-// this doesn't collide with renderVerifyPage()'s `global` list.
+// The name is $soldDate, not $verifySoldDate, because _vehicle_info_card.php
+// reads $soldDate.
 $soldDate    = ElanRegistry\Car\CarBadges::soldDate($verifyCar->solddate ?? null, $verifyCar->id ?? null);
 $alreadySold = ElanRegistry\Car\CarBadges::isSold($verifyCar->solddate ?? null);
 
-$verifyOwnerLocation = ElanRegistry\OwnerView::displayLocation($verifyCar);
-$verifyOwnerWebsite  = ElanRegistry\OwnerView::websiteUrl($verifyCar->website ?? '');
+// The shared partials read $car and $showOwnerId.
+$car         = $verifyCarModel;
+$showOwnerId = false;
 ?>
 <div class="card registry-card">
     <div class="card-header card-header-er-primary">
@@ -99,7 +107,7 @@ $verifyOwnerWebsite  = ElanRegistry\OwnerView::websiteUrl($verifyCar->website ??
             below if you&rsquo;d like to check it first.
         </p>
 
-        <div class="d-grid gap-2 mb-4">
+        <div id="verify-actions" class="d-grid gap-2 mb-4">
             <a class="btn btn-primary btn-lg"
                href="<?= $verifySelfAttr ?>?vericode=<?= $verifyCodeAttr ?>&amp;action=verify">
                 <i class="fas fa-check me-1" aria-hidden="true"></i>
@@ -130,42 +138,22 @@ $verifyOwnerWebsite  = ElanRegistry\OwnerView::websiteUrl($verifyCar->website ??
         include __DIR__ . '/_vehicle_info_card.php';
         ?>
 
-        <div class="card registry-card">
-            <div class="card-header">
-                <h3 class="mb-0"><i class="fas fa-user text-primary" aria-hidden="true"></i> Owner Information</h3>
-            </div>
-            <div class="card-body">
-                <dl class="row mb-0">
-                    <dt class="col-sm-4 text-muted">
-                        <i class="fas fa-user text-primary" aria-hidden="true"></i> Owner Name
-                    </dt>
-                    <dd class="col-sm-8">
-                        <?= !empty($verifyCar->fname)
-                            ? htmlspecialchars(ucfirst($verifyCar->fname), ENT_QUOTES, 'UTF-8')
-                            : '<em class="text-muted">Not specified</em>' ?>
-                    </dd>
+        <?php
+        include __DIR__ . '/_photos_card.php';
+        include __DIR__ . '/_owner_info_card.php';
+        include __DIR__ . '/_location_map_card.php';
+        // The scripts load here because this partial renders inside the page
+        // body, before the footer, and car-details-map.js reads #map at once.
+        include __DIR__ . '/_location_map_scripts.php';
+        ?>
 
-                    <dt class="col-sm-4 text-muted">
-                        <i class="fas fa-map-marker-alt text-primary" aria-hidden="true"></i> Location
-                    </dt>
-                    <dd class="col-sm-8">
-                        <?= $verifyOwnerLocation !== ''
-                            ? $verifyOwnerLocation
-                            : '<em class="text-muted">Location not specified</em>' ?>
-                    </dd>
-
-                    <?php if ($verifyOwnerWebsite !== null): ?>
-                    <dt class="col-sm-4 text-muted">
-                        <i class="fas fa-link text-primary" aria-hidden="true"></i> Website
-                    </dt>
-                    <dd class="col-sm-8">
-                        <a href="<?= htmlspecialchars($verifyOwnerWebsite, ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer">
-                            <?= htmlspecialchars($verifyOwnerWebsite, ENT_QUOTES, 'UTF-8') ?>
-                        </a>
-                    </dd>
-                    <?php endif; ?>
-                </dl>
-            </div>
+        <div class="d-grid gap-2 mt-4">
+            <a class="btn btn-primary btn-lg"
+               href="<?= $verifySelfAttr ?>?vericode=<?= $verifyCodeAttr ?>&amp;action=verify">
+                <i class="fas fa-check me-1" aria-hidden="true"></i>
+                Yes, everything above is still correct
+            </a>
+            <a class="btn btn-link" href="#verify-actions">Back to all options</a>
         </div>
     </div>
 </div>

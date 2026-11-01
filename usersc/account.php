@@ -261,14 +261,6 @@ $_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
                     }
                 }
                 $soldDate = CarBadges::soldDate($carData->solddate ?? null, $carId);
-                $buildDate = null;
-                if ($factoryData && !empty($factoryData->builddate)) {
-                    try {
-                        $buildDate = new DateTime($factoryData->builddate);
-                    } catch (\Exception) {
-                        logger($ownerId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "Invalid build date format for car ID $carId: " . $factoryData->builddate);
-                    }
-                }
                 $isExpanded   = $carCount === 1;
 
                 // 4th quick-fact: Sold date or owner location

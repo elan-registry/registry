@@ -24,7 +24,6 @@ use ElanRegistry\Car\CarRepository;
 use ElanRegistry\CarView;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\LogCategories;
-use ElanRegistry\OwnerView;
 
 if (!securePage($php_self)) {
     die();
@@ -67,8 +66,7 @@ if (!empty($_GET)) {
 
     // Pre-process common dates to avoid redundant DateTime creation
     $purchaseDate = null;
-    $buildDate = null;
-    
+
     if (!empty($carData->purchasedate)) {
         try {
             $purchaseDate = new DateTime($carData->purchasedate);
@@ -80,15 +78,6 @@ if (!empty($_GET)) {
     
     $soldDate = CarBadges::soldDate($carData->solddate ?? null, (int) $carID);
 
-    if ($factoryData && !empty($factoryData->builddate)) {
-        try {
-            $buildDate = new DateTime($factoryData->builddate);
-        } catch (Exception $e) {
-            logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "Invalid build date format for car ID $carID: " . $factoryData->builddate);
-            $buildDate = null;
-        }
-    }
-    
 } else {
     // Shouldn't be here unless someone is mangling the url
     logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Car details page accessed without car_id parameter');
@@ -226,106 +215,20 @@ if ($carSchemaJson === false) {
                     include $abs_us_root . $us_url_root . 'app/views/cars/_vehicle_info_card.php';
                     ?>
 
-                    <!-- Owner Information Card -->
-                    <div class="card registry-card">
-                        <div class="card-header">
-                            <h3 class="mb-0"><i class="fas fa-user text-primary"></i> Owner Information</h3>
-                        </div>
-                        <div class="card-body">
-                            <dl class="row">
-                                <dt class="col-sm-4 text-muted">
-                                    <i class="fas fa-user text-primary"></i> Owner Name
-                                </dt>
-                                <dd class="col-sm-8">
-                                    <?= !empty($carData->fname) ? htmlspecialchars(ucfirst($carData->fname), ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Not specified</em>' ?>
-                                </dd>
-                                
-                                <dt class="col-sm-4 text-muted">
-                                    <i class="fas fa-map-marker-alt text-primary"></i> Location
-                                </dt>
-                                <dd class="col-sm-8">
-                                    <?php
-                                    $location = [];
-                                    if (!empty($carData->city)) $location[] = $carData->city;
-                                    if (!empty($carData->state)) $location[] = $carData->state;
-                                    if (!empty($carData->country)) $location[] = $carData->country;
-                                    echo !empty($location) ? htmlspecialchars(implode(', ', $location), ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Location not specified</em>';
-                                    ?>
-                                </dd>
-
-                                <?php
-                                // Website is owner-level (issue #1963) — cars.website mirrors the
-                                // owner's profile value. OwnerView::websiteUrl() is the single
-                                // shared http/https-display rule, also used by
-                                // usersc/account.php's profile header.
-                                $carWebsite = OwnerView::websiteUrl($carData->website ?? '');
-                                if ($carWebsite !== null) { ?>
-                                <dt class="col-sm-4 text-muted">
-                                    <i class="fas fa-link text-primary"></i> Website
-                                </dt>
-                                <dd class="col-sm-8">
-                                    <a href="<?= htmlspecialchars($carWebsite, ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer">
-                                        <?= htmlspecialchars($carWebsite, ENT_QUOTES, 'UTF-8') ?>
-                                    </a>
-                                </dd>
-                                <?php } ?>
-                            </dl>
-                            
-                            <hr>
-                            
-                            <div class="text-center">
-                                <small class="text-muted">
-                                    <i class="fas fa-id-card"></i> Registry Owner ID: <?= (int)$car->data()->user_id ?>
-                                </small>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Location Map -->
-                    <div class="card registry-card">
-                        <div class="card-header">
-                            <h3 class="mb-0"><i class="fas fa-map-marked-alt text-primary"></i> Location</h3>
-                        </div>
-                        <div class="card-body">
-                            <?php if (!empty($carData->lat) && !empty($carData->lon) &&
-                                        is_numeric($carData->lat) && is_numeric($carData->lon)) { ?>
-                                <div class="map-container map-container-small" style="height: 100%;">
-                                    <div id="map" style="height: 400px; width: 100%;"></div>
-                                </div>
-                                <div class="mt-2 text-center">
-                                    <small class="text-muted">
-                                        <i class="fas fa-info-circle"></i> 
-                                        Approximate location
-                                    </small>
-                                </div>
-                            <?php } else { ?>
-                                <div class="text-center text-muted py-5">
-                                    <i class="fas fa-map-marker-alt fa-3x mb-3"></i>
-                                    <p>Location information not available for this car.</p>
-                                </div>
-                            <?php } ?>
-                        </div>
-                    </div>
+                    <?php
+                    $showOwnerId = true;
+                    include $abs_us_root . $us_url_root . 'app/views/cars/_owner_info_card.php';
+                    include $abs_us_root . $us_url_root . 'app/views/cars/_location_map_card.php';
+                    ?>
                 </div>
                 
                 <div class="col-lg-6 mb-4 order-first order-lg-last">
-                    <!-- Car Images -->
-                    <div class="card registry-card mb-4">
-                        <div class="card-header">
-                            <h3 class="mb-0"><i class="fas fa-images text-primary"></i> Photos</h3>
-                        </div>
-                        <div class="card-body">
-                            <?php echo CarView::displayCarousel($car); ?>
-                        </div>
-                    </div>
-                    
-                    <?php
-                    // $carHistory and $historyCount already loaded at top of file
-                    ?>
+                    <?php include $abs_us_root . $us_url_root . 'app/views/cars/_photos_card.php'; ?>
 
                     <!-- Factory Data Card -->
                     <?php if (!is_null($factoryData)) {
                         $headingTag = 'h3';
+                        $carId = (int)$carID;
                         include $abs_us_root . $us_url_root . 'app/views/cars/_factory_data_card.php';
                     } ?>
                 </div>
@@ -538,20 +441,7 @@ window.img_root = <?= json_encode((string)($us_url_root . ELAN_IMAGE_DIR), JSON_
 <script src='<?= $us_url_root ?>app/assets/js/car_details.min.js?v=<?= ASSET_VERSION ?>'></script>
 <?php endif; ?>
 
-<?php if (!empty($carData->lat) && is_numeric($carData->lat) && $carData->lat != 0 &&
-          !empty($carData->lon) && is_numeric($carData->lon) && $carData->lon != 0): ?>
-<link rel="stylesheet" href="<?= $us_url_root ?>usersc/css/maplibre-gl.css?v=<?= ASSET_VERSION ?>">
-<script src="<?= $us_url_root ?>usersc/js/maplibre-gl.min.js?v=<?= ASSET_VERSION ?>" data-cfasync="false"></script>
-<script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
-window.carDetailsMapConfig = {
-    lat: <?= (float)$carData->lat ?>,
-    lon: <?= (float)$carData->lon ?>,
-    series: <?= json_encode((string)($carData->series ?? ''), JSON_HEX_TAG | JSON_HEX_AMP) ?>,
-    styleUrl: <?= json_encode($us_url_root . 'usersc/js/versatiles-colorful.json', JSON_HEX_TAG | JSON_HEX_AMP) ?>
-};
-</script>
-<script src='<?= $us_url_root ?>app/assets/js/car-details-map.min.js?v=<?= ASSET_VERSION ?>'></script>
-<?php endif; ?>
+<?php include $abs_us_root . $us_url_root . 'app/views/cars/_location_map_scripts.php'; ?>
 
 <!-- Print Styles -->
 <style>
@@ -567,25 +457,4 @@ window.carDetailsMapConfig = {
     h1 { font-size: 18px; }
     h3 { font-size: 14px; }
 }
-@media (max-width: 575.98px) {
-    #map { height: 220px !important; }
-}
-.elan-marker {
-    width: 18px; height: 18px;
-    border-radius: 50% 50% 50% 0;
-    border: 2px solid rgba(0,0,0,0.4);
-    transform: rotate(-45deg);
-}
-.elan-marker-wrapper {
-    width: 22px; height: 22px;
-    display: flex; align-items: center; justify-content: center;
-    transform: rotate(45deg);
-}
-.elan-marker.s1     { background: #e53e3e; }
-.elan-marker.s2     { background: #3182ce; }
-.elan-marker.s3     { background: #d69e2e; }
-.elan-marker.s4     { background: #e2e8f0; border-color: rgba(0,0,0,0.5); }
-.elan-marker.sprint { background: #805ad5; }
-.elan-marker.plus2  { background: #38a169; }
-.elan-marker.unknown{ background: #718096; }
 </style>
