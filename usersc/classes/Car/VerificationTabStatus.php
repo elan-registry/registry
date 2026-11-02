@@ -440,9 +440,10 @@ final readonly class VerificationTabStatus
      * block, then a bounce, then an opt-out (#2461). The order is the same
      * as SendPolicy::verificationReason() and
      * EmailNoticeBuilder::buildForOwner(): a block and a bounce are facts
-     * about the address, and an opt-out is a preference. `$blocked` and
-     * `$bounced` mean the flag applies to the owner's current address
-     * (#2356), so the chip reads the same flags as the other two views.
+     * about the address, and an opt-out is a preference. The chip takes the
+     * same EffectiveEmailFlags value as the other two views, so `blocked`
+     * and `bounced` mean the flag applies to the owner's current address
+     * (#2356).
      *
      * Otherwise the chip shows the car's latest email event, as chosen by
      * CarRepository::findLatestEmailEventPerCarWithPrecedence(). A
@@ -450,42 +451,32 @@ final readonly class VerificationTabStatus
      * flag. That test comes after the opt-out, so an old hard-bounce event
      * from a previous address does not hide an opt-out.
      *
-     * @param object|null $event        The chip event row, or null if the car has none
-     * @param bool        $hasProfile   False when the owner has no profiles row
-     * @param bool        $blocked      True when the owner's `profiles.email_blocked` applies to the current address
-     * @param string|null $blockedCause The owner's `profiles.email_blocked_cause`, or null when unknown
-     * @param bool        $optedOut     True when the owner's `profiles.email_opted_out` is set
-     * @param bool        $bounced      True when the owner's `profiles.email_bounced` applies to the current address
+     * @param object|null         $event The chip event row, or null if the car has none
+     * @param EffectiveEmailFlags $flags The owner's flags, for example from {@see EffectiveEmailFlags::fromQueueRow()}
      * @return array{kind: string, label: string, class: string, reason: string}
      *         `kind` is '' when there is no event to show
      */
-    public static function chip(
-        ?object $event,
-        bool $hasProfile = true,
-        bool $blocked = false,
-        ?string $blockedCause = null,
-        bool $optedOut = false,
-        bool $bounced = false
-    ): array {
+    public static function chip(?object $event, EffectiveEmailFlags $flags): array
+    {
         $name   = isset($event->event) ? (string) $event->event : null;
         $reason = trim((string) ($event->reason ?? ''));
 
         $optedOutChip = ['kind' => 'opted_out', 'label' => 'Opted out', 'class' => 'text-bg-secondary', 'reason' => ''];
 
-        if (!$hasProfile) {
+        if (!$flags->hasProfile) {
             return ['kind' => 'no_profile', 'label' => 'No profile', 'class' => 'text-bg-warning', 'reason' => ''];
         }
-        if ($blocked) {
+        if ($flags->blocked) {
             return ['kind' => 'blocked', 'label' => 'Blocked', 'class' => 'text-bg-danger',
-                    'reason' => $blockedCause ?? 'cause unknown'];
+                    'reason' => $flags->blockedCause ?? 'cause unknown'];
         }
         $hardBounceEvent = $name !== null && in_array($name, EmailEventApplier::HARD_BOUNCE_EVENTS, true);
         $bouncedChip     = ['kind' => 'bounced', 'label' => 'Bounced', 'class' => 'text-bg-danger',
                             'reason' => $hardBounceEvent ? $reason : ''];
-        if ($bounced) {
+        if ($flags->bounced) {
             return $bouncedChip;
         }
-        if ($optedOut) {
+        if ($flags->optedOut) {
             return $optedOutChip;
         }
         if ($hardBounceEvent) {

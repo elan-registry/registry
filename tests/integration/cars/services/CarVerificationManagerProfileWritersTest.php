@@ -6,9 +6,10 @@ require_once __DIR__ . '/../../IntegrationTestCase.php';
 
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationManager;
-use ElanRegistry\Car\ClearBlockOutcome;
+use ElanRegistry\Car\ClearBlockKind;
 use ElanRegistry\Car\EmailEventApplier;
 use ElanRegistry\Car\EmailEventMatch;
+use ElanRegistry\Email\BrevoUnblockReason;
 use ElanRegistry\Email\BrevoUnblockResult;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarValidationException;
@@ -212,7 +213,7 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
             'optOut'           => $this->manager->setSuppressedForOwner($ownerId),
             'markBounced'      => $this->manager->setBouncedForOwner($ownerId, 'writer-a@example.com', self::ADMIN_ID),
             'clearBounced'     => $this->manager->clearBouncedForOwner($ownerId, self::ADMIN_ID),
-            'clearBlock'       => $this->manager->clearBlockedForOwner($ownerId, self::ADMIN_ID, $this->brevoClient())->isCleared(),
+            'clearBlock'       => $this->manager->clearBlockedForOwner($ownerId, self::ADMIN_ID, $this->brevoClient())->kind->isCleared(),
             'clearOptOut'      => $this->manager->clearOptedOutForOwner($ownerId, self::ADMIN_ID),
             'resume'           => $this->manager->clearSuppressedForOwnerByOwner($ownerId),
             default            => $this->fail("Test setup: unknown writer {$writer}"),
@@ -505,7 +506,7 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
 
         $outcome = $this->manager->clearBlockedForOwner($fixture['owner'], self::ADMIN_ID, $client);
 
-        $this->assertSame(ClearBlockOutcome::CLEARED, $outcome->kind);
+        $this->assertSame(ClearBlockKind::Cleared, $outcome->kind);
         $this->assertSame(['writer-a@example.com'], $client->calls);
         $this->assertBlockCleared($fixture['owner']);
         $this->assertSame('1', (string) $this->getOwnerEmailFlags($fixture['owner'])['email_opted_out'], 'Clear Block keeps the opt-out');
@@ -521,7 +522,7 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
             $this->brevoClient(null, BrevoUnblockResult::notBlocked())
         );
 
-        $this->assertSame(ClearBlockOutcome::CLEARED, $outcome->kind);
+        $this->assertSame(ClearBlockKind::Cleared, $outcome->kind);
         $this->assertBlockCleared($fixture['owner']);
     }
 
@@ -577,7 +578,7 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
 
         $outcome = $this->manager->clearBlockedForOwner($fixture['owner'], self::ADMIN_ID, $client);
 
-        $this->assertSame(ClearBlockOutcome::CLEARED_ADDRESS_MOVED, $outcome->kind);
+        $this->assertSame(ClearBlockKind::ClearedAddressMoved, $outcome->kind);
         $this->assertSame([], $client->calls);
         $this->assertBlockCleared($fixture['owner']);
         $this->assertCount(1, $this->flagLogRows($fixture['owner']));
@@ -593,7 +594,7 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
 
         $outcome = $this->manager->clearBlockedForOwner($fixture['owner'], self::ADMIN_ID, $client);
 
-        $this->assertSame(ClearBlockOutcome::CLEARED_SHARED_ADDRESS, $outcome->kind);
+        $this->assertSame(ClearBlockKind::ClearedSharedAddress, $outcome->kind);
         $this->assertSame([], $client->calls, 'No Brevo call: the other account may rely on the block');
         $this->assertBlockCleared($fixture['owner']);
     }
@@ -618,7 +619,7 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
 
         $outcome = $this->manager->clearBlockedForOwner($fixture['owner'], self::ADMIN_ID, $client);
 
-        $this->assertSame(ClearBlockOutcome::CLEARED, $outcome->kind);
+        $this->assertSame(ClearBlockKind::Cleared, $outcome->kind);
         $this->assertSame(['writer-a@example.com'], $client->calls);
         $this->assertBlockCleared($fixture['owner']);
     }
@@ -632,7 +633,7 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
 
         $outcome = $this->manager->clearBlockedForOwner($fixture['owner'], self::ADMIN_ID, $client);
 
-        $this->assertSame(ClearBlockOutcome::CLEARED_NO_ADDRESS, $outcome->kind);
+        $this->assertSame(ClearBlockKind::ClearedNoAddress, $outcome->kind);
         $this->assertSame([], $client->calls);
         $this->assertBlockCleared($fixture['owner']);
     }
@@ -641,7 +642,7 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
     {
         $fixture = $this->blockedOwner();
         $flagsBefore = $this->getOwnerEmailFlags($fixture['owner']);
-        $client = $this->brevoClient(null, BrevoUnblockResult::failed(BrevoUnblockResult::REASON_HTTP, 503));
+        $client = $this->brevoClient(null, BrevoUnblockResult::failed(BrevoUnblockReason::Http, 503));
 
         try {
             $outcome = $this->manager->clearBlockedForOwner($fixture['owner'], self::ADMIN_ID, $client);
@@ -652,7 +653,7 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
             );
         }
 
-        $this->assertSame(ClearBlockOutcome::BREVO_FAILED, $outcome->kind);
+        $this->assertSame(ClearBlockKind::BrevoFailed, $outcome->kind);
         $this->assertSame(['writer-a@example.com'], $client->calls);
         $this->assertSame($flagsBefore, $this->getOwnerEmailFlags($fixture['owner']), 'The flag and its detail stay');
         $this->assertSame([], $this->flagLogRows($fixture['owner']));
@@ -668,8 +669,8 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
 
         $outcome = $this->manager->clearBlockedForOwner($ownerId, self::ADMIN_ID, $client);
 
-        $this->assertSame(ClearBlockOutcome::ADDRESS_CHANGED, $outcome->kind);
-        $this->assertFalse($outcome->isCleared());
+        $this->assertSame(ClearBlockKind::AddressChanged, $outcome->kind);
+        $this->assertFalse($outcome->kind->isCleared());
         $this->assertCount(1, $client->calls);
         $flags = $this->getOwnerEmailFlags($ownerId);
         $this->assertSame('1', (string) $flags['email_blocked'], 'The new block stays');
@@ -690,7 +691,7 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
 
         $outcome = $this->manager->clearBlockedForOwner($ownerId, self::ADMIN_ID, $client);
 
-        $this->assertSame(ClearBlockOutcome::NOT_BLOCKED, $outcome->kind);
+        $this->assertSame(ClearBlockKind::NotBlocked, $outcome->kind);
         $this->assertCount(1, $client->calls);
         $this->assertSame([], $this->flagLogRows($ownerId), 'Another request cleared the flag: no flag-change row from this one');
         $this->assertFalse($this->db->inTransaction(), 'The transaction ended');
@@ -703,7 +704,7 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
 
         $outcome = $this->manager->clearBlockedForOwner($fixture['owner'], self::ADMIN_ID, $client);
 
-        $this->assertSame(ClearBlockOutcome::NOT_BLOCKED, $outcome->kind);
+        $this->assertSame(ClearBlockKind::NotBlocked, $outcome->kind);
         $this->assertSame([], $client->calls);
         $this->assertSame([], $this->flagLogRows($fixture['owner']));
     }
@@ -760,7 +761,7 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
 
         $outcome = $manager->clearBlockedForOwner($fixture['owner'], self::ADMIN_ID, $client);
 
-        $this->assertSame(ClearBlockOutcome::CLEARED, $outcome->kind);
+        $this->assertSame(ClearBlockKind::Cleared, $outcome->kind);
         $events = $db->events;
         $call = array_search('brevo-call', $events, true);
         $begin = array_search('begin', $events, true);

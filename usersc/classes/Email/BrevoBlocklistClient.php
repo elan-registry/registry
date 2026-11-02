@@ -28,10 +28,11 @@ use ElanRegistry\Exceptions\ExceptionLogSummary;
  * (followed by " (SQLSTATE <code>)" for a `db_error` key query failure, or by
  * ": <ExceptionLogSummary>" when the SDK autoloader threw).
  *
- * Not `final`: the protected {@see self::createApi()} seam lets a unit test
- * replace the SDK API object, so the test makes no network call and needs no
- * SDK, as in {@see \ElanRegistry\Cron\BrevoSuppressionSyncClient}.
- * Subclassing outside of test doubles is not intended.
+ * The {@see BrevoApiFactory} is a constructor argument, so a unit test can
+ * pass a factory double that replaces the SDK API object. The test then makes
+ * no network call and needs no SDK. Not `final`: the Clear Block tests
+ * replace `unblock()` with a scripted double. Subclassing outside of test
+ * doubles is not intended.
  *
  * In local development, {@see BrevoApiFactory::createApi()} points the call
  * at mock-brevo through {@see BrevoDevOverride}.
@@ -42,21 +43,15 @@ use ElanRegistry\Exceptions\ExceptionLogSummary;
  */
 class BrevoBlocklistClient
 {
-    /**
-     * The {@see BrevoApiFactory} cause of the SDK load failure in the last
-     * {@see self::createApi()} call, or null. A test double that returns null
-     * from the seam leaves it null, which reads as "no SDK".
-     */
-    private ?string $sdkLoadCause = null;
+    private readonly BrevoApiFactory $factory;
 
     /**
-     * The log-safe {@see BrevoApiFactory} detail of that SDK load failure (an
-     * ExceptionLogSummary when the autoloader threw), or an empty string.
+     * @param DatabaseInterface    $db      Database that holds the sendinblue plugin's API key row
+     * @param BrevoApiFactory|null $factory Builds the SDK API object; null builds one on `$db`
      */
-    private string $sdkLoadDetail = '';
-
-    public function __construct(private readonly DatabaseInterface $db)
+    public function __construct(DatabaseInterface $db, ?BrevoApiFactory $factory = null)
     {
+        $this->factory = $factory ?? new BrevoApiFactory($db);
     }
 
     /**
@@ -81,11 +76,11 @@ class BrevoBlocklistClient
     public function unblock(string $address): BrevoUnblockResult
     {
         if (trim($address) === '') {
-            return BrevoUnblockResult::failed(BrevoUnblockResult::REASON_NO_ADDRESS);
+            return BrevoUnblockResult::failed(BrevoUnblockReason::NoAddress);
         }
 
         try {
-            $keyRead = (new BrevoApiFactory($this->db))->readApiKey();
+            $keyRead = $this->factory->readApiKey();
             $apiKey = $keyRead['key'];
             if ($apiKey === null) {
                 // A failed query (other than a missing table) is not a missing
@@ -94,7 +89,7 @@ class BrevoBlocklistClient
                 // because the error string can hold SQL text.
                 if ($keyRead['cause'] === BrevoApiFactory::CAUSE_DB_ERROR) {
                     return BrevoUnblockResult::failed(
-                        BrevoUnblockResult::REASON_DB_ERROR,
+                        BrevoUnblockReason::DbError,
                         null,
                         $keyRead['sqlState'] !== null
                             ? $keyRead['cause'] . ' (SQLSTATE ' . $keyRead['sqlState'] . ')'
@@ -102,16 +97,15 @@ class BrevoBlocklistClient
                     );
                 }
 
-                return BrevoUnblockResult::failed(BrevoUnblockResult::REASON_NO_API_KEY, null, $keyRead['cause']);
+                return BrevoUnblockResult::failed(BrevoUnblockReason::NoApiKey, null, $keyRead['cause']);
             }
 
-            $this->sdkLoadCause = null;
-            $this->sdkLoadDetail = '';
-            $api = $this->createApi($apiKey);
-            if ($api === null) {
-                return self::sdkFailureResult($this->sdkLoadCause, $this->sdkLoadDetail);
+            $load = $this->factory->loadSdk();
+            if ($load['reason'] !== null) {
+                return self::sdkFailureResult($load['cause'], $load['detail']);
             }
 
+            $api = $this->factory->createApi($apiKey);
             $api->smtpBlockedContactsEmailDelete($address);
 
             return BrevoUnblockResult::removed();
@@ -122,29 +116,6 @@ class BrevoBlocklistClient
             // for a bad argument. The HTTP status and the summary are kept, never the message.
             return self::failureResult($e);
         }
-    }
-
-    /**
-     * Build the Brevo transactional email API client.
-     *
-     * The seam covers the SDK load too, so a unit test with no SDK can
-     * replace it. The return type is `?object`, not the SDK class, because a
-     * test double of another class would fail a native SDK return type.
-     *
-     * @param string $apiKey The Brevo API key
-     * @return \Brevo\Client\Api\TransactionalEmailsApi|null The client, or null if the SDK did not load
-     */
-    protected function createApi(string $apiKey): ?object
-    {
-        $factory = new BrevoApiFactory($this->db);
-        $load = $factory->loadSdk();
-        if ($load['reason'] !== null) {
-            $this->sdkLoadCause = $load['cause'];
-            $this->sdkLoadDetail = $load['detail'];
-            return null;
-        }
-
-        return $factory->createApi($apiKey);
     }
 
     /**
@@ -169,7 +140,7 @@ class BrevoBlocklistClient
         );
 
         return BrevoUnblockResult::failed(
-            $loadFailed ? BrevoUnblockResult::REASON_SDK_LOAD_FAILED : BrevoUnblockResult::REASON_NO_SDK,
+            $loadFailed ? BrevoUnblockReason::SdkLoadFailed : BrevoUnblockReason::NoSdk,
             null,
             ($cause !== null && $detail !== '') ? $cause . ': ' . $detail : $cause
         );
@@ -193,10 +164,10 @@ class BrevoBlocklistClient
                 return BrevoUnblockResult::notBlocked();
             }
             if ($status >= 100 && $status <= 599) {
-                return BrevoUnblockResult::failed(BrevoUnblockResult::REASON_HTTP, $status, ExceptionLogSummary::of($e));
+                return BrevoUnblockResult::failed(BrevoUnblockReason::Http, $status, ExceptionLogSummary::of($e));
             }
         }
 
-        return BrevoUnblockResult::failed(BrevoUnblockResult::REASON_TRANSPORT, null, ExceptionLogSummary::of($e));
+        return BrevoUnblockResult::failed(BrevoUnblockReason::Transport, null, ExceptionLogSummary::of($e));
     }
 }

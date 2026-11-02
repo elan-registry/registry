@@ -7,10 +7,9 @@ namespace ElanRegistry\Car;
 use DateTime;
 use ElanRegistry\AppConstants;
 use ElanRegistry\Email\BrevoBlocklistClient;
-use ElanRegistry\Email\BrevoUnblockResult;
+use ElanRegistry\Email\BrevoUnblockReason;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarValidationException;
-use ElanRegistry\Exceptions\ExceptionLogSummary;
 use ElanRegistry\LogCategories;
 
 /**
@@ -505,21 +504,7 @@ class CarVerificationManager
             }
             $this->repo->commit();
         } catch (\Throwable $e) {
-            try {
-                $this->repo->rollback();
-            } catch (\Throwable $rollbackFailure) {
-                // A throw from rollback() would replace $e, the real cause.
-                $message = 'CarVerificationManager::clearFlagsForConfirmedEmailChange() rollback failed for userId='
-                    . $userId . ': ' . ExceptionLogSummary::of($rollbackFailure)
-                    . ' (original failure: ' . get_class($e) . ')';
-                try {
-                    logger($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR, $message);
-                } catch (\Throwable $logFailure) {
-                    // logger() writes to the database. If that fails too, the
-                    // PHP error log is the only record left.
-                    error_log('[ElanRegistry] ' . $message . ' (logger failed: ' . ExceptionLogSummary::of($logFailure) . ')');
-                }
-            }
+            $this->repo->rollback();
             throw $e;
         }
 
@@ -611,13 +596,13 @@ class CarVerificationManager
 
         $clearedAt = null;
         if ($target === '') {
-            $kind = ClearBlockOutcome::CLEARED_NO_ADDRESS;
+            $kind = ClearBlockKind::ClearedNoAddress;
         } elseif (EmailAddress::normalize($target) !== EmailAddress::normalize($userEmail)) {
-            $kind = ClearBlockOutcome::CLEARED_ADDRESS_MOVED;
+            $kind = ClearBlockKind::ClearedAddressMoved;
         } elseif (array_diff($this->repo->findUserIdsByAddress($target), [$ownerId]) !== []) {
-            $kind = ClearBlockOutcome::CLEARED_SHARED_ADDRESS;
+            $kind = ClearBlockKind::ClearedSharedAddress;
         } else {
-            $kind = ClearBlockOutcome::CLEARED;
+            $kind = ClearBlockKind::Cleared;
             // Recorded before the call: an import entry dated after this
             // time is a new block, and the import sets the flag again.
             $clearedAt = date(AppConstants::DATETIME_FORMAT);
@@ -626,35 +611,34 @@ class CarVerificationManager
                 logger($actingUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
                     'Verification: Clear Block Brevo unblock failed for owner %d (reason %s, HTTP %s, detail %s)',
                     $ownerId,
-                    (string) $unblock->reason(),
-                    $unblock->httpStatus() === null ? 'none' : (string) $unblock->httpStatus(),
-                    $unblock->detail() ?? 'none'
+                    $unblock->reason->value ?? 'none',
+                    $unblock->httpStatus === null ? 'none' : (string) $unblock->httpStatus,
+                    $unblock->detail ?? 'none'
                 ));
                 // A retry cannot fix a missing setup or a plugin fault. The
-                // client reports REASON_NO_SDK only after it found a key, so
-                // a missing SDK is a plugin fault, not a missing setup.
-                return match ($unblock->reason()) {
-                    BrevoUnblockResult::REASON_NO_API_KEY => ClearBlockOutcome::brevoNotSetUp(),
-                    BrevoUnblockResult::REASON_NO_SDK,
-                    BrevoUnblockResult::REASON_SDK_LOAD_FAILED => ClearBlockOutcome::brevoPluginFault(),
-                    default => ClearBlockOutcome::brevoFailed(),
+                // client reports NoSdk only after it found a key, so a
+                // missing SDK is a plugin fault, not a missing setup. No
+                // default arm: a new reason must get its own outcome.
+                return match ($unblock->reason) {
+                    BrevoUnblockReason::NoApiKey => ClearBlockOutcome::brevoNotSetUp(),
+                    BrevoUnblockReason::NoSdk,
+                    BrevoUnblockReason::SdkLoadFailed => ClearBlockOutcome::brevoPluginFault(),
+                    BrevoUnblockReason::Http,
+                    BrevoUnblockReason::Transport,
+                    BrevoUnblockReason::DbError,
+                    BrevoUnblockReason::NoAddress,
+                    // isSuccess() is false, so the reason is set.
+                    null => ClearBlockOutcome::brevoFailed(),
                 };
             }
             // Logged before the registry write: if that write throws, or
             // ends in addressChanged or notBlocked, this line is the only
             // record that Brevo no longer blocks the address.
-            $doneMessage = sprintf(
+            logger($actingUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
                 'Verification: Clear Block Brevo unblock done for owner %d (outcome %s)',
                 $ownerId,
-                $unblock->outcome()
-            );
-            try {
-                logger($actingUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $doneMessage);
-            } catch (\Throwable $logFailure) {
-                // Brevo already changed. Keep the record and go on to the
-                // registry write, so a logs table fault does not stop it.
-                error_log('[ElanRegistry] ' . $doneMessage . ' (logger failed: ' . ExceptionLogSummary::of($logFailure) . ')');
-            }
+                $unblock->outcome->value
+            ));
         }
 
         $this->repo->beginTransaction();
@@ -680,23 +664,7 @@ class CarVerificationManager
             );
             $this->repo->commit();
         } catch (\Throwable $e) {
-            try {
-                $this->repo->rollback();
-            } catch (\Throwable $rollbackFailure) {
-                // A throw from rollback() would replace $e, the real cause.
-                // The summary, not the message: no Clear Block log line, in
-                // the logs table or the PHP error log, holds an exception message.
-                $message = 'CarVerificationManager::clearBlockedForOwner() rollback failed for owner '
-                    . $ownerId . ': ' . ExceptionLogSummary::of($rollbackFailure)
-                    . ' (original failure: ' . get_class($e) . ')';
-                try {
-                    logger($actingUserId, LogCategories::LOG_CATEGORY_DATABASE_ERROR, $message);
-                } catch (\Throwable $logFailure) {
-                    // logger() writes to the database. If that fails too, the
-                    // PHP error log is the only record left.
-                    error_log('[ElanRegistry] ' . $message . ' (logger failed: ' . ExceptionLogSummary::of($logFailure) . ')');
-                }
-            }
+            $this->repo->rollback();
             throw $e;
         }
 
@@ -706,10 +674,10 @@ class CarVerificationManager
         }
 
         return match ($kind) {
-            ClearBlockOutcome::CLEARED_NO_ADDRESS => ClearBlockOutcome::clearedNoAddress($result['stillBounced'], $result['stillOptedOut']),
-            ClearBlockOutcome::CLEARED_ADDRESS_MOVED => ClearBlockOutcome::clearedAddressMoved($result['stillBounced'], $result['stillOptedOut']),
-            ClearBlockOutcome::CLEARED_SHARED_ADDRESS => ClearBlockOutcome::clearedSharedAddress($result['stillBounced'], $result['stillOptedOut']),
-            default => ClearBlockOutcome::cleared($result['stillBounced'], $result['stillOptedOut']),
+            ClearBlockKind::ClearedNoAddress => ClearBlockOutcome::clearedNoAddress($result['stillBounced'], $result['stillOptedOut']),
+            ClearBlockKind::ClearedAddressMoved => ClearBlockOutcome::clearedAddressMoved($result['stillBounced'], $result['stillOptedOut']),
+            ClearBlockKind::ClearedSharedAddress => ClearBlockOutcome::clearedSharedAddress($result['stillBounced'], $result['stillOptedOut']),
+            ClearBlockKind::Cleared => ClearBlockOutcome::cleared($result['stillBounced'], $result['stillOptedOut']),
         };
     }
 

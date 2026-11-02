@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Admin;
 
-use ElanRegistry\Car\ClearBlockOutcome;
+use ElanRegistry\Car\ClearBlockKind;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -36,12 +36,12 @@ final class ClearBlockOutcomeMessageTest extends TestCase
     public function testPluginFaultArmIsAnErrorThatSendsTheAdminToTheLogs(): void
     {
         $found = preg_match(
-            '/ClearBlockOutcome::BREVO_PLUGIN_FAULT => \[(true|false), \'([^\']*)\'\],/',
+            '/ClearBlockKind::BrevoPluginFault => \[(true|false), \'([^\']*)\'\],/',
             $this->readOutcomeMatchBlock(),
             $arm
         );
 
-        $this->assertSame(1, $found, 'The match must have a BREVO_PLUGIN_FAULT arm');
+        $this->assertSame(1, $found, 'The match must have a BrevoPluginFault arm');
         $this->assertSame('true', $arm[1], 'A plugin fault must show as an error');
         $this->assertStringContainsString('Check the logs', $arm[2]);
         $this->assertStringNotContainsStringIgnoringCase('try again', $arm[2], 'A retry cannot fix a plugin fault');
@@ -50,14 +50,11 @@ final class ClearBlockOutcomeMessageTest extends TestCase
     public function testEveryOutcomeKindHasAnArm(): void
     {
         $block = $this->readOutcomeMatchBlock();
-        $constants = (new \ReflectionClass(ClearBlockOutcome::class))->getConstants();
-        $this->assertNotEmpty($constants);
-
-        foreach (array_keys($constants) as $name) {
+        foreach (ClearBlockKind::cases() as $kind) {
             $this->assertMatchesRegularExpression(
-                '/ClearBlockOutcome::' . preg_quote($name, '/') . ' => \[/',
+                '/ClearBlockKind::' . preg_quote($kind->name, '/') . ' => \[/',
                 $block,
-                "The Clear Block match has no arm for ClearBlockOutcome::{$name}"
+                "The Clear Block match has no arm for ClearBlockKind::{$kind->name}"
             );
         }
     }

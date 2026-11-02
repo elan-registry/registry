@@ -207,10 +207,6 @@ after an item is written.
 
 - [ ] The "never echo unescaped" regexes miss `<?= htmlspecialchars($y) . $verificationBrevoNotReadyReason ?>` and `printf(...)`, and `[^;]*` can match across lines into comment text. Count the variable's uses in `app/admin/index.php` and assert each one is known. (found in /finish-milestone v2.30.6)
 
-### `tests/unit/admin/VerificationBatchSizeFieldRenderTest.php` + `tests/unit/admin/VerificationStatusPanelRenderTest.php` + `tests/unit/regression/Issue2184VerificationTagRegressionTest.php` (test-only)
-
-- [ ] Each file has its own copy of the include-and-capture harness (error handler, `ob_start()`, path override) and the `DOMXPath` loader. Move them to one shared trait in `tests/Support/` and use it in all three (found in #2457)
-
 ### `tests/unit/api/ApiResponseTest.php` (test quality)
 
 - [ ] `testBuildAndEmitHeadersDiscardsBuffersAboveTheFloor` opens one buffer above the floor, so a `while` to `if` change in `buildAndEmitHeaders()` still passes. Open two or three nested buffers (found in /flow:finish-milestone v2.31.0)
@@ -263,16 +259,6 @@ after an item is written.
 
 - [ ] Photo FileError logs record user 0. The composer has no actor id, so an admin-started send is not attributed (found while working on #1894)
 
-### `usersc/classes/Car/CarVerificationManager.php`
-
-- [ ] `clearBlockedForOwner()` maps an unlisted `BrevoUnblockResult::REASON_*` to `brevoFailed()` through a `default` arm, so a new reason gets the retry text without a test failure. List each reason and drop `default`, then add a reflection test over the `REASON_*` constants like `tests/unit/admin/ClearBlockOutcomeMessageTest.php` (found in #2488)
-
-### `usersc/classes/Car/ClearBlockOutcome.php` + `usersc/classes/Email/BrevoUnblockResult.php`
-
-- [ ] Make the closed kind/outcome/reason sets backed enums, so the `app/admin/index.php` map becomes an exhaustive `match`, `isCleared()` lives on the enum, and `BrevoUnblockResult::failed()` cannot take an unknown reason (found in /finish-milestone v2.30.9)
-- [ ] `BrevoUnblockResult::failed()`: reject an `httpStatus` with a reason other than HTTP (and null with HTTP); `notBlocked()` should not carry 404 (found in /finish-milestone v2.30.9)
-- [ ] Pick one value-object style for both types: `final readonly` + public properties, or private properties + accessors (found in /finish-milestone v2.30.9)
-
 ### `usersc/classes/Car/EmailEventMatch.php`
 
 - [ ] Make the class `final readonly`. The accessors return `?? 0` or `?? ''` after `requireMatched()`, which hides a broken invariant. Return the typed value with a PHPStan assert instead (found in /finish-milestone v2.30.8)
@@ -285,10 +271,6 @@ after an item is written.
 ### `usersc/classes/Car/SendResult.php`
 
 - [ ] Replace the raw `string $status` with a backed enum, so callers cannot compare raw strings. `VerificationBatchSender` does `$sendResult->status === SendResult::STATUS_SENT` today. Update it in the same change (from #2149)
-
-### `usersc/classes/Car/VerificationTabStatus.php`
-
-- [ ] `chip()` takes several positional bool and nullable-string flags that a caller can swap with no error. Pass one readonly owner-flags value object, shared with `SendPolicy::verificationReason()` and `EmailNoticeBuilder::buildForOwner()` (found in /finish-milestone v2.30.10)
 
 ### `usersc/classes/CarView.php`
 
@@ -309,13 +291,9 @@ after an item is written.
 
 ### `usersc/classes/Email/BrevoApiFactory.php`
 
-- [ ] The `reason` key of `readApiKey()` and `loadSdk()` never varies within each method. Use `cause !== null` as the failure test, define `no_api_key` and `no_sdk` only in `BrevoUnblockResult`, and drop the `REASON_*` aliases. Do it together with moving `BrevoEventReconciliationClient` onto the factory, and keep its `readiness()` mapping: table absent and key not set give NOT_CONFIGURED, every other cause gives FAILED (found in #2426, mapping note from /flow:finish-milestone v2.31.0)
+- [ ] The `reason` key of `readApiKey()` and `loadSdk()` never varies within each method. Use `cause !== null` as the failure test, define `no_api_key` and `no_sdk` only in `BrevoUnblockReason`, and drop the `REASON_*` aliases. Do it together with moving `BrevoEventReconciliationClient` onto the factory, and keep its `readiness()` mapping: table absent and key not set give NOT_CONFIGURED, every other cause gives FAILED (found in #2426, mapping note from /flow:finish-milestone v2.31.0)
 - [ ] Replace the `array{reason, cause, detail}` returns of `readApiKey()` and `loadSdk()` with two small readonly result types (or PHPStan shape aliases) (found in /finish-milestone v2.30.9)
 - [ ] No test calls `readApiKey()` directly. Add `tests/unit/classes/Email/BrevoApiFactoryTest.php` with `SendinblueSettingsFakeDatabase`: success, key not set, `42S02` and `HY000`, each with the `sqlState` value (found in #2488)
-
-### `usersc/classes/Email/BrevoBlocklistClient.php`
-
-- [ ] Inject `BrevoApiFactory` (constructor default) instead of two inline `new BrevoApiFactory($this->db)`; the protected `createApi()` seam can then go (found in /finish-milestone v2.30.9)
 
 ### `usersc/classes/Exceptions/ProfileFlagValueException.php`
 
@@ -343,9 +321,9 @@ after an item is written.
 
 - [ ] The "admin Clear Suppression" text (queries L64, L232; fixture L28) describes legacy `cars_hist` rows. Add "former action, replaced in #2357" so a reader does not look for it (found in /finish-milestone v2.30.9)
 
-### `usersc/classes/Owner.php` + `usersc/user_settings.php` + `app/verify/verify_car.php` + `usersc/classes/Car/CarVerificationManager.php` + `usersc/classes/Car/EmailEventApplier.php`
+### `usersc/classes/Owner.php` + `usersc/user_settings.php` + `app/verify/verify_car.php` + `usersc/classes/Car/EmailEventApplier.php`
 
-- [ ] The `try { logger() } catch { error_log('[ElanRegistry] ...') }` guard is copied at about 10 sites, the rollback guards included. Remove the guards and call `logger()` directly: `logger()` throws only when the database already failed the request (see #2449, #2561). Update `UserSettingsResumeVerificationEndpointTest`, which checks the "logger failed" text (found in #2393)
+- [ ] The `try { logger() } catch { error_log('[ElanRegistry] ...') }` guard is copied at about 7 sites, the rollback guards included. Remove the guards and call `logger()` directly: `logger()` throws only when the database already failed the request (see #2449, #2561). Update `UserSettingsResumeVerificationEndpointTest`, which checks the "logger failed" text (found in #2393)
 
 ### `usersc/classes/OwnerView.php` + `app/admin/includes/tab-owner_mgmt.php` (est. −11)
 

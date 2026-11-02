@@ -6,7 +6,7 @@ use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationEmailComposer;
 use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Car\CarVerificationSendService;
-use ElanRegistry\Car\ClearBlockOutcome;
+use ElanRegistry\Car\ClearBlockKind;
 use ElanRegistry\Car\VerificationBatchSender;
 use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\Cron\CronJobEnabledState;
@@ -999,19 +999,19 @@ if (ElanInput::existsPost()) {
                                 $currentUserId,
                                 new BrevoBlocklistClient(dbi())
                             );
-                            $requestResult = $requestOutcome->kind;
+                            $requestResult = $requestOutcome->kind->value;
 
                             // No default arm: a new outcome kind must get its own message.
                             [$requestIsError, $requestMessage] = match ($requestOutcome->kind) {
-                                ClearBlockOutcome::NOT_BLOCKED => [false, 'no block to clear.'],
-                                ClearBlockOutcome::CLEARED => [false, 'cleared of the block. Brevo no longer blocks this address.'],
-                                ClearBlockOutcome::CLEARED_NO_ADDRESS => [false, 'cleared of the block in the registry. No address is on record, so Brevo was not called.'],
-                                ClearBlockOutcome::CLEARED_ADDRESS_MOVED => [false, "cleared of the block in the registry. The blocked address is no longer this owner's address. The Brevo block stays."],
-                                ClearBlockOutcome::CLEARED_SHARED_ADDRESS => [false, 'cleared of the block in the registry. Another account uses this address. The Brevo block stays.'],
-                                ClearBlockOutcome::BREVO_FAILED => [true, 'Brevo did not remove the block. Try again later.'],
-                                ClearBlockOutcome::BREVO_NOT_SET_UP => [true, 'Brevo is not set up on this site, so the block was not removed. The registry flag did not change.'],
-                                ClearBlockOutcome::BREVO_PLUGIN_FAULT => [true, 'Brevo did not remove the block because of a fault in the Brevo plugin. The registry flag did not change. Check the logs.'],
-                                ClearBlockOutcome::ADDRESS_CHANGED => [true, 'The block changed during this action. The registry flag did not change. Try again.'],
+                                ClearBlockKind::NotBlocked => [false, 'no block to clear.'],
+                                ClearBlockKind::Cleared => [false, 'cleared of the block. Brevo no longer blocks this address.'],
+                                ClearBlockKind::ClearedNoAddress => [false, 'cleared of the block in the registry. No address is on record, so Brevo was not called.'],
+                                ClearBlockKind::ClearedAddressMoved => [false, "cleared of the block in the registry. The blocked address is no longer this owner's address. The Brevo block stays."],
+                                ClearBlockKind::ClearedSharedAddress => [false, 'cleared of the block in the registry. Another account uses this address. The Brevo block stays.'],
+                                ClearBlockKind::BrevoFailed => [true, 'Brevo did not remove the block. Try again later.'],
+                                ClearBlockKind::BrevoNotSetUp => [true, 'Brevo is not set up on this site, so the block was not removed. The registry flag did not change.'],
+                                ClearBlockKind::BrevoPluginFault => [true, 'Brevo did not remove the block because of a fault in the Brevo plugin. The registry flag did not change. Check the logs.'],
+                                ClearBlockKind::AddressChanged => [true, 'The block changed during this action. The registry flag did not change. Try again.'],
                             };
 
                             if ($requestIsError) {
@@ -1019,7 +1019,7 @@ if (ElanInput::existsPost()) {
                             } else {
                                 $successes[] = $requestOwnerLabel . ': ' . $requestMessage;
                                 // Opted out: the row shows Clear Opt-out next, not Clear Bounced.
-                                if ($requestOutcome->isCleared() && $requestOutcome->stillBounced && !$requestOutcome->stillOptedOut) {
+                                if ($requestOutcome->kind->isCleared() && $requestOutcome->stillBounced && !$requestOutcome->stillOptedOut) {
                                     $successes[] = "This owner is also marked bounced. Use Clear Bounced if the owner's mailbox works.";
                                 }
                             }

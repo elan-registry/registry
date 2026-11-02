@@ -1417,24 +1417,27 @@ admin methods `clearBlockedForOwner()` and `clearOptedOutForOwner()`, which pass
 readonly value object. Create it only with the named constructors, so
 `$stillBounced` is set only for a kind that cleared the flag.
 
-**Properties**: `$kind` (one of the constants below), `$stillBounced` (true
+**Properties**: `$kind` (a `ClearBlockKind` case, see the table), `$stillBounced` (true
 when `email_bounced` still applies to the owner's current address after the
 clear, read under the `profiles` lock) and `$stillOptedOut` (true when
 `email_opted_out` is still set, read under the same lock).
 
-| Constant | Named constructor | Meaning |
+| `ClearBlockKind` case (value) | Named constructor | Meaning |
 | --- | --- | --- |
-| `NOT_BLOCKED` | `notBlocked()` | The flag was 0, or another request cleared it during this action. No write |
-| `CLEARED` | `cleared(bool $stillBounced, bool $stillOptedOut = false)` | Brevo removed the address or did not hold it. The flag is cleared |
-| `CLEARED_NO_ADDRESS` | `clearedNoAddress(bool $stillBounced, bool $stillOptedOut = false)` | No address to unblock. No Brevo call. The flag is cleared |
-| `CLEARED_ADDRESS_MOVED` | `clearedAddressMoved(bool $stillBounced, bool $stillOptedOut = false)` | The blocked address is not the owner's address. No Brevo call. The flag is cleared |
-| `CLEARED_SHARED_ADDRESS` | `clearedSharedAddress(bool $stillBounced, bool $stillOptedOut = false)` | Another account uses the address. No Brevo call. The flag is cleared |
-| `BREVO_FAILED` | `brevoFailed()` | The Brevo call failed (HTTP or transport), or the API key query failed. No write |
-| `BREVO_NOT_SET_UP` | `brevoNotSetUp()` | No Brevo API key. No write |
-| `BREVO_PLUGIN_FAULT` | `brevoPluginFault()` | A key is set, but the SDK is missing or did not load. This is a fault in the Brevo plugin. No write |
-| `ADDRESS_CHANGED` | `addressChanged()` | The stored block changed during this action. The transaction rolled back |
+| `NotBlocked` (`not_blocked`) | `notBlocked()` | The flag was 0, or another request cleared it during this action. No write |
+| `Cleared` (`cleared`) | `cleared(bool $stillBounced, bool $stillOptedOut = false)` | Brevo removed the address or did not hold it. The flag is cleared |
+| `ClearedNoAddress` (`cleared_no_address`) | `clearedNoAddress(bool $stillBounced, bool $stillOptedOut = false)` | No address to unblock. No Brevo call. The flag is cleared |
+| `ClearedAddressMoved` (`cleared_address_moved`) | `clearedAddressMoved(bool $stillBounced, bool $stillOptedOut = false)` | The blocked address is not the owner's address. No Brevo call. The flag is cleared |
+| `ClearedSharedAddress` (`cleared_shared_address`) | `clearedSharedAddress(bool $stillBounced, bool $stillOptedOut = false)` | Another account uses the address. No Brevo call. The flag is cleared |
+| `BrevoFailed` (`brevo_failed`) | `brevoFailed()` | The Brevo call failed (HTTP or transport), or the API key query failed. No write |
+| `BrevoNotSetUp` (`brevo_not_set_up`) | `brevoNotSetUp()` | No Brevo API key. No write |
+| `BrevoPluginFault` (`brevo_plugin_fault`) | `brevoPluginFault()` | A key is set, but the SDK is missing or did not load. This is a fault in the Brevo plugin. No write |
+| `AddressChanged` (`address_changed`) | `addressChanged()` | The stored block changed during this action. The transaction rolled back |
 
-**Methods**: `isCleared(): bool` - True for the four `CLEARED*` kinds.
+**ClearBlockKind** (`/usersc/classes/Car/ClearBlockKind.php`): string-backed
+enum of the kinds above. `isCleared(): bool` - True for the four `Cleared*`
+cases. A `match` on the kind with no `default` arm is exhaustive, so PHPStan
+reports a new case that the `app/admin/index.php` message map does not handle.
 
 **Used By**: `CarVerificationManager::clearBlockedForOwner()` (returns it) and
 the `clear_block` command in `app/admin/index.php` (maps each kind to an admin
@@ -1622,8 +1625,12 @@ returns it.
 - `EffectiveEmailFlags::none()` is the state of an owner with no `profiles`
   row. It has no flag. The caller must treat `hasProfile = false` as "do not
   mail".
+- `EffectiveEmailFlags::fromQueueRow(object $row)` builds the flags from one
+  Verification-tab queue row (`has_profile`, `email_blocked_active`,
+  `email_bounced_active`, `email_opted_out`, `email_blocked_cause`). A missing
+  `has_profile` reads as 1 (Eligible rows). The addresses and dates are null.
 
-**Used By**: `EmailNoticeBuilder`, `CarVerificationSendService::sendOne()`,
+**Used By**: `EmailNoticeBuilder`, `SendPolicy`, `VerificationTabStatus::chip()`, `app/admin/includes/tab-verification.php`, `CarVerificationSendService::sendOne()`,
 `BrevoSuppressionSyncJob`, `user_form_hook.php`, `usersc/user_settings.php`,
 `app/owner/cars/details.php` and `app/views/cars/_vehicle_info_card.php`.
 
@@ -1915,11 +1922,11 @@ other probes.
   guard allows the next automatic run, or `null` when the job never ran
 - `autoSendDesiredState(): string` - Give the state the Pause/Resume button asks
   for. Returns `'disable'` when the job is enabled, `'enable'` when not
-- `chip(?object $event, bool $hasProfile = true, bool $blocked = false,
-  ?string $blockedCause = null, bool $optedOut = false,
-  bool $bounced = false): array` - Static method. Give the
-  Status chip for a car row. `$blocked` and `$bounced` are true only when the
-  flag applies to the owner's current address. Order: no profile, blocked,
+- `chip(?object $event, EffectiveEmailFlags $flags): array` - Static method.
+  Give the Status chip for a car row. `$flags` is the same value object that
+  `SendPolicy` and `EmailNoticeBuilder` read, so `blocked` and `bounced` are
+  true only when the flag applies to the owner's current address. The tab
+  builds it with `EffectiveEmailFlags::fromQueueRow()`. Order: no profile, blocked,
   bounced, opted out, the same as `SendPolicy::verificationReason()` (#2461).
   Otherwise the chip shows the car's latest email event. A hard-bounce event
   still shows "Bounced" for an owner with no bounce flag. Returns
@@ -3228,7 +3235,8 @@ development environment. It never changes the host in test or production.
 
 **Purpose**: Builds the Brevo SDK's `TransactionalEmailsApi` for the project's
 own Brevo clients (#2357). It holds the steps that `BrevoSuppressionSyncClient`
-and `BrevoBlocklistClient` share. The class is final and never logs. A failed
+and `BrevoBlocklistClient` share. The class is not final, so a unit test can
+pass a double to `BrevoBlocklistClient`. It never logs. A failed
 step returns a reason code, so each caller logs in its own category.
 
 **Methods**:
@@ -3245,8 +3253,9 @@ step returns a reason code, so each caller logs in its own category.
   failure `reason` is `REASON_NO_SDK`, and `cause` is `CAUSE_AUTOLOADER_ABSENT`,
   `CAUSE_AUTOLOADER_FAILED` or `CAUSE_API_CLASS_MISSING`. A detail string never
   holds an exception message
-- `createApi(string $apiKey): \Brevo\Client\Api\TransactionalEmailsApi` -
-  Builds the API object with a 30-second timeout and a 10-second connect
+- `createApi(string $apiKey): object` - Returns a
+  `\Brevo\Client\Api\TransactionalEmailsApi` (PHPDoc type). The native type
+  is `object`, so a double works when the SDK is absent. Builds the API object with a 30-second timeout and a 10-second connect
   timeout. It applies `BrevoDevOverride::hostOverride()`. Call `loadSdk()` first
 
 **Used By**: `BrevoSuppressionSyncClient` (its `createApi()` seam calls the
@@ -3264,13 +3273,15 @@ factory, and its log lines are unchanged), `BrevoBlocklistClient`
 
 **Purpose**: Removes one address from Brevo's transactional blocklist
 (`DELETE /v3/smtp/blockedContacts/{email}`) for admin Clear Block (#2357).
-The class is not final, because a unit test replaces the protected
-`createApi()` seam with a fake. It never logs and never keeps an exception
+It takes its `BrevoApiFactory` as a constructor argument, so a unit test
+passes a double (`tests/Support/FakeBrevoApiFactory.php`). The class is not
+final, because the Clear Block tests replace `unblock()`. It never logs and never keeps an exception
 message. The SDK puts the request URL, with the address, in its messages.
 
 **Methods**:
 
-- `__construct(DatabaseInterface $db)`
+- `__construct(DatabaseInterface $db, ?BrevoApiFactory $factory = null)` -
+  Null builds a factory on `$db`
 - `unblock(string $address): BrevoUnblockResult` - Never throws. Pass the raw
   address, not a URL-encoded one. The SDK encodes the path value once
   (`ObjectSerializer::toPathValue()`). An address that is encoded first reaches
@@ -3286,9 +3297,6 @@ message. The SDK puts the request URL, with the address, in its messages.
   `db_error (SQLSTATE <x>)` when `readApiKey()` returns a `sqlState`, else
   `db_error`. It never holds `errorString()` text. For `http` and `transport`,
   the detail is `ExceptionLogSummary::of()`
-- `createApi(string $apiKey): ?object` - Protected seam. Loads the SDK and
-  builds the API object through `BrevoApiFactory`. Returns null when the SDK
-  did not load
 
 **Used By**: `CarVerificationManager::clearBlockedForOwner()`, which the
 `clear_block` command in `app/admin/index.php` calls
@@ -3304,30 +3312,33 @@ message. The SDK puts the request URL, with the address, in its messages.
 **Namespace**: `ElanRegistry\Email`
 
 **Purpose**: The result of one `BrevoBlocklistClient::unblock()` call (#2357).
-The class is final. It holds an outcome, a reason, an HTTP status and a
-log-safe detail. It holds no address, no response body and no exception
+A final readonly value object with public properties. It holds an outcome,
+a reason, an HTTP status and a log-safe detail. It holds no address, no response body and no exception
 message.
 
 **Methods**:
 
-- `removed()`, `notBlocked()` and `failed(string $reason, ?int $httpStatus = null, ?string $detail = null)` -
-  Static constructors. `notBlocked()` has the status 404
-- `outcome(): string` - `OUTCOME_REMOVED`, `OUTCOME_NOT_BLOCKED` or
-  `OUTCOME_FAILED`
-- `isSuccess(): bool` - True for `removed` and `notBlocked`. The address is off
+- `removed()`, `notBlocked()` and `failed(BrevoUnblockReason $reason, ?int $httpStatus = null, ?string $detail = null)` -
+  Static constructors. `failed()` throws `\InvalidArgumentException` when the
+  reason is `Http` with no status, or another reason with a status. A success
+  holds no reason, no status and no detail
+- `$outcome` (`BrevoUnblockOutcome`: `Removed`, `NotBlocked`, `Failed`)
+- `isSuccess(): bool` - True for `Removed` and `NotBlocked`. The address is off
   the blocklist after the call
-- `reason(): ?string` - One of `REASON_NO_API_KEY`, `REASON_NO_SDK`,
-  `REASON_SDK_LOAD_FAILED`, `REASON_HTTP`, `REASON_TRANSPORT`,
-  `REASON_DB_ERROR` or `REASON_NO_ADDRESS` for a failed result.
-  Null on success. `CarVerificationManager` reports `REASON_NO_API_KEY` as "Brevo is not
-  set up", `REASON_NO_SDK` and `REASON_SDK_LOAD_FAILED` as a Brevo plugin
-  fault (the client checks for the SDK only after it finds a key), and every
-  other reason as a Brevo failure
-- `httpStatus(): ?int` - The status that Brevo sent, or null
-- `detail(): ?string` - For a failed result, an `ExceptionLogSummary`, or a
+- `$reason` (`?BrevoUnblockReason`: `NoApiKey`, `NoSdk`, `SdkLoadFailed`,
+  `Http`, `Transport`, `DbError`, `NoAddress`, or null on success).
+  `CarVerificationManager` reports `NoApiKey` as "Brevo is not set up", `NoSdk`
+  and `SdkLoadFailed` as a Brevo plugin fault (the client checks for the SDK
+  only after it finds a key), and every other reason as a Brevo failure, with
+  no `default` arm
+- `$httpStatus` (`?int`) - The status that Brevo sent, set for `Http` only
+- `$detail` (`?string`) - For a failed result, an `ExceptionLogSummary`, or a
   `BrevoApiFactory` cause code (followed by `(SQLSTATE <code>)` for a
   `db_error` key query failure, or by `: <ExceptionLogSummary>` when the SDK
   autoloader threw). Null on success
+
+Both enums are string-backed and live in `/usersc/classes/Email/`. Their values
+are the strings that the log lines use.
 
 **Used By**: `BrevoBlocklistClient`, `CarVerificationManager::clearBlockedForOwner()`
 

@@ -6,7 +6,7 @@ require_once __DIR__ . '/IntegrationTestCase.php';
 
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationManager;
-use ElanRegistry\Car\ClearBlockOutcome;
+use ElanRegistry\Car\ClearBlockKind;
 use ElanRegistry\Car\DeliverabilityFlagLog;
 use ElanRegistry\Car\EmailEventApplier;
 use ElanRegistry\Car\EmailEventMatch;
@@ -1447,7 +1447,7 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
             $userId,
             new FakeBrevoBlocklistClient(BrevoUnblockResult::removed())
         );
-        $this->assertSame(ClearBlockOutcome::CLEARED, $outcome->kind, 'Test setup: the clear must succeed');
+        $this->assertSame(ClearBlockKind::Cleared, $outcome->kind, 'Test setup: the clear must succeed');
 
         $this->assertFalse($import(), 'The unique key stops the insert; the result is not new');
 
@@ -1503,7 +1503,7 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
             $userId,
             new FakeBrevoBlocklistClient(BrevoUnblockResult::removed())
         );
-        $this->assertSame(ClearBlockOutcome::CLEARED, $outcome->kind, 'Test setup: the clear must succeed');
+        $this->assertSame(ClearBlockKind::Cleared, $outcome->kind, 'Test setup: the clear must succeed');
         $this->assertSame('0', $this->flags($userId)['blocked'], 'Test setup: the flag is clear');
 
         // 3. A spam webhook after the clear.

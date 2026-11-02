@@ -4,16 +4,19 @@ declare(strict_types=1);
 
 use ElanRegistry\Email\BrevoApiFactory;
 use ElanRegistry\Email\BrevoBlocklistClient;
-use ElanRegistry\Email\BrevoUnblockResult;
+use ElanRegistry\Email\BrevoUnblockOutcome;
+use ElanRegistry\Email\BrevoUnblockReason;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
+use Tests\Support\FakeBrevoApiFactory;
 use Tests\Support\SendinblueSettingsFakeDatabase;
 use Tests\Support\ThrowingBrevoBlocklistClient;
 
 require_once __DIR__ . '/../../../Support/FakeDatabase.php';
 require_once __DIR__ . '/../../../Support/SendinblueSettingsFakeDatabase.php';
+require_once __DIR__ . '/../../../Support/FakeBrevoApiFactory.php';
 require_once __DIR__ . '/../../../Support/ThrowingBrevoBlocklistClient.php';
 
 /**
@@ -21,7 +24,7 @@ require_once __DIR__ . '/../../../Support/ThrowingBrevoBlocklistClient.php';
  *
  * Two kinds of test:
  *
- * - The no-SDK tests use the protected `createApi()` seam. They need neither
+ * - The no-SDK tests pass a {@see FakeBrevoApiFactory}. They need neither
  *   the SDK nor a network.
  * - The HTTP-status and path-encoding tests run the real SDK against a
  *   Guzzle mock handler, in a separate process so the SDK classes do not
@@ -89,24 +92,26 @@ final class BrevoBlocklistClientTest extends TestCase
         $this->assertIsObject($stack);
         $stack->push(call_user_func_array(['GuzzleHttp\Middleware', 'history'], [&$history]));
 
-        return new class (new SendinblueSettingsFakeDatabase('test-api-key'), $stack) extends BrevoBlocklistClient {
-            public function __construct(
-                \ElanRegistry\DatabaseInterface $db,
-                private readonly object $stack
-            ) {
-                parent::__construct($db);
-            }
+        $db = new SendinblueSettingsFakeDatabase('test-api-key');
+        $api = $this->make(
+            'Brevo\Client\Api\TransactionalEmailsApi',
+            $this->make('GuzzleHttp\Client', ['handler' => $stack]),
+            $this->make('Brevo\Client\Configuration')
+        );
 
-            protected function createApi(string $apiKey): object
-            {
-                $config = (new \Brevo\Client\Configuration())->setApiKey('api-key', $apiKey);
+        return new BrevoBlocklistClient($db, new FakeBrevoApiFactory($db, $api));
+    }
 
-                return new \Brevo\Client\Api\TransactionalEmailsApi(
-                    new \GuzzleHttp\Client(['handler' => $this->stack]),
-                    $config
-                );
-            }
-        };
+    /**
+     * Client whose factory double returns `$api` from createApi().
+     *
+     * @return array{BrevoBlocklistClient, FakeBrevoApiFactory} The client and its factory double
+     */
+    private function clientWithFakeFactory(\ElanRegistry\DatabaseInterface $db, ?object $api = null): array
+    {
+        $factory = new FakeBrevoApiFactory($db, $api);
+
+        return [new BrevoBlocklistClient($db, $factory), $factory];
     }
 
     /**
@@ -126,9 +131,9 @@ final class BrevoBlocklistClientTest extends TestCase
 
         $result = $client->unblock('owner@example.org');
 
-        $this->assertSame(BrevoUnblockResult::OUTCOME_REMOVED, $result->outcome());
+        $this->assertSame(BrevoUnblockOutcome::Removed, $result->outcome);
         $this->assertTrue($result->isSuccess());
-        $this->assertNull($result->reason());
+        $this->assertNull($result->reason);
         $this->assertCount(1, $history);
         $this->assertSame('DELETE', $history[0]['request']->getMethod());
     }
@@ -145,7 +150,7 @@ final class BrevoBlocklistClientTest extends TestCase
 
         $result = $client->unblock('owner@example.org');
 
-        $this->assertSame(BrevoUnblockResult::OUTCOME_NOT_BLOCKED, $result->outcome());
+        $this->assertSame(BrevoUnblockOutcome::NotBlocked, $result->outcome);
         $this->assertTrue($result->isSuccess());
     }
 
@@ -158,11 +163,11 @@ final class BrevoBlocklistClientTest extends TestCase
 
         $result = $client->unblock('owner@example.org');
 
-        $this->assertSame(BrevoUnblockResult::OUTCOME_FAILED, $result->outcome());
+        $this->assertSame(BrevoUnblockOutcome::Failed, $result->outcome);
         $this->assertFalse($result->isSuccess());
-        $this->assertSame(BrevoUnblockResult::REASON_HTTP, $result->reason());
-        $this->assertSame(500, $result->httpStatus());
-        $this->assertStringStartsWith('Brevo\Client\ApiException (code 500) at ', (string) $result->detail());
+        $this->assertSame(BrevoUnblockReason::Http, $result->reason);
+        $this->assertSame(500, $result->httpStatus);
+        $this->assertStringStartsWith('Brevo\Client\ApiException (code 500) at ', (string) $result->detail);
         $this->assertStringNotContainsString('owner@example.org', var_export($result, true));
     }
 
@@ -182,8 +187,8 @@ final class BrevoBlocklistClientTest extends TestCase
 
         $result = $client->unblock('owner@example.org');
 
-        $this->assertSame(BrevoUnblockResult::REASON_TRANSPORT, $result->reason());
-        $this->assertNull($result->httpStatus());
+        $this->assertSame(BrevoUnblockReason::Transport, $result->reason);
+        $this->assertNull($result->httpStatus);
         $this->assertStringNotContainsString('owner@example.org', var_export($result, true));
     }
 
@@ -209,41 +214,41 @@ final class BrevoBlocklistClientTest extends TestCase
 
     public function test_unblock_noApiKey_returnsFailedNoApiKeyWithNoCall(): void
     {
-        $client = new RecordingSeamBrevoBlocklistClient(new SendinblueSettingsFakeDatabase(null));
+        [$client, $factory] = $this->clientWithFakeFactory(new SendinblueSettingsFakeDatabase(null));
 
         $result = $client->unblock('owner@example.org');
 
-        $this->assertSame(BrevoUnblockResult::OUTCOME_FAILED, $result->outcome());
-        $this->assertSame(BrevoUnblockResult::REASON_NO_API_KEY, $result->reason());
-        $this->assertNull($result->httpStatus());
-        $this->assertSame(BrevoApiFactory::CAUSE_KEY_NOT_SET, $result->detail());
-        $this->assertSame(0, $client->createApiCalls, 'No key: the API object is not built');
+        $this->assertSame(BrevoUnblockOutcome::Failed, $result->outcome);
+        $this->assertSame(BrevoUnblockReason::NoApiKey, $result->reason);
+        $this->assertNull($result->httpStatus);
+        $this->assertSame(BrevoApiFactory::CAUSE_KEY_NOT_SET, $result->detail);
+        $this->assertSame(0, $factory->createApiCalls, 'No key: the API object is not built');
     }
 
     public function test_unblock_apiKeyQueryFails_returnsFailedNoApiKey(): void
     {
-        $client = new RecordingSeamBrevoBlocklistClient(new SendinblueSettingsFakeDatabase('k', '42S02'));
+        [$client, $factory] = $this->clientWithFakeFactory(new SendinblueSettingsFakeDatabase('k', '42S02'));
 
         $result = $client->unblock('owner@example.org');
 
-        $this->assertSame(BrevoUnblockResult::REASON_NO_API_KEY, $result->reason());
+        $this->assertSame(BrevoUnblockReason::NoApiKey, $result->reason);
         // Only a db_error detail gets the SQLSTATE suffix.
-        $this->assertSame(BrevoApiFactory::CAUSE_TABLE_ABSENT, $result->detail());
-        $this->assertSame(0, $client->createApiCalls);
+        $this->assertSame(BrevoApiFactory::CAUSE_TABLE_ABSENT, $result->detail);
+        $this->assertSame(0, $factory->createApiCalls);
     }
 
     public function test_unblock_apiKeyQueryFailsWithADatabaseError_returnsFailedDbError(): void
     {
         // Not 42S02 (table absent): a failed query is not a missing key.
-        $client = new RecordingSeamBrevoBlocklistClient(new SendinblueSettingsFakeDatabase('k', 'HY000'));
+        [$client, $factory] = $this->clientWithFakeFactory(new SendinblueSettingsFakeDatabase('k', 'HY000'));
 
         $result = $client->unblock('owner@example.org');
 
-        $this->assertSame(BrevoUnblockResult::OUTCOME_FAILED, $result->outcome());
-        $this->assertSame(BrevoUnblockResult::REASON_DB_ERROR, $result->reason());
-        $this->assertSame('db_error (SQLSTATE HY000)', $result->detail());
-        $this->assertStringNotContainsString('simulated DB error', (string) $result->detail());
-        $this->assertSame(0, $client->createApiCalls);
+        $this->assertSame(BrevoUnblockOutcome::Failed, $result->outcome);
+        $this->assertSame(BrevoUnblockReason::DbError, $result->reason);
+        $this->assertSame('db_error (SQLSTATE HY000)', $result->detail);
+        $this->assertStringNotContainsString('simulated DB error', (string) $result->detail);
+        $this->assertSame(0, $factory->createApiCalls);
     }
 
     /**
@@ -263,44 +268,50 @@ final class BrevoBlocklistClientTest extends TestCase
     #[DataProvider('malformedSqlStateProvider')]
     public function test_unblock_apiKeyQueryFailsWithAMalformedSqlState_returnsPlainDbErrorDetail(mixed $sqlState): void
     {
-        $client = new RecordingSeamBrevoBlocklistClient(new MalformedSqlStateSendinblueDatabase($sqlState));
+        [$client, $factory] = $this->clientWithFakeFactory(new MalformedSqlStateSendinblueDatabase($sqlState));
 
         $result = $client->unblock('owner@example.org');
 
-        $this->assertSame(BrevoUnblockResult::REASON_DB_ERROR, $result->reason());
-        $this->assertSame(BrevoApiFactory::CAUSE_DB_ERROR, $result->detail());
-        $this->assertSame(0, $client->createApiCalls);
+        $this->assertSame(BrevoUnblockReason::DbError, $result->reason);
+        $this->assertSame(BrevoApiFactory::CAUSE_DB_ERROR, $result->detail);
+        $this->assertSame(0, $factory->createApiCalls);
     }
 
     public function test_unblock_apiKeyQueryThrows_returnsFailedAndKeepsNoMessage(): void
     {
         global $mockLogEntries;
-        $client = new RecordingSeamBrevoBlocklistClient(new ThrowingQuerySendinblueDatabase());
+        [$client, $factory] = $this->clientWithFakeFactory(new ThrowingQuerySendinblueDatabase());
 
         $result = $client->unblock('owner@example.org');
 
-        $this->assertSame(BrevoUnblockResult::OUTCOME_FAILED, $result->outcome());
-        $this->assertSame(BrevoUnblockResult::REASON_TRANSPORT, $result->reason());
-        $this->assertNull($result->httpStatus());
-        $this->assertSame(0, $client->createApiCalls);
+        $this->assertSame(BrevoUnblockOutcome::Failed, $result->outcome);
+        $this->assertSame(BrevoUnblockReason::Transport, $result->reason);
+        $this->assertNull($result->httpStatus);
+        $this->assertSame(0, $factory->createApiCalls);
         $this->assertStringNotContainsString('owner@example.org', print_r($result, true));
         $this->assertSame([], $mockLogEntries, 'The client logs nothing');
     }
 
     public function test_unblock_sdkNotLoaded_returnsFailedNoSdk(): void
     {
-        $client = new RecordingSeamBrevoBlocklistClient(new SendinblueSettingsFakeDatabase('test-api-key'));
-        $client->api = null;
+        [$client, $factory] = $this->clientWithFakeFactory(new SendinblueSettingsFakeDatabase('test-api-key'));
+        $factory->sdkLoad = [
+            'reason' => BrevoApiFactory::REASON_NO_SDK,
+            'cause' => BrevoApiFactory::CAUSE_AUTOLOADER_ABSENT,
+            'autoload' => '/x/autoload.php',
+            'detail' => '',
+        ];
 
         $result = $client->unblock('owner@example.org');
 
-        $this->assertSame(BrevoUnblockResult::OUTCOME_FAILED, $result->outcome());
-        $this->assertSame(BrevoUnblockResult::REASON_NO_SDK, $result->reason());
-        $this->assertSame(1, $client->createApiCalls, 'The seam was asked for the API object');
+        $this->assertSame(BrevoUnblockOutcome::Failed, $result->outcome);
+        $this->assertSame(BrevoUnblockReason::NoSdk, $result->reason);
+        $this->assertSame(BrevoApiFactory::CAUSE_AUTOLOADER_ABSENT, $result->detail);
+        $this->assertSame(0, $factory->createApiCalls, 'No SDK: the API object is not built');
     }
 
     /**
-     * Point the real createApi() seam at a fake site root, so loadSdk() reads
+     * Point the real factory at a fake site root, so loadSdk() reads
      * the given autoloader. Null: no autoloader file.
      */
     private function clientWithSdkAutoloader(?string $autoloaderSource): BrevoBlocklistClient
@@ -320,18 +331,18 @@ final class BrevoBlocklistClientTest extends TestCase
     }
 
     /**
-     * @return array<string, array{0: string|null, 1: string, 2: string}>
+     * @return array<string, array{0: string|null, 1: BrevoUnblockReason, 2: string}>
      */
     public static function sdkLoadProvider(): array
     {
         return [
-            'no autoloader file (not installed)' => [null, BrevoUnblockResult::REASON_NO_SDK, BrevoApiFactory::CAUSE_AUTOLOADER_ABSENT],
+            'no autoloader file (not installed)' => [null, BrevoUnblockReason::NoSdk, BrevoApiFactory::CAUSE_AUTOLOADER_ABSENT],
             'autoloader throws' => [
                 "<?php throw new \\RuntimeException('broken for owner@example.org');",
-                BrevoUnblockResult::REASON_SDK_LOAD_FAILED,
+                BrevoUnblockReason::SdkLoadFailed,
                 BrevoApiFactory::CAUSE_AUTOLOADER_FAILED,
             ],
-            'autoloader defines no API class' => ['<?php // empty', BrevoUnblockResult::REASON_SDK_LOAD_FAILED, BrevoApiFactory::CAUSE_API_CLASS_MISSING],
+            'autoloader defines no API class' => ['<?php // empty', BrevoUnblockReason::SdkLoadFailed, BrevoApiFactory::CAUSE_API_CLASS_MISSING],
         ];
     }
 
@@ -341,18 +352,18 @@ final class BrevoBlocklistClientTest extends TestCase
      */
     #[DataProvider('sdkLoadProvider')]
     #[RunInSeparateProcess]
-    public function test_unblock_sdkLoadFailure_mapsTheCauseToTheReasonAndDetail(?string $autoloader, string $reason, string $cause): void
+    public function test_unblock_sdkLoadFailure_mapsTheCauseToTheReasonAndDetail(?string $autoloader, BrevoUnblockReason $reason, string $cause): void
     {
         $client = $this->clientWithSdkAutoloader($autoloader);
 
         $result = $client->unblock('owner@example.org');
 
-        $this->assertSame(BrevoUnblockResult::OUTCOME_FAILED, $result->outcome());
-        $this->assertSame($reason, $result->reason());
+        $this->assertSame(BrevoUnblockOutcome::Failed, $result->outcome);
+        $this->assertSame($reason, $result->reason);
         // An autoloader that threw adds its ExceptionLogSummary after the cause.
-        $this->assertStringStartsWith($cause, (string) $result->detail());
+        $this->assertStringStartsWith($cause, (string) $result->detail);
         if ($cause === BrevoApiFactory::CAUSE_AUTOLOADER_FAILED) {
-            $this->assertStringContainsString('RuntimeException', (string) $result->detail());
+            $this->assertStringContainsString('RuntimeException', (string) $result->detail);
         }
         $this->assertStringNotContainsString('owner@example.org', var_export($result, true));
         $this->assertStringNotContainsString('broken for', var_export($result, true));
@@ -373,28 +384,28 @@ final class BrevoBlocklistClientTest extends TestCase
     #[DataProvider('blankAddressProvider')]
     public function test_unblock_blankAddress_returnsFailedNoAddressAndMakesNoCall(string $address): void
     {
-        $client = new RecordingSeamBrevoBlocklistClient(new SendinblueSettingsFakeDatabase('test-api-key'));
-        $client->api = new RecordingUnblockApi();
+        $api = new RecordingUnblockApi();
+        [$client, $factory] = $this->clientWithFakeFactory(new SendinblueSettingsFakeDatabase('test-api-key'), $api);
 
         $result = $client->unblock($address);
 
-        $this->assertSame(BrevoUnblockResult::OUTCOME_FAILED, $result->outcome());
-        $this->assertSame(BrevoUnblockResult::REASON_NO_ADDRESS, $result->reason());
-        $this->assertNull($result->httpStatus());
-        $this->assertSame(0, $client->createApiCalls, 'A blank address builds no API object');
-        $this->assertSame([], $client->api->addresses, 'A blank address makes no Brevo call');
+        $this->assertSame(BrevoUnblockOutcome::Failed, $result->outcome);
+        $this->assertSame(BrevoUnblockReason::NoAddress, $result->reason);
+        $this->assertNull($result->httpStatus);
+        $this->assertSame(0, $factory->createApiCalls, 'A blank address builds no API object');
+        $this->assertSame([], $api->addresses, 'A blank address makes no Brevo call');
     }
 
     public function test_unblock_apiReceivesTheRawAddressUnchanged(): void
     {
-        $client = new RecordingSeamBrevoBlocklistClient(new SendinblueSettingsFakeDatabase('test-api-key'));
-        $client->api = new RecordingUnblockApi();
+        $api = new RecordingUnblockApi();
+        [$client, $factory] = $this->clientWithFakeFactory(new SendinblueSettingsFakeDatabase('test-api-key'), $api);
 
         $result = $client->unblock('a+b@example.org');
 
-        $this->assertSame(BrevoUnblockResult::OUTCOME_REMOVED, $result->outcome());
-        $this->assertSame(['a+b@example.org'], $client->api->addresses, 'The client does not encode: the SDK does');
-        $this->assertSame('test-api-key', $client->lastApiKey);
+        $this->assertSame(BrevoUnblockOutcome::Removed, $result->outcome);
+        $this->assertSame(['a+b@example.org'], $api->addresses, 'The client does not encode: the SDK does');
+        $this->assertSame('test-api-key', $factory->lastApiKey);
     }
 
     public function test_unblock_exceptionMessageHoldingAnAddress_doesNotReachTheResultOrTheLog(): void
@@ -404,12 +415,12 @@ final class BrevoBlocklistClientTest extends TestCase
 
         $result = $client->unblock('owner@example.org');
 
-        $this->assertSame(BrevoUnblockResult::OUTCOME_FAILED, $result->outcome());
-        $this->assertSame(BrevoUnblockResult::REASON_TRANSPORT, $result->reason());
-        $this->assertNull($result->httpStatus(), 'The exception code is not an HTTP status');
+        $this->assertSame(BrevoUnblockOutcome::Failed, $result->outcome);
+        $this->assertSame(BrevoUnblockReason::Transport, $result->reason);
+        $this->assertNull($result->httpStatus, 'The exception code is not an HTTP status');
         $this->assertStringStartsWith(
             sprintf('RuntimeException (code %d) at ', ThrowingBrevoBlocklistClient::EXCEPTION_CODE),
-            (string) $result->detail(),
+            (string) $result->detail,
             'The detail is the log-safe summary'
         );
         $dump = var_export($result, true) . json_encode($mockLogEntries);
@@ -417,26 +428,6 @@ final class BrevoBlocklistClientTest extends TestCase
         $this->assertStringNotContainsString('owner@example.org', $dump);
         $this->assertStringNotContainsString('cURL error', $dump);
         $this->assertSame([], $mockLogEntries, 'The client logs nothing');
-    }
-}
-
-/**
- * BrevoBlocklistClient with a scripted createApi() seam, for the no-SDK tests.
- *
- * Named class, not anonymous: see FakeDatabase (`impureMethod.pure`).
- */
-final class RecordingSeamBrevoBlocklistClient extends BrevoBlocklistClient
-{
-    public ?object $api = null;
-    public int $createApiCalls = 0;
-    public ?string $lastApiKey = null;
-
-    protected function createApi(string $apiKey): ?object
-    {
-        $this->createApiCalls++;
-        $this->lastApiKey = $apiKey;
-
-        return $this->api;
     }
 }
 

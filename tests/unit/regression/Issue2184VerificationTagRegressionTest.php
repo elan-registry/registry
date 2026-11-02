@@ -6,6 +6,7 @@ use ElanRegistry\Car\VerificationTabStatus;
 use ElanRegistry\Cron\CronJobEnabledState;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
+use Tests\Support\PartialRenderHarness;
 
 /**
  * Regression test for #2184: verification email went out without its Brevo tag.
@@ -29,6 +30,8 @@ use PHPUnit\Framework\TestCase;
 #[Group('regression')]
 final class Issue2184VerificationTagRegressionTest extends TestCase
 {
+    use PartialRenderHarness;
+
     public function testSendServicePassesTheVerificationTagToEmail(): void
     {
         // tests/unit/regression/ is three levels below the project root.
@@ -60,27 +63,13 @@ final class Issue2184VerificationTagRegressionTest extends TestCase
         $vsStatus = new VerificationTabStatus(
             false, true, $reason, true, null, 0, $job, $job, $job, null, ['count' => 0, 'recent' => []], 5
         );
-        $vsCanToggle = true;
 
-        // Lets a reviewer prove the test can fail: point it at a copy of an older partial.
-        $override = getenv('VERIFICATION_STATUS_PANEL_PATH');
-        $partial  = is_string($override) && $override !== ''
-            ? $override
-            : dirname(__DIR__, 3) . '/app/admin/includes/verification-status-panel.php';
-
-        ob_start();
-        try {
-            include $partial;
-        } finally {
-            $html = (string) ob_get_clean();
-        }
-
-        $doc = new DOMDocument();
-        $previous = libxml_use_internal_errors(true);
-        $doc->loadHTML('<?xml encoding="UTF-8"><body>' . $html . '</body>');
-        libxml_clear_errors();
-        libxml_use_internal_errors($previous);
-        $brevoRow = (new DOMXPath($doc))->query('//dd[@data-status-row="brevo"]')?->item(0);
+        $html = self::renderPartial(
+            dirname(__DIR__, 3) . '/app/admin/includes/verification-status-panel.php',
+            'VERIFICATION_STATUS_PANEL_PATH',
+            ['vsStatus' => $vsStatus, 'vsCanToggle' => true]
+        );
+        $brevoRow = self::dom($html)->query('//dd[@data-status-row="brevo"]')?->item(0);
 
         $this->assertNotNull($brevoRow, 'The panel must render a Brevo row');
         $this->assertStringContainsString($reason, (string) $brevoRow->textContent);

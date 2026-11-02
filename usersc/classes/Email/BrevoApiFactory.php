@@ -25,11 +25,15 @@ use ElanRegistry\Exceptions\ExceptionLogSummary;
  * Detail strings never hold an exception message. They hold a database error
  * string or an {@see ExceptionLogSummary}.
  *
+ * Not `final`: {@see BrevoBlocklistClient} takes a factory as a constructor
+ * argument, so a unit test passes a double that replaces the SDK API object.
+ * Subclassing outside of test doubles is not intended.
+ *
  * @package ElanRegistry\Email
  * @since v2.30.9
  * @see https://github.com/elan-registry/registry/issues/2357
  */
-final class BrevoApiFactory
+class BrevoApiFactory
 {
     /** The API key could not be read, or no key is set. */
     public const REASON_NO_API_KEY = 'no_api_key';
@@ -193,10 +197,14 @@ final class BrevoApiFactory
      * loaded. In local development, {@see BrevoDevOverride::hostOverride()}
      * points the client at mock-brevo, so a local run makes no live call.
      *
+     * The native return type is `object`, not the SDK class: a test double
+     * cannot extend the SDK class when the SDK is absent (CI), and PHP
+     * rejects an override with a wider return type.
+     *
      * @param string $apiKey The Brevo API key
      * @return TransactionalEmailsApi The client
      */
-    public function createApi(string $apiKey): TransactionalEmailsApi
+    public function createApi(string $apiKey): object
     {
         $credentials = \Brevo\Client\Configuration::getDefaultConfiguration()
             ->setApiKey('api-key', $apiKey);

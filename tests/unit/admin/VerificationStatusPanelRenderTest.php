@@ -7,6 +7,7 @@ use ElanRegistry\Cron\CronJobEnabledState;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
+use Tests\Support\PartialRenderHarness;
 
 /**
  * Render tests for the Verification tab status panel partial (#2330, #2364).
@@ -24,6 +25,8 @@ use PHPUnit\Framework\TestCase;
 #[Group('fast')]
 final class VerificationStatusPanelRenderTest extends TestCase
 {
+    use PartialRenderHarness;
+
     private const PARTIAL = __DIR__ . '/../../../app/admin/includes/verification-status-panel.php';
 
     private const ROW_ORDER = [
@@ -82,39 +85,13 @@ final class VerificationStatusPanelRenderTest extends TestCase
     /** Include the partial the way the tab does and return its HTML. */
     private static function renderHtml(VerificationTabStatus $vsStatus, ?bool $vsCanToggle = true): string
     {
+        $vars = ['vsStatus' => $vsStatus];
         // Null leaves the flag unset, as an including scope that forgot it would.
-        if ($vsCanToggle === null) {
-            unset($vsCanToggle);
+        if ($vsCanToggle !== null) {
+            $vars['vsCanToggle'] = $vsCanToggle;
         }
 
-        // Lets a reviewer prove a test can fail: point the test at a copy of an older partial.
-        $override = getenv('VERIFICATION_STATUS_PANEL_PATH');
-        $file     = is_string($override) && $override !== '' ? $override : self::PARTIAL;
-
-        // A PHP warning or deprecation inside the view is a defect, not noise.
-        set_error_handler(static function (int $severity, string $message, string $errFile, int $line): never {
-            throw new ErrorException($message, 0, $severity, $errFile, $line);
-        });
-        ob_start();
-        try {
-            include $file;
-        } finally {
-            $html = (string) ob_get_clean();
-            restore_error_handler();
-        }
-
-        return $html;
-    }
-
-    private static function dom(string $html): DOMXPath
-    {
-        $doc = new DOMDocument();
-        $previous = libxml_use_internal_errors(true);
-        $doc->loadHTML('<?xml encoding="UTF-8"><body>' . $html . '</body>');
-        libxml_clear_errors();
-        libxml_use_internal_errors($previous);
-
-        return new DOMXPath($doc);
+        return self::renderPartial(self::PARTIAL, 'VERIFICATION_STATUS_PANEL_PATH', $vars);
     }
 
     /** @return list<string> */

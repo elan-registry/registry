@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\Car\CarRepository;
+use ElanRegistry\Car\EffectiveEmailFlags;
 use ElanRegistry\Car\VerificationTabStatus;
 use ElanRegistry\Cron\CronJobEnabledState;
 use ElanRegistry\Cron\SendVerificationBatchJob;
@@ -768,33 +769,16 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                             : false;
                         $queueDays = $queueSentAt !== false ? (int) $queueSentAt->diff($vsNow)->days : null;
 
-                        // The flags come from the owner's profiles row (#2101). The
-                        // Eligible rows are cars.* only: an eligible car has a
-                        // profile and no flag that applies, so a missing has_profile
-                        // means 1. A block or bounce counts only while it applies to
-                        // the owner's current email (the `_active` columns, #2356).
-                        //
-                        // The stored cause stays in the row when the block does not
-                        // apply, so it is read only for an active block.
-                        $queueHasProfile  = (int) ($queueCar->has_profile ?? 1) === 1;
-                        $queueBounced     = (int) ($queueCar->email_bounced_active ?? 0) === 1;
-                        $queueBlocked     = (int) ($queueCar->email_blocked_active ?? 0) === 1;
-                        $queueOptedOut    = (int) ($queueCar->email_opted_out ?? 0) === 1;
-                        $queueBlockedCause = $queueBlocked && isset($queueCar->email_blocked_cause)
-                            ? (string) $queueCar->email_blocked_cause : null;
+                        // The flags come from the owner's profiles row (#2101). A
+                        // block or bounce counts only while it applies to the owner's
+                        // current email (the `_active` columns, #2356).
+                        $queueFlags = EffectiveEmailFlags::fromQueueRow($queueCar);
 
-                        $queueChip = VerificationTabStatus::chip(
-                            $vsChipEvents[$queueCarId] ?? null,
-                            $queueHasProfile,
-                            $queueBlocked,
-                            $queueBlockedCause,
-                            $queueOptedOut,
-                            $queueBounced
-                        );
+                        $queueChip = VerificationTabStatus::chip($vsChipEvents[$queueCarId] ?? null, $queueFlags);
 
                         // The owner actions write the profiles row, so an owner
                         // with no row has no action until an admin fixes the row.
-                        if (!$queueHasProfile) {
+                        if (!$queueFlags->hasProfile) {
                             $queueOwnerIsActionable = false;
                             $queueNoActionTitle = 'This owner has no profile row. Fix the profile before you change email state.';
                         }
@@ -807,15 +791,15 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                         // the car Pending (Brevo escalates repeated soft bounces), so Mark
                         // Bounced is disabled there. Clear Block and Clear Opt-out need the
                         // owner's request, so they open the confirm modal ('ownerRequest').
-                        if ($queueBlocked) {
+                        if ($queueFlags->blocked) {
                             $queueAction = ['command' => 'clear_block', 'label' => 'Clear Block',
                                             'class' => 'btn-outline-secondary', 'disabled' => false,
                                             'ownerRequest' => true];
-                        } elseif ($queueOptedOut) {
+                        } elseif ($queueFlags->optedOut) {
                             $queueAction = ['command' => 'clear_opt_out', 'label' => 'Clear Opt-out',
                                             'class' => 'btn-outline-secondary', 'disabled' => false,
                                             'ownerRequest' => true];
-                        } elseif ($queueBounced) {
+                        } elseif ($queueFlags->bounced) {
                             $queueAction = ['command' => 'clear_bounced', 'label' => 'Clear Bounced',
                                             'class' => 'btn-outline-secondary', 'disabled' => false];
                         } else {

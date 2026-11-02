@@ -108,6 +108,39 @@ final readonly class EffectiveEmailFlags
     }
 
     /**
+     * Build the flags from one Verification-tab queue row
+     *
+     * The queue queries give `has_profile`, `email_blocked_active`,
+     * `email_bounced_active`, `email_opted_out` and `email_blocked_cause`
+     * (#2101, #2356). The `_active` columns are 1 only while the flag applies
+     * to the owner's current address, so the result matches
+     * {@see CarRepository::effectiveEmailFlags()}. An Eligible row has no
+     * profile columns: an eligible car has a profile and no flag that
+     * applies, so a missing `has_profile` reads as 1. The row has no
+     * addresses or dates, so those fields are null.
+     *
+     * @param object $row One row of the Verification-tab queue
+     */
+    public static function fromQueueRow(object $row): self
+    {
+        $blockedCause = $row->email_blocked_cause ?? null;
+
+        return new self(
+            hasProfile: (int) ($row->has_profile ?? 1) === 1,
+            optedOut: (int) ($row->email_opted_out ?? 0) === 1,
+            optedOutAt: null,
+            blocked: (int) ($row->email_blocked_active ?? 0) === 1,
+            blockedAddress: null,
+            blockedAt: null,
+            blockedCause: $blockedCause !== null ? (string) $blockedCause : null,
+            bounced: (int) ($row->email_bounced_active ?? 0) === 1,
+            bouncedAddress: null,
+            bouncedAt: null,
+            currentEmail: null,
+        );
+    }
+
+    /**
      * The state of an owner with no `profiles` row: no flag and no details
      */
     public static function none(): self
