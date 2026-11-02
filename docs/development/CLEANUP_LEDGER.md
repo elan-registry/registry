@@ -47,6 +47,7 @@ after an item is written.
 
 - [ ] No test asserts the "No transfer approval/denial notification sent ... each one failed or the send policy skipped it" `EMAIL_ERROR` line. In `tests/integration/transfer/CarTransferWorkflowTest.php`, approve and deny with both parties opted out and assert that one row (found in /finish-milestone v2.30.9)
 - [ ] `transfer-request.php` logs a send-policy skip of the owner notice as `EMAIL_ERROR`, but `policyAllows()` already logged it. Drop the endpoint line or log it under `CAR_TRANSFER` (found in /flow:finish-milestone v2.31.0)
+- [ ] `process-transfer-approve.php` (~L131 and ~L147) wraps `$db->rollBack()` in `catch (\Throwable $rollbackEx)`. Remove the guard (see ERROR_HANDLING.md, no guards) (found in /flow:finish-milestone v2.31.0)
 
 ### `app/admin/includes/tab-car_mgmt.php`
 
@@ -60,6 +61,10 @@ after an item is written.
 
 - [ ] `verification_send_batch` logs a rejected scalar `car_ids` value with `var_export()` and no length limit or control-character strip, so an admin can put CR/LF into the log line. Cut the value to a fixed length and remove `[\x00-\x1F\x7F]` before the log call (found in #2457)
 - [ ] `verification_send_batch` logs every rejected scalar as `non-positive car id`, but `filterCarIds()` also rejects non-canonical values (`'03'`, `'1.5'`, `'+3'`). Say `invalid car id` (found in /flow:finish-milestone v2.31.0)
+
+### `app/admin/scripts/maintenance/21-Fix-Page-Permissions.php` + `app/admin/scripts/maintenance/26-Reconcile-Owner-Fields.php` + `app/api/webhooks/brevo.php` + `usersc/classes/Car/CarAdministrationService.php` + `usersc/classes/Car/CarVerificationSendService.php` + `usersc/includes/custom_functions.php` + `usersc/plugins/hooker/hooks/user_form_hook.php` (logger guards)
+
+- [ ] Each file wraps a `logger()` call in `try`/`catch (\Throwable)` (21 ~L1512, 26 ~L1728, brevo.php ~L156, CarAdministrationService ~L630, CarVerificationSendService ~L531, custom_functions ~L128, user_form_hook ~L60 and ~L105). Remove the guards, or move a deliberate one into the exceptions in ERROR_HANDLING.md with its reason (found in /flow:finish-milestone v2.31.0)
 
 ### `app/admin/scripts/maintenance/27-Reconcile-Brevo-Events.php` (test coverage)
 
@@ -370,7 +375,7 @@ after an item is written.
 
 ### `usersc/classes/Owner.php` + `usersc/user_settings.php` + `app/verify/verify_car.php` + `usersc/classes/Car/EmailEventApplier.php`
 
-- [ ] The `try { logger() } catch { error_log('[ElanRegistry] ...') }` guard is copied at about 7 sites, the rollback guards included. `Owner.php` (2 sites) and `EmailEventApplier.php` also wrap `rollback()` in `catch (\Throwable)`. Remove those too (see ERROR_HANDLING.md). Remove the guards and call `logger()` directly: `logger()` throws only when the database already failed the request (see #2449, #2561). Update `UserSettingsResumeVerificationEndpointTest`, which checks the "logger failed" text (found in #2393)
+- [ ] The `try { logger() } catch { error_log('[ElanRegistry] ...') }` guard is copied at about 7 sites. Rollback guards are in `Owner.php` (2), `user_settings.php`, `verify_car.php` (`rollbackQuietly()`) and `EmailEventApplier.php`. Remove all of them and call `logger()` and `rollback()` directly (see ERROR_HANDLING.md): `logger()` throws only when the database already failed the request (see #2449, #2561). Update `UserSettingsResumeVerificationEndpointTest`, which checks the "logger failed" text (found in #2393)
 
 ### `usersc/classes/OwnerView.php` + `app/admin/includes/tab-owner_mgmt.php` (est. −11)
 

@@ -92,9 +92,9 @@ final class DeletionPrivacyRerunOutcomeSourceRegressionTest extends TestCase
     private static function everyBareElseThrows(string $code): bool
     {
         $bare = preg_match_all('/\}\s*else\s*\{/', $code);
-        // Statements may come before the throw (for example a log line), but
-        // no block may open: the throw must be in the else block itself.
-        $throwing = preg_match_all('/\}\s*else\s*\{[^{}]*?throw new \\\\LogicException\(/', $code);
+        // The throw must be the first statement of the else block, so a new
+        // outcome cannot print or do anything before it.
+        $throwing = preg_match_all('/\}\s*else\s*\{\s*throw new \\\\LogicException\(/', $code);
 
         return $bare === $throwing;
     }
@@ -139,6 +139,23 @@ final class DeletionPrivacyRerunOutcomeSourceRegressionTest extends TestCase
         }
     }
 
+    /**
+     * Tell whether the code logs an exception message anywhere. The page
+     * deletes personal data, and an exception message can hold an address.
+     */
+    private static function logsAnExceptionMessage(string $code): bool
+    {
+        return preg_match('/->getMessage\(\)/', $code) === 1;
+    }
+
+    public function testThePageNeverLogsAnExceptionMessage(): void
+    {
+        $this->assertFalse(
+            self::logsAnExceptionMessage($this->code()),
+            'The page must log ExceptionLogSummary::of($e), never $e->getMessage().'
+        );
+    }
+
     // --- Negative controls ------------------------------------------------
 
     public function testNegativeControlMissingCommitUnknownArmIsFound(): void
@@ -157,11 +174,19 @@ final class DeletionPrivacyRerunOutcomeSourceRegressionTest extends TestCase
         $this->assertSame('} else {', self::committedArmHead($code));
     }
 
+    public function testNegativeControlLoggedMessageIsFound(): void
+    {
+        $this->assertTrue(self::logsAnExceptionMessage(
+            'logger($adminId, 1, $e instanceof \LogicException ? $e->getMessage() : ExceptionLogSummary::of($e));'
+        ));
+    }
+
     public function testNegativeControlBareElseWithoutThrowIsFound(): void
     {
         $this->assertFalse(self::everyBareElseThrows('if ($a) { x(); } else { y(); }'));
         $this->assertTrue(self::everyBareElseThrows('if ($a) { x(); } else { throw new \LogicException(\'no arm\'); }'));
-        $this->assertTrue(self::everyBareElseThrows('if ($a) { x(); } else { logger(1, 2, sprintf(\'%s\', 3)); throw new \LogicException(\'no arm\'); }'));
         $this->assertFalse(self::everyBareElseThrows('if ($a) { x(); } else { y(); } if ($b) { throw new \LogicException(\'later\'); }'));
+        $this->assertFalse(self::everyBareElseThrows('if ($a) { x(); } else { ?>Committed<?php throw new \LogicException(\'late\'); }'));
+        $this->assertFalse(self::everyBareElseThrows('if ($a) { x(); } else { if ($b) throw new \LogicException(\'maybe\'); y(); }'));
     }
 }

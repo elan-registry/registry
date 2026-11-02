@@ -60,7 +60,8 @@ final class ReconcileBrevoEventsResultAlertSourceRegressionTest extends TestCase
             return null;
         }
         $before = substr($code, 0, $position);
-        if (preg_match_all('/<\?php\s+(?:if|elseif|else)\b[^?]*?\?>/', $before, $matches) === 0) {
+        // endif counts too: an alert after endif shows on every run.
+        if (preg_match_all('/<\?php\s+(?:if|elseif|else|endif)\b[^?]*?\?>/', $before, $matches) === 0) {
             return null;
         }
 
@@ -92,6 +93,7 @@ final class ReconcileBrevoEventsResultAlertSourceRegressionTest extends TestCase
     {
         $head = self::successBranchHead($this->code());
 
+        $this->assertSame(1, substr_count($this->code(), self::SUCCESS_TEXT), 'The page must have one success alert.');
         $this->assertNotNull($head, 'The page must show the "' . self::SUCCESS_TEXT . '" alert behind a branch.');
         $this->assertTrue(
             self::hidesSuccessWhenNoPollRan($head),
@@ -115,6 +117,17 @@ final class ReconcileBrevoEventsResultAlertSourceRegressionTest extends TestCase
 
         $head = self::successBranchHead($code);
         $this->assertSame('<?php else: ?>', $head);
+        $this->assertFalse(self::hidesSuccessWhenNoPollRan((string) $head));
+    }
+
+    public function testNegativeControlAlertAfterEndifIsFound(): void
+    {
+        $code = '<?php if ($summary->notConfigured): ?>x'
+            . '<?php elseif (!($summary->pollFailed && $summary->pagesFetched === 0)): ?>y<?php endif; ?>'
+            . '<div>' . self::SUCCESS_TEXT . '</div>';
+
+        $head = self::successBranchHead($code);
+        $this->assertSame('<?php endif; ?>', $head);
         $this->assertFalse(self::hidesSuccessWhenNoPollRan((string) $head));
     }
 
