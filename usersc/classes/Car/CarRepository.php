@@ -90,6 +90,15 @@ class CarRepository
     public const ADMIN_BLOCK_MESSAGE_ID_PREFIX = 'suppression-import-blocklist-';
 
     /**
+     * Message-ID prefix of a suppression-import row for all codes other than `adminBlocked`
+     *
+     * {@see \ElanRegistry\Cron\BrevoSuppressionSyncJob} writes this prefix.
+     * It is also a prefix of {@see self::ADMIN_BLOCK_MESSAGE_ID_PREFIX}, so a
+     * `LIKE` filter on it matches both kinds of import row.
+     */
+    public const SUPPRESSION_IMPORT_MESSAGE_ID_PREFIX = 'suppression-import-';
+
+    /**
      * The flag-log sources that clear `email_blocked`
      *
      * An event from before the latest clear is not a cause of the block that
@@ -3680,6 +3689,33 @@ class CarRepository
         }
 
         return self::normalizeAddressList($addresses);
+    }
+
+    /**
+     * Delete a deleted user's profiles row (account deletion)
+     *
+     * The account-deletion privacy step calls this in its transaction, after
+     * the event delete and before the holding row delete.
+     *
+     * @param int $userId User ID. A value less than 1 issues no query.
+     * @return int Number of rows deleted (0 or 1)
+     * @throws CarDatabaseException If the query fails
+     */
+    public function deleteProfile(int $userId): int
+    {
+        if ($userId <= 0) {
+            return 0;
+        }
+
+        $this->db->query('DELETE FROM profiles WHERE user_id = ?', [$userId]);
+
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::deleteProfile failed for user={$userId}: " . $this->db->errorString()
+            );
+        }
+
+        return $this->db->count();
     }
 
     /**

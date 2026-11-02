@@ -759,7 +759,10 @@ to provide a focused, testable data access layer wrapping the `cars`,
   rows in `er_email_events` for the user and the normalized address (`COLLATE
   utf8mb4_bin`). An `unsubscribed` row whose message ID starts with
   `CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX` gives `blocklist`. Other
-  rows give their event name. With `$after`, only rows with
+  rows give their event name. Import rows of the other codes start with
+  `CarRepository::SUPPRESSION_IMPORT_MESSAGE_ID_PREFIX` (`suppression-import-`),
+  which is also a prefix of `ADMIN_BLOCK_MESSAGE_ID_PREFIX`, so a `LIKE` filter
+  on it matches both. With `$after`, only rows with
   `occurred_at` after that time count. It returns `[]` with no query for a `$userId`
   less than 1 or an empty address. `EmailNoticeBuilder` uses it for block causes (#2500).
 - `retagOwnerEmailEventMessageId(int $userId, string $event, string $fromId, string $toId): array{retagged: int, removed: int}` -
@@ -1099,7 +1102,7 @@ row. Add a row and a test here when you add one.
 - User-deletion hook (`reassignCarsByUser()`)
 - `AccountDeletionPrivacyStep` (`lockProfileAndFindAddresses()`,
   `sendinblueMessagesTableExists()`, `deleteSendinblueMessagesForUser()`,
-  `deleteEmailEventsForUser()`, `deleteDeletedUserAddresses()`) (#2358, #2419)
+  `deleteEmailEventsForUser()`, `deleteProfile()`, `deleteDeletedUserAddresses()`) (#2358, #2419)
 - `CarAdministrationService` (`detachEmailEventsFromCar()` on car deletion, `transferEmailEvents()` on car merge)
 - `CarVerificationManager::clearFlagsForConfirmedEmailChange()` (the `verifySuccess` hook) (#2356)
 - `EmailNoticeBuilder`, `CarVerificationSendService`, `BrevoSuppressionSyncJob`, `user_form_hook.php`, `user_settings.php`, and the Email on file row (`effectiveEmailFlags()`)
@@ -3938,8 +3941,8 @@ mail rows, the `er_email_events` rows, the `profiles` row, and the
   - Otherwise it runs these stages in one transaction:
     `lockProfileAndFindAddresses()`, the plugin delete
     (`deleteSendinblueMessagesForUser()`, only when
-    `sendinblueMessagesTableExists()`), `deleteEmailEventsForUser()`, the
-    `profiles` delete, then `deleteDeletedUserAddresses()`. The plugin delete
+    `sendinblueMessagesTableExists()`), `deleteEmailEventsForUser()`,
+    `deleteProfile()`, then `deleteDeletedUserAddresses()`. The plugin delete
     reads the event message IDs, so it runs before the event delete. The
     holding row goes last, so on a failure it stays and a rerun has the
     addresses.
@@ -3967,22 +3970,24 @@ mail rows, the `er_email_events` rows, the `profiles` row, and the
 
 **Namespace**: `ElanRegistry`
 
-**Purpose**: `final` value object with readonly properties that holds the
+**Purpose**: `final readonly` value object that holds the
 outcome of `AccountDeletionPrivacyStep::run()` (#2419). It holds no address,
 so a caller can show it on a page or write it to a log.
 
-**Properties**: `$committed`, `$refused`, `$failedStage` (`?string`, the stage
-that failed when the step did not commit), `$commitOutcomeUnknown` (true when
-the commit threw, so the deletes may have landed), `$deletedEmailEventCount`,
-`$deletedPluginMessageCount`, `$deletedHoldingRowCount` (0 or 1) and
-`$pluginTableAbsent`. The counts are 0 when the run did not commit.
+**Properties**: `$outcome` (`AccountDeletionPrivacyOutcome`: `Committed`,
+`RolledBack`, `CommitUnknown` or `Refused`), `$failedStage` (`?string`, the
+stage that failed for `RolledBack`, `commit` for `CommitUnknown`, else null),
+`$deletedEmailEventCount`, `$deletedPluginMessageCount`,
+`$deletedHoldingRowCount` (0 or 1) and `$pluginTableAbsent`. The counts are 0
+when the run did not commit. A negative count throws
+`\InvalidArgumentException`.
 
 | Outcome | How to create it | Properties |
 | --- | --- | --- |
-| Committed | `committed(int $deletedEmailEventCount, int $deletedPluginMessageCount, int $deletedHoldingRowCount, bool $pluginTableAbsent)` | `committed` true and the row counts |
-| Rolled back | `rolledBack(string $stage)` | `committed` false, `failedStage` set |
-| Commit unknown | `commitUnknown()` | `committed` false, `failedStage` `commit`, `commitOutcomeUnknown` true |
-| Refused | `refused()` | `committed` false, `refused` true |
+| Committed | `committed(int $deletedEmailEventCount, int $deletedPluginMessageCount, int $deletedHoldingRowCount, bool $pluginTableAbsent)` | `outcome` `Committed` and the row counts |
+| Rolled back | `rolledBack(string $stage)` | `outcome` `RolledBack`, `failedStage` set |
+| Commit unknown | `commitUnknown()` | `outcome` `CommitUnknown`, `failedStage` `commit` |
+| Refused | `refused()` | `outcome` `Refused` |
 
 **Used By**: `AccountDeletionPrivacyStep::run()` (returns it) and the rerun
 script `30-Rerun-Deletion-Privacy-Step.php` (shows it)

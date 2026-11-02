@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\AccountDeletionPrivacyOutcome;
 use ElanRegistry\AccountDeletionPrivacyStep;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\LogCategories;
@@ -67,7 +68,7 @@ $privacyResult = (new AccountDeletionPrivacyStep($db, $repo))->run($id);
 // must not move a live owner's cars. The step already logged why it refused.
 // This line records that the cars still name the ID, because no tool moves
 // them later.
-if ($privacyResult->refused) {
+if ($privacyResult->outcome === AccountDeletionPrivacyOutcome::Refused) {
     logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, sprintf(
         'CRITICAL: car cleanup skipped for user %d because the privacy step refused; the cars and pending transfer requests still name this ID',
         $id
@@ -81,7 +82,7 @@ if ($privacyResult->refused) {
 // upgrade rebuilt users), and the current and pending address rows stay. It can
 // also mean that a concurrent delete removed the users row first, so this
 // delete removed no row and the trigger did not fire.
-if ($privacyResult->committed && $privacyResult->deletedHoldingRowCount === 0) {
+if ($privacyResult->outcome === AccountDeletionPrivacyOutcome::Committed && $privacyResult->deletedHoldingRowCount === 0) {
     logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, sprintf(
         'CRITICAL: privacy step for user %d found no er_deleted_user_addresses row; check trigger users_delete_capture_addresses, or the users row was already gone before this deletion',
         $id

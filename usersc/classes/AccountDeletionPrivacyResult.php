@@ -6,42 +6,46 @@ namespace ElanRegistry;
 /**
  * Outcome of AccountDeletionPrivacyStep::run().
  *
- * A run has one of four outcomes:
- * - committed: the step deleted the rows and committed,
- * - rolled back: a stage failed, so the personal data remains,
- * - commit unknown: the commit threw, so the server may or may not have
- *   committed the deletes,
- * - refused: a guard stopped the run before any delete.
+ * `outcome` is one {@see AccountDeletionPrivacyOutcome} case. `failedStage`
+ * names the stage that failed for a rolled-back or commit-unknown result, and
+ * is null for the other two outcomes.
  *
- * Only the four named constructors build a result, so the flags cannot
- * contradict each other. The counts are 0 when the run did not commit. The
- * result holds no address, so a caller can show it on a page or write it to a
- * log.
+ * Only the four named constructors build a result, so the outcome and the
+ * stage cannot contradict each other. The counts are 0 when the run did not
+ * commit. The result holds no address, so a caller can show it on a page or
+ * write it to a log.
  *
  * @author Jim Boone
+ * @since v2.30.10
+ * @see https://github.com/elan-registry/registry/issues/2419
  */
-final class AccountDeletionPrivacyResult
+final readonly class AccountDeletionPrivacyResult
 {
     /**
-     * @param bool        $committed                 True when the step committed
-     * @param bool        $refused                   True when a guard stopped the run before any delete
-     * @param string|null $failedStage               Stage that failed when the step did not commit, else null
-     * @param bool        $commitOutcomeUnknown      True when the commit threw, so the deletes may have landed
-     * @param int         $deletedEmailEventCount    er_email_events rows deleted
-     * @param int         $deletedPluginMessageCount plg_sendinblue_messages rows deleted
-     * @param int         $deletedHoldingRowCount    er_deleted_user_addresses rows deleted (0 or 1)
-     * @param bool        $pluginTableAbsent         True when plg_sendinblue_messages does not exist
+     * @param AccountDeletionPrivacyOutcome $outcome                   Outcome of the run
+     * @param string|null                   $failedStage               Stage that failed for RolledBack and CommitUnknown, else null
+     * @param int                           $deletedEmailEventCount    er_email_events rows deleted
+     * @param int                           $deletedPluginMessageCount plg_sendinblue_messages rows deleted
+     * @param int                           $deletedHoldingRowCount    er_deleted_user_addresses rows deleted (0 or 1)
+     * @param bool                          $pluginTableAbsent         True when plg_sendinblue_messages does not exist
+     * @throws \InvalidArgumentException If a count is negative
      */
     private function __construct(
-        public readonly bool $committed,
-        public readonly bool $refused = false,
-        public readonly ?string $failedStage = null,
-        public readonly bool $commitOutcomeUnknown = false,
-        public readonly int $deletedEmailEventCount = 0,
-        public readonly int $deletedPluginMessageCount = 0,
-        public readonly int $deletedHoldingRowCount = 0,
-        public readonly bool $pluginTableAbsent = false
+        public AccountDeletionPrivacyOutcome $outcome,
+        public ?string $failedStage = null,
+        public int $deletedEmailEventCount = 0,
+        public int $deletedPluginMessageCount = 0,
+        public int $deletedHoldingRowCount = 0,
+        public bool $pluginTableAbsent = false
     ) {
+        if ($deletedEmailEventCount < 0 || $deletedPluginMessageCount < 0 || $deletedHoldingRowCount < 0) {
+            throw new \InvalidArgumentException(sprintf(
+                'AccountDeletionPrivacyResult: counts must not be negative (email events %d, plugin messages %d, holding rows %d)',
+                $deletedEmailEventCount,
+                $deletedPluginMessageCount,
+                $deletedHoldingRowCount
+            ));
+        }
     }
 
     /**
@@ -52,6 +56,7 @@ final class AccountDeletionPrivacyResult
      * @param int  $deletedHoldingRowCount    er_deleted_user_addresses rows deleted (0 or 1)
      * @param bool $pluginTableAbsent         True when plg_sendinblue_messages does not exist
      * @return self
+     * @throws \InvalidArgumentException If a count is negative
      */
     public static function committed(
         int $deletedEmailEventCount,
@@ -60,7 +65,7 @@ final class AccountDeletionPrivacyResult
         bool $pluginTableAbsent
     ): self {
         return new self(
-            committed: true,
+            outcome: AccountDeletionPrivacyOutcome::Committed,
             deletedEmailEventCount: $deletedEmailEventCount,
             deletedPluginMessageCount: $deletedPluginMessageCount,
             deletedHoldingRowCount: $deletedHoldingRowCount,
@@ -75,7 +80,7 @@ final class AccountDeletionPrivacyResult
      */
     public static function refused(): self
     {
-        return new self(committed: false, refused: true);
+        return new self(AccountDeletionPrivacyOutcome::Refused);
     }
 
     /**
@@ -86,20 +91,20 @@ final class AccountDeletionPrivacyResult
      */
     public static function rolledBack(string $stage): self
     {
-        return new self(committed: false, failedStage: $stage);
+        return new self(AccountDeletionPrivacyOutcome::RolledBack, failedStage: $stage);
     }
 
     /**
      * Result of a run whose commit threw.
      *
      * The server may have committed before the driver threw, so the caller
-     * cannot tell whether the personal data remains. `committed` is false,
-     * because the step cannot prove the commit, and the counts are 0.
+     * cannot tell whether the personal data remains. The stage is `commit`
+     * and the counts are 0, because the step cannot prove the commit.
      *
      * @return self
      */
     public static function commitUnknown(): self
     {
-        return new self(committed: false, failedStage: 'commit', commitOutcomeUnknown: true);
+        return new self(AccountDeletionPrivacyOutcome::CommitUnknown, failedStage: 'commit');
     }
 }

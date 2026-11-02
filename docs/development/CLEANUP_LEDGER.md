@@ -250,14 +250,6 @@ after an item is written.
 - [ ] No test proves the `phpstan.neon` wiring of the path-based rules. A typo in a `files:` or `exemptPages:` entry, or a different working directory for `projectRoot`, makes the rule silently check nothing. Add a smoke test that runs PHPStan with the real config on one known violation per rule. (found in #2327)
 - [ ] `PageMetadataBeforeInitRule` does not report an `exemptPages` entry whose file was deleted or moved, or no longer calls `securePage()`. Report it as a stale exemption. (found in #2327)
 
-### `usersc/classes/AccountDeletionPrivacyResult.php`
-
-- [ ] Match `RetentionResult`: make it `final readonly class`, reject negative counts in `committed()`, add `@since`, and replace the three bools plus nullable stage with one outcome enum (or add `isRolledBack()`) (found in /finish-milestone v2.30.10)
-
-### `usersc/classes/AccountDeletionPrivacyStep.php`
-
-- [ ] The profile delete (~L124-127) runs raw SQL while every other stage goes through `CarRepository`. Move it to a `CarRepository::deleteProfile()` method (found in /finish-milestone v2.30.10)
-
 ### `usersc/classes/Car/CarAdministrationService.php`
 
 - [ ] The merge path keeps an `error_log()` before `rollback()` against the #2561 no-guard policy. Add one line that says why: it is the only trace of moved files (found in /flow:finish-milestone v2.31.0)
@@ -301,10 +293,6 @@ after an item is written.
 ### `usersc/classes/CarView.php`
 
 - [ ] The no-photo placeholder in `displayCarousel()` is an `h5` under the `h3` Photos card, so it skips levels. Its `fa-camera` icon has no `aria-hidden="true"` (found in #2495)
-
-### `usersc/classes/Cron/BrevoSuppressionSyncJob.php`
-
-- [ ] `MESSAGE_ID_PREFIX` (~L161, `suppression-import-`) is a prefix of `CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX`. Move it next to that constant in `CarRepository` as a public constant, so a later `LIKE` filter sees both (found in /finish-milestone v2.30.10)
 
 ### `usersc/classes/Cron/HealthcheckPinger.php` + `usersc/classes/Cron/CurlHealthcheckTransport.php`
 

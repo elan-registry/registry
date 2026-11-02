@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/IntegrationTestCase.php';
 require_once __DIR__ . '/database/MigrationSandbox.php';
 
+use ElanRegistry\AccountDeletionPrivacyOutcome;
 use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
@@ -747,7 +748,7 @@ final class UserDeletionPrivacyStepTest extends IntegrationTestCase
 
         $result = (new \ElanRegistry\AccountDeletionPrivacyStep($this->db))->run($owner['id']);
 
-        $this->assertTrue($result->committed);
+        $this->assertSame(AccountDeletionPrivacyOutcome::Committed, $result->outcome);
         $this->assertSame(1, $result->deletedHoldingRowCount);
         $this->assertNull($this->holdingRow($owner['id']), 'A committed step removes the holding row');
         $this->assertSame(0, $this->profileCount($owner['id']), 'The profile goes in the same commit');
@@ -775,7 +776,7 @@ final class UserDeletionPrivacyStepTest extends IntegrationTestCase
             $this->assertFalse($this->db->error(), 'Test cleanup: failed to restore the column: ' . $this->db->errorString());
         }
 
-        $this->assertFalse($failed->committed);
+        $this->assertSame(AccountDeletionPrivacyOutcome::RolledBack, $failed->outcome);
         $this->assertSame('plugin delete', $failed->failedStage);
         $this->assertNotNull($this->holdingRow($owner['id']), 'The holding row stays so the rerun has the addresses');
         $this->assertSame(1, $this->profileCount($owner['id']), 'The failed step rolled back: the profile stays');
@@ -797,7 +798,7 @@ final class UserDeletionPrivacyStepTest extends IntegrationTestCase
 
         $rerun = $step->run($owner['id']);
 
-        $this->assertTrue($rerun->committed);
+        $this->assertSame(AccountDeletionPrivacyOutcome::Committed, $rerun->outcome);
         $this->assertSame(1, $rerun->deletedHoldingRowCount);
         $this->assertSame(2, $rerun->deletedPluginMessageCount);
         $this->assertFalse($this->pluginRowExists($pendingRow), 'The rerun reads email_new from the holding row');
@@ -819,7 +820,7 @@ final class UserDeletionPrivacyStepTest extends IntegrationTestCase
 
         $result = (new \ElanRegistry\AccountDeletionPrivacyStep($this->db))->run($owner['id']);
 
-        $this->assertTrue($result->committed);
+        $this->assertSame(AccountDeletionPrivacyOutcome::Committed, $result->outcome);
         $this->assertTrue($this->pluginRowExists($kept), 'The row belongs to the live user that holds the address now');
         $this->assertFalse($this->pluginRowExists($gone), 'Test control: the other holding-row address still goes');
     }
@@ -834,7 +835,7 @@ final class UserDeletionPrivacyStepTest extends IntegrationTestCase
 
         $result = (new \ElanRegistry\AccountDeletionPrivacyStep($this->db))->run($userId);
 
-        $this->assertTrue($result->committed);
+        $this->assertSame(AccountDeletionPrivacyOutcome::Committed, $result->outcome);
         $this->assertSame(0, $result->deletedHoldingRowCount);
         $this->assertSame(0, $this->eventCount($userId));
         $this->assertSame(0, $this->profileCount($userId));

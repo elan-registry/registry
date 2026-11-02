@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\AccountDeletionPrivacyOutcome;
 use ElanRegistry\AccountDeletionPrivacyStep;
 use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -79,7 +80,7 @@ final class AccountDeletionPrivacyStepTest extends TestCase
 
         $result = (new AccountDeletionPrivacyStep($db))->run(self::USER_ID);
 
-        $this->assertTrue($result->committed);
+        $this->assertSame(AccountDeletionPrivacyOutcome::Committed, $result->outcome);
         $this->assertTrue($result->pluginTableAbsent);
         $this->assertNull($db->indexOf('DELETE m FROM plg_sendinblue_messages'), 'No plugin delete without the table');
         $this->assertNull($db->indexOf('DELETE FROM plg_sendinblue_messages'));
@@ -110,7 +111,7 @@ final class AccountDeletionPrivacyStepTest extends TestCase
 
         $result = (new AccountDeletionPrivacyStep($db))->run(self::USER_ID);
 
-        $this->assertTrue($result->committed);
+        $this->assertSame(AccountDeletionPrivacyOutcome::Committed, $result->outcome);
         $positions = [
             $db->indexOf('DELETE FROM plg_sendinblue_messages'),
             $db->indexOf('DELETE FROM er_email_events WHERE user_id = ?'),
@@ -156,9 +157,7 @@ final class AccountDeletionPrivacyStepTest extends TestCase
 
         $result = (new AccountDeletionPrivacyStep($db))->run(self::USER_ID);
 
-        $this->assertFalse($result->committed);
-        $this->assertFalse($result->refused);
-        $this->assertFalse($result->commitOutcomeUnknown, 'A failure before the commit has a known outcome');
+        $this->assertSame(AccountDeletionPrivacyOutcome::RolledBack, $result->outcome, 'A failure before the commit has a known outcome');
         $this->assertSame('event delete', $result->failedStage);
         $this->assertNotNull($db->indexOf('ROLLBACK'));
         $this->assertNull($db->indexOf('COMMIT'));
@@ -182,7 +181,7 @@ final class AccountDeletionPrivacyStepTest extends TestCase
 
         $result = (new AccountDeletionPrivacyStep($db))->run(self::USER_ID);
 
-        $this->assertFalse($result->committed);
+        $this->assertSame(AccountDeletionPrivacyOutcome::RolledBack, $result->outcome);
         $this->assertSame('event delete', $result->failedStage);
         $this->assertLoggedMatches(
             '/^CRITICAL: privacy step failed for user 77 at stage event delete, '
@@ -202,8 +201,7 @@ final class AccountDeletionPrivacyStepTest extends TestCase
 
         $result = (new AccountDeletionPrivacyStep($db))->run(self::USER_ID);
 
-        $this->assertFalse($result->committed);
-        $this->assertTrue($result->commitOutcomeUnknown, 'A failed commit must not return a rolled-back result');
+        $this->assertSame(AccountDeletionPrivacyOutcome::CommitUnknown, $result->outcome, 'A failed commit must not return a rolled-back result');
         $this->assertSame('commit', $result->failedStage);
         $commitAt = $db->indexOf('COMMIT');
         $rollbackAt = $db->indexOf('ROLLBACK');
@@ -228,8 +226,7 @@ final class AccountDeletionPrivacyStepTest extends TestCase
 
         $result = (new AccountDeletionPrivacyStep($db))->run(self::USER_ID);
 
-        $this->assertFalse($result->committed);
-        $this->assertTrue($result->commitOutcomeUnknown);
+        $this->assertSame(AccountDeletionPrivacyOutcome::CommitUnknown, $result->outcome);
         $this->assertSame('commit', $result->failedStage);
         $this->assertLogged('at stage commit, transaction state unknown, rollback failed: PDOException (code 2006) at UserDeletionHookFakeDatabase.php:');
         $this->assertLogged(', personal data may remain: PDOException (code 2006) at UserDeletionHookFakeDatabase.php:');
@@ -262,7 +259,7 @@ final class AccountDeletionPrivacyStepTest extends TestCase
 
         $result = (new AccountDeletionPrivacyStep($db))->run(self::USER_ID);
 
-        $this->assertFalse($result->committed);
+        $this->assertSame(AccountDeletionPrivacyOutcome::RolledBack, $result->outcome);
         $this->assertSame('holding row delete', $result->failedStage);
         $this->assertNotNull($db->indexOf('DELETE FROM profiles WHERE user_id = ?'));
         $this->assertNotNull($db->indexOf('ROLLBACK'));
@@ -277,7 +274,7 @@ final class AccountDeletionPrivacyStepTest extends TestCase
 
         $result = (new AccountDeletionPrivacyStep($db))->run(self::USER_ID);
 
-        $this->assertTrue($result->committed);
+        $this->assertSame(AccountDeletionPrivacyOutcome::Committed, $result->outcome);
         $this->assertFalse($db->inTransaction());
         $this->assertNotNull($db->indexOf('DELETE FROM profiles WHERE user_id = ?'));
         $this->assertNotNull($db->indexOf('DELETE FROM er_email_events WHERE user_id = ?'));
@@ -318,8 +315,7 @@ final class AccountDeletionPrivacyStepTest extends TestCase
 
         $result = (new AccountDeletionPrivacyStep($db))->run($userId);
 
-        $this->assertTrue($result->refused);
-        $this->assertFalse($result->committed);
+        $this->assertSame(AccountDeletionPrivacyOutcome::Refused, $result->outcome);
         $this->assertSame([], $db->events, 'The step must send no statement and open no transaction');
         $this->assertSame(
             [sprintf('CRITICAL: privacy step refused user ID %d: the ID is below 1, no statement run', $userId)],
@@ -334,8 +330,7 @@ final class AccountDeletionPrivacyStepTest extends TestCase
 
         $result = (new AccountDeletionPrivacyStep($db))->run(self::USER_ID);
 
-        $this->assertTrue($result->refused);
-        $this->assertFalse($result->committed);
+        $this->assertSame(AccountDeletionPrivacyOutcome::Refused, $result->outcome);
         $this->assertSame(['SQL: SELECT id FROM users WHERE id = ?'], $db->events, 'Only the live-user check runs: no BEGIN, no delete');
         $this->assertLogged('CRITICAL: privacy step refused user 77: a users row still exists, no row deleted; if an account deletion ran, check the trigger users_delete_capture_addresses and the user permission rows');
     }
@@ -347,7 +342,7 @@ final class AccountDeletionPrivacyStepTest extends TestCase
 
         $result = (new AccountDeletionPrivacyStep($db))->run(self::USER_ID);
 
-        $this->assertTrue($result->refused);
+        $this->assertSame(AccountDeletionPrivacyOutcome::Refused, $result->outcome);
         $this->assertSame(['SQL: SELECT id FROM users WHERE id = ?'], $db->events);
         $this->assertLogged('the users row check failed, no row deleted');
     }

@@ -5,7 +5,6 @@ namespace ElanRegistry;
 
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Exceptions\ExceptionLogSummary;
-use ElanRegistry\Exceptions\OwnerDatabaseException;
 
 /**
  * Account-deletion privacy step (#2358, #2419).
@@ -98,10 +97,10 @@ final class AccountDeletionPrivacyStep
         logger($userId, LogCategories::LOG_CATEGORY_USER_DELETION, sprintf(
             'Privacy step for user %d: %s, deleted %d er_email_events rows and %d plg_sendinblue_messages rows',
             $userId,
-            match (true) {
-                $result->committed => 'committed',
-                $result->commitOutcomeUnknown => 'transaction state unknown',
-                default => 'rolled back',
+            match ($result->outcome) {
+                AccountDeletionPrivacyOutcome::Committed => 'committed',
+                AccountDeletionPrivacyOutcome::CommitUnknown => 'transaction state unknown',
+                AccountDeletionPrivacyOutcome::RolledBack, AccountDeletionPrivacyOutcome::Refused => 'rolled back',
             },
             $result->deletedEmailEventCount,
             $result->deletedPluginMessageCount
@@ -134,10 +133,7 @@ final class AccountDeletionPrivacyStep
             $stage = 'event delete';
             $eventRows = $this->repo->deleteEmailEventsForUser($userId);
             $stage = 'profile delete';
-            $this->db->query('DELETE FROM profiles WHERE user_id = ?', [$userId]);
-            if ($this->db->error()) {
-                throw new OwnerDatabaseException("Failed to delete profile for user $userId: " . $this->db->errorString());
-            }
+            $this->repo->deleteProfile($userId);
             $stage = 'holding row delete';
             $holdingRows = $this->repo->deleteDeletedUserAddresses($userId);
             $stage = 'commit';

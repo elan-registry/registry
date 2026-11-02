@@ -102,7 +102,8 @@ use ElanRegistry\LogCategories;
  * the MD5 of the raw address, the reason code and the raw `blockedAt`. The
  * same contact gets the same ID on each run. The prefix is
  * {@see CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX} for `adminBlocked` and
- * `suppression-import-` for all other codes (#2500). Admin-block rows from
+ * {@see CarRepository::SUPPRESSION_IMPORT_MESSAGE_ID_PREFIX} for all other
+ * codes (#2500). Admin-block rows from
  * before #2500 have the old prefix. A re-run does not write a tagged second
  * row for them, because the cause-group check matches the event name. So
  * before apply(), the job changes the ID of the owner's old row to the
@@ -155,13 +156,6 @@ use ElanRegistry\LogCategories;
  */
 final class BrevoSuppressionSyncJob extends AbstractCronJob
 {
-    /**
-     * Message-ID prefix of an import row for all codes other than `adminBlocked`
-     *
-     * An `adminBlocked` row uses {@see CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX}.
-     */
-    private const MESSAGE_ID_PREFIX = 'suppression-import-';
-
     /** er_cron_job_runs.job_name / CronJobGuard::ALLOWED_JOB_NAMES value. */
     public const JOB_NAME = 'brevo_suppression_sync';
 
@@ -805,7 +799,7 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             // gives it the new prefix.
             $isAdminBlock = $code === self::REASON_CODE_ADMIN_BLOCKED;
             $messageIdHash = md5($rawEmail . '|' . $code . '|' . $this->messageIdDatePart($rawBlockedAt));
-            $messageId = ($isAdminBlock ? CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX : self::MESSAGE_ID_PREFIX)
+            $messageId = ($isAdminBlock ? CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX : CarRepository::SUPPRESSION_IMPORT_MESSAGE_ID_PREFIX)
                 . $messageIdHash;
 
             // Brevo's read API is external input, so it gets the same bound
@@ -857,7 +851,7 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             $wasFlagged = $this->isAlreadyInTargetState($userId, $event);
 
             if ($isAdminBlock) {
-                $this->retagLegacyAdminBlockRow($userId, $event, self::MESSAGE_ID_PREFIX . $messageIdHash, $messageId);
+                $this->retagLegacyAdminBlockRow($userId, $event, CarRepository::SUPPRESSION_IMPORT_MESSAGE_ID_PREFIX . $messageIdHash, $messageId);
             }
 
             try {

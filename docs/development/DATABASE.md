@@ -644,7 +644,7 @@ ID.
       (`deleteSendinblueMessagesForUser()`).
    3. `event delete`: delete the user's `er_email_events` rows
       (`deleteEmailEventsForUser()`).
-   4. `profile delete`: delete the user's `profiles` row.
+   4. `profile delete`: delete the user's `profiles` row (`deleteProfile()`).
    5. `holding row delete`: delete the user's `er_deleted_user_addresses` row
       (`deleteDeletedUserAddresses()`).
    6. `commit`.
