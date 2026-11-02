@@ -252,7 +252,7 @@ after an item is written.
 
 ### `usersc/classes/AccountDeletionPrivacyResult.php`
 
-- [ ] Match `RetentionResult`: make it `final readonly class`, reject negative counts in `committed()`, add `@since`, and replace the two bools plus nullable stage with one outcome enum (or add `isRolledBack()`) (found in /finish-milestone v2.30.10)
+- [ ] Match `RetentionResult`: make it `final readonly class`, reject negative counts in `committed()`, add `@since`, and replace the three bools plus nullable stage with one outcome enum (or add `isRolledBack()`) (found in /finish-milestone v2.30.10)
 
 ### `usersc/classes/AccountDeletionPrivacyStep.php`
 

@@ -3907,7 +3907,9 @@ mail rows, the `er_email_events` rows, the `profiles` row, and the
     with that exception's summary in place of `rolled back`, and `run()`
     still returns.
   - A failure at the `commit` stage says `transaction state unknown` and
-    `personal data may remain`, because the server may have committed.
+    `personal data may remain`, because the server may have committed. It
+    returns `AccountDeletionPrivacyResult::commitUnknown()`, and the summary
+    line says `transaction state unknown` in place of `rolled back`.
   - Otherwise it runs these stages in one transaction:
     `lockProfileAndFindAddresses()`, the plugin delete
     (`deleteSendinblueMessagesForUser()`, only when
@@ -3945,7 +3947,8 @@ outcome of `AccountDeletionPrivacyStep::run()` (#2419). It holds no address,
 so a caller can show it on a page or write it to a log.
 
 **Properties**: `$committed`, `$refused`, `$failedStage` (`?string`, the stage
-that failed when the step rolled back), `$deletedEmailEventCount`,
+that failed when the step did not commit), `$commitOutcomeUnknown` (true when
+the commit threw, so the deletes may have landed), `$deletedEmailEventCount`,
 `$deletedPluginMessageCount`, `$deletedHoldingRowCount` (0 or 1) and
 `$pluginTableAbsent`. The counts are 0 when the run did not commit.
 
@@ -3953,6 +3956,7 @@ that failed when the step rolled back), `$deletedEmailEventCount`,
 | --- | --- | --- |
 | Committed | `committed(int $deletedEmailEventCount, int $deletedPluginMessageCount, int $deletedHoldingRowCount, bool $pluginTableAbsent)` | `committed` true and the row counts |
 | Rolled back | `rolledBack(string $stage)` | `committed` false, `failedStage` set |
+| Commit unknown | `commitUnknown()` | `committed` false, `failedStage` `commit`, `commitOutcomeUnknown` true |
 | Refused | `refused()` | `committed` false, `refused` true |
 
 **Used By**: `AccountDeletionPrivacyStep::run()` (returns it) and the rerun

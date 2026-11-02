@@ -158,6 +158,7 @@ final class AccountDeletionPrivacyStepTest extends TestCase
 
         $this->assertFalse($result->committed);
         $this->assertFalse($result->refused);
+        $this->assertFalse($result->commitOutcomeUnknown, 'A failure before the commit has a known outcome');
         $this->assertSame('event delete', $result->failedStage);
         $this->assertNotNull($db->indexOf('ROLLBACK'));
         $this->assertNull($db->indexOf('COMMIT'));
@@ -202,6 +203,7 @@ final class AccountDeletionPrivacyStepTest extends TestCase
         $result = (new AccountDeletionPrivacyStep($db))->run(self::USER_ID);
 
         $this->assertFalse($result->committed);
+        $this->assertTrue($result->commitOutcomeUnknown, 'A failed commit must not return a rolled-back result');
         $this->assertSame('commit', $result->failedStage);
         $commitAt = $db->indexOf('COMMIT');
         $rollbackAt = $db->indexOf('ROLLBACK');
@@ -213,6 +215,10 @@ final class AccountDeletionPrivacyStepTest extends TestCase
             '/^CRITICAL: privacy step failed for user 77 at stage commit, transaction state unknown, personal data may remain: '
             . 'PDOException \\(code 2006\\) at UserDeletionHookFakeDatabase\\.php:\\d+$/'
         );
+        $this->assertLogged('Privacy step for user 77: transaction state unknown, deleted 0 er_email_events rows');
+        foreach ($this->userDeletionLogs() as $message) {
+            $this->assertStringNotContainsString('rolled back', $message, 'No line may say "rolled back" after a failed commit');
+        }
     }
 
     /** A commit failure and a rollback failure both appear in the one CRITICAL line. */
@@ -223,6 +229,7 @@ final class AccountDeletionPrivacyStepTest extends TestCase
         $result = (new AccountDeletionPrivacyStep($db))->run(self::USER_ID);
 
         $this->assertFalse($result->committed);
+        $this->assertTrue($result->commitOutcomeUnknown);
         $this->assertSame('commit', $result->failedStage);
         $this->assertLogged('at stage commit, transaction state unknown, rollback failed: PDOException (code 2006) at UserDeletionHookFakeDatabase.php:');
         $this->assertLogged(', personal data may remain: PDOException (code 2006) at UserDeletionHookFakeDatabase.php:');

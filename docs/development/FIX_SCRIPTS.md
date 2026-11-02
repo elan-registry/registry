@@ -171,8 +171,8 @@ When `S` is `commit`, the line says `transaction state unknown` and
 `personal data may remain`. The server may have committed the deletes. If the
 rollback also failed, the line says
 `transaction state unknown, rollback failed: <same summary>`. The separate
-summary line that follows, `Privacy step for user N: …`, still says
-`rolled back`.
+summary line that follows, `Privacy step for user N: …`, also says
+`transaction state unknown`.
 
 Run the script in all these cases. When the step rolled back, the personal
 data of that user remains: the plugin mail rows, the email events, the profile
@@ -249,8 +249,12 @@ older than 90 days.
 ### If the run fails again
 
 1. Read the page. A "Failed at stage" message names the stage. A "Refused"
-   message means the ID has a `users` row or the check failed.
-2. Read the `UserDeletion` log for the exception class and code.
+   message means the ID has a `users` row or the check failed. A failure at
+   stage `commit` says the commit may have landed. Then check whether
+   `er_email_events`, `plg_sendinblue_messages` and `profiles` rows remain
+   for the user before you run the script again.
+2. Read the `UserDeletion` log for the exception summary (class, code,
+   SQLSTATE when known, and throw site).
 3. Fix the cause. Examples are a database lock timeout or a missing table.
 4. Run the script again. The holding row stays after a failure, so the
    addresses are still available.

@@ -122,12 +122,20 @@ $userIdRejected = $is_exec && $targetUserId === false;
                                             <i class="fa fa-ban"></i> Refused: user <?= (int) $targetUserId ?> still has a <code>users</code> row, or the check failed. Nothing was deleted. See the <code>UserDeletion</code> log.
                                         </div>
                                         <?php
+                                    } elseif ($result->commitOutcomeUnknown) {
+                                        logger($adminId, LogCategories::LOG_CATEGORY_FIX_SCRIPT_ERROR,
+                                            "Deletion privacy step rerun failed for user {$targetUserId} at stage commit, transaction state unknown: check er_email_events, plg_sendinblue_messages and profiles rows before a rerun");
+                                        ?>
+                                        <div class="alert alert-danger mb-0">
+                                            <i class="fa fa-exclamation-triangle"></i> Failed at stage <strong>commit</strong>. The commit may have landed. Check whether <code>er_email_events</code>, <code>plg_sendinblue_messages</code> and <code>profiles</code> rows remain for user <?= (int) $targetUserId ?> before you rerun. See the <code>UserDeletion</code> log for the exception summary (class, code, SQLSTATE and throw site).
+                                        </div>
+                                        <?php
                                     } elseif (!$result->committed) {
                                         logger($adminId, LogCategories::LOG_CATEGORY_FIX_SCRIPT_ERROR,
                                             "Deletion privacy step rerun rolled back for user {$targetUserId} at stage {$result->failedStage}");
                                         ?>
                                         <div class="alert alert-danger mb-0">
-                                            <i class="fa fa-exclamation-triangle"></i> Failed at stage <strong><?= htmlspecialchars((string) $result->failedStage, ENT_QUOTES, 'UTF-8') ?></strong> and rolled back. The personal data remains. See the <code>UserDeletion</code> log for the exception class and code.
+                                            <i class="fa fa-exclamation-triangle"></i> Failed at stage <strong><?= htmlspecialchars((string) $result->failedStage, ENT_QUOTES, 'UTF-8') ?></strong> and rolled back. The personal data remains. See the <code>UserDeletion</code> log for the exception summary (class, code, SQLSTATE and throw site).
                                         </div>
                                         <?php
                                     } else {
