@@ -35,6 +35,10 @@ after an item is written.
 
 ## Items
 
+### `.claude/project.md` (test coverage)
+
+- [ ] No test checks that `milestone_checks` and `release_checks` name an executable script, and edits here do not trigger the hooks CI job (found in /flow:finish-milestone v2.31.0)
+
 ### `app/admin/includes/account-cleanup-helpers.php`
 
 - [ ] Replace 8 × `throw new RuntimeException` with a typed `AccountCleanupException extends ElanRegistryException`. Handle it in `app/api/admin/account-cleanup-data.php` with `ApiResponse` and `LogCategories` (from #1637)
@@ -42,6 +46,7 @@ after an item is written.
 ### `app/admin/includes/process-transfer-approve.php` `app/admin/includes/process-transfer-deny.php` `app/api/cars/transfer-request.php`
 
 - [ ] No test asserts the "No transfer approval/denial notification sent ... each one failed or the send policy skipped it" `EMAIL_ERROR` line. In `tests/integration/transfer/CarTransferWorkflowTest.php`, approve and deny with both parties opted out and assert that one row (found in /finish-milestone v2.30.9)
+- [ ] `transfer-request.php` logs a send-policy skip of the owner notice as `EMAIL_ERROR`, but `policyAllows()` already logged it. Drop the endpoint line or log it under `CAR_TRANSFER` (found in /flow:finish-milestone v2.31.0)
 
 ### `app/admin/includes/tab-car_mgmt.php`
 
@@ -50,6 +55,7 @@ after an item is written.
 ### `app/admin/index.php`
 
 - [ ] `verification_send_batch` logs a rejected scalar `car_ids` value with `var_export()` and no length limit or control-character strip, so an admin can put CR/LF into the log line. Cut the value to a fixed length and remove `[\x00-\x1F\x7F]` before the log call (found in #2457)
+- [ ] `verification_send_batch` logs every rejected scalar as `non-positive car id`, but `filterCarIds()` also rejects non-canonical values (`'03'`, `'1.5'`, `'+3'`). Say `invalid car id` (found in /flow:finish-milestone v2.31.0)
 
 ### `app/api/cars/list.php`
 
@@ -160,6 +166,7 @@ after an item is written.
 ### `tests/integration/VerifyCarLandingPageTest.php` (test coverage)
 
 - [ ] Add a render test (as in `tests/unit/views/VehicleInfoCardTest.php`) for the not-an-object log in `_location_map_card.php` (found in #2495)
+- [ ] No test pins that POST `action=verify` still works for a car with a malformed `image` column, now that `new Car()` runs before dispatch without a guard (#2495) (found in /flow:finish-milestone v2.31.0)
 
 ### `tests/integration/VerificationToggleEndpointBehaviorTest.php`
 
@@ -184,6 +191,10 @@ after an item is written.
 - [ ] `migrateTo(0)` is refused, although Phinx reads 0 as "roll back all": document it in `@throws` (found in #2167)
 - [ ] Only 4 migrations have a sandbox test, so about 28 reversible `down()` methods never run in a test. Add one sandbox class that rolls back through `Manager::rollback()` to `20260709000000` (its `down()` is irreversible), then migrates to latest again, and compares `fingerprint()` at each end. The 5 `change()`-only migrations also never run in reverse, and this test covers them too. `fingerprint()` hashes columns and triggers only, so it cannot see the engine, charset and index changes of `20260710181528`, `20260710200000` and `20260913205636` (found in #2167)
 
+### `tests/playwright/admin-verification-dashboard.spec.js` (test coverage)
+
+- [ ] No test covers the queue and activity forms binding when the switch is absent (#2457). The probe-failure path needs a failing DB (see the note at L267) (found in /flow:finish-milestone v2.31.0)
+
 ### `tests/playwright/car-edit-text-save.spec.js` (test-only, no estimate)
 
 - [ ] The `action=fetchImages`/`action=removeImages` string match used to filter `save.php` route interception (5 call sites, e.g. ~line 985) checks for the literal substring `action=fetchImages` in the raw POST body. The real body is `multipart/form-data`, where the field looks like `name="action"\r\n\r\nfetchImages`, so the substring check can never match. Each site is safe today only because of request-timing luck (the matched call runs before the route is registered, or no other `save.php` call happens in that window) — found during #2295's review. Switch each to `postData.includes('fetchImages')` / `includes('removeImages')` (or parse the multipart `action` field) so the filter is correct on its own, not by accident of timing. (found in #2295)
@@ -199,6 +210,10 @@ after an item is written.
 ### `tests/unit/admin/VerificationBatchSizeFieldRenderTest.php` + `tests/unit/admin/VerificationStatusPanelRenderTest.php` + `tests/unit/regression/Issue2184VerificationTagRegressionTest.php` (test-only)
 
 - [ ] Each file has its own copy of the include-and-capture harness (error handler, `ob_start()`, path override) and the `DOMXPath` loader. Move them to one shared trait in `tests/Support/` and use it in all three (found in #2457)
+
+### `tests/unit/api/ApiResponseTest.php` (test quality)
+
+- [ ] `testBuildAndEmitHeadersDiscardsBuffersAboveTheFloor` opens one buffer above the floor, so a `while` to `if` change in `buildAndEmitHeaders()` still passes. Open two or three nested buffers (found in /flow:finish-milestone v2.31.0)
 
 ### `tests/unit/cars/services/AdminVerificationQueueUrlStateTest.php` (test quality)
 
@@ -242,6 +257,10 @@ after an item is written.
 ### `usersc/classes/AccountDeletionPrivacyStep.php`
 
 - [ ] The profile delete (~L124-127) runs raw SQL while every other stage goes through `CarRepository`. Move it to a `CarRepository::deleteProfile()` method (found in /finish-milestone v2.30.10)
+
+### `usersc/classes/Car/CarAdministrationService.php`
+
+- [ ] The merge path keeps an `error_log()` before `rollback()` against the #2561 no-guard policy. Add one line that says why: it is the only trace of moved files (found in /flow:finish-milestone v2.31.0)
 
 ### `usersc/classes/Car/CarRepository.php`
 
@@ -302,7 +321,7 @@ after an item is written.
 
 ### `usersc/classes/Email/BrevoApiFactory.php`
 
-- [ ] The `reason` key of `readApiKey()` and `loadSdk()` never varies within each method. Use `cause !== null` as the failure test, define `no_api_key` and `no_sdk` only in `BrevoUnblockResult`, and drop the `REASON_*` aliases. Do it together with moving `BrevoEventReconciliationClient` onto the factory (found in #2426)
+- [ ] The `reason` key of `readApiKey()` and `loadSdk()` never varies within each method. Use `cause !== null` as the failure test, define `no_api_key` and `no_sdk` only in `BrevoUnblockResult`, and drop the `REASON_*` aliases. Do it together with moving `BrevoEventReconciliationClient` onto the factory, and keep its `readiness()` mapping: table absent and key not set give NOT_CONFIGURED, every other cause gives FAILED (found in #2426, mapping note from /flow:finish-milestone v2.31.0)
 - [ ] Replace the `array{reason, cause, detail}` returns of `readApiKey()` and `loadSdk()` with two small readonly result types (or PHPStan shape aliases) (found in /finish-milestone v2.30.9)
 - [ ] No test calls `readApiKey()` directly. Add `tests/unit/classes/Email/BrevoApiFactoryTest.php` with `SendinblueSettingsFakeDatabase`: success, key not set, `42S02` and `HY000`, each with the `sqlState` value (found in #2488)
 
@@ -369,6 +388,11 @@ after an item is written.
 ### `usersc/classes/Transfer/CarTransferRepository.php`
 
 - [ ] Add PHPStan `@return` object shapes to `findById`, `findPendingById`, `findPendingWithCarById`, `getPendingWithCarAndUsers`, `getTodayStatusCounts`. This removes the 52 level-7 `property.notFound` errors in `tab-car_mgmt.php` (from #1532)
+
+### `usersc/classes/Transfer/TransferEmailService.php` + `usersc/classes/Transfer/TransferNoticeOutcome.php`
+
+- [ ] Make `sendAdminAlert()`'s `$ownerNotice` required. The default `TransferNoticeOutcome::Sent` hides the Owner Not Notified box for a caller that forgets it. The one caller passes it (found in /flow:finish-milestone v2.31.0)
+- [ ] `TransferNoticeOutcome` is string-backed, but nothing calls `from()` or `tryFrom()`. Drop the backing unless logs or JSON need the value (found in /flow:finish-milestone v2.31.0)
 
 ### `usersc/classes/admin/BackupManager.php` (est. −65)
 
