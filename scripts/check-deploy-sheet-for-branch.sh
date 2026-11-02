@@ -23,6 +23,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# The sheet and stamp paths are relative to the repo root.
+TOPLEVEL="$(git rev-parse --show-toplevel)" || {
+  echo "Not inside a git work tree — cannot verify the deploy sheet." >&2
+  exit 2
+}
+cd "$TOPLEVEL"
+
 BRANCH="$(git branch --show-current)" || {
   echo "Could not read the current branch — cannot verify the deploy sheet." >&2
   exit 2

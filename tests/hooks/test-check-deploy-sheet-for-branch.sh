@@ -78,5 +78,14 @@ echo "<?php" > database/migrations/20990101000000_x.php
 git add database
 git commit -q -m "migration"
 expect_status 1 "Case 6: new migration after stamp -> exit 1" "database/migrations/20990101000000_x.php"
+expect_status 1 "Case 6b: stale sheet -> render pointer" "Render the sheet and its stamp again"
+
+# --- Case 7: run from a subdirectory -> paths still resolve --------------
+git rev-parse "milestone/${VERSION}" > "${SHEET}.sha"
+(cd database/migrations && expect_status 0 "Case 7: run from a subdirectory -> exit 0" "still the branch tip")
+
+# --- Case 8: detached HEAD -> 2 ------------------------------------------
+git checkout -q --detach
+expect_status 2 "Case 8: detached HEAD -> exit 2" "is not milestone/v<version>"
 
 harness_report

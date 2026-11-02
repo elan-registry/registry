@@ -13,6 +13,7 @@ Admins can trust what the verification and email tools report, also when a task 
 ## Admin-Facing Changes
 
 - Cron health checks now report send outages correctly. ([#2480](https://github.com/elan-registry/registry/issues/2480))
+- The failed-send log names connection errors and plugin faults. ([#2466](https://github.com/elan-registry/registry/issues/2466))
 - A block or bounce stays set on a new owner email after verification. ([#2411](https://github.com/elan-registry/registry/issues/2411))
 - Clear Block tells the admin to check the logs when the email service fails, not to retry. ([#2488](https://github.com/elan-registry/registry/issues/2488))
 - The Verification tab shows "Unavailable" when it cannot read a value, not a guessed status. ([#2457](https://github.com/elan-registry/registry/issues/2457))
@@ -24,7 +25,7 @@ Admins can trust what the verification and email tools report, also when a task 
 - [#2515](https://github.com/elan-registry/registry/issues/2515) — A failed commit no longer skips the rollback, and the privacy step logs it as unknown state.
 - [#2466](https://github.com/elan-registry/registry/issues/2466) — The verification failed-send log names connection errors and plugin precondition failures.
 - [#2529](https://github.com/elan-registry/registry/issues/2529) — The paused-email notice names an admin block set after a Clear Block.
-- [#2480](https://github.com/elan-registry/registry/issues/2480) — Cron runs report the correct outcome in four failure cases.
+- [#2480](https://github.com/elan-registry/registry/issues/2480) — Cron runs report the correct outcome when Brevo or the send fails.
 - [#2411](https://github.com/elan-registry/registry/issues/2411) — An admin email edit no longer lets a later verification clear the owner's block and bounce.
 - [#2488](https://github.com/elan-registry/registry/issues/2488) — Clear Block reports a broken Brevo SDK instead of telling the admin to retry.
 - [#2457](https://github.com/elan-registry/registry/issues/2457) — The Verification tab shows fault states as faults, not guessed values.
