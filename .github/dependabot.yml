@@ -62,6 +62,10 @@ updates:
       time: "04:00"
       timezone: "America/Los_Angeles"
     open-pull-requests-limit: 5
+    # Production runs MySQL 8.x on the host, so dev stays on the 8.x line.
+    ignore:
+      - dependency-name: "mysql"
+        update-types: ["version-update:semver-major"]
     labels:
       - "dependencies"
     commit-message:

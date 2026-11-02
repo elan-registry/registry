@@ -86,6 +86,6 @@
     "fsevents@2.3.2": true
   },
   "overrides": {
-    "smol-toml": "1.8.0"
+    "re2js": "2.8.7"
   }
 }
