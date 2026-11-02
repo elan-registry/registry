@@ -1,26 +1,22 @@
 # Elan Registry v2.31.0 Release Notes
 
-**Release Date:** [DATE]
+**Release Date:** TBD
 **Type:** Minor Release - Verification and Email Follow-ups
 
-Admins can trust what the verification and email tools report, also when a
-write, a commit, or a cron run fails. No owner gets mail that a block or
-bounce should stop.
+Admins can trust what the verification and email tools report, also when a task fails. Owners no longer get mail that a block or bounce should stop.
 
 ## User-Facing Changes
 
-- The paused-email notice on the account page names an admin block that comes back after a Clear Block.
-- The car verification page shows the car's photos and location map, as the car details page does.
+- The paused-email notice on the account page now shows an admin block set after a Clear Block. ([#2529](https://github.com/elan-registry/registry/issues/2529))
+- The car verification page shows the car's photos and location map. ([#2495](https://github.com/elan-registry/registry/issues/2495))
 
 ## Admin-Facing Changes
 
-- The account-deletion privacy log shows the SQLSTATE and the place of the error, and logs a failed commit as "transaction state unknown".
-- The verification failed-send log names a plugin precondition failure, or a connection error with its cURL number when known.
-- Cron health checks report send outages correctly, and an event with a bad date no longer re-blocks a cleared owner.
-- After an admin edits an owner's email, a block or bounce for the new address stays set after verification.
-- Clear Block reports a Brevo plugin fault and tells the admin to check the logs, not to try again.
-- The Verification tab shows "Unavailable" when it cannot read a setting, and does not show "All healthy" for an unreadable job.
-- The transfer request admin alert says when the current owner got no notice of the request.
+- Cron health checks now report send outages correctly. ([#2480](https://github.com/elan-registry/registry/issues/2480))
+- A block or bounce stays set on a new owner email after verification. ([#2411](https://github.com/elan-registry/registry/issues/2411))
+- Clear Block tells the admin to check the logs when the email service fails, not to retry. ([#2488](https://github.com/elan-registry/registry/issues/2488))
+- The Verification tab shows "Unavailable" when it cannot read a value, not a guessed status. ([#2457](https://github.com/elan-registry/registry/issues/2457))
+- The transfer request alert says when the current owner got no notice of the request. ([#2476](https://github.com/elan-registry/registry/issues/2476))
 
 ## Issues Resolved
 
