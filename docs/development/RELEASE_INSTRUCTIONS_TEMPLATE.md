@@ -1,10 +1,10 @@
 # Release Instructions Template
 
-`/finish-milestone` renders this file into `docs/plans/releases/<version>-deploy.md`
-early — before the milestone PR even exists — so the user can review the
-deploy procedure before `/release-milestone` ever runs. `/review-milestone`
-and `/release-milestone` both reuse that same rendered file rather than
-generating their own; the rendered copy is **not committed** (it names hosts
+You render this file into `docs/plans/releases/<version>-deploy.md` before
+`/flow:finish-milestone` runs (see "Render the sheet"), so you can review the
+deploy procedure before the milestone PR exists. The milestone checks stop
+`/flow:finish-milestone` and `/flow:release-milestone` when that sheet is
+missing or stale. The rendered copy is **not committed** (it names hosts
 and paths that stay out of the public repo). The template is the single
 owner of the release sequence; the mechanics it relies on live in
 [DEPLOYMENT.md](DEPLOYMENT.md).
@@ -59,6 +59,48 @@ command, SQL statement and crontab line in a fenced block (Notes renders these
 as a grey box; a bare `*/10 * * * *` italicises); no `---` rules (they render
 as a stub); no inline backticks in prose (they render as pink highlights);
 and at least one `- [ ]` item under every step so each step is tickable.
+
+## Render the sheet
+
+Render the sheet by hand before you run `/flow:finish-milestone <version>`.
+The devkit flow plugin has no step that renders it
+([unibrain1/devkit#83](https://github.com/unibrain1/devkit/issues/83)).
+`scripts/check-deploy-sheet-for-branch.sh` is the `milestone_checks` and
+`release_checks` command in `.claude/project.md`. It only checks the sheet.
+It stops `/flow:finish-milestone` at Step 3.5 and `/flow:release-milestone`
+at Step 4 when the sheet or its stamp is missing or stale.
+
+1. Check out `milestone/<version>` and pull it.
+2. Collect the mechanical inputs:
+
+   ```bash
+   scripts/render-deploy-sheet.sh <version>
+   ```
+
+   Exit 2 means the script could not diff. Fix the branch reference and run
+   it again. For `migration-modified: CHECK`, see the note above the
+   condition table.
+3. Read the body of each merged issue PR
+   (`gh pr list --base milestone/<version> --state merged`). Look for a
+   manual deployment or verification procedure. This is the
+   `release-actions` condition. The release notes never hold it.
+4. Read `.claude.local.md`, "Deployment hosts", for the placeholders. If the
+   section is missing, copy it from `.claude.local.md.example`.
+5. Render this template as the "Rendering rules" say. Write the result to
+   `docs/plans/releases/<version>-deploy.md`. Overwrite an earlier sheet.
+   Never edit a rendered sheet piece by piece.
+6. Write the stamp:
+
+   ```bash
+   git rev-parse "milestone/<version>" > "docs/plans/releases/<version>-deploy.md.sha"
+   ```
+
+7. Read the sheet in the file. Do not paste it into a chat, an issue, or a
+   PR. It names SSH hosts and docroots.
+
+Render the sheet and its stamp again when the check reports it stale. Only
+a change to a deploy input makes it stale (see
+[scripts/README.md](../../scripts/README.md#check-deploy-sheet-freshsh)).
 
 ---
 

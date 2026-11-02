@@ -247,9 +247,8 @@ See <https://github.com/unibrain1/devkit>.
 
 ### check-deploy-sheet-fresh.sh
 
-Checks whether the rendered deploy sheet is stale. `/finish-milestone`
-(Step 6.6 skip rule and Step 10), `/review-milestone` Step 4 and
-`/release-milestone` Step 4 call it.
+Checks whether the rendered deploy sheet is stale.
+`check-deploy-sheet-for-branch.sh` calls it.
 
 ```bash
 scripts/check-deploy-sheet-fresh.sh v2.30.5
@@ -280,6 +279,28 @@ scripts/check-deploy-sheet-fresh.sh v2.30.5
 | 2 | Cannot verify: no stamp, an unreadable stamp, a bad stamp, a commit or branch that does not resolve, or a failed `git` command. Never treat it as fresh or stale. |
 
 The hermetic test is `tests/hooks/test-check-deploy-sheet-fresh.sh`.
+
+### check-deploy-sheet-for-branch.sh
+
+The `milestone_checks` and `release_checks` command in `.claude/project.md`.
+`/flow:finish-milestone` Step 3.5 and `/flow:release-milestone` Step 4 run
+it on `milestone/<version>`. The devkit passes no version, so the script
+reads it from the branch name. It then runs
+`check-deploy-sheet-fresh.sh <version>`.
+
+```bash
+scripts/check-deploy-sheet-for-branch.sh
+```
+
+It does not render the sheet. Render the sheet and its stamp by hand first
+([RELEASE_INSTRUCTIONS_TEMPLATE.md](../docs/development/RELEASE_INSTRUCTIONS_TEMPLATE.md#render-the-sheet)).
+The devkit gap is
+[unibrain1/devkit#83](https://github.com/unibrain1/devkit/issues/83).
+
+Exit codes are the same as `check-deploy-sheet-fresh.sh`. It also exits 2
+when the branch is not `milestone/v<version>` or the sheet file is missing.
+
+The hermetic test is `tests/hooks/test-check-deploy-sheet-for-branch.sh`.
 
 ## Database
 

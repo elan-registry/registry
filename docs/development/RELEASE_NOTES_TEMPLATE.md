@@ -59,7 +59,7 @@ When generating release notes:
    `/finish-milestone` runs.
 4. **Deployment steps do not go here.** Migrations, new env vars,
    admin-script/permission registration, and manual verification runbooks
-   belong in the deploy sheet — rendered by `/finish-milestone` at
+   belong in the deploy sheet — rendered by hand at
    `docs/plans/releases/<version>-deploy.md` from
    `RELEASE_INSTRUCTIONS_TEMPLATE.md` — not in this file. This file is a
    changelog index; the deploy sheet is the operational procedure.

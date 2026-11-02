@@ -6,8 +6,8 @@
 # fails the ref may be stale and a warning is printed; local main otherwise).
 # It does not render the template itself — deciding which PRs document a
 # manual verification procedure (the "release-actions" condition) needs
-# reading PR bodies and judgment, which stays a model step in
-# /finish-milestone Step 6.6.
+# reading PR bodies and judgment, which stays a manual step
+# (docs/development/RELEASE_INSTRUCTIONS_TEMPLATE.md, "Render the sheet").
 #
 # Usage: scripts/render-deploy-sheet.sh <version>
 #   <version> — the milestone name, e.g. v2.30.0 (branch milestone/<version>
