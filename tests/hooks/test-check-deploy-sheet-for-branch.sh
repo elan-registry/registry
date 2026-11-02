@@ -82,7 +82,10 @@ expect_status 1 "Case 6b: stale sheet -> render pointer" "Render the sheet and i
 
 # --- Case 7: run from a subdirectory -> paths still resolve --------------
 git rev-parse "milestone/${VERSION}" > "${SHEET}.sha"
-(cd database/migrations && expect_status 0 "Case 7: run from a subdirectory -> exit 0" "still the branch tip")
+# Not a subshell: harness counters set in a subshell are lost.
+cd database/migrations || exit 1
+expect_status 0 "Case 7: run from a subdirectory -> exit 0" "still the branch tip"
+cd "$REPO" || exit 1
 
 # --- Case 8: detached HEAD -> 2 ------------------------------------------
 git checkout -q --detach
