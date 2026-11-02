@@ -86,6 +86,6 @@
     "fsevents@2.3.2": true
   },
   "overrides": {
-    "re2js": "2.8.7"
+    "re2js": "^2.8.7"
   }
 }
