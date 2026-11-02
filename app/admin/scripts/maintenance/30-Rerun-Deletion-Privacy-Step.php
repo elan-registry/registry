@@ -185,16 +185,17 @@ $userIdRejected = $is_exec && $targetUserId === false;
                                     } else {
                                         // A new outcome must get its own arm. It must never show "Committed".
                                         throw new \LogicException(sprintf(
-                                            'The rerun page has no arm for the privacy step outcome %s.',
+                                            'The rerun page has no arm for the privacy step outcome %s: check er_email_events, plg_sendinblue_messages and profiles rows before a rerun.',
                                             $result->outcome->name
                                         ));
                                     }
                                 } catch (\Throwable $e) {
                                     // The exception message can contain an address, so the log gets a summary without the message and the page gets the class only.
+                                    // The LogicException above holds only fixed text and an outcome name, so its message is safe to log.
                                     logger($adminId, LogCategories::LOG_CATEGORY_FIX_SCRIPT_ERROR, sprintf(
                                         'Deletion privacy step rerun failed for user %d: %s',
                                         $targetUserId,
-                                        ExceptionLogSummary::of($e)
+                                        $e instanceof \LogicException ? $e->getMessage() : ExceptionLogSummary::of($e)
                                     ));
                                     ?>
                                     <div class="alert alert-danger mb-0">

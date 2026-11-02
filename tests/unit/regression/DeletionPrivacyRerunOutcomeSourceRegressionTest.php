@@ -92,7 +92,9 @@ final class DeletionPrivacyRerunOutcomeSourceRegressionTest extends TestCase
     private static function everyBareElseThrows(string $code): bool
     {
         $bare = preg_match_all('/\}\s*else\s*\{/', $code);
-        $throwing = preg_match_all('/\}\s*else\s*\{\s*throw new \\\\LogicException\(/', $code);
+        // Statements may come before the throw (for example a log line), but
+        // no block may open: the throw must be in the else block itself.
+        $throwing = preg_match_all('/\}\s*else\s*\{[^{}]*?throw new \\\\LogicException\(/', $code);
 
         return $bare === $throwing;
     }
@@ -159,5 +161,7 @@ final class DeletionPrivacyRerunOutcomeSourceRegressionTest extends TestCase
     {
         $this->assertFalse(self::everyBareElseThrows('if ($a) { x(); } else { y(); }'));
         $this->assertTrue(self::everyBareElseThrows('if ($a) { x(); } else { throw new \LogicException(\'no arm\'); }'));
+        $this->assertTrue(self::everyBareElseThrows('if ($a) { x(); } else { logger(1, 2, sprintf(\'%s\', 3)); throw new \LogicException(\'no arm\'); }'));
+        $this->assertFalse(self::everyBareElseThrows('if ($a) { x(); } else { y(); } if ($b) { throw new \LogicException(\'later\'); }'));
     }
 }

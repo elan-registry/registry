@@ -3261,11 +3261,12 @@ step returns a reason code, so each caller logs in its own category.
 - `createApi(string $apiKey): object` - Returns a
   `\Brevo\Client\Api\TransactionalEmailsApi` (PHPDoc type). The native type
   is `object`, so a double works when the SDK is absent. Builds the API
-  object with a 30-second timeout and a 10-second connect timeout. It applies `BrevoDevOverride::hostOverride()`. Call `loadSdk()` first
+  object with a 30-second timeout and a 10-second connect timeout. It
+  applies `BrevoDevOverride::hostOverride()`. Call `loadSdk()` first
 
-**Used By**: `BrevoSuppressionSyncClient` (its `createApi()` seam calls the
-factory. With a key set, a missing autoloader logs `CronJobFailure`),
-`BrevoBlocklistClient`
+**Used By**: `BrevoSuppressionSyncClient` and `BrevoBlocklistClient`. The
+suppression client's `createApi()` seam calls the factory. With a key set, a
+missing autoloader logs `CronJobFailure`.
 
 **See Also**: `BrevoDevOverride`
 

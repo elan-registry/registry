@@ -148,7 +148,9 @@ final class AccountDeletionPrivacyStep
             $commitFailed = $stage === 'commit';
             $outcome = $commitFailed ? 'transaction state unknown' : 'rolled back';
             try {
-                // Unlike the #2561 policy, this guards rollback(): a rollback that throws must not escape, because the caller must still run the car cleanup.
+                // Exception to the no-guard rule in ERROR_HANDLING.md: a
+                // rollback() that throws must not escape, because the caller
+                // must still run the car cleanup.
                 $this->repo->rollback();
             } catch (\Throwable $rollbackError) {
                 $rollbackFailure = 'rollback failed: ' . ExceptionLogSummary::of($rollbackError);

@@ -406,9 +406,13 @@ comes from `CarDatabaseException::sqlState()` (#2359).
 **No guards around `logger()`, `rollback()` or database calls**: do not wrap
 them in `try`/`catch` (issues #2449 and #2561). They throw only when the database
 already failed the request, and a guard changes only the error page or the
-log line. Let the exception reach the caller. One exception exists:
-`AccountDeletionPrivacyStep` guards its `rollback()`, because the account
+log line. Let the exception reach the caller. The only intended exception is
+`AccountDeletionPrivacyStep`. It catches a failure of its whole transaction,
+guards its `rollback()`, and returns a result object, because the account
 deletion hook must still run the car cleanup after a failed privacy step.
+Older guards remain in `Owner.php`, `usersc/user_settings.php`,
+`app/verify/verify_car.php` and `EmailEventApplier.php`. The cleanup ledger
+lists them for removal. Do not copy them into new code.
 
 ### Exceptions
 

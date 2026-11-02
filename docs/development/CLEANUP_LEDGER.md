@@ -52,6 +52,10 @@ after an item is written.
 
 - [ ] Narrow 2 × `catch (Exception $e)` (~L29, 53) to the typed exceptions from `Car` and `CarTransferRepository` (from #1637)
 
+### `app/admin/includes/tab-verification.php`
+
+- [ ] `EffectiveEmailFlags::fromQueueRow()` runs inside the render loop, after `<tbody>` opens. A throw stops the page mid-table with no admin message and no `logger()` line. Build the flags with the queue rows and catch `\InvalidArgumentException` in the queue fault domain (found in /flow:finish-milestone v2.31.0)
+
 ### `app/admin/index.php`
 
 - [ ] `verification_send_batch` logs a rejected scalar `car_ids` value with `var_export()` and no length limit or control-character strip, so an admin can put CR/LF into the log line. Cut the value to a fixed length and remove `[\x00-\x1F\x7F]` before the log call (found in #2457)
@@ -60,6 +64,7 @@ after an item is written.
 ### `app/admin/scripts/maintenance/27-Reconcile-Brevo-Events.php` (test coverage)
 
 - [ ] No test renders the notConfigured info notice or the manual-run log suffix. Run the script with the `plg_sendinblue` key cleared and assert the notice and no success alert (found in /flow:finish-milestone v2.31.0)
+- [ ] After a partial poll failure the page shows the yellow warning and a green "Reconciliation completed" alert. Show the counts as partial results (`alert-secondary`) when `pollFailed` is true (found in /flow:finish-milestone v2.31.0)
 
 ### `app/api/cars/list.php`
 
@@ -180,6 +185,10 @@ after an item is written.
 
 - [ ] `testRepositorySqlHasNoMaxOverTheProfileFlagColumns` (~L151) and `testCarDetailsPageLoadsTheOwnerProfileStateForTheCard` (~L392) read source text with `file_get_contents()`. Replace them with behavior tests (found in #2330)
 
+### `tests/integration/cars/services/CarRepositoryProfileFlagReadersTest.php` (test coverage)
+
+- [ ] Only the `all` status checks the queue columns. Loop over `CarRepository::QUEUE_STATUSES` except `eligible` and call `EffectiveEmailFlags::fromQueueRow()` on each row (found in /flow:finish-milestone v2.31.0)
+
 ### `tests/integration/database/AddCronJobRunsLastFailureAtMigrationTest.php`
 
 - [ ] The class has its own copy of `phinxAdapter()` and `pdoForPhinx()`. Move it onto `MigrationSandboxTestCase` (from #2167), which binds the migration to its own schema, and delete the copy (found in #2167)
@@ -223,6 +232,10 @@ after an item is written.
 
 - [ ] `BrevoDevOverrideTest.php:198`: the fixture SDK keeps its host by design, so "survives setApiKey" cannot fail there; only the real-SDK test at :212 proves it, and it skips where the plugin vendor dir is missing (CI). (found in /finish-milestone v2.30.6)
 
+### `tests/unit/cron/BrevoSuppressionSyncClientTest.php` (test quality)
+
+- [ ] The "autoloader throws" case does not assert that the exception message stays out of the log. Assert that the message has no `broken` (found in /flow:finish-milestone v2.31.0)
+
 ### `tests/unit/cron/BrevoSuppressionSyncJobTest.php` (test quality)
 
 - [ ] `runWasMarkedFailed()` reads the private `AbstractCronJob::$runFailed` through reflection. When the job gets a healthcheck slug (#2586), assert the `/fail` ping through an injected pinger and delete the helper (found in /flow:finish-milestone v2.31.0)
@@ -243,6 +256,10 @@ after an item is written.
 ### `tests/unit/regression/JoinFailureReportUsesDedicatedRateLimitBucketRegressionTest.php`
 
 - [ ] Rename `testExactlyOneConfigEntryExistsPerAction`. It asserts presence, not uniqueness (from #2169)
+
+### `tests/unit/regression/VerificationTabSourceRegressionTest.php` (test quality)
+
+- [ ] `batchSizeComesFromStatus()` matches the first assignment only. Assert exactly one assignment to `$vsBatchSize`, with a negative control (found in /flow:finish-milestone v2.31.0)
 
 ### `tests/unit/security/AdminAjaxGuardTest.php`
 
@@ -274,6 +291,11 @@ after an item is written.
 ### `usersc/classes/Car/ClearBlockOutcome.php`
 
 - [ ] The constructor does not check that `stillBounced` and `stillOptedOut` are false when the kind did not clear. Throw `\InvalidArgumentException` when `!$kind->isCleared()` and either is true (found in /flow:finish-milestone v2.31.0)
+
+### `usersc/classes/Car/EffectiveEmailFlags.php`
+
+- [ ] `fromQueueRow()` checks that each column exists, not its value. A null or non-numeric flag casts to 0 (no flag). Reject null and values other than 0 or 1 for the four flag columns (found in /flow:finish-milestone v2.31.0)
+- [ ] `fromQueueRow()` throws a bare `\InvalidArgumentException`. Check ERROR_HANDLING.md for programmer-error exceptions, or use a typed one. Move `QUEUE_ROW_COLUMNS` to the top of the class (found in /flow:finish-milestone v2.31.0)
 
 ### `usersc/classes/Car/EmailEventMatch.php`
 
@@ -348,7 +370,7 @@ after an item is written.
 
 ### `usersc/classes/Owner.php` + `usersc/user_settings.php` + `app/verify/verify_car.php` + `usersc/classes/Car/EmailEventApplier.php`
 
-- [ ] The `try { logger() } catch { error_log('[ElanRegistry] ...') }` guard is copied at about 7 sites, the rollback guards included. Remove the guards and call `logger()` directly: `logger()` throws only when the database already failed the request (see #2449, #2561). Update `UserSettingsResumeVerificationEndpointTest`, which checks the "logger failed" text (found in #2393)
+- [ ] The `try { logger() } catch { error_log('[ElanRegistry] ...') }` guard is copied at about 7 sites, the rollback guards included. `Owner.php` (2 sites) and `EmailEventApplier.php` also wrap `rollback()` in `catch (\Throwable)`. Remove those too (see ERROR_HANDLING.md). Remove the guards and call `logger()` directly: `logger()` throws only when the database already failed the request (see #2449, #2561). Update `UserSettingsResumeVerificationEndpointTest`, which checks the "logger failed" text (found in #2393)
 
 ### `usersc/classes/OwnerView.php` + `app/admin/includes/tab-owner_mgmt.php` (est. −11)
 

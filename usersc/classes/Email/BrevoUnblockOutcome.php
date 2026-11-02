@@ -18,8 +18,11 @@ enum BrevoUnblockOutcome: string
     /** Brevo answered 2xx: it removed the address from its blocklist. */
     case Removed = 'removed';
 
-    /** Brevo answered 404: the address was not on its blocklist. */
-    // camelCase, not snake_case: it is the stable log string of the old constant.
+    /**
+     * Brevo answered 404: the address was not on its blocklist.
+     *
+     * The value is camelCase because log searches match this exact string.
+     */
     case NotBlocked = 'notBlocked';
 
     /** The unblock did not happen. {@see BrevoUnblockResult::$reason} tells why. */
