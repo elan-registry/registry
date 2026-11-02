@@ -58,7 +58,7 @@ final class Issue2184VerificationTagRegressionTest extends TestCase
             'lastFailureAt' => null,
         ];
         $vsStatus = new VerificationTabStatus(
-            false, true, $reason, true, null, 0, $job, $job, $job, null, ['count' => 0, 'recent' => []]
+            false, true, $reason, true, null, 0, $job, $job, $job, null, ['count' => 0, 'recent' => []], 5
         );
         $vsCanToggle = true;
 

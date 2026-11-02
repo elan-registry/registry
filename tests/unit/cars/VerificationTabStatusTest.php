@@ -35,18 +35,28 @@ class VerificationTabStatusProbeFakeDatabase extends CronJobRunsReaderFakeDataba
     /** When true, only the plg_sendinblue query throws, after the switch read worked. */
     public bool $throwOnBrevoPlugin = false;
 
+    /**
+     * er_verification_settings columns whose SELECT reports error() without a
+     * throw, as UserSpice DB::query() does for a failed execute.
+     *
+     * @var list<string>
+     */
+    public array $settingsErrorColumns = [];
+
     /** First bound parameter for which error() throws. Null means never. */
     public ?string $throwOnErrorForParam = null;
 
     private bool $lastWasSettings = false;
     private bool $lastWasFailureCount = false;
     private ?string $lastParam = null;
+    private string $lastSql = '';
 
     public function query(string $sql, array $params = []): self
     {
         $this->lastWasSettings     = stripos($sql, 'er_verification_settings') !== false;
         $this->lastWasFailureCount = stripos($sql, 'COUNT(*) AS cnt FROM logs') !== false;
         $this->lastParam           = isset($params[0]) ? (string) $params[0] : null;
+        $this->lastSql             = $sql;
 
         $isBrevoPlugin = stripos($sql, 'plg_sendinblue') !== false;
         if (($this->throwOnSettings && ($this->lastWasSettings || $isBrevoPlugin))
@@ -63,6 +73,13 @@ class VerificationTabStatusProbeFakeDatabase extends CronJobRunsReaderFakeDataba
     {
         if ($this->throwOnErrorForParam !== null && $this->lastParam === $this->throwOnErrorForParam) {
             throw new RuntimeException('simulated reader outage');
+        }
+        if ($this->lastWasSettings) {
+            foreach ($this->settingsErrorColumns as $column) {
+                if (stripos($this->lastSql, "SELECT {$column} FROM") !== false) {
+                    return true;
+                }
+            }
         }
 
         return parent::error();
@@ -136,6 +153,7 @@ final class VerificationTabStatusTest extends TestCase
             'autoSend'        => self::job(),
             'autoSendOutcome' => ['counts' => ['sent' => 3, 'skipped' => 2, 'failed' => 1], 'unreadable' => false],
             'failureLog'      => ['count' => 0, 'recent' => []],
+            'batchSize'       => 5,
         ];
 
         return new VerificationTabStatus(
@@ -149,7 +167,8 @@ final class VerificationTabStatusTest extends TestCase
             $v['suppressionSync'],
             $v['autoSend'],
             $v['autoSendOutcome'],
-            $v['failureLog']
+            $v['failureLog'],
+            $v['batchSize']
         );
     }
 
@@ -566,6 +585,7 @@ final class VerificationTabStatusTest extends TestCase
             'failures positive'    => [['failureLog' => ['count' => 1, 'recent' => []]]],
             'failure count null'   => [['failureLog' => ['count' => null, 'recent' => []]]],
             'failure log failed'   => [['failureLog' => null]],
+            'batch size unread'    => [['batchSize' => null]],
         ];
     }
 
@@ -1219,6 +1239,108 @@ final class VerificationTabStatusTest extends TestCase
             $status->featureSwitch(true)
         );
         $this->assertSame('Unavailable', self::badgesByKey($status)['cron']['badgeText']);
+    }
+
+    /**
+     * UserSpice DB::query() reports a failed execute through error() and does
+     * not throw. The switch and the batch size must then show "Unavailable",
+     * not the fail-closed defaults "off" and 5 (#2457).
+     */
+    #[Group('regression')]
+    public function test_read_switchAndBatchSizeQueriesFail_bothAreUnavailableAndTheTabIsNotHealthy(): void
+    {
+        $db = self::healthyJobsDb();
+        $db->settingsRow          = ['enabled' => 1, 'batch_size' => 12, 'unmatched_recipient_count' => 0];
+        $db->settingsErrorColumns = ['enabled', 'batch_size'];
+
+        $status = VerificationTabStatus::read($db, 7);
+
+        $this->assertFalse($status->probeFailed());
+        $this->assertNull($status->batchSize());
+        $this->assertTrue($status->featureSwitch(true)['unavailable']);
+        $this->assertFalse($status->allHealthy());
+        $this->assertLogged(
+            LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING,
+            'Failed to read er_verification_settings.batch_size'
+        );
+    }
+
+    /** A missing row is not a query failure, so the batch size is the default 5. */
+    public function test_read_settingsRowMissing_batchSizeIsTheDefault(): void
+    {
+        $db = self::healthyJobsDb();
+
+        $status = VerificationTabStatus::read($db, 7);
+
+        $this->assertSame(5, $status->batchSize());
+        $this->assertFalse($status->featureSwitch(true)['unavailable']);
+    }
+
+    public function test_read_storedBatchSizeReachesTheTab(): void
+    {
+        $db = self::healthyJobsDb();
+        $db->settingsRow = ['batch_size' => 12];
+
+        $this->assertSame(12, VerificationTabStatus::read($db, 7)->batchSize());
+    }
+
+    /** Only the batch size query failed: the badge must not be green next to "Unavailable". */
+    #[Group('regression')]
+    public function test_read_onlyBatchSizeQueryFails_isNotHealthyAndTheRestIsRead(): void
+    {
+        $db = self::healthyJobsDb();
+        $db->settingsRow          = [
+            'enabled'                   => 1,
+            'batch_size'                => 12,
+            'unmatched_recipient_count' => 0,
+            'last_cron_request_at'      => date('Y-m-d H:i:s'),
+        ];
+        $db->settingsErrorColumns = ['batch_size'];
+
+        $status = VerificationTabStatus::read($db, 7);
+
+        $this->assertNull($status->batchSize());
+        $this->assertTrue($status->featureSwitch(true)['checked']);
+        $this->assertFalse($status->allHealthy());
+        $this->assertTrue(self::makeStatus(['batchSize' => 12])->allHealthy(), 'Control: a read batch size is healthy');
+    }
+
+    /** A throw in the settings probe must not hide a batch size that can be read. */
+    #[Group('regression')]
+    public function test_read_brevoReadThrows_batchSizeIsStillRead(): void
+    {
+        $db = self::healthyJobsDb();
+        $db->settingsRow        = ['enabled' => 1, 'batch_size' => 12];
+        $db->throwOnBrevoPlugin = true;
+
+        $status = VerificationTabStatus::read($db, 7);
+
+        $this->assertTrue($status->probeFailed());
+        $this->assertSame(12, $status->batchSize());
+    }
+
+    #[Group('regression')]
+    public function test_read_batchSizeProbeThrows_isUnavailableAndLogsUnderConfigWarning(): void
+    {
+        $db = self::healthyJobsDb();
+        $db->throwOnSettings = true;
+
+        $status = VerificationTabStatus::read($db, 7);
+
+        $this->assertNull($status->batchSize());
+        $this->assertLogged(
+            LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING,
+            'Verification tab batch size probe failed [RuntimeException]: simulated settings outage'
+        );
+    }
+
+    /** An unread switch is not "off", so the Brevo row must not say "switch is off". */
+    public function test_brevoRow_switchNotReadAndBrevoNotReady_showsTheBrevoReason(): void
+    {
+        $row = self::row('brevo', ['enabled' => null, 'brevoReason' => 'No API key is saved in the Brevo plugin.']);
+
+        $this->assertSame('Not ready', $row['badgeText']);
+        $this->assertSame('No API key is saved in the Brevo plugin.', $row['detail']);
     }
 
     public function test_read_logsAreAttributedToTheActingUser(): void

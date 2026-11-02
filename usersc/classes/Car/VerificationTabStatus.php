@@ -24,8 +24,11 @@ use ElanRegistry\LogCategories;
  *
  * {@see self::read()} runs each probe in its own fault domain, so one failure
  * does not stop the other probes. A failed settings probe shows "Not ready"
- * on the Brevo row. The feature switch, the cron row and the unmatched row
- * show "Unavailable" only when the probe did not read their value.
+ * on the Brevo row. The feature switch, the cron row, the unmatched row and
+ * the Batch size field show "Unavailable" only when the probe did not read
+ * their value. A failed settings query also counts as "not read" for the
+ * switch and the batch size, because UserSpice `DB::query()` reports it
+ * through `error()` and does not throw.
  * {@see self::allHealthy()} lists which probe failures make the tab
  * unhealthy. An unreadable value is never shown as a green zero, because a
  * zero tells an admin to stop looking.
@@ -52,7 +55,8 @@ final readonly class VerificationTabStatus
     /**
      * @param bool                   $probeFailed         True when the VerificationSettings probe threw
      * @param bool|null              $enabled             The site-wide verification switch, or null when the
-     *                                                    settings probe threw before it read the switch
+     *                                                    settings probe threw before it read the switch or
+     *                                                    the switch query failed
      * @param string|null            $brevoNotReadyReason Admin-facing reason Brevo is not ready, or null when ready
      *                                                    or when the probe threw before it read the reason
      * @param bool|null              $cronReady           True when cron ran recently, or null when the
@@ -69,6 +73,8 @@ final readonly class VerificationTabStatus
      *        CronJobRunsReader::lastOutcomeCounts() result, or null when the probe threw
      * @param array{count: int|null, recent: list<array{loggedAt: string, message: string}>}|null $failureLog
      *        CronJobFailureLogReader::recentFailures() result, or null when the probe threw
+     * @param int|null               $batchSize           Configured batch size, or null when the batch size
+     *                                                    probe threw or its query failed
      */
     public function __construct(
         private bool $probeFailed,
@@ -81,7 +87,8 @@ final readonly class VerificationTabStatus
         private array $suppressionSync,
         private array $autoSend,
         private ?array $autoSendOutcome,
-        private ?array $failureLog
+        private ?array $failureLog,
+        private ?int $batchSize
     ) {}
 
     /**
@@ -107,7 +114,9 @@ final readonly class VerificationTabStatus
 
         try {
             $settings       = new VerificationSettings($db);
-            $enabled        = $settings->isEnabled();
+            // Null when the query failed: the switch then shows "Unavailable",
+            // not a guessed "off".
+            $enabled        = $settings->isEnabledOrNull();
             $brevoReason    = $settings->brevoNotReadyReason();
             $cronReady      = $settings->cronReady();
             $lastCronAt     = $settings->lastCronRequestAt();
@@ -118,6 +127,18 @@ final readonly class VerificationTabStatus
             $probeFailed = true;
             logger($userId, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING,
                 sprintf('Verification tab status probe failed [%s]: %s', get_class($e), $e->getMessage()));
+        }
+
+        // Its own fault domain, so a throw in the probe above does not hide a
+        // batch size that can be read. Null when the query failed: the Batch
+        // size field then shows "Unavailable", and no Save form can write a
+        // guessed value over the real setting (#2457).
+        $batchSize = null;
+        try {
+            $batchSize = (new VerificationSettings($db))->batchSizeOrNull();
+        } catch (\Throwable $e) {
+            logger($userId, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING,
+                sprintf('Verification tab batch size probe failed [%s]: %s', get_class($e), $e->getMessage()));
         }
 
         // The constructor only stores the handle, so it cannot throw.
@@ -169,7 +190,8 @@ final readonly class VerificationTabStatus
             $suppressionSync,
             $autoSend,
             $autoSendOutcome,
-            $failureLog
+            $failureLog,
+            $batchSize
         );
     }
 
@@ -179,6 +201,16 @@ final readonly class VerificationTabStatus
     public function probeFailed(): bool
     {
         return $this->probeFailed;
+    }
+
+    /**
+     * The configured batch size, or null when it could not be read
+     *
+     * Null tells the Batch size field to show "Unavailable" and no form.
+     */
+    public function batchSize(): ?int
+    {
+        return $this->batchSize;
     }
 
     /**
@@ -225,11 +257,13 @@ final readonly class VerificationTabStatus
 
     /**
      * True when the settings probe worked, the switch is on, Brevo is ready,
-     * cron runs, the unmatched and cron failure counts are 0, and the
-     * reconciliation and suppression sync states can be read
+     * cron runs, the unmatched and cron failure counts are 0, the batch size
+     * can be read, and the reconciliation and suppression sync states can be
+     * read
      *
      * A failed settings probe, an unreadable unmatched counter, an
-     * unreadable cron failure log and an UNREADABLE or MISSING
+     * unreadable batch size, an unreadable cron failure log and an
+     * UNREADABLE or MISSING
      * reconciliation or suppression sync state are not healthy. A paused
      * (DISABLED) job is an admin decision, so it stays healthy. A failed last
      * run already counts through the cron failure log. The automatic send
@@ -243,6 +277,7 @@ final readonly class VerificationTabStatus
             && $this->cronReady === true
             && $this->unmatchedCount === 0
             && $this->cronFailureCount() === 0
+            && $this->batchSize !== null
             && self::jobStateReadable($this->reconciliation['state'])
             && self::jobStateReadable($this->suppressionSync['state']);
     }
@@ -254,8 +289,8 @@ final readonly class VerificationTabStatus
      * blocked, so an admin can always stop verification in an incident.
      *
      * The switch is `unavailable` for every viewer only when the settings
-     * probe threw before it read the switch state. An unchecked switch would
-     * be a guess. When the probe read the switch state and a later read threw,
+     * probe threw before it read the switch state, or the switch query
+     * failed. An unchecked switch would be a guess. When the probe read the switch state and a later read threw,
      * the switch shows the real state, and an admin can still turn it off.
      * Turning on stays blocked, because the Brevo status is not known.
      *
@@ -519,7 +554,9 @@ final readonly class VerificationTabStatus
             return self::row('brevo', 'Brevo ready', 'Not ready', 'badge text-bg-danger', 'fa-exclamation-circle',
                 'The Brevo status could not be checked. Check the system log for VerificationConfigWarning.');
         }
-        if ($this->enabled !== true) {
+        // Only a switch that was read as off is "off". An unread switch falls
+        // through to the real Brevo reason.
+        if ($this->enabled === false) {
             return self::row('brevo', 'Brevo ready', 'Not checked (switch is off)', 'text-muted', 'fa-circle');
         }
 

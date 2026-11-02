@@ -2,7 +2,6 @@
 declare(strict_types=1);
 
 use ElanRegistry\Car\CarRepository;
-use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\Car\VerificationTabStatus;
 use ElanRegistry\Cron\CronJobEnabledState;
 use ElanRegistry\Cron\SendVerificationBatchJob;
@@ -98,23 +97,13 @@ $vsStatus = VerificationTabStatus::read(dbi(), $currentUserId);
 // ---------------------------------------------------------------------------
 /** @var array<int, object> $vsEligible */
 $vsEligible       = [];
-// Null means the read threw: the Batch size field then shows no form (#2457).
-// A failed query or a missing row does not throw. batchSize() returns 5 then.
-$vsBatchSize      = null;
+// Null means the read threw or its query failed: the Batch size field then
+// shows "Unavailable" and no form (#2457). A missing row is not a failure, so
+// it gives the default of 5. VerificationTabStatus::read() logged the fault,
+// and allHealthy() counts it.
+$vsBatchSize      = $vsStatus->batchSize();
 $vsEligibleError  = null;
 $vsEligibleLoadError = 'The list of eligible cars could not be loaded. Check the system log for details.';
-
-// Read before, and apart from, the eligible-car query below. The Batch size
-// field renders this value, so a preview-query failure must not stop that
-// render. One read also keeps batchSize() from logging the same fault twice.
-try {
-    $vsBatchSize = (new VerificationSettings(dbi()))->batchSize();
-} catch (\Throwable $e) {
-    // $vsBatchSize stays null, so the preview below is skipped and shows an
-    // error, not "no cars are due".
-    logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
-        'Verification tab: could not read the configured batch size: ' . $e->getMessage());
-}
 
 // Only the Eligible queue view shows this preview, so other views skip the query.
 if ($vsIsEligibleView && $verificationSendSvc !== null && $vsBatchSize !== null) {

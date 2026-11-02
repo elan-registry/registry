@@ -60,6 +60,7 @@ final class VerificationStatusPanelRenderTest extends TestCase
             'unmatched'      => 0,
             'reconciliation' => self::job(),
             'failureLog'     => ['count' => 0, 'recent' => []],
+            'batchSize'      => 5,
         ];
 
         return new VerificationTabStatus(
@@ -73,7 +74,8 @@ final class VerificationStatusPanelRenderTest extends TestCase
             self::job(),
             self::job(),
             ['counts' => ['sent' => 1, 'skipped' => 0, 'failed' => 0], 'unreadable' => false],
-            $v['failureLog']
+            $v['failureLog'],
+            $v['batchSize']
         );
     }
 
@@ -322,6 +324,9 @@ final class VerificationStatusPanelRenderTest extends TestCase
             'Brevo not ready, switch on, admin'     => [['brevoReason' => 'x'], true, 1],
             'switch not read, admin'                => [$unread, true, 1],
             'switch not read, editor'               => [$unread, false, 0],
+            // The switch query failed: no throw, so the probe did not fail.
+            'switch query failed, admin'            => [['enabled' => null], true, 1],
+            'switch query failed, editor'           => [['enabled' => null], false, 0],
             'switch read, later read threw, admin'  => [['probeFailed' => true, 'cronReady' => null], true, 1],
             'switch off, later read threw, admin'   => [['probeFailed' => true, 'enabled' => false, 'cronReady' => null], true, 1],
             'switch off, later read threw, editor'  => [['probeFailed' => true, 'enabled' => false, 'cronReady' => null], false, 0],

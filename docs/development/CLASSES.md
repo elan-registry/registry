@@ -1846,8 +1846,9 @@ other probes.
   and recent failure entries
 - `allHealthy()` is `false` when the settings probe failed, the switch is off,
   Brevo is not ready, cron is not running, the unmatched-recipient count is not
-  0 (or unreadable), the cron failure count is not 0 (or unreadable), or the
-  reconciliation or suppression sync job state is `UNREADABLE` or `MISSING`
+  0 (or unreadable), the cron failure count is not 0 (or unreadable), the
+  batch size is unreadable, or the reconciliation or suppression sync job
+  state is `UNREADABLE` or `MISSING`
 - `autoSendState()`, `autoSendLastRunAt()`, `autoSendBadge()`, `autoSendPaused()`,
   `autoSendLastRunFailed()`, `autoSendCounts()`, `autoSendCountsUnreadable()`,
   `autoSendNextEligibleAt()`, `autoSendDesiredState()` give the automatic send job
@@ -1863,25 +1864,30 @@ other probes.
 **Methods**:
 
 - `read(DatabaseInterface $db, int $userId): self` - Static factory; run all
-  status probes, each in its own try/catch. Logs a settings probe failure under
-  `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING` and a cron job probe failure under
-  `LOG_CATEGORY_CRON_JOB_FAILURE`
+  status probes, each in its own try/catch. Logs a settings probe failure and a
+  batch size probe failure under `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING` and
+  a cron job probe failure under `LOG_CATEGORY_CRON_JOB_FAILURE`
 - `probeFailed(): bool` - True when the VerificationSettings probe threw
+- `batchSize(): ?int` - The configured batch size, or `null` when the probe
+  threw or the query failed. The Batch size field then shows "Unavailable"
+  and no form (#2457)
 - `brevoReady(): bool` - True when Brevo is ready to send tagged mail: the
   settings probe did not fail and it gave no not-ready reason
 - `rows(): array` - Give the panel rows in render order. Each row is an associative
   array with `key`, `label`, `badgeText`, `badgeClass`, `icon`, `detail`,
   `detailIcon`, and `recent` (list of recent failure entries)
 - `allHealthy(): bool` - True when the settings probe worked, the switch is on,
-  Brevo is ready, cron runs, the unmatched count is 0, and the cron failure
-  count is 0. An unreadable counter or failure log is not healthy. A
+  Brevo is ready, cron runs, the unmatched count is 0, the cron failure
+  count is 0, and the batch size was read. An unreadable counter, failure
+  log or batch size is not healthy. A
   reconciliation or suppression sync state that is `UNREADABLE` or `MISSING`
   is not healthy. A paused (`DISABLED`) job stays healthy. The automatic send
   job state does not count
 - `featureSwitch(bool $canToggle): array` - Give the feature switch state for the
   panel. Returns `['checked' => bool, 'disabled' => bool, 'disabledReason' =>
   string, 'unavailable' => bool]`. When the settings probe threw before it
-  read the switch state, the state is unknown. The method then returns
+  read the switch state, or the switch query failed, the state is unknown.
+  The method then returns
   `unavailable` as `true`, `checked` as `false`, `disabled` as `true`, and a
   reason for every viewer. The panel then shows a red "Unavailable" badge and
   no switch. When the probe read the switch state and a later read threw, the
@@ -1974,7 +1980,12 @@ dependency exists between the two.
 
 **Methods**:
 
-- `isEnabled(): bool` - Whether verification is currently switched on
+- `isEnabled(): bool` - Whether verification is currently switched on;
+  `false` on a failed query or a missing row
+- `isEnabledOrNull(): ?bool` - Like `isEnabled()`, but `null` when the
+  settings query failed (UserSpice `DB::query()` reports it through
+  `error()` and does not throw). A missing row still gives `false`. The
+  admin Verification tab uses it to show "Unavailable" (#2457)
 - `setEnabled(bool $enabled, int $actingUserId = 0): bool` - Turn verification on or off
 - `brevoReady(): bool` - True only if `brevoNotReadyReason()` returns `null`:
   the plugin table is readable, the API key is saved, `plugins.ini.php` has
@@ -2015,6 +2026,10 @@ dependency exists between the two.
   (`er_verification_settings.batch_size`); fails closed to `5` on any read
   problem (#1884). Clamps a stored value outside `[1, 25]` to that range and
   logs a `VERIFICATION_CONFIG_WARNING` with the stored value (#2363)
+- `batchSizeOrNull(): ?int` - Like `batchSize()`, but `null` when the
+  settings query failed. A missing row still gives `5`. The admin
+  Verification tab uses it, so its Batch size form never shows, and a Save
+  never writes, a guessed value (#2457)
 - `setBatchSize(int $size, int $actingUserId = 0): bool` - Set the batch
   size, clamped to `[1, 25]` regardless of the submitted value; never throws
   (logs and returns `false` on a DB error or unconfirmed write) (#1885)

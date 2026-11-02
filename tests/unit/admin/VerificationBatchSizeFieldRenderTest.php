@@ -86,7 +86,10 @@ final class VerificationBatchSizeFieldRenderTest extends TestCase
 
         self::assertSame(1, self::nodeCount($xp, '//span[contains(@class, "badge") and contains(@class, "text-bg-danger")'
             . ' and normalize-space(.)="Unavailable"]'));
-        self::assertStringContainsString('The batch size could not be read. Check the system log.', self::text($xp));
+        self::assertStringContainsString(
+            'The batch size could not be read. Check the system log for VerificationConfigWarning entries.',
+            self::text($xp)
+        );
         self::assertSame(0, self::nodeCount($xp, '//form'), 'No viewer may get a Save form for an unread batch size');
         self::assertSame(0, self::nodeCount($xp, '//*[@id="verificationBatchSize"]'));
         self::assertStringNotContainsString('cars per run', self::text($xp));

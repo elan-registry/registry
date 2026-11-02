@@ -67,6 +67,11 @@ final class VerificationSettings
     private const BATCH_SIZE_MAX = 25;
 
     /**
+     * Batch size {@see batchSize()} returns when the settings row is missing or unreadable.
+     */
+    private const BATCH_SIZE_DEFAULT = 5;
+
+    /**
      * Minutes to fall back to for {@see cronStaleAfterSeconds()} if
      * `CRON_TRANSPORT_INTERVAL_MINUTES` (`usersc/includes/config.php`) is
      * somehow undefined. Matches that constant's current value exactly — this
@@ -144,11 +149,12 @@ final class VerificationSettings
      * by hand-rolling the query again.
      *
      * The two failure modes return the same `null` but are distinguishable via
-     * `$queryFailed`, set by reference. Callers need that not for their return
-     * value — every one of them fails closed identically either way — but to
-     * decide whether to add their own row-shape warning line, since the
-     * query-error line has already been written by then and this class has
-     * always logged exactly one line per failed read. Reporting it out here
+     * `$queryFailed`, set by reference. Every caller uses it to decide whether
+     * to add its own row-shape warning line, since the query-error line has
+     * already been written by then and this class has always logged exactly
+     * one line per failed read. {@see isEnabledOrNull()} and
+     * {@see batchSizeOrNull()} also use it to return null for a failed query
+     * and a default for a missing row. Reporting it out here
      * rather than having callers re-check `$this->db->error()` keeps the answer
      * tied to the read that produced it instead of to whatever state the
      * connection happens to be in afterwards.
@@ -160,7 +166,7 @@ final class VerificationSettings
      * @param string|null $errorSubject What the query-error line names as the thing
      *                                  it failed to read. Defaults to
      *                                  `er_verification_settings.<column>`.
-     *                                  {@see isEnabled()} passes the bare table name
+     *                                  {@see isEnabledOrNull()} passes the bare table name
      *                                  instead, preserving the exact wording that
      *                                  line has always had. Null here means "use the
      *                                  default"; passing `''` suppresses the line
@@ -300,36 +306,53 @@ final class VerificationSettings
      * Fails closed: a missing settings row or a failed query reports `false`
      * rather than throwing. This is the read path consulted on every page that
      * renders verification UI, and a database hiccup should hide the feature,
-     * not break the page.
+     * not break the page. A caller that must not show `false` as fact after a
+     * failed query uses {@see isEnabledOrNull()}.
      *
      * @return bool True if verification is enabled
      */
     public function isEnabled(): bool
     {
+        return $this->isEnabledOrNull() ?? false;
+    }
+
+    /**
+     * Whether the car verification system is switched on, or null when the query failed
+     *
+     * For the admin Verification tab, which must show "Unavailable" and not a
+     * guessed "off" when the settings query fails. UserSpice `DB::query()`
+     * reports a failed execute through `error()` and does not throw, so a
+     * caller cannot see that failure through {@see isEnabled()}.
+     *
+     * A missing row is not a query failure. It returns `false` and logs a
+     * warning, the same as {@see isEnabled()}.
+     *
+     * @return bool|null True if verification is enabled, or null if the query failed
+     */
+    public function isEnabledOrNull(): ?bool
+    {
         // The error line names the bare table, not `...enabled`, so pin the
         // subject rather than taking the helper's column-qualified default.
         $enabled = $this->readSettingsColumn('enabled', 'er_verification_settings', $queryFailed);
 
+        if ($queryFailed) {
+            // The helper has already logged the query error.
+            return null;
+        }
+
         if ($enabled === null) {
-            // Either the query failed (already logged by the helper) or the row
-            // / column is absent. The migration seeds id=1 and nothing in the
-            // app ever deletes it, so an absent row means the migration
-            // part-applied or the table was truncated/restored incompletely — a
-            // schema problem, not "switched off". Fail closed, but never
-            // silently: an admin trying to enable verification here would
-            // otherwise see a misleading Brevo-related rejection with no clue
-            // the real fault is a missing settings row.
-            //
-            // The helper logs the query-error case and stays quiet on the
-            // row-shape case, so this line fires only for the latter — the same
-            // one-line-per-failure output this method has always produced.
-            if (!$queryFailed) {
-                $this->logWarning(sprintf(
-                    'er_verification_settings row id=%d is missing — reporting verification OFF '
-                    . 'as a fail-closed default. Re-run `composer migrate` to reseed the row.',
-                    self::SETTINGS_ROW_ID
-                ));
-            }
+            // The migration seeds id=1 and nothing in the app ever deletes it,
+            // so an absent row means the migration part-applied or the table
+            // was truncated/restored incompletely — a schema problem, not
+            // "switched off". Fail closed, but never silently: an admin trying
+            // to enable verification here would otherwise see a misleading
+            // Brevo-related rejection with no clue the real fault is a missing
+            // settings row.
+            $this->logWarning(sprintf(
+                'er_verification_settings row id=%d is missing — reporting verification OFF '
+                . 'as a fail-closed default. Re-run `composer migrate` to reseed the row.',
+                self::SETTINGS_ROW_ID
+            ));
             return false;
         }
 
@@ -340,9 +363,11 @@ final class VerificationSettings
      * Number of verification emails the admin manual-send tool sends per batch
      *
      * Fails closed: a missing settings row or a failed query reports the default
-     * of 5 rather than throwing. This is the read path consulted by the admin
-     * verification-email send tool's batch-size preview, and a database hiccup
-     * should fall back to a conservative batch size, not break the page.
+     * of 5 rather than throwing. This is the read path consulted by the send
+     * job and the admin send handler, and a database hiccup should fall back to
+     * a conservative batch size, not break the job or the page. A caller that
+     * must not show 5 as fact after a failed query uses
+     * {@see batchSizeOrNull()}.
      *
      * {@see self::setBatchSize()} clamps to `[1, 25]` before it writes, but a
      * direct database write (a test fixture, a manual edit) can bypass it. The
@@ -353,24 +378,44 @@ final class VerificationSettings
      */
     public function batchSize(): int
     {
+        return $this->batchSizeOrNull() ?? self::BATCH_SIZE_DEFAULT;
+    }
+
+    /**
+     * Configured batch size, or null when the query failed
+     *
+     * For the admin Verification tab. Its editable Batch size field must not
+     * show the default 5 after a failed query, because a Save would then
+     * write 5 over the real setting (#2457). UserSpice `DB::query()` reports
+     * a failed execute through `error()` and does not throw, so a caller
+     * cannot see that failure through {@see batchSize()}.
+     *
+     * A missing row is not a query failure. It returns the default of 5 and
+     * logs a warning, the same as {@see batchSize()}.
+     *
+     * @return int|null Configured batch size in `[1, 25]`, 5 if the row is
+     *                  missing, or null if the query failed
+     */
+    public function batchSizeOrNull(): ?int
+    {
         $batchSize = $this->readSettingsColumn('batch_size', queryFailed: $queryFailed);
 
+        if ($queryFailed) {
+            // The helper has already logged the query error.
+            return null;
+        }
+
         if ($batchSize === null) {
-            // Same fail-closed rationale as isEnabled(): the migration seeds
-            // id=1 and nothing in the app ever deletes it, so an absent row
-            // means the migration part-applied or the table was
-            // truncated/restored incompletely — a schema problem, not "no
-            // batch size configured". Fail closed, but never silently. The
-            // helper has already logged the query-error case, so this line
-            // covers only the missing-row one.
-            if (!$queryFailed) {
-                $this->logWarning(sprintf(
-                    'er_verification_settings row id=%d is missing — reporting default batch '
-                    . 'size of 5. Re-run `composer migrate` to reseed the row.',
-                    self::SETTINGS_ROW_ID
-                ));
-            }
-            return 5;
+            // Same rationale as isEnabledOrNull(): an absent row is a schema
+            // problem, not "no batch size configured". Fail closed to the
+            // default, but never silently.
+            $this->logWarning(sprintf(
+                'er_verification_settings row id=%d is missing — reporting default batch '
+                . 'size of %d. Re-run `composer migrate` to reseed the row.',
+                self::SETTINGS_ROW_ID,
+                self::BATCH_SIZE_DEFAULT
+            ));
+            return self::BATCH_SIZE_DEFAULT;
         }
 
         $stored = (int) $batchSize;

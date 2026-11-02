@@ -504,11 +504,12 @@ The System Status panel shows 7 rows in this order:
 **Toggle Control:**
 
 - Located on the Verification System tab
-- If the settings probe threw before it read the switch state, the state is
-  unknown. The panel shows a `text-bg-danger` "Unavailable" badge
+- If the settings probe threw before it read the switch state, or the switch
+  query failed, the state is unknown. The panel shows a `text-bg-danger` "Unavailable" badge
   (`#verificationSwitchUnavailable`) and the reason "The switch state could
   not be read." The panel does not render `#verificationEnabledSwitch`. This
-  applies to every viewer, admin and editor.
+  applies to every viewer, admin and editor. An admin also sees the incident
+  steps.
 - If the probe read the switch state and a later read threw, the panel
   renders the switch with its real state. An admin can turn it off. Turning
   it on is blocked, because `brevoReady()` is false after a probe failure.

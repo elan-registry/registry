@@ -8,11 +8,12 @@ declare(strict_types=1);
  * tab-verification.php includes it inside the Batch size <dd>.
  *
  * Expects from the including scope:
- *   $vsBatchSize ?int, the configured batch size; null when the read threw
+ *   $vsBatchSize ?int, the configured batch size; null when the read threw or
+ *                its query failed
  *   $vsCanToggle bool, true when the viewer may change the batch size (admin)
  *   $csrfToken   string, the CSRF token for the Save form
  *
- * When the read threw, no viewer gets the form: a Save would post the
+ * When the read failed, no viewer gets the form: a Save would post the
  * placeholder value and overwrite the real setting (#2457).
  */
 
@@ -27,7 +28,8 @@ $vsBatchSizeEsc = static fn (string $value): string => htmlspecialchars($value, 
                     <i class="fas fa-exclamation-circle"></i>
                     Unavailable
                 </span>
-                <small class="text-muted ms-1">The batch size could not be read. Check the system log.</small>
+                <small class="text-muted ms-1">The batch size could not be read. Check the system log for
+                    VerificationConfigWarning entries.</small>
 <?php } elseif ($vsCanToggle) { ?>
                 <form action="index.php?tab=verification" method="POST" class="row g-2 align-items-center">
                     <input type="hidden" name="csrf" value="<?= $vsBatchSizeEsc($csrfToken) ?>">
