@@ -8,11 +8,11 @@ Admins can trust what the verification and email tools report, also when a task 
 ## User-Facing Changes
 
 - The paused-email notice on the account page now shows an admin block set after a Clear Block. ([#2529](https://github.com/elan-registry/registry/issues/2529))
-- The car verification page shows the car's photos and location map. ([#2495](https://github.com/elan-registry/registry/issues/2495))
+- The car verification pages show the car's photos and location map, and their page scripts now load. ([#2495](https://github.com/elan-registry/registry/issues/2495))
 
 ## Admin-Facing Changes
 
-- Cron health checks now report send outages correctly. ([#2480](https://github.com/elan-registry/registry/issues/2480))
+- Cron health checks now report send outages and Brevo setup faults. ([#2480](https://github.com/elan-registry/registry/issues/2480))
 - The failed-send log names connection errors and plugin faults. ([#2466](https://github.com/elan-registry/registry/issues/2466))
 - A block or bounce stays set on a new owner email after verification. ([#2411](https://github.com/elan-registry/registry/issues/2411))
 - Clear Block tells the admin to check the logs when the email service fails, not to retry. ([#2488](https://github.com/elan-registry/registry/issues/2488))

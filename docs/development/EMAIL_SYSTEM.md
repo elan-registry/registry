@@ -565,10 +565,10 @@ parts appear in this order, from top to bottom:
    send time is the first cron heartbeat after that time. **Send Batch Now**
    is a link to the Eligible queue view. It does not send. The send happens
    only when the admin presses **Send batch** in that view.
-   If the batch size read throws, the Batch size row shows a
-   `text-bg-danger` "Unavailable" badge and no Save form for every viewer.
-   The form would post a placeholder value over the real setting. A failed
-   query or a missing row does not throw: `batchSize()` returns 5 for those.
+   If the batch size read throws or its query fails, the Batch size row
+   shows a `text-bg-danger` "Unavailable" badge and no Save form for every
+   viewer. The form would post a placeholder value over the real setting. A
+   missing row does not fail: the row shows the default of 5.
 4. **Verification Queue.** One table with eight filter pills and the Window
    and Show controls. See [Verification Queue](#verification-queue).
 5. **Recent Activity.** The latest 20 `cars_hist` rows with operation

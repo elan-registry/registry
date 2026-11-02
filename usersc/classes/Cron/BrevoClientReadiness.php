@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace ElanRegistry\Cron;
 
 /**
- * BrevoClientReadiness - Outcome of BrevoEventReconciliationClient's pre-flight checks
+ * BrevoClientReadiness - Outcome of a Brevo cron client's pre-flight checks
  *
- * `fetchEvents()` returns null both when Brevo is not set up here and when
- * the settings read fails, so the reconciliation job cannot tell them apart.
+ * BrevoEventReconciliationClient::readiness() and
+ * BrevoSuppressionSyncClient::readiness() return it. A fetch returns null both
+ * when Brevo is not set up here and when the settings read fails, so a job
+ * cannot tell them apart from the fetch alone.
  * They call for opposite pings: an environment without Brevo is a valid
  * steady state and must ping success, while a failed read is a fault that
  * must ping `/fail`. The case matches the log category that the check
