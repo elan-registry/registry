@@ -236,11 +236,12 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
      * ({@see BrevoEventReconciliationClient::readiness()}). Its log line and
      * the ping agree:
      *
-     * - Brevo is not configured (no plg_sendinblue table, no key, or no SDK):
-     *   the client logs a `CronJobSkipped` line, no poll runs, and `run()`
-     *   pings success. The prune still runs.
-     * - The plg_sendinblue read or the SDK load failed: the client logs a
-     *   `CronJobFailure` line, no poll runs, and `run()` pings `/fail`.
+     * - Brevo is not configured (no plg_sendinblue table, or no key): the
+     *   client logs a `CronJobSkipped` line, no poll runs, the summary line
+     *   says so, and `run()` pings success. The prune still runs.
+     * - The plg_sendinblue read failed, or a key is set but the SDK is
+     *   absent or did not load: the client logs a `CronJobFailure` line, no
+     *   poll runs, and `run()` pings `/fail`.
      */
     protected function execute(): void
     {
@@ -257,11 +258,12 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
         // failed poll logs a line that reads as a quiet night with nothing
         // to backfill. fetchEvents() or readiness() already logs the specific
         // cause under CRON_JOB_FAILURE. This suffix only stops the summary line from
-        // reading as a false all-clear.
+        // reading as a false all-clear. The notConfigured suffix does the
+        // same for a site without Brevo, where no poll ran at all.
         logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
             'Brevo event reconciliation: incremental run complete —'
             . ' %d matched, %d unmatched, %d skipped, %d invalid address(es),'
-            . ' %d page(s) fetched%s%s.',
+            . ' %d page(s) fetched%s%s%s.',
             $summary->matchedCount,
             $summary->unmatchedCount,
             $summary->skippedCount,
@@ -270,6 +272,7 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
             $summary->pollFailed
                 ? ' — a Brevo poll failed or could not start, the affected events were not backfilled this cycle'
                 : '',
+            $summary->notConfigured ? ' — Brevo is not set up here, no poll ran' : '',
             // Without this clause the line above reads as a clean run while the
             // dashboard's unmatched-recipient counter silently under-reports.
             // Only the first failure logs its own cause (see countUnmatched()), so
@@ -376,10 +379,14 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
 
         // Checked once, not once per type: without it each of the type
         // polls repeats the same setup log line. readiness() writes the log
-        // line, so the job adds none.
+        // line, so the job adds none. Exhaustive match: a new readiness case
+        // must be handled here, not fall through to "no poll" silently.
         $readiness = $this->client->readiness();
-        $pollFailed = $readiness === BrevoClientReadiness::FAILED;
-        $eventTypes = $readiness === BrevoClientReadiness::READY ? self::EVENT_TYPES : [];
+        [$pollFailed, $notConfigured, $eventTypes] = match ($readiness) {
+            BrevoClientReadiness::READY => [false, false, self::EVENT_TYPES],
+            BrevoClientReadiness::NOT_CONFIGURED => [false, true, []],
+            BrevoClientReadiness::FAILED => [true, false, []],
+        };
 
         foreach ($eventTypes as $apiEventType => $eventName) {
             // fetchEvents() never throws. It logs a poll failure itself and
@@ -413,6 +420,7 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
             pagesFetched: $pagesFetched,
             pollFailed: $pollFailed,
             counterFailureCount: $counts['counterFailures'],
+            notConfigured: $notConfigured,
         );
     }
 

@@ -152,8 +152,9 @@ class BrevoBlocklistClient
      *
      * Only a missing autoloader file means that the SDK is not installed. An
      * autoloader that threw, or that did not define the API class, is a fault
-     * in an installed SDK, so the admin gets the plugin-fault text, not the
-     * setup text.
+     * in an installed SDK, so it gets its own reason in the log. This runs
+     * only after a key was found, so the admin gets the plugin-fault text for
+     * both reasons (see CarVerificationManager::clearBlockedForOwner()).
      *
      * @param string|null $cause The {@see BrevoApiFactory} `CAUSE_*` constant, or null
      * @param string $detail The factory's log-safe detail, or an empty string

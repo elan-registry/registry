@@ -922,8 +922,8 @@ So a missing modal fails closed. Each log row of these two actions records
 | Another user has the address as `users.email` (`CarRepository::findUserIdsByAddress()`) | No | Cleared | "... cleared of the block in the registry. Another account uses this address. The Brevo block stays." |
 | Address is the owner's current `users.email` and no other user has it | Yes | Cleared on 2xx or 404 | "... cleared of the block. Brevo no longer blocks this address." |
 | Same as above, and the Brevo call fails (not 404) | Yes | Not changed | "Brevo did not remove the block. Try again later." |
-| Same as above, and Brevo is not set up (no API key, or no SDK autoloader file). A failed query on the key also gives the text of the row above, with no call made | No | Not changed | "Brevo is not set up on this site, so the block was not removed. The registry flag did not change." |
-| Same as above, and the SDK is installed but does not load | No | Not changed | "Brevo did not remove the block because of a fault in the Brevo plugin. The registry flag did not change. Check the logs." |
+| Same as above, and Brevo is not set up (no API key). A failed query on the key also gives the text of the row above, with no call made | No | Not changed | "Brevo is not set up on this site, so the block was not removed. The registry flag did not change." |
+| Same as above, and a key is set but the SDK is missing or does not load | No | Not changed | "Brevo did not remove the block because of a fault in the Brevo plugin. The registry flag did not change. Check the logs." |
 
 The owner label replaces the "..." in the table. The rules
 keep the action from removing a Brevo block that belongs to another person.
@@ -1925,8 +1925,9 @@ verification switch off.
 - **Summary** (`ReconciliationSummary`): `matchedCount`, `unmatchedCount`,
   `skippedCount`, `eventTypeCounts` (keyed on the webhook event name),
   `eventsExamined`, `invalidAddressCount`, `pagesFetched` (one for each event
-  type whose poll succeeded), `pollFailed` and `counterFailureCount`. Each
-  count is per event. `eventsExamined` is not the sum of the other counts,
+  type whose poll succeeded), `pollFailed`, `counterFailureCount` and
+  `notConfigured` (Brevo is not set up here, so no poll ran, and script 27
+  shows an info notice in place of the result). Each count is per event. `eventsExamined` is not the sum of the other counts,
   because an event that is not ours, and an unmatched event without the tag,
   add to no count.
 - **Privacy.** No log line holds an address. A `catch` block logs the
@@ -2066,7 +2067,12 @@ sets `email_bounced`.
 **Two fetch modes:**
 
 - **Nightly incremental** (`execute()`, via the guarded `run()`) — one bounded
-  page over a 48-hour lookback window, matching #1889's shape.
+  page over a 48-hour lookback window, matching #1889's shape. It first calls
+  `BrevoSuppressionSyncClient::readiness()` (#2480). When Brevo is not set up
+  (no `plg_sendinblue` table, or no key), no poll runs and the run succeeds.
+  When the settings read fails, the SDK does not load with a key set, or the
+  poll fails, the job calls `markRunFailed()` and its summary line says
+  `incremental run FAILED`. See DEPLOYMENT.md, "What a `/fail` means".
 - **Manual full backfill** (`runFullBackfill()`, reachable only from the admin
   script's `runNowWithSummary()`, never from the scheduled path) — walks the
   entire suppression list with no date window, bounded by a page-count safety

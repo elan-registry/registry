@@ -1155,6 +1155,29 @@ final class BrevoEventReconciliationJobTest extends TestCase
             static fn (array $entry): bool => $entry['category'] === LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE
         );
         $this->assertSame([], array_values($failures), 'Not configured is not a job failure');
+        $summaryLines = array_values(array_filter(
+            $mockLogEntries ?? [],
+            static fn (array $entry): bool => str_contains($entry['message'], 'incremental run complete')
+        ));
+        $this->assertCount(1, $summaryLines);
+        $this->assertStringContainsString('Brevo is not set up here, no poll ran', $summaryLines[0]['message']);
+    }
+
+    /** A normal run's summary line does not claim that Brevo is not set up. */
+    public function testRunSummaryLineOmitsTheNotConfiguredPhraseWhenBrevoIsReady(): void
+    {
+        global $mockLogEntries;
+
+        $this->expectRepoCalls()->expects($this->once())->method('deleteEmailEventsOlderThan')->willReturn(0);
+
+        $this->makeJob([], $client)->run();
+
+        $summaryLines = array_values(array_filter(
+            $mockLogEntries ?? [],
+            static fn (array $entry): bool => str_contains($entry['message'], 'incremental run complete')
+        ));
+        $this->assertCount(1, $summaryLines);
+        $this->assertStringNotContainsString('not set up', $summaryLines[0]['message']);
     }
 
     /** A failed settings read is a real failure: the run pings /fail. */
@@ -1174,15 +1197,17 @@ final class BrevoEventReconciliationJobTest extends TestCase
             ->runNowWithSummary();
 
         $this->assertTrue($summary->pollFailed);
+        $this->assertFalse($summary->notConfigured, 'A failed read is a fault, not a site without Brevo');
         $this->assertSame(0, $client->fetchCalls);
         $this->assertSame(0, $summary->eventsExamined);
     }
 
-    public function testNotConfiguredLeavesPollFailedUnset(): void
+    public function testNotConfiguredSetsNotConfiguredAndLeavesPollFailedUnset(): void
     {
         $summary = $this->makeJob([new FakeBrevoEvent()], $client, readiness: BrevoClientReadiness::NOT_CONFIGURED)
             ->runNowWithSummary();
 
+        $this->assertTrue($summary->notConfigured);
         $this->assertFalse($summary->pollFailed);
         $this->assertSame(0, $summary->eventsExamined);
         $this->assertSame(0, $summary->pagesFetched);

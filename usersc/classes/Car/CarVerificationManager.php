@@ -630,10 +630,12 @@ class CarVerificationManager
                     $unblock->httpStatus() === null ? 'none' : (string) $unblock->httpStatus(),
                     $unblock->detail() ?? 'none'
                 ));
-                // A retry cannot fix a missing setup or a plugin fault.
+                // A retry cannot fix a missing setup or a plugin fault. The
+                // client reports REASON_NO_SDK only after it found a key, so
+                // a missing SDK is a plugin fault, not a missing setup.
                 return match ($unblock->reason()) {
-                    BrevoUnblockResult::REASON_NO_API_KEY,
-                    BrevoUnblockResult::REASON_NO_SDK => ClearBlockOutcome::brevoNotSetUp(),
+                    BrevoUnblockResult::REASON_NO_API_KEY => ClearBlockOutcome::brevoNotSetUp(),
+                    BrevoUnblockResult::REASON_NO_SDK,
                     BrevoUnblockResult::REASON_SDK_LOAD_FAILED => ClearBlockOutcome::brevoPluginFault(),
                     default => ClearBlockOutcome::brevoFailed(),
                 };

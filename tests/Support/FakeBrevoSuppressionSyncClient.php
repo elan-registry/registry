@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Support;
 
+use ElanRegistry\Cron\BrevoClientReadiness;
 use ElanRegistry\Cron\BrevoSuppressionSyncClient;
 
 /**
@@ -13,6 +14,10 @@ use ElanRegistry\Cron\BrevoSuppressionSyncClient;
  * Returns canned pages and records each call's arguments, so tests can assert
  * the window, page size, offset, and the paging loop's stop conditions. The
  * parent constructor is skipped: it needs a database only for the API key.
+ *
+ * readiness() returns the scripted `$readiness` (default READY), so a test
+ * can drive the job's "Brevo not set up" and "setup check failed" paths
+ * (#2480). It writes no log row; the real client's checks log.
  *
  * The real return type is the SDK model
  * `?\Brevo\Client\Model\GetTransacBlockedContacts`, and PHP enforces it on
@@ -41,9 +46,18 @@ class FakeBrevoSuppressionSyncClient extends BrevoSuppressionSyncClient
      *        Once the list is exhausted every further call returns null, so a
      *        job that pages further than the test scripted fails loudly on the
      *        poll-failure path rather than looping on a repeated last page.
+     * @param BrevoClientReadiness $readiness What readiness() returns
      */
-    public function __construct(private array $pages = [])
+    public function __construct(
+        private array $pages = [],
+        private BrevoClientReadiness $readiness = BrevoClientReadiness::READY
+    ) {
+    }
+
+    /** @return BrevoClientReadiness The scripted readiness, with no DB read and no log row. */
+    public function readiness(): BrevoClientReadiness
     {
+        return $this->readiness;
     }
 
     /**

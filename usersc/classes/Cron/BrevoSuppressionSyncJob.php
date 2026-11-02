@@ -367,14 +367,25 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
      * the page's {@see SuppressionSyncSummary} is logged and discarded rather
      * than returned: there is no caller here to hand it to, and the log line is
      * the only artifact an unattended run leaves behind.
+     *
+     * The Brevo setup check runs before the poll
+     * ({@see BrevoSuppressionSyncClient::readiness()}, #2480). Its log line,
+     * the summary line and the run's result agree:
+     *
+     * - Brevo is not set up (no plg_sendinblue table, or no key): the client
+     *   logs a `CronJobSkipped` line, no poll runs, and the run succeeds.
+     * - The plg_sendinblue read failed, or the key is set and the SDK is
+     *   absent or does not load: the client logs a `CronJobFailure` line, no
+     *   poll runs, and the job calls `markRunFailed()`.
+     * - The poll failed after a READY check: the client logs a
+     *   `CronJobFailure` line and the job calls `markRunFailed()`.
+     *
+     * The job has no healthcheck slug, so `markRunFailed()` sends no ping
+     * now. The call keeps the run's result correct for when a check is added.
      */
     protected function execute(): void
     {
-        $summary = $this->syncPage(
-            $this->now->modify('-' . self::LOOKBACK_HOURS . ' hours'),
-            $this->now,
-            self::PAGE_OFFSET
-        );
+        $readiness = $this->client->readiness();
 
         // Logged under EMAIL_WEBHOOK rather than either CRON_JOB_* category:
         // both of those are exception channels (a fault, or a deliberate
@@ -382,7 +393,33 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
         // there would dilute the one category an operator filters on to find
         // broken jobs. EMAIL_WEBHOOK is where every other Brevo email-event
         // observation from this subsystem already lands, so a suppression run's
-        // outcome sits alongside the events it acted on.
+        // outcome sits alongside the events it acted on. A failed run uses the
+        // same category: the client already logged the cause under
+        // CRON_JOB_FAILURE, and a second failure row would count it twice.
+        if ($readiness === BrevoClientReadiness::NOT_CONFIGURED) {
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, 'Brevo suppression sync: incremental run complete — Brevo is not set up here, no poll ran.');
+            return;
+        }
+
+        if ($readiness === BrevoClientReadiness::FAILED) {
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, 'Brevo suppression sync: incremental run FAILED — the Brevo setup check failed, no poll ran. See the CronJobFailure log entry for the cause.');
+            $this->markRunFailed();
+            return;
+        }
+
+        $summary = $this->syncPage(
+            $this->now->modify('-' . self::LOOKBACK_HOURS . ' hours'),
+            $this->now,
+            self::PAGE_OFFSET
+        );
+
+        // syncPage() counts 0 pages only when the poll returned null.
+        if ($summary->pagesFetched === 0) {
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, 'Brevo suppression sync: incremental run FAILED — the Brevo poll failed, no suppressions imported this cycle. See the CronJobFailure log entry for the cause.');
+            $this->markRunFailed();
+            return;
+        }
+
         logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
             'Brevo suppression sync: incremental run complete —'
             . ' %d matched, %d unmatched, %d already flagged, %d skipped,'

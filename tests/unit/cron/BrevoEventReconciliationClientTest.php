@@ -30,10 +30,43 @@ require_once __DIR__ . '/../../Support/SendinblueSettingsFakeDatabase.php';
 #[Group('fast')]
 final class BrevoEventReconciliationClientTest extends TestCase
 {
+    private ?string $sdkRoot = null;
+
     protected function setUp(): void
     {
         global $mockLogEntries;
         $mockLogEntries = [];
+    }
+
+    protected function tearDown(): void
+    {
+        if ($this->sdkRoot !== null) {
+            $dir = $this->sdkRoot . 'usersc/plugins/sendinblue/vendor';
+            @unlink($dir . '/autoload.php');
+            foreach ([$dir, dirname($dir), dirname($dir, 2), dirname($dir, 3), $this->sdkRoot] as $path) {
+                @rmdir($path);
+            }
+        }
+    }
+
+    /**
+     * Point loadSdk() at a fake site root that holds the given autoloader.
+     * Null: no autoloader file.
+     */
+    private function clientWithSdkAutoloader(?string $autoloaderSource): BrevoEventReconciliationClient
+    {
+        global $abs_us_root, $us_url_root;
+        $root = sys_get_temp_dir() . '/brevo-recon-sdk-' . bin2hex(random_bytes(4)) . '/';
+        $dir = $root . 'usersc/plugins/sendinblue/vendor';
+        $this->assertTrue(mkdir($dir, 0777, true));
+        $this->sdkRoot = $root;
+        if ($autoloaderSource !== null) {
+            file_put_contents($dir . '/autoload.php', $autoloaderSource);
+        }
+        $abs_us_root = $root;
+        $us_url_root = '';
+
+        return new BrevoEventReconciliationClient(new SendinblueSettingsFakeDatabase(key: 'test-api-key'));
     }
 
     private function fetch(SendinblueSettingsFakeDatabase $db): ?array
@@ -194,15 +227,67 @@ final class BrevoEventReconciliationClientTest extends TestCase
         }
     }
 
-    // NOTE: no test passes a valid key through the real createApi(). Where the
-    // Brevo SDK autoloads, that reaches the real `new GuzzleHttp\Client()` and
-    // makes a live HTTPS call to api.brevo.com. A unit test must not depend
-    // on the network, so the poll path is tested through the createApi() seam
-    // (#2480) and the READY case through a stub SDK class.
-    //
-    // loadSdk()'s "autoloader missing" and "autoloader throws" branches are
-    // still not unit-testable: the branch depends on whether a real file
-    // exists at a path fixed by a private class constant. They are single
-    // log-and-return statements, left to code review rather than reshaping
-    // the class to make a constant injectable purely for a test.
+    /**
+     * @return array<string, array{0: string|null, 1: string}>
+     */
+    public static function sdkLoadFailureProvider(): array
+    {
+        return [
+            'no autoloader file' => [null, 'SDK autoloader is not found'],
+            'autoloader throws' => ["<?php throw new \\RuntimeException('broken');", 'failed to load'],
+            'autoloader defines no API class' => ['<?php // empty', 'is still undefined'],
+        ];
+    }
+
+    /**
+     * With a key set, every SDK load fault is FAILED with one CronJobFailure
+     * row. A missing autoloader is not "not configured": a key means Brevo
+     * is meant to run here, so the job must `/fail`, not ping success.
+     *
+     * Separate process: the autoloader path comes from globals, and a loaded
+     * autoloader stays loaded for the rest of the process.
+     */
+    #[DataProvider('sdkLoadFailureProvider')]
+    #[RunInSeparateProcess]
+    public function testReadinessWithKeyAndSdkLoadFailureIsFailed(?string $autoloader, string $expectedMessage): void
+    {
+        global $mockLogEntries;
+
+        $client = $this->clientWithSdkAutoloader($autoloader);
+
+        $this->assertSame(BrevoClientReadiness::FAILED, $client->readiness());
+        $this->assertCount(1, $mockLogEntries);
+        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $mockLogEntries[0]['category']);
+        $this->assertStringContainsString($expectedMessage, $mockLogEntries[0]['message']);
+    }
+
+    /**
+     * fetchEvents() reaches loadSdk() through createApi(): a missing
+     * autoloader gives null with the same CronJobFailure row as readiness().
+     */
+    #[RunInSeparateProcess]
+    public function testFetchEventsWithKeyAndNoAutoloaderReturnsNullAndLogsAFailure(): void
+    {
+        global $mockLogEntries;
+
+        $client = $this->clientWithSdkAutoloader(null);
+
+        $this->assertNull($client->fetchEvents(
+            new DateTimeImmutable('2026-09-07'),
+            new DateTimeImmutable('2026-09-09'),
+            1000,
+            0,
+            'hardBounces'
+        ));
+        $this->assertCount(1, $mockLogEntries);
+        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $mockLogEntries[0]['category']);
+        $this->assertStringContainsString('SDK autoloader is not found', $mockLogEntries[0]['message']);
+    }
+
+    // NOTE: no test passes a valid key through the real createApi() with a
+    // real SDK. That reaches the real `new GuzzleHttp\Client()` and makes a
+    // live HTTPS call to api.brevo.com. A unit test must not depend on the
+    // network, so the poll path is tested through the createApi() seam
+    // (#2480), the READY case through a stub SDK class, and the loadSdk()
+    // fault branches through a scratch site root.
 }

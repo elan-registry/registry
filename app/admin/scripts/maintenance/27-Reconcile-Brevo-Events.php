@@ -132,13 +132,14 @@ if (!isAdmin()) {
                                         sprintf(
                                             'Brevo event reconciliation manually triggered (cron guard bypassed) —'
                                             . ' %d owners matched, %d unmatched, %d skipped, %d invalid address(es),'
-                                            . ' %d page(s) fetched%s%s',
+                                            . ' %d page(s) fetched%s%s%s',
                                             $summary->matchedCount,
                                             $summary->unmatchedCount,
                                             $summary->skippedCount,
                                             $summary->invalidAddressCount,
                                             $summary->pagesFetched,
                                             $summary->pollFailed ? ', a Brevo poll failed or could not start' : '',
+                                            $summary->notConfigured ? ', Brevo is not set up here, no poll ran' : '',
                                             $summary->counterFailureCount > 0
                                                 ? sprintf(', %d unmatched-recipient counter update(s) failed', $summary->counterFailureCount)
                                                 : ''
@@ -176,6 +177,12 @@ if (!isAdmin()) {
                                     </div>
                                     <?php endif; ?>
 
+                                    <?php if ($summary->notConfigured): ?>
+                                    <div class="alert alert-info">
+                                        <h5 class="mb-2"><i class="fa fa-info-circle"></i> No poll ran — Brevo is not set up on this site</h5>
+                                        <p class="mb-0">The <code>plg_sendinblue</code> table is absent, or it holds no Brevo API key, so no events were fetched. This is normal on a site without Brevo. The <code>CronJobSkipped</code> log line names the cause. To reconcile events, set up the sendinblue plugin with an API key, then re-run this script.</p>
+                                    </div>
+                                    <?php else: ?>
                                     <div class="alert alert-success">
                                         <i class="fa fa-check-circle"></i> Reconciliation completed:
                                         <strong><?= (int) $summary->eventsExamined ?></strong> event(s) examined —
@@ -184,6 +191,7 @@ if (!isAdmin()) {
                                         <strong><?= (int) $summary->invalidAddressCount ?></strong> invalid address(es),
                                         across <strong><?= (int) $summary->pagesFetched ?></strong> page(s) fetched.
                                     </div>
+                                    <?php endif; ?>
 
                                     <h5 class="mt-4"><i class="fa fa-table"></i> Events by type</h5>
                                     <?php if ($summary->eventTypeCounts === []): ?>

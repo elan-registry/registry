@@ -2,16 +2,20 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Cron\BrevoClientReadiness;
 use ElanRegistry\Cron\BrevoSuppressionSyncClient;
 use ElanRegistry\LogCategories;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
+use Tests\Support\NoSdkBrevoSuppressionSyncClient;
 use Tests\Support\SendinblueSettingsFakeDatabase;
 use Tests\Support\ThrowingBrevoSuppressionSyncClient;
 
 require_once __DIR__ . '/../../Support/FakeDatabase.php';
 require_once __DIR__ . '/../../Support/SendinblueSettingsFakeDatabase.php';
 require_once __DIR__ . '/../../Support/ThrowingBrevoSuppressionSyncClient.php';
+require_once __DIR__ . '/../../Support/NoSdkBrevoSuppressionSyncClient.php';
 
 /**
  * Unit tests for BrevoSuppressionSyncClient's pre-flight paths (#1923) and
@@ -125,6 +129,66 @@ final class BrevoSuppressionSyncClientTest extends TestCase
         }
     }
 
+    // --- readiness() (#2480) ---------------------------------------------
+
+    /**
+     * @return array<string, array{SendinblueSettingsFakeDatabase, BrevoClientReadiness, string}>
+     */
+    public static function keyReadReadiness(): array
+    {
+        return [
+            'table absent' => [
+                new SendinblueSettingsFakeDatabase(sqlState: '42S02'),
+                BrevoClientReadiness::NOT_CONFIGURED,
+                LogCategories::LOG_CATEGORY_CRON_JOB_SKIPPED,
+            ],
+            'key not set' => [
+                new SendinblueSettingsFakeDatabase(key: null),
+                BrevoClientReadiness::NOT_CONFIGURED,
+                LogCategories::LOG_CATEGORY_CRON_JOB_SKIPPED,
+            ],
+            'read failed' => [
+                new SendinblueSettingsFakeDatabase(sqlState: 'HY000'),
+                BrevoClientReadiness::FAILED,
+                LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE,
+            ],
+        ];
+    }
+
+    /** The readiness case matches the log category the key read writes. */
+    #[DataProvider('keyReadReadiness')]
+    public function testReadinessFollowsTheKeyRead(
+        SendinblueSettingsFakeDatabase $db,
+        BrevoClientReadiness $expected,
+        string $expectedCategory
+    ): void {
+        global $mockLogEntries;
+
+        $this->assertSame($expected, (new BrevoSuppressionSyncClient($db))->readiness());
+
+        $this->assertCount(1, $mockLogEntries);
+        $this->assertSame($expectedCategory, $mockLogEntries[0]['category']);
+    }
+
+    /** A set key with no SDK means the plugin files are missing: a fault. */
+    public function testReadinessIsFailedWhenTheKeyIsSetAndTheSdkDoesNotLoad(): void
+    {
+        $client = new NoSdkBrevoSuppressionSyncClient(new SendinblueSettingsFakeDatabase());
+
+        $this->assertSame(BrevoClientReadiness::FAILED, $client->readiness());
+    }
+
+    /** READY says only that a poll can start. The poll itself can still fail. */
+    public function testReadinessIsReadyWhenTheKeyIsSetAndTheApiObjectIsBuilt(): void
+    {
+        global $mockLogEntries;
+
+        $client = new ThrowingBrevoSuppressionSyncClient(new SendinblueSettingsFakeDatabase());
+
+        $this->assertSame(BrevoClientReadiness::READY, $client->readiness());
+        $this->assertSame([], $mockLogEntries, 'A READY check writes no log row');
+    }
+
     // NOTE: there is deliberately no test that passes a *valid* key through
     // the real createApi(). The Brevo SDK can autoload in a developer tree,
     // and then the real `new GuzzleHttp\Client()` makes a live HTTPS call to
@@ -133,7 +197,7 @@ final class BrevoSuppressionSyncClientTest extends TestCase
     // which replaces the createApi() seam.
     //
     // loadSdk()'s branches (autoloader absent, autoloader corrupt, API class
-    // still undefined after the require) are not unit-tested: which one is
+    // still undefined after the require) are not unit-tested one by one: which one is
     // taken depends on whether a real file exists at a path fixed by a private
     // class constant. They are single log-and-return-false statements. The
     // #2359 source scan checks that the corrupt-autoloader catch logs no

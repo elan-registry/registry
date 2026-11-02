@@ -53,6 +53,8 @@ use ElanRegistry\LogCategories;
  * page is empty". A returned object always means a real answer from Brevo,
  * including a legitimate `getCount()` of 0; `null` always means the answer is
  * unknown and paging must stop rather than conclude the list has ended.
+ * Null does not say whether Brevo is not set up or a check failed, so the
+ * nightly job asks {@see readiness()} first (#2480).
  *
  * Not `final`, matching {@see BrevoEventReconciliationClient},
  * {@see \ElanRegistry\Car\CarRepository} and
@@ -88,6 +90,37 @@ class BrevoSuppressionSyncClient
     }
 
     /**
+     * Run the pre-flight checks of {@see fetchBlockedContacts()} and say
+     * whether a poll can run.
+     *
+     * `fetchBlockedContacts()` returns null both when Brevo is not set up
+     * here and when a check fails, so the job cannot tell them apart. They
+     * call for opposite pings (#2480). This method writes the same log lines
+     * as those checks: `CronJobSkipped` for NOT_CONFIGURED and
+     * `CronJobFailure` for FAILED. It adds no log line of its own.
+     *
+     * The SDK check goes through the `createApi()` seam, so a test double
+     * that replaces the seam also controls this result. The settings read
+     * and the SDK load run here once and again in each fetch.
+     *
+     * @return BrevoClientReadiness READY if the key is set and the SDK
+     *         loaded; NOT_CONFIGURED if the plg_sendinblue table or the key
+     *         is absent; FAILED if the plg_sendinblue read failed, or the key
+     *         is set and the SDK is absent or did not load
+     */
+    public function readiness(): BrevoClientReadiness
+    {
+        $apiKey = $this->apiKey();
+        if ($apiKey['key'] === null) {
+            return $apiKey['readiness'];
+        }
+
+        return $this->createApi($apiKey['key']) === null
+            ? BrevoClientReadiness::FAILED
+            : BrevoClientReadiness::READY;
+    }
+
+    /**
      * Fetch one page of blocked/unsubscribed transactional contacts.
      *
      * Both dates are optional and are all-or-nothing as far as Brevo is
@@ -120,7 +153,7 @@ class BrevoSuppressionSyncClient
         int $limit,
         int $offset
     ): ?\Brevo\Client\Model\GetTransacBlockedContacts {
-        $apiKey = $this->apiKey();
+        $apiKey = $this->apiKey()['key'];
         if ($apiKey === null) {
             return null;
         }
@@ -203,14 +236,15 @@ class BrevoSuppressionSyncClient
      * Read the Brevo API key through {@see BrevoApiFactory::readApiKey()}
      * and log why when there is none.
      *
-     * @return string|null The key, or null if there is no API key or the
-     *                     row could not be read
+     * @return array{key: string|null, readiness: BrevoClientReadiness} The
+     *         key and READY, or a null key and why: NOT_CONFIGURED if the
+     *         table or the key is absent, FAILED if the row read failed
      */
-    private function apiKey(): ?string
+    private function apiKey(): array
     {
         $result = (new BrevoApiFactory($this->db))->readApiKey();
         if ($result['key'] !== null) {
-            return $result['key'];
+            return ['key' => $result['key'], 'readiness' => BrevoClientReadiness::READY];
         }
 
         if ($result['cause'] === BrevoApiFactory::CAUSE_KEY_NOT_SET) {
@@ -218,7 +252,7 @@ class BrevoSuppressionSyncClient
             // a valid setup, and would otherwise log a
             // "failure" every claimed run in perpetuity.
             logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_SKIPPED, 'Brevo suppression sync: no Brevo API key configured in plg_sendinblue — skipping poll.');
-            return null;
+            return ['key' => null, 'readiness' => BrevoClientReadiness::NOT_CONFIGURED];
         }
 
         // SQLSTATE 42S02 = table missing, i.e. the sendinblue plugin was
@@ -249,7 +283,10 @@ class BrevoSuppressionSyncClient
                 $result['detail']
             )
         );
-        return null;
+        return [
+            'key' => null,
+            'readiness' => $tableAbsent ? BrevoClientReadiness::NOT_CONFIGURED : BrevoClientReadiness::FAILED,
+        ];
     }
 
     /**
@@ -268,10 +305,12 @@ class BrevoSuppressionSyncClient
                 return true;
 
             case BrevoApiFactory::CAUSE_AUTOLOADER_ABSENT:
-                // SKIPPED, not FAILURE: no plugin installed is an expected steady
-                // state (see apiKey()'s 42S02 branch for the same reasoning).
-                logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_SKIPPED, sprintf(
-                    'Brevo suppression sync: SDK autoloader not found at %s (sendinblue plugin not installed) — skipping poll.',
+                // FAILURE, not SKIPPED: this check runs only after apiKey()
+                // found a key, so Brevo is set up here and the plugin files
+                // are missing. That is a fault, not a valid steady state.
+                logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
+                    'Brevo suppression sync: SDK autoloader not found at %s, but a Brevo API key is set —'
+                    . ' the sendinblue plugin files look missing. Skipping poll.',
                     $result['autoload']
                 ));
                 return false;

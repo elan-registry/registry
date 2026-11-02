@@ -1427,8 +1427,8 @@ clear, read under the `profiles` lock) and `$stillOptedOut` (true when
 | `CLEARED_ADDRESS_MOVED` | `clearedAddressMoved(bool $stillBounced, bool $stillOptedOut = false)` | The blocked address is not the owner's address. No Brevo call. The flag is cleared |
 | `CLEARED_SHARED_ADDRESS` | `clearedSharedAddress(bool $stillBounced, bool $stillOptedOut = false)` | Another account uses the address. No Brevo call. The flag is cleared |
 | `BREVO_FAILED` | `brevoFailed()` | The Brevo call failed (HTTP or transport), or the API key query failed. No write |
-| `BREVO_NOT_SET_UP` | `brevoNotSetUp()` | No Brevo API key, or no SDK autoloader file. No write |
-| `BREVO_PLUGIN_FAULT` | `brevoPluginFault()` | The SDK is installed but did not load. This is a fault in the Brevo plugin. No write |
+| `BREVO_NOT_SET_UP` | `brevoNotSetUp()` | No Brevo API key. No write |
+| `BREVO_PLUGIN_FAULT` | `brevoPluginFault()` | A key is set, but the SDK is missing or did not load. This is a fault in the Brevo plugin. No write |
 | `ADDRESS_CHANGED` | `addressChanged()` | The stored block changed during this action. The transaction rolled back |
 
 **Methods**: `isCleared(): bool` - True for the four `CLEARED*` kinds.
@@ -2879,17 +2879,22 @@ opposite pings (#2480).
 **Cases**:
 
 - `READY` — The API key is set and the SDK loaded. The client can poll.
-- `NOT_CONFIGURED` — The `plg_sendinblue` table is absent, the API key is
-  empty, or the SDK autoloader file is absent. The client logs
-  `CronJobSkipped`. The job pings success.
-- `FAILED` — The `plg_sendinblue` read failed, or the SDK autoloader does not
-  load the API class. The client logs `CronJobFailure`. The job pings `/fail`.
+- `NOT_CONFIGURED` — The `plg_sendinblue` table is absent, or the API key is
+  empty. The client logs `CronJobSkipped`. The job pings success.
+- `FAILED` — The `plg_sendinblue` read failed, or a key is set and the SDK
+  autoloader is absent, throws, or does not load the API class. The client
+  logs `CronJobFailure`. The job pings `/fail`.
 
 **Used By**:
 
 - `BrevoEventReconciliationClient::readiness()` — Returns one case
 - `BrevoEventReconciliationJob::backfillEvents()` — Chooses the polls and
   whether to mark the run failed
+- `BrevoSuppressionSyncClient::readiness()` — Returns one case. With the key
+  set, any SDK fault (absent, does not load, API class missing) is `FAILED`
+- `BrevoSuppressionSyncJob::execute()` — Skips the poll unless `READY`, and
+  marks the run failed for `FAILED` or a failed poll. The job has no
+  healthcheck slug, so it sends no ping
 
 **See Also**:
 
@@ -3311,9 +3316,10 @@ message.
 - `reason(): ?string` - One of `REASON_NO_API_KEY`, `REASON_NO_SDK`,
   `REASON_SDK_LOAD_FAILED`, `REASON_HTTP`, `REASON_TRANSPORT`,
   `REASON_DB_ERROR` or `REASON_NO_ADDRESS` for a failed result.
-  Null on success. `CarVerificationManager` reports `REASON_NO_API_KEY` and
-  `REASON_NO_SDK` as "Brevo is not set up", `REASON_SDK_LOAD_FAILED` as a
-  Brevo plugin fault, and every other reason as a Brevo failure
+  Null on success. `CarVerificationManager` reports `REASON_NO_API_KEY` as "Brevo is not
+  set up", `REASON_NO_SDK` and `REASON_SDK_LOAD_FAILED` as a Brevo plugin
+  fault (the client checks for the SDK only after it finds a key), and every
+  other reason as a Brevo failure
 - `httpStatus(): ?int` - The status that Brevo sent, or null
 - `detail(): ?string` - For a failed result, an `ExceptionLogSummary`, or a
   `BrevoApiFactory` cause code (followed by `(SQLSTATE <code>)` for a
@@ -3388,8 +3394,9 @@ public function __construct(private readonly DatabaseInterface $db)
   null key with `NOT_CONFIGURED` (no table, or no key) or `FAILED` (any other
   read error)
 - `loadSdk(): BrevoClientReadiness` — Load vendored SDK autoloader; idempotent,
-  safe to call when already loaded. Returns `NOT_CONFIGURED` when the autoloader
-  file is absent, and `FAILED` when it throws or does not load the API class
+  safe to call when already loaded. Called only after a key is found. Returns
+  `FAILED` when the autoloader file is absent, throws, or does not load the API
+  class
 
 **Used By**:
 
@@ -3452,8 +3459,9 @@ applies events of all registry mail (#2359). It passes the source
   `apply()` as a fallback (`occurredAtIsFallback`) (#2480)
 - **Brevo setup check** (#2480): `backfillEvents()` calls
   `BrevoEventReconciliationClient::readiness()` once, before the type loop.
-  `NOT_CONFIGURED` polls nothing and gives an empty summary, and `run()` pings
-  success. `FAILED` polls nothing, sets `pollFailed`, and `run()` pings `/fail`.
+  `NOT_CONFIGURED` polls nothing, gives an empty summary with `notConfigured`
+  set, adds " — Brevo is not set up here, no poll ran" to the summary log
+  line, and `run()` pings success. `FAILED` polls nothing, sets `pollFailed`, and `run()` pings `/fail`.
   `READY` polls each type as before. The prune runs in all three cases
 - **Unmatched counter**: `countUnmatched()` increments the unmatched recipient
   counter only for a verification-tagged event with no single user
@@ -3515,7 +3523,8 @@ The `$now` parameter is injectable for testing; defaults to wall-clock time.
 
 - `backfillEvents(): ReconciliationSummary` — Check the Brevo setup once with
   `readiness()`. Then fetch one page of each event type and apply each event,
-  returning the run's counts. With `NOT_CONFIGURED` it fetches nothing (#2480)
+  returning the run's counts. With `NOT_CONFIGURED` it fetches nothing and sets `notConfigured` (#2480).
+  An exhaustive `match` on the readiness case picks the outcome
 - `applyEvent(object $event, string $apiEventType, string $eventName, array &$counts, array &$eventTypeCounts): void`
   — Apply one Brevo statistics-API event (field and address validation,
   `EmailEventMatcher::matchByMessageId()`, `EmailEventApplier::apply()`),
@@ -3573,7 +3582,7 @@ inline, instead of requiring a trip to Admin → Logs. Mirrors
   field answering "how many events did Brevo return." Script 27 labels
   `matchedCount` "owners matched"
 
-**Constructor** (all params required except `pollFailed` and `counterFailureCount`):
+**Constructor** (all params required except `pollFailed`, `counterFailureCount` and `notConfigured`):
 
 ```php
 public function __construct(
@@ -3586,6 +3595,7 @@ public function __construct(
     public int $pagesFetched,        // one for each event type whose poll succeeded
     public bool $pollFailed = false, // true when at least one fetchEvents() call failed
     public int $counterFailureCount = 0, // unmatched events missing from the dashboard counter
+    public bool $notConfigured = false,  // true when Brevo is not set up here (no table or no key), so no poll ran
 )
 ```
 

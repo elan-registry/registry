@@ -1112,18 +1112,33 @@ in these cases:
   send it again.
 - The reconciliation job (`BrevoEventReconciliationJob`) had a Brevo poll
   fail.
-- The reconciliation job could not read the `plg_sendinblue` settings, or the
-  Brevo SDK did not load. The client logs `CronJobFailure`.
+- The reconciliation job could not read the `plg_sendinblue` settings, or a
+  Brevo API key is set and the Brevo SDK is missing or did not load. The
+  client logs `CronJobFailure`.
 
 The run sends success in these cases:
 
-- Brevo is not set up here. The `plg_sendinblue` table is absent, the API
-  key is empty, or the SDK autoloader is absent. The client logs
-  `CronJobSkipped`. No poll runs. The prune still runs.
+- Brevo is not set up here. The `plg_sendinblue` table is absent, or the
+  API key is empty. The client logs `CronJobSkipped`. No poll runs, and the
+  summary line ends " — Brevo is not set up here, no poll ran". The prune
+  still runs.
 - Some sends failed and some sent. This is deliberate. One bad car record
   must not give a red check each night. The batch log line and the `failed`
   count still show the failures.
 - The eligible set is empty. The send job logs a routine line and sends nothing.
+
+The suppression sync job (`BrevoSuppressionSyncJob`) has no check, so it
+sends no ping. It uses the same rule to mark a run as failed
+(`markRunFailed()`), and its `EmailWebhook` summary line tells the result:
+
+- The run fails, and the line says `incremental run FAILED`, in these cases.
+  The client logs `CronJobFailure` with the cause.
+  - The `plg_sendinblue` read failed.
+  - The API key is set, but the Brevo SDK is absent or does not load.
+  - The Brevo poll failed after the setup check passed.
+- The run succeeds, and the line says `Brevo is not set up here`, when the
+  `plg_sendinblue` table is absent or the API key is empty. The client logs
+  `CronJobSkipped`. No poll runs.
 
 A soft failure sends `/fail` but does not stamp `last_failure_at`. The admin
 Verification tab can show a green run while healthchecks.io shows a failure

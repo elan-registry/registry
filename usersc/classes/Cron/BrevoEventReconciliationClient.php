@@ -42,10 +42,11 @@ use ElanRegistry\LogCategories;
  * report"), though that method's own success shape differs: it returns a
  * single page object (never `[]`), not an array.
  *
- * Because `null` covers both "Brevo is not set up here" and "the settings
- * read failed", {@see readiness()} runs the same pre-flight checks and tells
- * the two apart, so the job can ping success for the first and `/fail` for
- * the second (#2480).
+ * Because `null` covers both "Brevo is not set up here" (no plg_sendinblue
+ * table, no key) and a pre-flight fault (the settings read failed, or a key
+ * is set but the SDK is missing or does not load), {@see readiness()} runs
+ * the same pre-flight checks and tells the two apart, so the job can ping
+ * success for the first and `/fail` for the second (#2480).
  *
  * Not `final`, matching {@see \ElanRegistry\Car\CarRepository} and
  * {@see \ElanRegistry\Car\CarVerificationManager}: this class is an injected
@@ -100,10 +101,13 @@ class BrevoEventReconciliationClient
      * cause. It adds no log line of its own. The settings read runs here
      * once and again in each fetchEvents() call.
      *
+     * loadSdk() runs only after a key is found, so each SDK fault here is
+     * a FAILED: with a key set, Brevo is meant to run on this site.
+     *
      * @return BrevoClientReadiness READY if the key is set and the SDK loaded;
-     *         NOT_CONFIGURED if the plg_sendinblue table, the key, or the SDK
-     *         is absent; FAILED if the plg_sendinblue read failed or the SDK
-     *         did not load
+     *         NOT_CONFIGURED if the plg_sendinblue table or the key is absent;
+     *         FAILED if the plg_sendinblue read failed, or if the key is set
+     *         and the SDK autoloader is absent or did not load the API class
      */
     public function readiness(): BrevoClientReadiness
     {
@@ -315,13 +319,16 @@ class BrevoEventReconciliationClient
      * Idempotent (`require_once`) and safe to call when the SDK is already
      * loaded — for instance when `sendinblue()` ran earlier in the same
      * request. Guarded by a class_exists() short-circuit and a file_exists()
-     * check so that a missing plugin is a logged skip rather than a fatal,
-     * which also keeps this class constructible in unit tests without the
-     * plugin present.
+     * check so that a missing autoloader is a logged failure rather than a
+     * fatal, which also keeps this class constructible in unit tests without
+     * the plugin present.
      *
-     * @return BrevoClientReadiness READY if the SDK is available,
-     *         NOT_CONFIGURED if its autoloader is absent, FAILED if the
-     *         autoloader is present but does not load the API class
+     * Call it only after apiKey() found a key (readiness() and createApi()
+     * both do). With a key set, a missing autoloader is a fault, for example
+     * a deploy that deleted the plugin vendor tree, not a site without Brevo.
+     *
+     * @return BrevoClientReadiness READY if the SDK is available; FAILED if
+     *         its autoloader is absent, throws, or does not load the API class
      */
     private function loadSdk(): BrevoClientReadiness
     {
@@ -333,13 +340,15 @@ class BrevoEventReconciliationClient
         $autoload = ($abs_us_root ?? '') . ($us_url_root ?? '') . self::SDK_AUTOLOAD_RELATIVE_PATH;
 
         if (!file_exists($autoload)) {
-            // SKIPPED, not FAILURE: no plugin installed is an expected steady
-            // state (see apiKey()'s 42S02 branch for the same reasoning).
-            logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_SKIPPED, sprintf(
-                'Brevo event reconciliation: SDK autoloader not found at %s (sendinblue plugin not installed) — skipping poll.',
+            // FAILURE, not SKIPPED: a key is set, so Brevo is meant to run
+            // here. A skip would let the job ping success and keep the
+            // Verification tab at "Ready" while no poll can run.
+            logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
+                'Brevo event reconciliation: a Brevo API key is set, but the SDK autoloader is not found at %s'
+                . ' — the sendinblue plugin vendor tree looks missing. Skipping poll.',
                 $autoload
             ));
-            return BrevoClientReadiness::NOT_CONFIGURED;
+            return BrevoClientReadiness::FAILED;
         }
 
         try {

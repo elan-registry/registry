@@ -24,9 +24,9 @@ enum BrevoClientReadiness
     /** The API key is set and the SDK loaded — the client can poll. */
     case READY;
 
-    /** No plg_sendinblue table, no API key, or no SDK — Brevo is not set up here. */
+    /** No plg_sendinblue table, or no API key — Brevo is not set up here. */
     case NOT_CONFIGURED;
 
-    /** The plg_sendinblue read failed, or the SDK is present but does not load. */
+    /** The plg_sendinblue read failed, or a key is set but the SDK is absent or does not load. */
     case FAILED;
 }
