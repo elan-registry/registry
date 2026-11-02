@@ -182,7 +182,8 @@ if (!isAdmin()) {
                                         <h5 class="mb-2"><i class="fa fa-info-circle"></i> No poll ran — Brevo is not set up on this site</h5>
                                         <p class="mb-0">The <code>plg_sendinblue</code> table is absent, or it holds no Brevo API key, so no events were fetched. This is normal on a site without Brevo. The <code>CronJobSkipped</code> log line names the cause. To reconcile events, set up the sendinblue plugin with an API key, then re-run this script.</p>
                                     </div>
-                                    <?php else: ?>
+                                    <?php elseif (!($summary->pollFailed && $summary->pagesFetched === 0)): ?>
+                                    <?php // A pre-flight failure fetched no page, so only the warning above shows. A partial poll failure keeps the counts. ?>
                                     <div class="alert alert-success">
                                         <i class="fa fa-check-circle"></i> Reconciliation completed:
                                         <strong><?= (int) $summary->eventsExamined ?></strong> event(s) examined —

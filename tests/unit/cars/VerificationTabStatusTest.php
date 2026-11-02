@@ -1330,8 +1330,13 @@ final class VerificationTabStatusTest extends TestCase
         $this->assertNull($status->batchSize());
         $this->assertLogged(
             LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING,
-            'Verification tab batch size probe failed [RuntimeException]: simulated settings outage'
+            'Verification tab batch size probe failed: RuntimeException (code '
         );
+        foreach ($GLOBALS['mockLogEntries'] as $entry) {
+            if (str_starts_with((string) $entry['message'], 'Verification tab batch size probe failed')) {
+                $this->assertStringNotContainsString('simulated settings outage', (string) $entry['message'], 'The log holds no exception message');
+            }
+        }
     }
 
     /** An unread switch is not "off", so the Brevo row must not say "switch is off". */

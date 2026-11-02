@@ -18,6 +18,7 @@ Admins can trust what the verification and email tools report, also when a task 
 - Clear Block tells the admin to check the logs when the email service fails, not to retry. ([#2488](https://github.com/elan-registry/registry/issues/2488))
 - The Verification tab shows "Unavailable" when it cannot read a value, not a guessed status. ([#2457](https://github.com/elan-registry/registry/issues/2457))
 - The transfer request alert says when the current owner got no notice of the request. ([#2476](https://github.com/elan-registry/registry/issues/2476))
+- The privacy step rerun page says when a failed commit may have landed, not that it rolled back. ([#2515](https://github.com/elan-registry/registry/issues/2515))
 
 ## Issues Resolved
 

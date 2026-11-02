@@ -403,6 +403,13 @@ owner addresses, log `ExceptionLogSummary::of($e)` instead of the message. It
 gives `<Class> (code <code>[, SQLSTATE <x>]) at <file>:<line>`. The SQLSTATE
 comes from `CarDatabaseException::sqlState()` (#2359).
 
+**No guards around `logger()`, `rollback()` or database calls**: do not wrap
+them in `try`/`catch` (issues #2449 and #2561). They throw only when the database
+already failed the request, and a guard changes only the error page or the
+log line. Let the exception reach the caller. One exception exists:
+`AccountDeletionPrivacyStep` guards its `rollback()`, because the account
+deletion hook must still run the car cleanup after a failed privacy step.
+
 ### Exceptions
 
 **Choose appropriate exception type**: Use specific exceptions (CarValidationException, OwnerValidationException) not generic Exception.

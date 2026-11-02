@@ -56,7 +56,7 @@ use ElanRegistry\LogCategories;
  *
  *   - {@see self::runFullBackfill()} — a NEW public method, deliberately
  *     **not reachable from `run()` or `execute()` at any depth**. This is the
- *     load-bearing design point of this class: the guarded nightly path must
+ *     main design point of this class: the guarded nightly path must
  *     never be able to trigger an unbounded backfill by accident, so the
  *     backfill is not a mode flag on `execute()` but a separate method no
  *     scheduled code path calls. Only an operator, via the manual admin
@@ -354,8 +354,8 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
      *
      * Reached only after {@see AbstractCronJob::run()} has won the guard claim,
      * so every entry here is a real run. Deliberately does NOT call
-     * {@see self::runFullBackfill()} — see the class docblock's two-modes
-     * section for why that separation is load-bearing rather than incidental.
+     * {@see self::runFullBackfill()}. The guarded nightly path must never call
+     * `runFullBackfill()`. See the two-modes section of the class docblock.
      *
      * The return type stays `void` per {@see AbstractCronJob}'s contract, so
      * the page's {@see SuppressionSyncSummary} is logged and discarded rather
@@ -374,8 +374,9 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
      * - The poll failed after a READY check: the client logs a
      *   `CronJobFailure` line and the job calls `markRunFailed()`.
      *
-     * The job has no healthcheck slug, so `markRunFailed()` sends no ping
-     * now. The call keeps the run's result correct for when a check is added.
+     * `AbstractCronJob::markRunFailed()` changes only the healthcheck ping. The
+     * job has no slug yet, so the call has an effect only once the job has a
+     * slug (#2586). The per-job badge does not show a handled failure.
      */
     protected function execute(): void
     {

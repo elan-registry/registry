@@ -771,8 +771,12 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
 
                         // The flags come from the owner's profiles row (#2101). A
                         // block or bounce counts only while it applies to the owner's
-                        // current email (the `_active` columns, #2356).
-                        $queueFlags = EffectiveEmailFlags::fromQueueRow($queueCar);
+                        // current email (the `_active` columns, #2356). An Eligible
+                        // preview row has no profile columns: the eligibility query
+                        // already excludes an owner with no profile or with a flag.
+                        $queueFlags = $vsIsEligibleView
+                            ? EffectiveEmailFlags::eligible()
+                            : EffectiveEmailFlags::fromQueueRow($queueCar);
 
                         $queueChip = VerificationTabStatus::chip($vsChipEvents[$queueCarId] ?? null, $queueFlags);
 

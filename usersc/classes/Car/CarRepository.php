@@ -94,7 +94,8 @@ class CarRepository
      *
      * {@see \ElanRegistry\Cron\BrevoSuppressionSyncJob} writes this prefix.
      * It is also a prefix of {@see self::ADMIN_BLOCK_MESSAGE_ID_PREFIX}, so a
-     * `LIKE` filter on it matches both kinds of import row.
+     * prefix compare on it (as `ownerBlockEventCauses()` does with `LEFT()`)
+     * matches both kinds of import row.
      */
     public const SUPPRESSION_IMPORT_MESSAGE_ID_PREFIX = 'suppression-import-';
 

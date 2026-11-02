@@ -100,7 +100,8 @@ final class AccountDeletionPrivacyStep
             match ($result->outcome) {
                 AccountDeletionPrivacyOutcome::Committed => 'committed',
                 AccountDeletionPrivacyOutcome::CommitUnknown => 'transaction state unknown',
-                AccountDeletionPrivacyOutcome::RolledBack, AccountDeletionPrivacyOutcome::Refused => 'rolled back',
+                AccountDeletionPrivacyOutcome::RolledBack => 'rolled back',
+                AccountDeletionPrivacyOutcome::Refused => 'refused',
             },
             $result->deletedEmailEventCount,
             $result->deletedPluginMessageCount

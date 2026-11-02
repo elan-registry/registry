@@ -57,6 +57,10 @@ after an item is written.
 - [ ] `verification_send_batch` logs a rejected scalar `car_ids` value with `var_export()` and no length limit or control-character strip, so an admin can put CR/LF into the log line. Cut the value to a fixed length and remove `[\x00-\x1F\x7F]` before the log call (found in #2457)
 - [ ] `verification_send_batch` logs every rejected scalar as `non-positive car id`, but `filterCarIds()` also rejects non-canonical values (`'03'`, `'1.5'`, `'+3'`). Say `invalid car id` (found in /flow:finish-milestone v2.31.0)
 
+### `app/admin/scripts/maintenance/27-Reconcile-Brevo-Events.php` (test coverage)
+
+- [ ] No test renders the notConfigured info notice or the manual-run log suffix. Run the script with the `plg_sendinblue` key cleared and assert the notice and no success alert (found in /flow:finish-milestone v2.31.0)
+
 ### `app/api/cars/list.php`
 
 - [ ] `(new CarShowcaseService())->getNewCarIds()` (~64) runs an uncached query on every DataTables request (page turn, sort, search) since #1900. Before, it ran once per page load. Memoize it per request or for a short time. Accepted as low risk for v2.30.4. (found in /finish-milestone v2.30.4)
@@ -219,6 +223,10 @@ after an item is written.
 
 - [ ] `BrevoDevOverrideTest.php:198`: the fixture SDK keeps its host by design, so "survives setApiKey" cannot fail there; only the real-SDK test at :212 proves it, and it skips where the plugin vendor dir is missing (CI). (found in /finish-milestone v2.30.6)
 
+### `tests/unit/cron/BrevoSuppressionSyncJobTest.php` (test quality)
+
+- [ ] `runWasMarkedFailed()` reads the private `AbstractCronJob::$runFailed` through reflection. When the job gets a healthcheck slug (#2586), assert the `/fail` ping through an injected pinger and delete the helper (found in /flow:finish-milestone v2.31.0)
+
 ### `tests/unit/cron/VerificationSwitchGateSourceTest.php`
 
 - [ ] The source check that the webhook does not read the switch (~L101) repeats behavior tests (`BrevoWebhookEndpointTest` ~L351, `BrevoEventPathParityIntegrationTest` ~L556, ~L605, ~L621). Delete it. Keep the convention scans at ~L63 and ~L110 (found in /finish-milestone v2.30.8)
@@ -246,6 +254,10 @@ after an item is written.
 - [ ] No test proves the `phpstan.neon` wiring of the path-based rules. A typo in a `files:` or `exemptPages:` entry, or a different working directory for `projectRoot`, makes the rule silently check nothing. Add a smoke test that runs PHPStan with the real config on one known violation per rule. (found in #2327)
 - [ ] `PageMetadataBeforeInitRule` does not report an `exemptPages` entry whose file was deleted or moved, or no longer calls `securePage()`. Report it as a stale exemption. (found in #2327)
 
+### `usersc/classes/AccountDeletionPrivacyResult.php`
+
+- [ ] The constructor does not check that `failedStage` is a non-empty string exactly for `RolledBack` and `CommitUnknown`. Only the private named constructors keep it. Add one guard (found in /flow:finish-milestone v2.31.0)
+
 ### `usersc/classes/Car/CarAdministrationService.php`
 
 - [ ] The merge path keeps an `error_log()` before `rollback()` against the #2561 no-guard policy. Add one line that says why: it is the only trace of moved files (found in /flow:finish-milestone v2.31.0)
@@ -258,6 +270,10 @@ after an item is written.
 ### `usersc/classes/Car/CarVerificationEmailComposer.php`
 
 - [ ] Photo FileError logs record user 0. The composer has no actor id, so an admin-started send is not attributed (found while working on #1894)
+
+### `usersc/classes/Car/ClearBlockOutcome.php`
+
+- [ ] The constructor does not check that `stillBounced` and `stillOptedOut` are false when the kind did not clear. Throw `\InvalidArgumentException` when `!$kind->isCleared()` and either is true (found in /flow:finish-milestone v2.31.0)
 
 ### `usersc/classes/Car/EmailEventMatch.php`
 
@@ -272,6 +288,10 @@ after an item is written.
 
 - [ ] Replace the raw `string $status` with a backed enum, so callers cannot compare raw strings. `VerificationBatchSender` does `$sendResult->status === SendResult::STATUS_SENT` today. Update it in the same change (from #2149)
 
+### `usersc/classes/Car/VerificationTabStatus.php`
+
+- [ ] Five status probes in `read()`, and the eligible-preview and queue catches in `app/admin/includes/tab-verification.php`, log `$e->getMessage()`. Log `ExceptionLogSummary::of($e)` as the batch-size probe does (found in /flow:finish-milestone v2.31.0)
+
 ### `usersc/classes/CarView.php`
 
 - [ ] The no-photo placeholder in `displayCarousel()` is an `h5` under the `h3` Photos card, so it skips levels. Its `fa-camera` icon has no `aria-hidden="true"` (found in #2495)
@@ -280,6 +300,10 @@ after an item is written.
 
 - [ ] `HealthcheckPinger`: read the two env values in the constructor (or a config object), so tests need no `putenv` (found in /finish-milestone v2.30.9)
 - [ ] `CurlHealthcheckTransport`: set `CURLOPT_PROTOCOLS => CURLPROTO_HTTPS` and an explicit `CURLOPT_FOLLOWLOCATION => false` (defense in depth; the base URL is constant) (found in /finish-milestone v2.30.9)
+
+### `usersc/classes/Cron/ReconciliationSummary.php`
+
+- [ ] The constructor accepts `pollFailed` and `notConfigured` both true, and negative counts. Add guards, or a private constructor with `polled()`, `notConfigured()` and `failedPreflight()` named constructors (found in /flow:finish-milestone v2.31.0)
 
 ### `usersc/classes/Cron/RetentionPurgeJob.php`
 
@@ -294,6 +318,7 @@ after an item is written.
 - [ ] The `reason` key of `readApiKey()` and `loadSdk()` never varies within each method. Use `cause !== null` as the failure test, define `no_api_key` and `no_sdk` only in `BrevoUnblockReason`, and drop the `REASON_*` aliases. Do it together with moving `BrevoEventReconciliationClient` onto the factory, and keep its `readiness()` mapping: table absent and key not set give NOT_CONFIGURED, every other cause gives FAILED (found in #2426, mapping note from /flow:finish-milestone v2.31.0)
 - [ ] Replace the `array{reason, cause, detail}` returns of `readApiKey()` and `loadSdk()` with two small readonly result types (or PHPStan shape aliases) (found in /finish-milestone v2.30.9)
 - [ ] No test calls `readApiKey()` directly. Add `tests/unit/classes/Email/BrevoApiFactoryTest.php` with `SendinblueSettingsFakeDatabase`: success, key not set, `42S02` and `HY000`, each with the `sqlState` value (found in #2488)
+- [ ] The class is no longer `final` only so a test double can extend it, and a double must override `loadSdk()` too. Extract a small interface (`loadSdk()`, `createApi()`) for `BrevoBlocklistClient` and make the factory `final` again (found in /flow:finish-milestone v2.31.0)
 
 ### `usersc/classes/Exceptions/ProfileFlagValueException.php`
 

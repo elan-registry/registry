@@ -761,9 +761,9 @@ to provide a focused, testable data access layer wrapping the `cars`,
   `CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX` gives `blocklist`. Other
   rows give their event name. Import rows of the other codes start with
   `CarRepository::SUPPRESSION_IMPORT_MESSAGE_ID_PREFIX` (`suppression-import-`),
-  which is also a prefix of `ADMIN_BLOCK_MESSAGE_ID_PREFIX`, so a `LIKE` filter
-  on it matches both. With `$after`, only rows with
-  `occurred_at` after that time count. It returns `[]` with no query for a `$userId`
+  which is also a prefix of `ADMIN_BLOCK_MESSAGE_ID_PREFIX`, so a prefix
+  compare on it (this method uses `LEFT()`) matches both. With `$after`, only
+  rows with `occurred_at` after that time count. It returns `[]` with no query for a `$userId`
   less than 1 or an empty address. `EmailNoticeBuilder` uses it for block causes (#2500).
 - `retagOwnerEmailEventMessageId(int $userId, string $event, string $fromId, string $toId): array{retagged: int, removed: int}` -
   When the user already has a row with `$event` and `$toId`, deletes the
@@ -1626,9 +1626,13 @@ returns it.
   row. It has no flag. The caller must treat `hasProfile = false` as "do not
   mail".
 - `EffectiveEmailFlags::fromQueueRow(object $row)` builds the flags from one
-  Verification-tab queue row (`has_profile`, `email_blocked_active`,
-  `email_bounced_active`, `email_opted_out`, `email_blocked_cause`). A missing
-  `has_profile` reads as 1 (Eligible rows). The addresses and dates are null.
+  `CarRepository::findVerificationQueue()` row (`has_profile`,
+  `email_blocked_active`, `email_bounced_active`, `email_opted_out`,
+  `email_blocked_cause`). It throws `\InvalidArgumentException` when a column
+  is missing. The addresses and dates are null.
+- `EffectiveEmailFlags::eligible()` is the state of an Eligible preview row:
+  a profile and no flag. The eligibility query excludes every other owner,
+  so its rows have no profile columns.
 
 **Used By**: `EmailNoticeBuilder`, `SendPolicy`, `VerificationTabStatus::chip()`, `app/admin/includes/tab-verification.php`, `CarVerificationSendService::sendOne()`,
 `BrevoSuppressionSyncJob`, `user_form_hook.php`, `usersc/user_settings.php`,
@@ -1926,7 +1930,8 @@ other probes.
   Give the Status chip for a car row. `$flags` is the same value object that
   `SendPolicy` and `EmailNoticeBuilder` read, so `blocked` and `bounced` are
   true only when the flag applies to the owner's current address. The tab
-  builds it with `EffectiveEmailFlags::fromQueueRow()`. Order: no profile, blocked,
+  builds it with `EffectiveEmailFlags::fromQueueRow()`, or
+  `EffectiveEmailFlags::eligible()` in the Eligible view. Order: no profile, blocked,
   bounced, opted out, the same as `SendPolicy::verificationReason()` (#2461).
   Otherwise the chip shows the car's latest email event. A hard-bounce event
   still shows "Bounced" for an owner with no bounce flag. Returns
@@ -3255,11 +3260,12 @@ step returns a reason code, so each caller logs in its own category.
   holds an exception message
 - `createApi(string $apiKey): object` - Returns a
   `\Brevo\Client\Api\TransactionalEmailsApi` (PHPDoc type). The native type
-  is `object`, so a double works when the SDK is absent. Builds the API object with a 30-second timeout and a 10-second connect
-  timeout. It applies `BrevoDevOverride::hostOverride()`. Call `loadSdk()` first
+  is `object`, so a double works when the SDK is absent. Builds the API
+  object with a 30-second timeout and a 10-second connect timeout. It applies `BrevoDevOverride::hostOverride()`. Call `loadSdk()` first
 
 **Used By**: `BrevoSuppressionSyncClient` (its `createApi()` seam calls the
-factory, and its log lines are unchanged), `BrevoBlocklistClient`
+factory. With a key set, a missing autoloader logs `CronJobFailure`),
+`BrevoBlocklistClient`
 
 **See Also**: `BrevoDevOverride`
 
@@ -3275,8 +3281,8 @@ factory, and its log lines are unchanged), `BrevoBlocklistClient`
 (`DELETE /v3/smtp/blockedContacts/{email}`) for admin Clear Block (#2357).
 It takes its `BrevoApiFactory` as a constructor argument, so a unit test
 passes a double (`tests/Support/FakeBrevoApiFactory.php`). The class is not
-final, because the Clear Block tests replace `unblock()`. It never logs and never keeps an exception
-message. The SDK puts the request URL, with the address, in its messages.
+final, because the Clear Block tests replace `unblock()`. It never logs and
+never keeps an exception message. The SDK puts the request URL, with the address, in its messages.
 
 **Methods**:
 
@@ -3313,8 +3319,8 @@ message. The SDK puts the request URL, with the address, in its messages.
 
 **Purpose**: The result of one `BrevoBlocklistClient::unblock()` call (#2357).
 A final readonly value object with public properties. It holds an outcome,
-a reason, an HTTP status and a log-safe detail. It holds no address, no response body and no exception
-message.
+a reason, an HTTP status and a log-safe detail. It holds no address, no
+response body and no exception message.
 
 **Methods**:
 

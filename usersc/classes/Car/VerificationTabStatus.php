@@ -13,6 +13,7 @@ use ElanRegistry\Cron\CronJobFailureLogReader;
 use ElanRegistry\Cron\CronJobRunsReader;
 use ElanRegistry\Cron\SendVerificationBatchJob;
 use ElanRegistry\DatabaseInterface;
+use ElanRegistry\Exceptions\ExceptionLogSummary;
 use ElanRegistry\LogCategories;
 
 /**
@@ -138,7 +139,7 @@ final readonly class VerificationTabStatus
             $batchSize = (new VerificationSettings($db))->batchSizeOrNull();
         } catch (\Throwable $e) {
             logger($userId, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING,
-                sprintf('Verification tab batch size probe failed [%s]: %s', get_class($e), $e->getMessage()));
+                sprintf('Verification tab batch size probe failed: %s', ExceptionLogSummary::of($e)));
         }
 
         // The constructor only stores the handle, so it cannot throw.

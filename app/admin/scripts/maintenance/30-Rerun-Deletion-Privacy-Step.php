@@ -139,7 +139,7 @@ $userIdRejected = $is_exec && $targetUserId === false;
                                             <i class="fa fa-exclamation-triangle"></i> Failed at stage <strong><?= htmlspecialchars((string) $result->failedStage, ENT_QUOTES, 'UTF-8') ?></strong> and rolled back. The personal data remains. See the <code>UserDeletion</code> log for the exception summary (class, code, SQLSTATE and throw site).
                                         </div>
                                         <?php
-                                    } else {
+                                    } elseif ($result->outcome === AccountDeletionPrivacyOutcome::Committed) {
                                         logger($adminId, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, sprintf(
                                             'Deletion privacy step rerun committed for user %d: %d er_email_events, %d plg_sendinblue_messages, %d er_deleted_user_addresses rows deleted',
                                             $targetUserId,
@@ -182,6 +182,12 @@ $userIdRejected = $is_exec && $targetUserId === false;
                                             </div>
                                         <?php endif; ?>
                                         <?php
+                                    } else {
+                                        // A new outcome must get its own arm. It must never show "Committed".
+                                        throw new \LogicException(sprintf(
+                                            'The rerun page has no arm for the privacy step outcome %s.',
+                                            $result->outcome->name
+                                        ));
                                     }
                                 } catch (\Throwable $e) {
                                     // The exception message can contain an address, so the log gets a summary without the message and the page gets the class only.
