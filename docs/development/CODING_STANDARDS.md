@@ -68,6 +68,10 @@ See [ERROR_HANDLING.md](ERROR_HANDLING.md#exception-hierarchy).
 - **Verbs**: `create()`, `update()`, `delete()`, `validate()`
 - **Boolean methods**: `exists()`, `isValid()`, `hasPermission()`
 - **Getters**: `data()`, `images()`, `history()` (not `getData()`)
+- **Enum cases**: PascalCase for new enums, for example
+  `AccountDeletionPrivacyOutcome::CommitUnknown`. Three older enums use UPPER
+  case (`BrevoClientReadiness`, `CronJobEnabledState`, `ProcessingResult`).
+  Do not rename them only for style.
 
 ---
 

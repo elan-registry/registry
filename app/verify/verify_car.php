@@ -195,8 +195,8 @@ function renderVerifyPage(string $partial): never
     // render-context variables.
     global $abs_us_root, $us_url_root, $settings, $user, $usplugins, $currentPage,
            $pageTitle, $pageDescription, $pageRobots, $host, $current_url, $current_origin,
-           $php_self,
-           $verifyCar, $verifyPhoto, $verifyCode,
+           $php_self, $userspice_nonce,
+           $verifyCar, $verifyCarModel, $verifyPhoto, $verifyCode,
            $verifySelfUrl, $verifyEditUrl, $soldDateValue, $soldDateMin, $soldDateMax,
            $soldDateError, $verifyNoticeIcon, $verifyNoticeHeading, $verifyNoticeBody,
            $verifyNoticeState, $optOutCarCount, $optOutAlreadyOptedOut;
@@ -378,7 +378,9 @@ if ($sentTimestamp === false
 // --- 6. Shared render context -------------------------------------------
 $carId         = (int) $verifyCar->id;
 $verifySelfUrl = $us_url_root . 'app/verify/verify_car.php';
-$verifyPhoto   = verifyPrimaryPhotoUrl($carId);
+// One Car load serves the hero photo and the landing sections.
+$verifyCarModel = new Car($carId);
+$verifyPhoto    = verifyPrimaryPhotoUrl($verifyCarModel);
 
 // "Review & Update" sends the owner to the full edit form. They are almost
 // certainly logged out, so capture this URL first and let usersc/login.php
@@ -394,20 +396,13 @@ $verifyLoggedIn = $user->isLoggedIn();
  * prefixed with $us_url_root and userimages/{carid}/ — it must not be
  * prefixed again. The variant name is derived the same way
  * CarView::loadPicture() derives it.
+ *
+ * @param Car $car The car that the vericode resolved to, already loaded
  */
-function verifyPrimaryPhotoUrl(int $carId): ?string
+function verifyPrimaryPhotoUrl(Car $car): ?string
 {
-    try {
-        $images = (new Car($carId))->images();
-    } catch (\Throwable $e) {
-        // A photo is decoration on a confirmation page; never let a missing
-        // or unreadable image file stop an owner from verifying their car.
-        logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
-            "verify_car.php: could not load images for car {$carId}: " . $e->getMessage());
-        return null;
-    }
-
-    $primary = $images[0] ?? null;
+    // A car with no usable image gets no photo.
+    $primary = $car->images()[0] ?? null;
     if (!is_array($primary) || empty($primary['path'])) {
         return null;
     }

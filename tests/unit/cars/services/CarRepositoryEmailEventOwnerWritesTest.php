@@ -437,6 +437,40 @@ final class CarRepositoryEmailEventOwnerWritesTest extends TestCase
         $repo->lockProfileAndFindAddresses(42);
     }
 
+    // --- deleteProfile() ---------------------------------------------------
+
+    #[DataProvider('nonPositiveUserIdProvider')]
+    public function testDeleteProfileIssuesNoQueryForANonPositiveUserId(int $userId): void
+    {
+        $queries = [];
+        $repo = new CarRepository($this->makeRecordingDb($queries, count: 1));
+
+        $this->assertSame(0, $repo->deleteProfile($userId));
+        $this->assertSame([], $queries, 'A delete with a bad user ID could remove the wrong profile');
+    }
+
+    public function testDeleteProfileBindsTheUserIdOnlyAndReturnsTheCount(): void
+    {
+        $queries = [];
+        $repo = new CarRepository($this->makeRecordingDb($queries, count: 1));
+
+        $this->assertSame(1, $repo->deleteProfile(42));
+        $this->assertCount(1, $queries);
+        $this->assertSame('DELETE FROM profiles WHERE user_id = ?', $queries[0]['sql']);
+        $this->assertSame([42], $queries[0]['params'], 'The delete binds the user ID and nothing else');
+    }
+
+    public function testDeleteProfileThrowsWhenTheQueryFails(): void
+    {
+        $queries = [];
+        $repo = new CarRepository($this->makeRecordingDb($queries, failOnQuery: 1));
+
+        $this->expectException(CarDatabaseException::class);
+        $this->expectExceptionMessage('deleteProfile failed for user=42');
+
+        $repo->deleteProfile(42);
+    }
+
     // --- deleteDeletedUserAddresses() -------------------------------------
 
     #[DataProvider('nonPositiveUserIdProvider')]

@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/IntegrationTestCase.php';
 require_once __DIR__ . '/database/MigrationSandbox.php';
 
+use ElanRegistry\AccountDeletionPrivacyOutcome;
 use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
@@ -189,6 +190,19 @@ final class UserDeletionPrivacyStepTest extends IntegrationTestCase
         }
 
         return $notes;
+    }
+
+    /**
+     * The CRITICAL line for a plugin-delete failure on a missing column. The
+     * throw site ends in a line number, so the pattern does not pin it.
+     */
+    private static function pluginDeleteFailurePattern(int $userId): string
+    {
+        return '/^' . preg_quote(sprintf(
+            'CRITICAL: privacy step failed for user %d at stage plugin delete, rolled back, personal data remains: %s',
+            $userId,
+            \ElanRegistry\Exceptions\CarDatabaseException::class
+        ), '/') . ' \\(code 0, SQLSTATE 42S22\\) at CarRepository\\.php:\\d+$/';
     }
 
     // --- Plugin rows by message ID, and by each address source ------------------
@@ -503,14 +517,10 @@ final class UserDeletionPrivacyStepTest extends IntegrationTestCase
         $notes = $this->deletionLogNotes($userId);
         $failure = array_values(array_filter($notes, static fn (string $note): bool => str_starts_with($note, 'CRITICAL: privacy step failed')));
         $this->assertCount(1, $failure);
-        $this->assertSame(
-            sprintf(
-                'CRITICAL: privacy step failed for user %d at stage plugin delete, rolled back, personal data remains: %s (code 0)',
-                $userId,
-                \ElanRegistry\Exceptions\CarDatabaseException::class
-            ),
+        $this->assertMatchesRegularExpression(
+            self::pluginDeleteFailurePattern($userId),
             $failure[0],
-            'The log names the user ID, the stage, the exception class and code, and no message text'
+            'The log names the user ID, the stage, the exception class, code, SQLSTATE and throw site, and no message text'
         );
         $this->assertStringNotContainsString('brevo_message_id', $failure[0]);
 
@@ -738,7 +748,7 @@ final class UserDeletionPrivacyStepTest extends IntegrationTestCase
 
         $result = (new \ElanRegistry\AccountDeletionPrivacyStep($this->db))->run($owner['id']);
 
-        $this->assertTrue($result->committed);
+        $this->assertSame(AccountDeletionPrivacyOutcome::Committed, $result->outcome);
         $this->assertSame(1, $result->deletedHoldingRowCount);
         $this->assertNull($this->holdingRow($owner['id']), 'A committed step removes the holding row');
         $this->assertSame(0, $this->profileCount($owner['id']), 'The profile goes in the same commit');
@@ -766,7 +776,7 @@ final class UserDeletionPrivacyStepTest extends IntegrationTestCase
             $this->assertFalse($this->db->error(), 'Test cleanup: failed to restore the column: ' . $this->db->errorString());
         }
 
-        $this->assertFalse($failed->committed);
+        $this->assertSame(AccountDeletionPrivacyOutcome::RolledBack, $failed->outcome);
         $this->assertSame('plugin delete', $failed->failedStage);
         $this->assertNotNull($this->holdingRow($owner['id']), 'The holding row stays so the rerun has the addresses');
         $this->assertSame(1, $this->profileCount($owner['id']), 'The failed step rolled back: the profile stays');
@@ -778,12 +788,8 @@ final class UserDeletionPrivacyStepTest extends IntegrationTestCase
             static fn (string $note): bool => str_starts_with($note, 'CRITICAL: privacy step failed')
         ));
         $this->assertCount(1, $failure);
-        $this->assertSame(
-            sprintf(
-                'CRITICAL: privacy step failed for user %d at stage plugin delete, rolled back, personal data remains: %s (code 0)',
-                $owner['id'],
-                \ElanRegistry\Exceptions\CarDatabaseException::class
-            ),
+        $this->assertMatchesRegularExpression(
+            self::pluginDeleteFailurePattern($owner['id']),
             $failure[0]
         );
         foreach (['email', 'pending', 'stale'] as $key) {
@@ -792,7 +798,7 @@ final class UserDeletionPrivacyStepTest extends IntegrationTestCase
 
         $rerun = $step->run($owner['id']);
 
-        $this->assertTrue($rerun->committed);
+        $this->assertSame(AccountDeletionPrivacyOutcome::Committed, $rerun->outcome);
         $this->assertSame(1, $rerun->deletedHoldingRowCount);
         $this->assertSame(2, $rerun->deletedPluginMessageCount);
         $this->assertFalse($this->pluginRowExists($pendingRow), 'The rerun reads email_new from the holding row');
@@ -814,7 +820,7 @@ final class UserDeletionPrivacyStepTest extends IntegrationTestCase
 
         $result = (new \ElanRegistry\AccountDeletionPrivacyStep($this->db))->run($owner['id']);
 
-        $this->assertTrue($result->committed);
+        $this->assertSame(AccountDeletionPrivacyOutcome::Committed, $result->outcome);
         $this->assertTrue($this->pluginRowExists($kept), 'The row belongs to the live user that holds the address now');
         $this->assertFalse($this->pluginRowExists($gone), 'Test control: the other holding-row address still goes');
     }
@@ -829,7 +835,7 @@ final class UserDeletionPrivacyStepTest extends IntegrationTestCase
 
         $result = (new \ElanRegistry\AccountDeletionPrivacyStep($this->db))->run($userId);
 
-        $this->assertTrue($result->committed);
+        $this->assertSame(AccountDeletionPrivacyOutcome::Committed, $result->outcome);
         $this->assertSame(0, $result->deletedHoldingRowCount);
         $this->assertSame(0, $this->eventCount($userId));
         $this->assertSame(0, $this->profileCount($userId));

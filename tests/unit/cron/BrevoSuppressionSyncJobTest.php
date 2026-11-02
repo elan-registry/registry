@@ -6,6 +6,8 @@ use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\EffectiveEmailFlags;
 use ElanRegistry\Car\EmailEventApplier;
 use ElanRegistry\Car\EmailEventMatcher;
+use ElanRegistry\Cron\AbstractCronJob;
+use ElanRegistry\Cron\BrevoClientReadiness;
 use ElanRegistry\Cron\BrevoSuppressionSyncJob;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarValidationException;
@@ -163,6 +165,7 @@ final class BrevoSuppressionSyncJobTest extends TestCase
      * @param list<\Brevo\Client\Model\GetTransacBlockedContacts|null> $pages
      * @param FakeBrevoSuppressionSyncClient|null $client Out: the job's client
      * @param AbstractCronJobFakeDatabase|null $db Out: the job's database
+     * @param BrevoClientReadiness $readiness What the client's readiness() returns
      * @param-out FakeBrevoSuppressionSyncClient $client
      * @param-out AbstractCronJobFakeDatabase $db
      */
@@ -172,8 +175,9 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         bool $verificationEnabled = true,
         ?AbstractCronJobFakeDatabase &$db = null,
         bool $unmatchedCounterUpdateSucceeds = true,
+        BrevoClientReadiness $readiness = BrevoClientReadiness::READY,
     ): BrevoSuppressionSyncJob {
-        $client = new FakeBrevoSuppressionSyncClient($pages);
+        $client = new FakeBrevoSuppressionSyncClient($pages, $readiness);
         $db = new AbstractCronJobFakeDatabase(
             verificationEnabled: $verificationEnabled,
             unmatchedCounterUpdateSucceeds: $unmatchedCounterUpdateSucceeds,
@@ -684,6 +688,107 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         );
         $this->assertStringContainsString('1 matched', $log[0]['message']);
         $this->assertStringContainsString('0 invalid address(es)', $log[0]['message']);
+    }
+
+    // --- Brevo setup check and run result (#2480) -------------------------
+
+    /**
+     * Whether the last run called markRunFailed(). The job has no healthcheck
+     * slug, so no ping shows it. run() clears the flag before execute() and
+     * leaves it set after, so the flag is the run's result.
+     */
+    private function runWasMarkedFailed(BrevoSuppressionSyncJob $job): bool
+    {
+        $flag = (new ReflectionProperty(AbstractCronJob::class, 'runFailed'))->getValue($job);
+        $this->assertIsBool($flag);
+
+        return $flag;
+    }
+
+    /** @return list<array{category: string, message: string}> */
+    private function cronJobFailureLogs(): array
+    {
+        global $mockLogEntries;
+
+        return array_values(array_filter(
+            $mockLogEntries ?? [],
+            static fn (array $entry): bool => $entry['category'] === LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE
+        ));
+    }
+
+    public function testReadyRunWithAGoodPageSucceeds(): void
+    {
+        $this->matchEveryEmailTo(1);
+        $job = $this->makeJobWithContacts(
+            [FakeBrevoBlockedContact::withReason('a@example.com', 'hardBounce')],
+            $client
+        );
+
+        $job->run();
+
+        $this->assertSame(1, $client->fetchCalls);
+        $this->assertFalse($this->runWasMarkedFailed($job));
+        $this->assertNotEmpty($this->logsContaining('incremental run complete — 1 matched'));
+    }
+
+    /** Brevo is not set up: no poll runs, and the run succeeds. */
+    public function testNotConfiguredRunSucceedsAndPollsNothing(): void
+    {
+        $job = $this->makeJob(
+            [FakeBrevoSuppressionSyncClient::page([])],
+            $client,
+            readiness: BrevoClientReadiness::NOT_CONFIGURED
+        );
+
+        $job->run();
+
+        $this->assertSame(0, $client->fetchCalls, 'No poll may run when Brevo is not set up');
+        $this->assertFalse($this->runWasMarkedFailed($job));
+        $this->assertSame([], $this->cronJobFailureLogs(), 'Not set up is not a job failure');
+        $log = $this->logsContaining('Brevo is not set up here');
+        $this->assertCount(1, $log);
+        $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, $log[0]['category']);
+    }
+
+    /** A failed setup check is a fault: no poll runs, and the run fails. */
+    public function testFailedSetupCheckMarksTheRunFailedAndPollsNothing(): void
+    {
+        $job = $this->makeJob(
+            [FakeBrevoSuppressionSyncClient::page([])],
+            $client,
+            readiness: BrevoClientReadiness::FAILED
+        );
+
+        $job->run();
+
+        $this->assertSame(0, $client->fetchCalls);
+        $this->assertTrue($this->runWasMarkedFailed($job));
+        $this->assertCount(1, $this->logsContaining('incremental run FAILED — the Brevo setup check failed'));
+        $this->assertSame([], $this->logsContaining('incremental run complete'), 'A failed run must not read as clean');
+    }
+
+    /** A poll that fails after a READY check is a fault too. */
+    public function testPollFailureAfterReadyCheckMarksTheRunFailed(): void
+    {
+        $job = $this->makeJob([null], $client);
+
+        $job->run();
+
+        $this->assertSame(1, $client->fetchCalls);
+        $this->assertTrue($this->runWasMarkedFailed($job));
+        $this->assertCount(1, $this->logsContaining('incremental run FAILED — the Brevo poll failed'));
+        $this->assertSame([], $this->logsContaining('incremental run complete'), 'A failed run must not read as clean');
+    }
+
+    /** An empty page is a real answer from Brevo, not a failed poll. */
+    public function testEmptyPageAfterReadyCheckSucceeds(): void
+    {
+        $job = $this->makeJob([FakeBrevoSuppressionSyncClient::page([])]);
+
+        $job->run();
+
+        $this->assertFalse($this->runWasMarkedFailed($job));
+        $this->assertNotEmpty($this->logsContaining('incremental run complete — 0 matched'));
     }
 
     // --- Full backfill window / paging ------------------------------------

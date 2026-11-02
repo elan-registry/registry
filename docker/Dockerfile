@@ -60,9 +60,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #
 # NOT built here, because php:8.5-apache already compiles them in and a second
 # `docker-php-ext-install` would fail the build on a duplicate module:
-#   curl, mbstring, openssl, fileinfo, json, libxml, dom, xml, xmlwriter,
+#   curl, mbstring, openssl, fileinfo, filter, json, libxml, dom, xml, xmlwriter,
 #   ctype, tokenizer, phar, pcre, iconv
-# That set covers the runtime requirements AND the PHPUnit 12 dev requirements
+# That set covers the runtime requirements AND the PHPUnit 13 dev requirements
 # identified in the plan. Verify after any base-image bump with:
 #   docker compose exec app php -m
 RUN docker-php-ext-configure gd --with-jpeg --with-freetype \

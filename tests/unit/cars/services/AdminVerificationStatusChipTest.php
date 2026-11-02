@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Car\EffectiveEmailFlags;
 use ElanRegistry\Car\EmailEventApplier;
 use ElanRegistry\Car\VerificationTabStatus;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -19,6 +20,31 @@ use PHPUnit\Framework\TestCase;
  */
 final class AdminVerificationStatusChipTest extends TestCase
 {
+    /**
+     * Owner flags that apply to the current address, as the queue `_active` columns give them
+     */
+    private static function flags(
+        bool $hasProfile = true,
+        bool $blocked = false,
+        ?string $blockedCause = null,
+        bool $optedOut = false,
+        bool $bounced = false
+    ): EffectiveEmailFlags {
+        return new EffectiveEmailFlags(
+            hasProfile: $hasProfile,
+            optedOut: $optedOut,
+            optedOutAt: null,
+            blocked: $blocked,
+            blockedAddress: null,
+            blockedAt: null,
+            blockedCause: $blockedCause,
+            bounced: $bounced,
+            bouncedAddress: null,
+            bouncedAt: null,
+            currentEmail: null,
+        );
+    }
+
     private static function event(string $eventName, string $occurredAt): object
     {
         return (object) ['event' => $eventName, 'occurred_at' => $occurredAt];
@@ -26,7 +52,7 @@ final class AdminVerificationStatusChipTest extends TestCase
 
     public function testOwnerBlockedShowsBlockedWithStoredCause(): void
     {
-        $chip = VerificationTabStatus::chip(null, true, true, 'spam', false);
+        $chip = VerificationTabStatus::chip(null, self::flags(blocked: true, blockedCause: 'spam'));
 
         $this->assertSame('blocked', $chip['kind']);
         $this->assertSame('Blocked', $chip['label']);
@@ -40,7 +66,7 @@ final class AdminVerificationStatusChipTest extends TestCase
      */
     public function testBlockedWithUnsubscribedCauseShowsBlockedNotOptedOut(): void
     {
-        $chip = VerificationTabStatus::chip(null, true, true, 'unsubscribed', false);
+        $chip = VerificationTabStatus::chip(null, self::flags(blocked: true, blockedCause: 'unsubscribed'));
 
         $this->assertSame('blocked', $chip['kind']);
         $this->assertSame('Blocked', $chip['label']);
@@ -49,7 +75,7 @@ final class AdminVerificationStatusChipTest extends TestCase
 
     public function testBlockedWithNoKnownCauseShowsCauseUnknown(): void
     {
-        $chip = VerificationTabStatus::chip(null, true, true, null, false);
+        $chip = VerificationTabStatus::chip(null, self::flags(blocked: true));
 
         $this->assertSame('blocked', $chip['kind']);
         $this->assertSame('cause unknown', $chip['reason']);
@@ -57,7 +83,7 @@ final class AdminVerificationStatusChipTest extends TestCase
 
     public function testOwnerOptedOutShowsOptedOut(): void
     {
-        $chip = VerificationTabStatus::chip(null, true, false, null, true);
+        $chip = VerificationTabStatus::chip(null, self::flags(optedOut: true));
 
         $this->assertSame('opted_out', $chip['kind']);
         $this->assertSame('Opted out', $chip['label']);
@@ -65,14 +91,14 @@ final class AdminVerificationStatusChipTest extends TestCase
 
     public function testBlockedWinsOverOptedOut(): void
     {
-        $chip = VerificationTabStatus::chip(null, true, true, 'spam', true);
+        $chip = VerificationTabStatus::chip(null, self::flags(blocked: true, blockedCause: 'spam', optedOut: true));
 
         $this->assertSame('blocked', $chip['kind']);
     }
 
     public function testBouncedFlagWinsOverOptedOut(): void
     {
-        $chip = VerificationTabStatus::chip(null, true, false, null, true, true);
+        $chip = VerificationTabStatus::chip(null, self::flags(optedOut: true, bounced: true));
 
         $this->assertSame('bounced', $chip['kind']);
         $this->assertSame('Bounced', $chip['label']);
@@ -80,14 +106,14 @@ final class AdminVerificationStatusChipTest extends TestCase
 
     public function testBlockedWinsOverBouncedFlag(): void
     {
-        $chip = VerificationTabStatus::chip(null, true, true, 'spam', false, true);
+        $chip = VerificationTabStatus::chip(null, self::flags(blocked: true, blockedCause: 'spam', bounced: true));
 
         $this->assertSame('blocked', $chip['kind']);
     }
 
     public function testBouncedFlagWithNoEventShowsBounced(): void
     {
-        $chip = VerificationTabStatus::chip(null, true, false, null, false, true);
+        $chip = VerificationTabStatus::chip(null, self::flags(bounced: true));
 
         $this->assertSame('bounced', $chip['kind']);
         $this->assertSame('', $chip['reason']);
@@ -97,7 +123,7 @@ final class AdminVerificationStatusChipTest extends TestCase
     {
         $event = (object) ['event' => 'hard_bounce', 'occurred_at' => '2026-09-01 10:00:00', 'reason' => 'mailbox full'];
 
-        $chip = VerificationTabStatus::chip($event, true, false, null, false, true);
+        $chip = VerificationTabStatus::chip($event, self::flags(bounced: true));
 
         $this->assertSame('bounced', $chip['kind']);
         $this->assertSame('mailbox full', $chip['reason']);
@@ -107,7 +133,7 @@ final class AdminVerificationStatusChipTest extends TestCase
     {
         $event = (object) ['event' => 'soft_bounce', 'occurred_at' => '2026-09-01 10:00:00', 'reason' => 'mailbox full'];
 
-        $chip = VerificationTabStatus::chip($event, true, false, null, false, true);
+        $chip = VerificationTabStatus::chip($event, self::flags(bounced: true));
 
         $this->assertSame('bounced', $chip['kind']);
         $this->assertSame('', $chip['reason']);
@@ -129,28 +155,28 @@ final class AdminVerificationStatusChipTest extends TestCase
     #[DataProvider('hardBounceEventProvider')]
     public function testOldHardBounceEventWithNoFlagDoesNotHideOptOut(string $eventName): void
     {
-        $chip = VerificationTabStatus::chip(self::event($eventName, '2026-09-01 10:00:00'), true, false, null, true, false);
+        $chip = VerificationTabStatus::chip(self::event($eventName, '2026-09-01 10:00:00'), self::flags(optedOut: true));
 
         $this->assertSame('opted_out', $chip['kind']);
     }
 
     public function testOptedOutWinsOverANonBounceEvent(): void
     {
-        $chip = VerificationTabStatus::chip(self::event('soft_bounce', '2026-09-01 10:00:00'), true, false, null, true);
+        $chip = VerificationTabStatus::chip(self::event('soft_bounce', '2026-09-01 10:00:00'), self::flags(optedOut: true));
 
         $this->assertSame('opted_out', $chip['kind']);
     }
 
     public function testOwnerFlagWinsOverALatestDeliveredEvent(): void
     {
-        $chip = VerificationTabStatus::chip(self::event('delivered', '2026-09-01 10:00:00'), true, false, null, true);
+        $chip = VerificationTabStatus::chip(self::event('delivered', '2026-09-01 10:00:00'), self::flags(optedOut: true));
 
         $this->assertSame('opted_out', $chip['kind']);
     }
 
     public function testNoProfileShowsNoProfileChipWithoutAReason(): void
     {
-        $chip = VerificationTabStatus::chip(null, false, true, 'spam', true);
+        $chip = VerificationTabStatus::chip(null, self::flags(hasProfile: false, blocked: true, blockedCause: 'spam', optedOut: true));
 
         $this->assertSame('no_profile', $chip['kind']);
         $this->assertSame('No profile', $chip['label']);
@@ -161,7 +187,7 @@ final class AdminVerificationStatusChipTest extends TestCase
     {
         // A live 'spam' event on an owner with no block flag yet takes the
         // match() path and keeps its own, more specific label.
-        $chip = VerificationTabStatus::chip(self::event('spam', '2026-09-01 10:00:00'));
+        $chip = VerificationTabStatus::chip(self::event('spam', '2026-09-01 10:00:00'), self::flags());
 
         $this->assertSame('spam', $chip['kind']);
         $this->assertSame('Spam complaint', $chip['label']);
@@ -171,7 +197,7 @@ final class AdminVerificationStatusChipTest extends TestCase
     {
         $event = (object) ['event' => 'hard_bounce', 'occurred_at' => '2026-09-01 10:00:00', 'reason' => 'mailbox full'];
 
-        $chip = VerificationTabStatus::chip($event);
+        $chip = VerificationTabStatus::chip($event, self::flags());
 
         $this->assertSame('bounced', $chip['kind']);
         $this->assertSame('Bounced', $chip['label']);
@@ -193,7 +219,7 @@ final class AdminVerificationStatusChipTest extends TestCase
 
         $event = (object) ['event' => 'invalid_email', 'occurred_at' => '2026-09-01 10:00:00'];
 
-        $chip = VerificationTabStatus::chip($event);
+        $chip = VerificationTabStatus::chip($event, self::flags());
 
         $this->assertSame('bounced', $chip['kind']);
         $this->assertSame('Bounced', $chip['label']);
@@ -203,7 +229,7 @@ final class AdminVerificationStatusChipTest extends TestCase
     {
         $event = (object) ['event' => 'deferred', 'occurred_at' => '2026-09-01 10:00:00'];
 
-        $chip = VerificationTabStatus::chip($event);
+        $chip = VerificationTabStatus::chip($event, self::flags());
 
         $this->assertSame('other', $chip['kind']);
         $this->assertSame('Deferred', $chip['label']);
@@ -211,7 +237,7 @@ final class AdminVerificationStatusChipTest extends TestCase
 
     public function testNoEventAndAndNoFlagShowsEmptyChip(): void
     {
-        $chip = VerificationTabStatus::chip(null);
+        $chip = VerificationTabStatus::chip(null, self::flags());
 
         $this->assertSame('', $chip['kind']);
         $this->assertSame('', $chip['label']);
@@ -219,7 +245,7 @@ final class AdminVerificationStatusChipTest extends TestCase
 
     public function testUnsubscribedEventShowsOptedOut(): void
     {
-        $chip = VerificationTabStatus::chip(self::event('unsubscribed', '2026-09-01 10:00:00'));
+        $chip = VerificationTabStatus::chip(self::event('unsubscribed', '2026-09-01 10:00:00'), self::flags());
 
         $this->assertSame('opted_out', $chip['kind']);
         $this->assertSame('Opted out', $chip['label']);
@@ -229,7 +255,7 @@ final class AdminVerificationStatusChipTest extends TestCase
     {
         $event = (object) ['event' => 'soft_bounce', 'occurred_at' => '2026-09-01 10:00:00', 'reason' => ' mailbox full '];
 
-        $chip = VerificationTabStatus::chip($event);
+        $chip = VerificationTabStatus::chip($event, self::flags());
 
         $this->assertSame('soft_bounce', $chip['kind']);
         $this->assertSame('Soft bounce', $chip['label']);
@@ -238,7 +264,7 @@ final class AdminVerificationStatusChipTest extends TestCase
 
     public function testOpenedEventShowsDelivered(): void
     {
-        $chip = VerificationTabStatus::chip(self::event('opened', '2026-09-01 10:00:00'));
+        $chip = VerificationTabStatus::chip(self::event('opened', '2026-09-01 10:00:00'), self::flags());
 
         $this->assertSame('delivered', $chip['kind']);
         $this->assertSame('text-bg-success', $chip['class']);

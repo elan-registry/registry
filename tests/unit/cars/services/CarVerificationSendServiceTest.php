@@ -737,10 +737,142 @@ final class CarVerificationSendServiceTest extends TestCase
         $this->assertStringNotContainsString('invalid_parameter', $line);
     }
 
-    /** Runs a send where email() returns false and returns the one failed-send log line. */
-    private function failedSendLogLine(): string
+    /**
+     * Mailer error texts with no HTTP response, each with its label and the
+     * variable parts that the log line must not copy.
+     *
+     * @return array<string, array{string, string, list<string>}>
+     */
+    public static function noHttpResponseErrors(): array
     {
-        $GLOBALS['mockEmailSendResult'] = false;
+        return [
+            'SDK [0] with cURL errno' => [
+                '[0] cURL error 56: Recv failure: Connection reset by peer '
+                    . '(see https://curl.se/libcurl/c/libcurl-errors.html) for https://api.brevo.com/v3/smtp/email',
+                'no HTTP response (cURL error 56)',
+                ['Connection reset', 'api.brevo.com'],
+            ],
+            'unwrapped ConnectException timeout' => [
+                'cURL error 28: Operation timed out after 10001 milliseconds with 0 bytes received '
+                    . '(see https://curl.se/libcurl/c/libcurl-errors.html) for https://api.brevo.com/v3/smtp/email',
+                'no HTTP response (cURL error 28)',
+                ['Operation timed out', 'api.brevo.com'],
+            ],
+            'SDK [0] without cURL errno' => [
+                '[0] An error was encountered while creating the response',
+                'no HTTP response',
+                ['encountered'],
+            ],
+        ];
+    }
+
+    /**
+     * A send with no HTTP response gets a fixed label. The label keeps only
+     * the cURL errno, so an operator can tell a timeout from a reset.
+     *
+     * @param list<string> $notLogged
+     */
+    #[RunInSeparateProcess]
+    #[AllowMockObjectsWithoutExpectations]
+    #[DataProvider('noHttpResponseErrors')]
+    public function testFailedSendLogLabelsAnErrorWithNoHttpResponse(string $error, string $label, array $notLogged): void
+    {
+        require_once __DIR__ . '/fixtures/sendinblue-last-error.php';
+        $GLOBALS['mockSendinblueLastError'] = $error;
+
+        $line = $this->failedSendLogLine();
+
+        $this->assertStringEndsWith('Mailer error: ' . $label, $line);
+        foreach ($notLogged as $part) {
+            $this->assertStringNotContainsString($part, $line);
+        }
+    }
+
+    /**
+     * The sendinblue plugin's fixed precondition texts, each with its label.
+     *
+     * @return array<string, array{string, string}>
+     */
+    public static function pluginFailureTexts(): array
+    {
+        return [
+            'missing fields' => ['FAILED: Attempted to send without all required fields', 'plugin: missing required fields'],
+            'no recipient' => ['FAILED: No usable recipient address', 'plugin: no usable recipient address'],
+            'no API key' => ['FAILED: The Brevo API key is not configured', 'plugin: Brevo API key not configured'],
+        ];
+    }
+
+    /** Each known plugin precondition text gets its own label. */
+    #[RunInSeparateProcess]
+    #[AllowMockObjectsWithoutExpectations]
+    #[DataProvider('pluginFailureTexts')]
+    public function testFailedSendLogLabelsAPluginPreconditionFailure(string $error, string $label): void
+    {
+        require_once __DIR__ . '/fixtures/sendinblue-last-error.php';
+        $GLOBALS['mockSendinblueLastError'] = $error;
+
+        $line = $this->failedSendLogLine();
+
+        $this->assertStringEndsWith('Mailer error: ' . $label, $line);
+        $this->assertStringNotContainsString('FAILED:', $line);
+    }
+
+    /**
+     * Texts that are near a known form but do not match it exactly. They can
+     * hold an address, so they stay generic.
+     *
+     * @return array<string, array{string}>
+     */
+    public static function nearMissErrors(): array
+    {
+        return [
+            'FAILED: text with extra data' => ['FAILED: The Brevo API key is not configured for leak-test-2466@example.org'],
+            'cURL error not at the start' => ['Brevo said cURL error 28: timeout for leak-test-2466@example.org'],
+            '[0] not at the start' => ['Brevo said [0] for leak-test-2466@example.org'],
+        ];
+    }
+
+    /** A text near a known form, but not an exact or anchored match, stays generic. */
+    #[RunInSeparateProcess]
+    #[AllowMockObjectsWithoutExpectations]
+    #[DataProvider('nearMissErrors')]
+    public function testFailedSendLogKeepsANearMissTextGeneric(string $error): void
+    {
+        require_once __DIR__ . '/fixtures/sendinblue-last-error.php';
+        $GLOBALS['mockSendinblueLastError'] = $error;
+
+        $line = $this->failedSendLogLine();
+
+        $this->assertStringEndsWith('Mailer error: reported (text not logged)', $line);
+        $this->assertStringNotContainsStringIgnoringCase('leak-test-2466', $line);
+    }
+
+    /**
+     * A site-local mailer override can return a string that holds the
+     * address. The line gives only the type of the value.
+     */
+    #[AllowMockObjectsWithoutExpectations]
+    public function testFailedSendLogGivesOnlyTheTypeOfAStringReturnValue(): void
+    {
+        $line = $this->failedSendLogLine('rejected: leak-test-2466@example.org');
+
+        $this->assertStringContainsString('email() returned string (expected true)', $line);
+        $this->assertStringNotContainsStringIgnoringCase('leak-test-2466', $line);
+    }
+
+    /** A non-bool falsy return value such as 0 also gives only its type. */
+    #[AllowMockObjectsWithoutExpectations]
+    public function testFailedSendLogGivesOnlyTheTypeOfAnIntReturnValue(): void
+    {
+        $line = $this->failedSendLogLine(0);
+
+        $this->assertStringContainsString('email() returned int (expected true)', $line);
+    }
+
+    /** Runs a send where email() returns $sendResult and returns the one failed-send log line. */
+    private function failedSendLogLine(mixed $sendResult = false): string
+    {
+        $GLOBALS['mockEmailSendResult'] = $sendResult;
         $GLOBALS['mockLogEntries'] = [];
         $this->mockVerifier->method('generateVerificationCode')->willReturn('newcode1234567890');
         $this->mockVerifier->method('setVerificationCode')->willReturn(true);
@@ -752,7 +884,7 @@ final class CarVerificationSendServiceTest extends TestCase
         $this->assertSame(SendResult::STATUS_FAILED, $result->status);
         $lines = array_values(array_filter(
             $GLOBALS['mockLogEntries'] ?? [],
-            static fn (array $entry): bool => str_contains($entry['message'], 'email() returned false')
+            static fn (array $entry): bool => str_contains($entry['message'], 'CarVerificationSendService::sendOne: email() returned ')
         ));
         $this->assertCount(1, $lines, 'One failed-send log line per send');
 

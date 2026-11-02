@@ -2,9 +2,12 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Cron\BrevoClientReadiness;
 use ElanRegistry\Cron\BrevoEventReconciliationClient;
 use ElanRegistry\LogCategories;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Tests\Support\SendinblueSettingsFakeDatabase;
 
@@ -27,10 +30,43 @@ require_once __DIR__ . '/../../Support/SendinblueSettingsFakeDatabase.php';
 #[Group('fast')]
 final class BrevoEventReconciliationClientTest extends TestCase
 {
+    private ?string $sdkRoot = null;
+
     protected function setUp(): void
     {
         global $mockLogEntries;
         $mockLogEntries = [];
+    }
+
+    protected function tearDown(): void
+    {
+        if ($this->sdkRoot !== null) {
+            $dir = $this->sdkRoot . 'usersc/plugins/sendinblue/vendor';
+            @unlink($dir . '/autoload.php');
+            foreach ([$dir, dirname($dir), dirname($dir, 2), dirname($dir, 3), $this->sdkRoot] as $path) {
+                @rmdir($path);
+            }
+        }
+    }
+
+    /**
+     * Point loadSdk() at a fake site root that holds the given autoloader.
+     * Null: no autoloader file.
+     */
+    private function clientWithSdkAutoloader(?string $autoloaderSource): BrevoEventReconciliationClient
+    {
+        global $abs_us_root, $us_url_root;
+        $root = sys_get_temp_dir() . '/brevo-recon-sdk-' . bin2hex(random_bytes(4)) . '/';
+        $dir = $root . 'usersc/plugins/sendinblue/vendor';
+        $this->assertTrue(mkdir($dir, 0777, true));
+        $this->sdkRoot = $root;
+        if ($autoloaderSource !== null) {
+            file_put_contents($dir . '/autoload.php', $autoloaderSource);
+        }
+        $abs_us_root = $root;
+        $us_url_root = '';
+
+        return new BrevoEventReconciliationClient(new SendinblueSettingsFakeDatabase(key: 'test-api-key'));
     }
 
     private function fetch(SendinblueSettingsFakeDatabase $db): ?array
@@ -89,19 +125,169 @@ final class BrevoEventReconciliationClientTest extends TestCase
         $this->assertStringContainsString('no Brevo API key configured', $mockLogEntries[0]['message']);
     }
 
-    // NOTE: there is deliberately no test that passes a *valid* key through
-    // fetchEvents(). The Brevo SDK is vendored in this working tree and its
-    // classes autoload, so getting past apiKey() and loadSdk() reaches the
-    // real `new GuzzleHttp\Client()` and makes a live HTTPS call to
-    // api.brevo.com — verified: an early draft of this file did exactly that
-    // and failed on Brevo's 401. A unit test must not depend on the network,
-    // so every case here is one that returns before the HTTP call.
-    //
-    // loadSdk()'s three branches are consequently not unit-testable: which one
-    // is taken depends on whether a real file exists at a path fixed by a
-    // private class constant, and the "SDK present" branch falls through to
-    // that live call. They are single log-and-return-false statements, left to
-    // code review and manual verification rather than reshaping the class to
-    // make a constant injectable purely for a test. The integration suite
-    // covers the job end to end with the client substituted.
+    /**
+     * @return array<string, array{SendinblueSettingsFakeDatabase, BrevoClientReadiness, string}>
+     */
+    public static function readinessWithoutKeyProvider(): array
+    {
+        return [
+            'table absent (42S02)' => [
+                new SendinblueSettingsFakeDatabase(sqlState: '42S02'),
+                BrevoClientReadiness::NOT_CONFIGURED,
+                LogCategories::LOG_CATEGORY_CRON_JOB_SKIPPED,
+            ],
+            'empty key' => [
+                new SendinblueSettingsFakeDatabase(key: ''),
+                BrevoClientReadiness::NOT_CONFIGURED,
+                LogCategories::LOG_CATEGORY_CRON_JOB_SKIPPED,
+            ],
+            'no row' => [
+                new SendinblueSettingsFakeDatabase(key: null),
+                BrevoClientReadiness::NOT_CONFIGURED,
+                LogCategories::LOG_CATEGORY_CRON_JOB_SKIPPED,
+            ],
+            'other DB error (HY000)' => [
+                new SendinblueSettingsFakeDatabase(sqlState: 'HY000'),
+                BrevoClientReadiness::FAILED,
+                LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE,
+            ],
+        ];
+    }
+
+    /** T9: each no-key cause maps to one readiness case and one log row of the matching category. */
+    #[DataProvider('readinessWithoutKeyProvider')]
+    public function testReadinessWithoutKeyMapsCauseToCaseAndLogCategory(
+        SendinblueSettingsFakeDatabase $db,
+        BrevoClientReadiness $expected,
+        string $expectedCategory
+    ): void {
+        global $mockLogEntries;
+
+        $this->assertSame($expected, (new BrevoEventReconciliationClient($db))->readiness());
+
+        $this->assertCount(1, $mockLogEntries);
+        $this->assertSame($expectedCategory, $mockLogEntries[0]['category']);
+    }
+
+    /**
+     * T9: key present and SDK class loaded gives READY with no log row.
+     *
+     * Separate process: when the SDK is not installed the test defines a stub
+     * class, which must not leak into other tests.
+     */
+    #[RunInSeparateProcess]
+    public function testReadinessWithKeyAndSdkLoadedIsReady(): void
+    {
+        global $mockLogEntries;
+
+        if (!class_exists('\Brevo\Client\Api\TransactionalEmailsApi')) {
+            eval('namespace Brevo\\Client\\Api; class TransactionalEmailsApi {}');
+        }
+
+        $client = new BrevoEventReconciliationClient(new SendinblueSettingsFakeDatabase(key: 'test-api-key'));
+
+        $this->assertSame(BrevoClientReadiness::READY, $client->readiness());
+        $this->assertSame([], $mockLogEntries);
+    }
+
+    /**
+     * T10 (found in #2420): a poll that throws with an address in the
+     * message reaches the poll catch, returns null, and logs no address.
+     */
+    public function testFetchEventsExceptionMessageAddressIsNotLogged(): void
+    {
+        global $mockLogEntries;
+
+        $client = new class (new SendinblueSettingsFakeDatabase(key: 'test-api-key')) extends BrevoEventReconciliationClient {
+            /** @return object */
+            protected function createApi(string $apiKey): object
+            {
+                return new class {
+                    public function getEmailEventReport(mixed ...$args): never
+                    {
+                        throw new \RuntimeException('Brevo rejected the request for owner@example.com');
+                    }
+                };
+            }
+        };
+
+        $result = $client->fetchEvents(
+            new DateTimeImmutable('2026-09-07'),
+            new DateTimeImmutable('2026-09-09'),
+            1000,
+            0,
+            'hardBounces'
+        );
+
+        $this->assertNull($result);
+        $this->assertNotEmpty($mockLogEntries);
+        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $mockLogEntries[0]['category']);
+        foreach ($mockLogEntries as $entry) {
+            $this->assertStringNotContainsString('owner@example.com', (string) json_encode($entry));
+        }
+    }
+
+    /**
+     * @return array<string, array{0: string|null, 1: string}>
+     */
+    public static function sdkLoadFailureProvider(): array
+    {
+        return [
+            'no autoloader file' => [null, 'SDK autoloader is not found'],
+            'autoloader throws' => ["<?php throw new \\RuntimeException('broken');", 'failed to load'],
+            'autoloader defines no API class' => ['<?php // empty', 'is still undefined'],
+        ];
+    }
+
+    /**
+     * With a key set, every SDK load fault is FAILED with one CronJobFailure
+     * row. A missing autoloader is not "not configured": a key means Brevo
+     * is meant to run here, so the job must `/fail`, not ping success.
+     *
+     * Separate process: the autoloader path comes from globals, and a loaded
+     * autoloader stays loaded for the rest of the process.
+     */
+    #[DataProvider('sdkLoadFailureProvider')]
+    #[RunInSeparateProcess]
+    public function testReadinessWithKeyAndSdkLoadFailureIsFailed(?string $autoloader, string $expectedMessage): void
+    {
+        global $mockLogEntries;
+
+        $client = $this->clientWithSdkAutoloader($autoloader);
+
+        $this->assertSame(BrevoClientReadiness::FAILED, $client->readiness());
+        $this->assertCount(1, $mockLogEntries);
+        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $mockLogEntries[0]['category']);
+        $this->assertStringContainsString($expectedMessage, $mockLogEntries[0]['message']);
+    }
+
+    /**
+     * fetchEvents() reaches loadSdk() through createApi(): a missing
+     * autoloader gives null with the same CronJobFailure row as readiness().
+     */
+    #[RunInSeparateProcess]
+    public function testFetchEventsWithKeyAndNoAutoloaderReturnsNullAndLogsAFailure(): void
+    {
+        global $mockLogEntries;
+
+        $client = $this->clientWithSdkAutoloader(null);
+
+        $this->assertNull($client->fetchEvents(
+            new DateTimeImmutable('2026-09-07'),
+            new DateTimeImmutable('2026-09-09'),
+            1000,
+            0,
+            'hardBounces'
+        ));
+        $this->assertCount(1, $mockLogEntries);
+        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $mockLogEntries[0]['category']);
+        $this->assertStringContainsString('SDK autoloader is not found', $mockLogEntries[0]['message']);
+    }
+
+    // NOTE: no test passes a valid key through the real createApi() with a
+    // real SDK. That reaches the real `new GuzzleHttp\Client()` and makes a
+    // live HTTPS call to api.brevo.com. A unit test must not depend on the
+    // network, so the poll path is tested through the createApi() seam
+    // (#2480), the READY case through a stub SDK class, and the loadSdk()
+    // fault branches through a scratch site root.
 }

@@ -472,6 +472,12 @@ The System Status panel shows 7 rows in this order:
 2. **Cron running** — badge `text-bg-success` ("Running") with a "last seen"
    timestamp if `cronReady()` is true. Badge `text-bg-warning` ("Stalled")
    with last seen timestamp or "no cron request has ever been logged" if false.
+   If the settings probe threw before it read the cron state: badge
+   `text-bg-danger` ("Unavailable") with the reason "The cron state could not
+   be read." plus a hint to check the system log for
+   `VerificationConfigWarning`. The row does not show "Stalled" in this case,
+   because the cron state is unknown. If the probe read the cron state and a
+   later read threw, the row shows the real state.
 3. **Webhook receiver** — badge `text-bg-success` ("Live"). Static row,
    always healthy. Records delivery events from all registry mail in real
    time; the nightly reconciliation job catches anything the webhook missed.
@@ -498,9 +504,20 @@ The System Status panel shows 7 rows in this order:
 **Toggle Control:**
 
 - Located on the Verification System tab
+- If the settings probe threw before it read the switch state, or the switch
+  query failed, the state is unknown. The panel shows a `text-bg-danger` "Unavailable" badge
+  (`#verificationSwitchUnavailable`) and the reason "The switch state could
+  not be read." The panel does not render `#verificationEnabledSwitch`. This
+  applies to every viewer, admin and editor. An admin also sees the incident
+  steps.
+- If the probe read the switch state and a later read threw, the panel
+  renders the switch with its real state. An admin can turn it off. Turning
+  it on is blocked, because `brevoReady()` is false after a probe failure.
+  When the probe did not give a Brevo reason, the reason is "Some
+  verification settings could not be read."
 - Disabled (with explanatory text) when current user is not admin, or when admin but attempting to enable while `brevoReady()` is false
 - Label always explains which prerequisite failed if the enable direction is blocked (for Brevo, the `brevoNotReadyReason()` text)
-- Disabling is never blocked — the switch can always be turned off
+- Disabling is never blocked — when the switch state was read, an admin can always turn the switch off
 
 **Dashboard Banner:**
 
@@ -536,8 +553,11 @@ parts appear in this order, from top to bottom:
    `<details>` element. It always renders directly above the Automatic Sending
    section, regardless of health. It is open when the system is not healthy
    (any state other than: switch on, Brevo ready, cron ready, unmatched-recipient
-   count is 0, cron failure count is 0, and no probe failed). Otherwise it is
-   collapsed.
+   count is 0, cron failure count is 0, no probe failed, and the reconciliation
+   and suppression sync job states can be read). A job state that is
+   `UNREADABLE` or `MISSING` makes the system unhealthy. A paused (`DISABLED`)
+   job stays healthy, because an admin chose it. The automatic send job is not
+   part of this rule. Otherwise the panel is collapsed.
 3. **Automatic Sending panel.** Shows the job state, the last-run counts,
    the batch size, **Send Batch Now**, and Pause/Resume. A "Next eligible"
    line shows `last_run_at` plus `SendVerificationBatchJob::GUARD_INTERVAL_HOURS`
@@ -545,6 +565,10 @@ parts appear in this order, from top to bottom:
    send time is the first cron heartbeat after that time. **Send Batch Now**
    is a link to the Eligible queue view. It does not send. The send happens
    only when the admin presses **Send batch** in that view.
+   If the batch size read throws or its query fails, the Batch size row
+   shows a `text-bg-danger` "Unavailable" badge and no Save form for every
+   viewer. The form would post a placeholder value over the real setting. A
+   missing row does not fail: the row shows the default of 5.
 4. **Verification Queue.** One table with eight filter pills and the Window
    and Show controls. See [Verification Queue](#verification-queue).
 5. **Recent Activity.** The latest 20 `cars_hist` rows with operation
@@ -898,7 +922,8 @@ So a missing modal fails closed. Each log row of these two actions records
 | Another user has the address as `users.email` (`CarRepository::findUserIdsByAddress()`) | No | Cleared | "... cleared of the block in the registry. Another account uses this address. The Brevo block stays." |
 | Address is the owner's current `users.email` and no other user has it | Yes | Cleared on 2xx or 404 | "... cleared of the block. Brevo no longer blocks this address." |
 | Same as above, and the Brevo call fails (not 404) | Yes | Not changed | "Brevo did not remove the block. Try again later." |
-| Same as above, and Brevo is not set up (no API key, or the SDK did not load). A failed query on the key also gives the text of the row above, with no call made | No | Not changed | "Brevo is not set up on this site, so the block was not removed. The registry flag did not change." |
+| Same as above, and Brevo is not set up (no API key). A failed query on the key also gives the text of the row above, with no call made | No | Not changed | "Brevo is not set up on this site, so the block was not removed. The registry flag did not change." |
+| Same as above, and a key is set but the SDK is missing or does not load | No | Not changed | "Brevo did not remove the block because of a fault in the Brevo plugin. The registry flag did not change. Check the logs." |
 
 The owner label replaces the "..." in the table. The rules
 keep the action from removing a Brevo block that belongs to another person.
@@ -1043,7 +1068,7 @@ need to know where to look.
 `CarRepository::effectiveEmailFlags()` for every owner. A flag for an old
 address does not show (see [Address-Match Rule](#address-match-rule-2356)).
 For a block with an address, it also calls
-`CarRepository::ownerBlockEventCauses()` and `CarRepository::latestFlagClearAt()`.
+`CarRepository::ownerBlockEventCauses()` and `CarRepository::latestBlockClearAt()`.
 It returns `null` when no flag applies. The array holds `kind`, `address`,
 `date`, `causes`, `alsoOptedOut`, `optedOutDate` and `contentHash`.
 
@@ -1113,9 +1138,6 @@ never shows the word "Brevo". The cause texts are in
   `CarRepository::BLOCKED_CAUSES` order: "Email to `<address>` is blocked
   because a message to this address was reported as spam, this address
   unsubscribed from registry email and an administrator blocked this address."
-- Known limit (#2529): after an admin Clear Block, a later admin block that
-  the import finds as a duplicate writes no new row, so the notice does not
-  name it.
 - Every notice line uses the warning style, `er-email-notice__line--problem`.
   The opted-out notice uses it too.
 - A blocked or bounced notice adds "Change your email address or contact an
@@ -1147,7 +1169,7 @@ contact endpoint, and `TransferEmailService` all ask it before they call
 | Verification email | No profile, `email_bounced`, `email_opted_out`, `email_blocked` | The admin batch report shows the reason for each refused car |
 | Owner-to-owner contact | No profile, `email_bounced`, `email_opted_out`, `email_blocked` | Nobody. The sender gets the same response as for a real send, to stop address enumeration. A log line names the user IDs and the flag names |
 | Admin contact | No profile, `email_bounced`, `email_opted_out`. Not `email_blocked` | The admin or editor sees a message. It gives the bounce date, the opt-out, or the missing profile |
-| Transfer notices (`TransferEmailService`: request notice, response to the requester, decision notice to the previous owner) | No profile, `email_bounced`, `email_opted_out`, `email_blocked` | Nobody. The service logs the skip in the `EMAIL_ERROR` category. The log line names the user ID and the flag names. `sendRequest()` returns `true`, so the caller does not treat the skip as a failure. `sendResponse()` counts a skip as not sent. When no notice was sent, the caller logs "No transfer ... notification sent" |
+| Transfer notices (`TransferEmailService`: request notice, response to the requester, decision notice to the previous owner) | No profile, `email_bounced`, `email_opted_out`, `email_blocked` | Nobody. The service logs the skip in the `EMAIL_ERROR` category. The log line names the user ID and the flag names. `sendRequest()` returns `TransferNoticeOutcome::Skipped`. The caller logs the skip, and the admin alert says that the current owner got no notice. `sendResponse()` counts a skip as not sent. When no notice was sent, the caller logs "No transfer ... notification sent" |
 | Account mail (join, password reset, email change, passwordless, reauthentication) | Never blocked | Not applicable |
 | Registrar feedback | Never blocked | Not applicable |
 
@@ -1356,7 +1378,8 @@ column, so a dropped event leaves a trace.
   already cleared does not set the flag.
 - A spam or unsubscribe event passes this last guard. It sets `email_blocked`
   only when its `occurred_at` is later than the user's latest admin Clear Block
-  log row. An earlier event is recorded and sets nothing.
+  log row. An earlier event is recorded and sets nothing. With a fallback event
+  time in `MODE_EVENT`, the message time is compared instead (#2480).
 
 #### `sendinblueRecordEvent()`
 
@@ -1444,14 +1467,26 @@ the HTTP status as its code.
 
 `usersc/classes/Car/CarVerificationSendService.php` also follows the rule. When
 `email()` fails, its log line does not copy the `sendinblueLastError()` text.
-That text can be a raw Brevo `ApiException` message. The line gives
-`Mailer error: HTTP <status>` when the text starts with the SDK's `[NNN]`
-prefix, `reported (text not logged)` for other text, and `none reported` when
-the plugin reports nothing. A code that is not three digits, such as `[0]`,
-also gives `reported (text not logged)`. So does a connection failure: the SDK
-does not wrap a Guzzle `ConnectException`, so its text starts `cURL error`. The
-plugin's own `sendinblue` log row still holds the text. That row is upstream
-UserSpice code.
+That text can be a raw Brevo `ApiException` message. The line gives a fixed
+label after `Mailer error:`:
+
+| Plugin text | Label |
+| --- | --- |
+| Starts with the SDK's `[NNN]` prefix (three digits) | `HTTP <status>` |
+| Starts with `cURL error NN:` or `[0] cURL error NN:` | `no HTTP response (cURL error NN)` |
+| Other text that starts with `[0]` | `no HTTP response` |
+| `FAILED: Attempted to send without all required fields` | `plugin: missing required fields` |
+| `FAILED: No usable recipient address` | `plugin: no usable recipient address` |
+| `FAILED: The Brevo API key is not configured` | `plugin: Brevo API key not configured` |
+| Any other text | `reported (text not logged)` |
+| No text | `none reported` |
+
+The SDK does not wrap a Guzzle `ConnectException` (timeout, DNS failure,
+refused connection), so its text starts `cURL error` with no `[0]` prefix. The
+label keeps only the cURL errno. A `FAILED:` text gets its label only on an
+exact match. When `email()` returns a value that is not a boolean or `null`,
+the line gives only its type (for example `string`), not the value. The plugin's own
+`sendinblue` log row still holds the text. That row is upstream UserSpice code.
 
 No response body on any status. Brevo parses no body, only the HTTP status.
 The webhook never acknowledges (2xx) before the `er_email_events` write
@@ -1486,8 +1521,10 @@ call it once for each matched event.
 5. A user with no `profiles` row keeps the event row, gets a log line with
    the user ID, and gets no flag.
 6. It sets the flag only when the event address is the current `users.email`.
-7. `email_blocked` changes only when the event time is later than the owner's
-   latest admin Clear Block.
+7. `email_blocked` changes only when the compare time is later than the owner's
+   latest admin Clear Block. The compare time is the event time. With a
+   fallback event time in `MODE_EVENT`, it is the message time (#2480). The
+   event row still stores the event time.
 8. It commits. A failure rolls back the event row, the flag and the audit row,
    and throws a `CarDatabaseException`. The webhook then returns 500.
 
@@ -1497,6 +1534,16 @@ Two modes set the flag rule:
   event row is new. A replayed event changes nothing, and it leaves
   `email_bounced_at` and `email_blocked_at` as they are. The join and address
   guards use the message time.
+  - A fallback event time has no usable date from Brevo. For the webhook, that
+    means no usable `ts_event` or `ts`, or a `ts_event` more than 5 minutes
+    after receipt. For the reconciliation job, it means a missing, unparseable,
+    or future date. The event row stores the receipt or run time.
+  - With a fallback event time, the Clear Block compare in step 7 uses the
+    message time. An event comes after its send, so a message sent at or
+    before the latest admin Clear Block sets no block. A message sent after
+    the clear sets the block, if the other guards pass (#2480).
+  - The clear check in step 3 (`clearIsOnRecord()`) runs in `MODE_STATE`
+    only. In `MODE_EVENT`, the bounce guard already uses the message time.
 - `MODE_STATE` (suppression import). Brevo's blocklist is a current state, not
   an event. The flag changes when it is clear, or when its stored address
   differs from the event address under the matching rule. The join and
@@ -1504,8 +1551,8 @@ Two modes set the flag rule:
   current address. The bounce guard and the Clear Block bound compare Brevo's
   `blockedAt`. When `blockedAt` is not usable, the job passes the run time with
   the `$occurredAtIsFallback` argument. Then an admin clear on record stops the
-  event. `$occurredAtIsFallback` is valid only with `MODE_STATE`. With
-  `MODE_EVENT`, `apply()` throws an `InvalidArgumentException`.
+  event. `$occurredAtIsFallback` is accepted in both modes (#2480). Its
+  clear check runs only in `MODE_STATE`.
 
 The optional `$blockedCause` argument sets the `email_blocked_cause` that the
 profile stores. It is allowed only for a suppression event in `MODE_STATE`.
@@ -1770,12 +1817,18 @@ repository does these steps:
 4. If they differ, it clears `email_bounced` with its address and date, and sets
    `email_bounce_cleared_at`. It clears `email_blocked` with its address, date
    and cause. It sets `email_address_since` to now and `email_address_seen` to
-   the normalized address.
+   the normalized address. A flag whose stored address is the current
+   `users.email` stays set. Only a flag for another address, or a flag with no
+   stored address, is cleared (#2411).
+
+The upstream admin user form changes `users.email` and does not update
+`email_address_seen`. So the next `verifySuccess` must not clear a flag set
+for the new address after an admin edit.
 
 `email_opted_out` stays set. The hook does not pass the address, because the
 repository reads `users.email` under the lock.
 
-**Logging:** For each flag that changes from 1 to 0, the manager writes one
+**Logging:** For each flag that the repository clears, the manager writes one
 flag-change `logs` row with source `email_change`. After the commit, it logs a
 cleared flag that had no recorded address as a data-integrity anomaly under
 `LOG_CATEGORY_EMAIL_BOUNCED`. This applies to `email_bounced` and to
@@ -1861,7 +1914,8 @@ verification switch off.
 - **Input checks.** The job skips an address longer than 155 bytes, or one that
   fails `FILTER_VALIDATE_EMAIL`, and counts it in `invalidAddressCount`. It
   treats an event date more than 5 minutes after the run time as missing, and
-  uses the run time.
+  uses the run time. It passes that run time to `apply()` as a fallback. The
+  Clear Block compare then uses the message time (#2480).
 - **Unmatched events.** The job increments the unmatched recipient counter only
   for a `car_verification`-tagged event of our mail with no single user.
 - **Bad stored data.** A stored value that cannot be parsed (for example a
@@ -1871,8 +1925,9 @@ verification switch off.
 - **Summary** (`ReconciliationSummary`): `matchedCount`, `unmatchedCount`,
   `skippedCount`, `eventTypeCounts` (keyed on the webhook event name),
   `eventsExamined`, `invalidAddressCount`, `pagesFetched` (one for each event
-  type whose poll succeeded), `pollFailed` and `counterFailureCount`. Each
-  count is per event. `eventsExamined` is not the sum of the other counts,
+  type whose poll succeeded), `pollFailed`, `counterFailureCount` and
+  `notConfigured` (Brevo is not set up here, so no poll ran, and script 27
+  shows an info notice in place of the result). Each count is per event. `eventsExamined` is not the sum of the other counts,
   because an event that is not ours, and an unmatched event without the tag,
   add to no count.
 - **Privacy.** No log line holds an address. A `catch` block logs the
@@ -1901,7 +1956,8 @@ an owner-level row (`car_id` NULL) under a message ID that it builds from the
 address, the reason code and `blockedAt`. The ID is a prefix and an MD5 hash.
 The prefix is `suppression-import-blocklist-`
 (`CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX`) for `adminBlocked`
-and `suppression-import-` for all other codes. The paused-email notice reads
+and `suppression-import-`
+(`CarRepository::SUPPRESSION_IMPORT_MESSAGE_ID_PREFIX`) for all other codes. The paused-email notice reads
 the prefix to tell an admin block from an unsubscribe (#2500). Admin-block
 rows from before #2500 have the old prefix. Without a repair, a re-run writes
 a tagged second row beside each one, and the old row still names an
@@ -1930,19 +1986,39 @@ flag step keeps the stored cause. Otherwise it sets the `blocklist` cause,
 unless a later admin Clear Block stops it. The check uses
 `CarRepository::hasOwnerEmailEventForAddress()`, or
 `CarRepository::ownerBlockEventCauses()` for an admin block. It does not compare
-`occurred_at` or the source, so a row from the webhook, the reconciliation job
-or an earlier import counts. A row from before an admin clear also counts. The result
-is not new. The address check and the flag step still run, so the import sets
-the flag again when it is clear and no guard stops it. A webhook row followed
+the source, so a row from the webhook, the reconciliation job
+or an earlier import counts. The time rule depends on the group (#2529):
+
+- For `spam`, `unsubscribed` and an admin block, `apply()` reads
+  `CarRepository::latestBlockClearAt()` once. It passes the time as an
+  exclusive bound (`occurred_at > ?`) to both repository methods. A row from
+  before the latest block clear (admin or email change) does not count. The
+  import then writes a new row after the clear. With no clear, the bound is
+  `null` and a row of any date counts.
+- For the hard-bounce group (`hard_bounce`, `blocked`, `invalid`,
+  `invalid_email`), `apply()` passes `null`. A row from before an admin clear
+  still counts (#2502).
+
+An unchanged Brevo entry after a clear has the same `blockedAt` and the same
+message ID hash. The check finds no row after the clear, but the insert hits
+the unique key. The result is not new, and no repeat row appears. A webhook
+row from before the clear no longer stops an import entry for the same block.
+If Brevo still lists that entry after the clear, the import writes one row
+with the pre-clear date. The notice ignores it, and the unique key stops a
+repeat. When a row after the bound (or any row, for a hard bounce) counts,
+the result is not new. The address check and the flag step still run, so the
+import sets the flag again when it is clear and no guard stops it. A webhook
+row followed
 by an import of the same block gives one row. When the owner's flag still
 applies, the run summary counts that contact as "already flagged" only. A
 repeat run writes no second row. `MODE_EVENT` keeps the unique-key rule
 `(user_id, brevo_message_id, event)`.
 
-The event history therefore holds one row per address and cause. A new block
-after an admin clear that only the import sees sets the flag, but writes no
-second row. The Status chip still shows it, because the chip reads the
-profile flags before the event rows.
+The event history therefore holds one row per address and cause since the
+latest block clear. A new `spam`, `unsubscribed` or admin block after a clear
+that only the import sees gets a new row, so the notice names it (#2529). A
+new hard bounce after an admin clear writes no second row. The Status chip
+still shows it, because the chip reads the profile flags before the event rows.
 A webhook row for a verification send has the `car_id` of that car. On the
 owner's other cars, the Bounced chip then shows no reason text, because no
 owner-level row exists for that block. A webhook row for other mail has no
@@ -1992,7 +2068,12 @@ sets `email_bounced`.
 **Two fetch modes:**
 
 - **Nightly incremental** (`execute()`, via the guarded `run()`) — one bounded
-  page over a 48-hour lookback window, matching #1889's shape.
+  page over a 48-hour lookback window, matching #1889's shape. It first calls
+  `BrevoSuppressionSyncClient::readiness()` (#2480). When Brevo is not set up
+  (no `plg_sendinblue` table, or no key), no poll runs and the run succeeds.
+  When the settings read fails, the SDK does not load with a key set, or the
+  poll fails, the job calls `markRunFailed()` and its summary line says
+  `incremental run FAILED`. See DEPLOYMENT.md, "What a `/fail` means".
 - **Manual full backfill** (`runFullBackfill()`, reachable only from the admin
   script's `runNowWithSummary()`, never from the scheduled path) — walks the
   entire suppression list with no date window, bounded by a page-count safety

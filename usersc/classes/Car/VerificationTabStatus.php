@@ -13,6 +13,7 @@ use ElanRegistry\Cron\CronJobFailureLogReader;
 use ElanRegistry\Cron\CronJobRunsReader;
 use ElanRegistry\Cron\SendVerificationBatchJob;
 use ElanRegistry\DatabaseInterface;
+use ElanRegistry\Exceptions\ExceptionLogSummary;
 use ElanRegistry\LogCategories;
 
 /**
@@ -24,10 +25,14 @@ use ElanRegistry\LogCategories;
  *
  * {@see self::read()} runs each probe in its own fault domain, so one failure
  * does not stop the other probes. A failed settings probe shows "Not ready"
- * on the Brevo row and "Unavailable" on the unmatched row; the cron row then
- * keeps its default "Stalled". {@see self::allHealthy()} lists which probe
- * failures make the tab unhealthy. An unreadable value is never shown as a
- * green zero, because a zero tells an admin to stop looking.
+ * on the Brevo row. The feature switch, the cron row, the unmatched row and
+ * the Batch size field show "Unavailable" only when the probe did not read
+ * their value. A failed settings query also counts as "not read" for the
+ * switch and the batch size, because UserSpice `DB::query()` reports it
+ * through `error()` and does not throw.
+ * {@see self::allHealthy()} lists which probe failures make the tab
+ * unhealthy. An unreadable value is never shown as a green zero, because a
+ * zero tells an admin to stop looking.
  *
  * The class does not check permissions. The tab is admin and editor only,
  * and the toggle endpoint checks its own permission.
@@ -50,9 +55,13 @@ final readonly class VerificationTabStatus
 
     /**
      * @param bool                   $probeFailed         True when the VerificationSettings probe threw
-     * @param bool                   $enabled             The site-wide verification switch
+     * @param bool|null              $enabled             The site-wide verification switch, or null when the
+     *                                                    settings probe threw before it read the switch or
+     *                                                    the switch query failed
      * @param string|null            $brevoNotReadyReason Admin-facing reason Brevo is not ready, or null when ready
-     * @param bool                   $cronReady           True when cron ran recently
+     *                                                    or when the probe threw before it read the reason
+     * @param bool|null              $cronReady           True when cron ran recently, or null when the
+     *                                                    settings probe threw before it read the cron state
      * @param DateTimeImmutable|null $lastCronAt          When cron was last seen, or null if never
      * @param int|null               $unmatchedCount      Unmatched-recipient counter, or null when unreadable
      * @param array{state: CronJobEnabledState, lastRunAt: ?DateTimeImmutable, lastFailureAt: ?DateTimeImmutable} $reconciliation
@@ -65,19 +74,22 @@ final readonly class VerificationTabStatus
      *        CronJobRunsReader::lastOutcomeCounts() result, or null when the probe threw
      * @param array{count: int|null, recent: list<array{loggedAt: string, message: string}>}|null $failureLog
      *        CronJobFailureLogReader::recentFailures() result, or null when the probe threw
+     * @param int|null               $batchSize           Configured batch size, or null when the batch size
+     *                                                    probe threw or its query failed
      */
     public function __construct(
         private bool $probeFailed,
-        private bool $enabled,
+        private ?bool $enabled,
         private ?string $brevoNotReadyReason,
-        private bool $cronReady,
+        private ?bool $cronReady,
         private ?DateTimeImmutable $lastCronAt,
         private ?int $unmatchedCount,
         private array $reconciliation,
         private array $suppressionSync,
         private array $autoSend,
         private ?array $autoSendOutcome,
-        private ?array $failureLog
+        private ?array $failureLog,
+        private ?int $batchSize
     ) {}
 
     /**
@@ -93,15 +105,19 @@ final readonly class VerificationTabStatus
     public static function read(DatabaseInterface $db, int $userId): self
     {
         $probeFailed    = false;
-        $enabled        = false;
+        // Null until each read returns, so a later throw does not hide a value
+        // that was already read. The switch needs this to stay usable.
+        $enabled        = null;
         $brevoReason    = null;
-        $cronReady      = false;
+        $cronReady      = null;
         $lastCronAt     = null;
         $unmatchedCount = null;
 
         try {
             $settings       = new VerificationSettings($db);
-            $enabled        = $settings->isEnabled();
+            // Null when the query failed: the switch then shows "Unavailable",
+            // not a guessed "off".
+            $enabled        = $settings->isEnabledOrNull();
             $brevoReason    = $settings->brevoNotReadyReason();
             $cronReady      = $settings->cronReady();
             $lastCronAt     = $settings->lastCronRequestAt();
@@ -112,6 +128,18 @@ final readonly class VerificationTabStatus
             $probeFailed = true;
             logger($userId, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING,
                 sprintf('Verification tab status probe failed [%s]: %s', get_class($e), $e->getMessage()));
+        }
+
+        // Its own fault domain, so a throw in the probe above does not hide a
+        // batch size that can be read. Null when the query failed: the Batch
+        // size field then shows "Unavailable", and no Save form can write a
+        // guessed value over the real setting (#2457).
+        $batchSize = null;
+        try {
+            $batchSize = (new VerificationSettings($db))->batchSizeOrNull();
+        } catch (\Throwable $e) {
+            logger($userId, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING,
+                sprintf('Verification tab batch size probe failed: %s', ExceptionLogSummary::of($e)));
         }
 
         // The constructor only stores the handle, so it cannot throw.
@@ -163,7 +191,8 @@ final readonly class VerificationTabStatus
             $suppressionSync,
             $autoSend,
             $autoSendOutcome,
-            $failureLog
+            $failureLog,
+            $batchSize
         );
     }
 
@@ -173,6 +202,16 @@ final readonly class VerificationTabStatus
     public function probeFailed(): bool
     {
         return $this->probeFailed;
+    }
+
+    /**
+     * The configured batch size, or null when it could not be read
+     *
+     * Null tells the Batch size field to show "Unavailable" and no form.
+     */
+    public function batchSize(): ?int
+    {
+        return $this->batchSize;
     }
 
     /**
@@ -219,20 +258,29 @@ final readonly class VerificationTabStatus
 
     /**
      * True when the settings probe worked, the switch is on, Brevo is ready,
-     * cron runs, and the unmatched and cron failure counts are 0
+     * cron runs, the unmatched and cron failure counts are 0, the batch size
+     * can be read, and the reconciliation and suppression sync states can be
+     * read
      *
-     * A failed settings probe, an unreadable unmatched counter and an
-     * unreadable cron failure log are not healthy. The reconciliation,
-     * suppression sync and automatic send job states are not part of it.
+     * A failed settings probe, an unreadable unmatched counter, an
+     * unreadable batch size, an unreadable cron failure log and an
+     * UNREADABLE or MISSING
+     * reconciliation or suppression sync state are not healthy. A paused
+     * (DISABLED) job is an admin decision, so it stays healthy. A failed last
+     * run already counts through the cron failure log. The automatic send
+     * job state is not part of it, because it has its own card and badge.
      */
     public function allHealthy(): bool
     {
         return !$this->probeFailed
-            && $this->enabled
+            && $this->enabled === true
             && $this->brevoReady()
-            && $this->cronReady
+            && $this->cronReady === true
             && $this->unmatchedCount === 0
-            && $this->cronFailureCount() === 0;
+            && $this->cronFailureCount() === 0
+            && $this->batchSize !== null
+            && self::jobStateReadable($this->reconciliation['state'])
+            && self::jobStateReadable($this->suppressionSync['state']);
     }
 
     /**
@@ -241,12 +289,28 @@ final readonly class VerificationTabStatus
      * Turning on is blocked while Brevo is not ready. Turning off is never
      * blocked, so an admin can always stop verification in an incident.
      *
+     * The switch is `unavailable` for every viewer only when the settings
+     * probe threw before it read the switch state, or the switch query
+     * failed. An unchecked switch would be a guess. When the probe read the switch state and a later read threw,
+     * the switch shows the real state, and an admin can still turn it off.
+     * Turning on stays blocked, because the Brevo status is not known.
+     *
      * @param bool $canToggle True when the viewer is an admin
-     * @return array{checked: bool, disabled: bool, disabledReason: string}
+     * @return array{checked: bool, disabled: bool, disabledReason: string, unavailable: bool}
      *         `disabledReason` is '' when the switch has no reason to show
      */
     public function featureSwitch(bool $canToggle): array
     {
+        if ($this->enabled === null) {
+            return [
+                'checked'        => false,
+                'disabled'       => true,
+                'disabledReason' => 'The switch state could not be read. Check the system log for'
+                    . ' VerificationConfigWarning entries.',
+                'unavailable'    => true,
+            ];
+        }
+
         $disabled = VerificationSettings::toggleShouldBeDisabled($canToggle, $this->enabled, $this->brevoReady());
 
         $reason = '';
@@ -258,7 +322,12 @@ final readonly class VerificationTabStatus
                 . ' Fix this, then reload this page.';
         }
 
-        return ['checked' => $this->enabled, 'disabled' => $disabled, 'disabledReason' => $reason];
+        return [
+            'checked'        => $this->enabled,
+            'disabled'       => $disabled,
+            'disabledReason' => $reason,
+            'unavailable'    => false,
+        ];
     }
 
     /**
@@ -372,9 +441,10 @@ final readonly class VerificationTabStatus
      * block, then a bounce, then an opt-out (#2461). The order is the same
      * as SendPolicy::verificationReason() and
      * EmailNoticeBuilder::buildForOwner(): a block and a bounce are facts
-     * about the address, and an opt-out is a preference. `$blocked` and
-     * `$bounced` mean the flag applies to the owner's current address
-     * (#2356), so the chip reads the same flags as the other two views.
+     * about the address, and an opt-out is a preference. The chip takes the
+     * same EffectiveEmailFlags value as the other two views, so `blocked`
+     * and `bounced` mean the flag applies to the owner's current address
+     * (#2356).
      *
      * Otherwise the chip shows the car's latest email event, as chosen by
      * CarRepository::findLatestEmailEventPerCarWithPrecedence(). A
@@ -382,42 +452,32 @@ final readonly class VerificationTabStatus
      * flag. That test comes after the opt-out, so an old hard-bounce event
      * from a previous address does not hide an opt-out.
      *
-     * @param object|null $event        The chip event row, or null if the car has none
-     * @param bool        $hasProfile   False when the owner has no profiles row
-     * @param bool        $blocked      True when the owner's `profiles.email_blocked` applies to the current address
-     * @param string|null $blockedCause The owner's `profiles.email_blocked_cause`, or null when unknown
-     * @param bool        $optedOut     True when the owner's `profiles.email_opted_out` is set
-     * @param bool        $bounced      True when the owner's `profiles.email_bounced` applies to the current address
+     * @param object|null         $event The chip event row, or null if the car has none
+     * @param EffectiveEmailFlags $flags The owner's flags, for example from {@see EffectiveEmailFlags::fromQueueRow()}
      * @return array{kind: string, label: string, class: string, reason: string}
      *         `kind` is '' when there is no event to show
      */
-    public static function chip(
-        ?object $event,
-        bool $hasProfile = true,
-        bool $blocked = false,
-        ?string $blockedCause = null,
-        bool $optedOut = false,
-        bool $bounced = false
-    ): array {
+    public static function chip(?object $event, EffectiveEmailFlags $flags): array
+    {
         $name   = isset($event->event) ? (string) $event->event : null;
         $reason = trim((string) ($event->reason ?? ''));
 
         $optedOutChip = ['kind' => 'opted_out', 'label' => 'Opted out', 'class' => 'text-bg-secondary', 'reason' => ''];
 
-        if (!$hasProfile) {
+        if (!$flags->hasProfile) {
             return ['kind' => 'no_profile', 'label' => 'No profile', 'class' => 'text-bg-warning', 'reason' => ''];
         }
-        if ($blocked) {
+        if ($flags->blocked) {
             return ['kind' => 'blocked', 'label' => 'Blocked', 'class' => 'text-bg-danger',
-                    'reason' => $blockedCause ?? 'cause unknown'];
+                    'reason' => $flags->blockedCause ?? 'cause unknown'];
         }
         $hardBounceEvent = $name !== null && in_array($name, EmailEventApplier::HARD_BOUNCE_EVENTS, true);
         $bouncedChip     = ['kind' => 'bounced', 'label' => 'Bounced', 'class' => 'text-bg-danger',
                             'reason' => $hardBounceEvent ? $reason : ''];
-        if ($bounced) {
+        if ($flags->bounced) {
             return $bouncedChip;
         }
-        if ($optedOut) {
+        if ($flags->optedOut) {
             return $optedOutChip;
         }
         if ($hardBounceEvent) {
@@ -443,11 +503,24 @@ final readonly class VerificationTabStatus
     }
 
     /**
-     * The Brevo reason to show, with a fallback when the probe threw
+     * The Brevo reason to show
+     *
+     * Both callers run only when Brevo is not ready. The reason is null only
+     * after a failed settings probe. The probe may have read Brevo as ready
+     * before a later read threw, so the fallback names the probe failure,
+     * not the Brevo status.
      */
     private function brevoReasonText(): string
     {
-        return $this->brevoNotReadyReason ?? 'The Brevo status could not be checked.';
+        return $this->brevoNotReadyReason ?? 'Some verification settings could not be read.';
+    }
+
+    /**
+     * True when a job state was read and the job row exists
+     */
+    private static function jobStateReadable(CronJobEnabledState $state): bool
+    {
+        return $state !== CronJobEnabledState::UNREADABLE && $state !== CronJobEnabledState::MISSING;
     }
 
     /**
@@ -467,13 +540,15 @@ final readonly class VerificationTabStatus
         if ($this->brevoReady()) {
             return self::row('brevo', 'Brevo ready', 'Ready', 'badge text-bg-success', 'fa-check-circle');
         }
-        // A failed probe does not know the switch state, so it must not say
+        // A failed probe may not know the switch state, so it must not say
         // "switch is off".
         if ($this->probeFailed) {
             return self::row('brevo', 'Brevo ready', 'Not ready', 'badge text-bg-danger', 'fa-exclamation-circle',
                 'The Brevo status could not be checked. Check the system log for VerificationConfigWarning.');
         }
-        if (!$this->enabled) {
+        // Only a switch that was read as off is "off". An unread switch falls
+        // through to the real Brevo reason.
+        if ($this->enabled === false) {
             return self::row('brevo', 'Brevo ready', 'Not checked (switch is off)', 'text-muted', 'fa-circle');
         }
 
@@ -487,6 +562,15 @@ final readonly class VerificationTabStatus
      */
     private function cronRow(): array
     {
+        // The probe threw before it read the cron state, so "Stalled" would be
+        // a guess. A cron state that was read before a later throw is real.
+        if ($this->cronReady === null) {
+            return self::row('cron', 'Cron running', 'Unavailable', 'badge text-bg-danger',
+                'fa-exclamation-circle',
+                'The cron state could not be read. Check the system log for'
+                    . ' VerificationConfigWarning entries.');
+        }
+
         $lastSeen = $this->lastCronAt !== null ? 'last seen ' . $this->lastCronAt->format(self::TIME_FORMAT) : null;
 
         return self::row(

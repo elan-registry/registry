@@ -294,6 +294,7 @@ class AssetVersionTest extends TestCase
             'user_settings.php'        => [$root . '/usersc/user_settings.php'],
             'cars/index.php'           => [$root . '/app/owner/cars/index.php'],
             'cars/details.php'         => [$root . '/app/owner/cars/details.php'],
+            'cars/_location_map_scripts.php' => [$root . '/app/views/cars/_location_map_scripts.php'],
             'cars/edit.php'            => [$root . '/app/owner/cars/edit.php'],
             'reports/statistics.php'   => [$root . '/app/owner/reports/statistics.php'],
             'admin/index.php'          => [$root . '/app/admin/index.php'],
@@ -324,9 +325,9 @@ class AssetVersionTest extends TestCase
     {
         $root = dirname(__DIR__, 3);
         return [
-            'cars/details.php'       => [$root . '/app/owner/cars/details.php'],
-            'reports/statistics.php' => [$root . '/app/owner/reports/statistics.php'],
-            'account.php'            => [$root . '/usersc/account.php'],
+            'cars/_location_map_scripts.php' => [$root . '/app/views/cars/_location_map_scripts.php'],
+            'reports/statistics.php'         => [$root . '/app/owner/reports/statistics.php'],
+            'account.php'                    => [$root . '/usersc/account.php'],
         ];
     }
 

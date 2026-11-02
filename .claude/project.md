@@ -16,6 +16,6 @@ backticks. The keys are in
 - ledger: `docs/development/CLEANUP_LEDGER.md`
 - private_paths: `docs/plans _noupload`
 - issue_checks: `scripts/check-baseline-hygiene.sh`
-- milestone_checks: `scripts/check-deploy-sheet-fresh.sh`
-- release_checks: `scripts/check-deploy-sheet-fresh.sh`
+- milestone_checks: `scripts/check-deploy-sheet-for-branch.sh`
+- release_checks: `scripts/check-deploy-sheet-for-branch.sh`
 - release: `draft`

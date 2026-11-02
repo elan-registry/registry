@@ -90,6 +90,31 @@ class CarRepository
     public const ADMIN_BLOCK_MESSAGE_ID_PREFIX = 'suppression-import-blocklist-';
 
     /**
+     * Message-ID prefix of a suppression-import row for all codes other than `adminBlocked`
+     *
+     * {@see \ElanRegistry\Cron\BrevoSuppressionSyncJob} writes this prefix.
+     * It is also a prefix of {@see self::ADMIN_BLOCK_MESSAGE_ID_PREFIX}, so a
+     * prefix compare on it (as `ownerBlockEventCauses()` does with `LEFT()`)
+     * matches both kinds of import row.
+     */
+    public const SUPPRESSION_IMPORT_MESSAGE_ID_PREFIX = 'suppression-import-';
+
+    /**
+     * The flag-log sources that clear `email_blocked`
+     *
+     * An event from before the latest clear is not a cause of the block that
+     * applies now. {@see CarVerificationManager::clearBlockedForOwner()} writes
+     * `admin`. {@see CarVerificationManager::clearFlagsForConfirmedEmailChange()}
+     * writes `email_change`. No other writer clears the flag.
+     *
+     * @var list<string>
+     */
+    public const BLOCK_CLEAR_SOURCES = [
+        DeliverabilityFlagLog::SOURCE_ADMIN,
+        DeliverabilityFlagLog::SOURCE_EMAIL_CHANGE,
+    ];
+
+    /**
      * SQL that normalizes a column the way
      * {@see EmailAddress::normalize()} does: strip
      * leading and trailing white space, then lower case. Wrap a column name
@@ -1048,25 +1073,34 @@ class CarRepository
      * they differ, it does these steps:
      *
      * 1. Clears `email_bounced` with its address and date, and sets
-     *    `email_bounce_cleared_at`, if the bounce is set.
+     *    `email_bounce_cleared_at`, if the bounce is set and its stored
+     *    address is not the normalized `users.email`.
      * 2. Clears `email_blocked` with its address, date and cause, if the
-     *    block is set.
+     *    block is set and its stored address is not the normalized
+     *    `users.email`.
      * 3. Sets `email_address_since` to now and `email_address_seen` to the
      *    normalized `users.email`.
+     *
+     * When they differ, a flag stored for the current address stays. The
+     * UserSpice admin form changes `users.email` and does not write
+     * `email_address_seen`, so a flag set later for the new address must not
+     * clear here (#2411). When they differ, a flag with no stored address
+     * clears.
      *
      * `email_opted_out` stays. The caller writes the flag-change log rows and
      * logs the no-address anomaly.
      *
-     * A stored value other than 0 or 1 is always written over, and the
-     * return value is the opposite of the value written ({@see writerFlagValue()}).
+     * A stored value other than 0 or 1 reads as set, so its returned value
+     * is 1 ({@see writerFlagValue()}). It is written over only when this call
+     * clears that flag.
      *
      * @param int $userId Owner user ID
-     * @return array{bounced: int, blocked: int, bouncedHadNoAddress: bool, blockedHadNoAddress: bool, changed: bool}|null
+     * @return array{bounced: int, blocked: int, bouncedHadNoAddress: bool, blockedHadNoAddress: bool, changed: bool, bouncedCleared: bool, blockedCleared: bool}|null
      *         The flag values before the call and whether the address changed.
-     *         A flag was cleared only when `changed` is true and its old value
-     *         is 1. A `...HadNoAddress` value is true when that flag was set
-     *         with a NULL or empty address. Null when the owner has no
-     *         profiles row or no users row (nothing is written).
+     *         `bouncedCleared` and `blockedCleared` are true when this call
+     *         cleared that flag. A `...HadNoAddress` value is true when that
+     *         flag was set with a NULL or empty address. Null when the owner
+     *         has no profiles row or no users row (nothing is written).
      * @throws CarDatabaseException If a query fails
      */
     public function clearFlagsForConfirmedEmailChange(int $userId): ?array
@@ -1094,21 +1128,24 @@ class CarRepository
             return null;
         }
 
-        // A bad value reads as set, so an address change clears it. With no
-        // change it stays, and the decision readers keep refusing it.
+        // A bad value reads as set, so an address change clears it, unless its
+        // stored address is the current address. When it stays, the decision
+        // readers keep refusing it.
         [$bounced, $bouncedValid] = self::writerFlagValue($row->email_bounced, 'email_bounced', $userId, 1);
         [$blocked, $blockedValid] = self::writerFlagValue($row->email_blocked, 'email_blocked', $userId, 1);
         $current = EmailAddress::normalize(self::nullableString($row->user_email));
         $changed = EmailAddress::isChange(self::nullableString($row->email_address_seen), $current);
+        $bouncedCleared = $changed && $bounced === 1 && !self::sameAddress($row->email_bounced_address, $current);
+        $blockedCleared = $changed && $blocked === 1 && !self::sameAddress($row->email_blocked_address, $current);
 
         if ($changed) {
-            if ($bounced === 1) {
+            if ($bouncedCleared) {
                 if (!$bouncedValid) {
                     self::logFlagRepair($row->email_bounced, 'email_bounced', $userId);
                 }
                 $this->writeProfileBounceClear($userId, 'clearFlagsForConfirmedEmailChange');
             }
-            if ($blocked === 1) {
+            if ($blockedCleared) {
                 if (!$blockedValid) {
                     self::logFlagRepair($row->email_blocked, 'email_blocked', $userId);
                 }
@@ -1130,6 +1167,8 @@ class CarRepository
             'bouncedHadNoAddress' => $bouncedValid && $bounced === 1 && self::isEmptyAddress($row->email_bounced_address),
             'blockedHadNoAddress' => $blockedValid && $blocked === 1 && self::isEmptyAddress($row->email_blocked_address),
             'changed'             => $changed,
+            'bouncedCleared'      => $bouncedCleared,
+            'blockedCleared'      => $blockedCleared,
         ];
     }
 
@@ -2321,6 +2360,30 @@ class CarRepository
     }
 
     /**
+     * Find the latest clear of the owner's block, from any source
+     *
+     * The sources are {@see self::BLOCK_CLEAR_SOURCES}. Each value is in
+     * `AppConstants::DATETIME_FORMAT`, so a string compare orders them.
+     *
+     * @param int $ownerId Owner (users.id)
+     * @return string|null The latest clear time, or null when no clear is on record
+     * @throws InvalidArgumentException If $ownerId is not more than 0
+     * @throws CarDatabaseException If a query fails
+     */
+    public function latestBlockClearAt(int $ownerId): ?string
+    {
+        $latest = null;
+        foreach (self::BLOCK_CLEAR_SOURCES as $source) {
+            $clearedAt = $this->latestFlagClearAt($ownerId, DeliverabilityFlagLog::FLAG_BLOCKED, $source);
+            if ($clearedAt !== null && ($latest === null || strcmp($clearedAt, $latest) > 0)) {
+                $latest = $clearedAt;
+            }
+        }
+
+        return $latest;
+    }
+
+    /**
      * Find an owner's most recent profile flag changes, newest first
      *
      * Reads the same `logs` rows as {@see latestFlagClearAt()}, with the same
@@ -2846,17 +2909,20 @@ class CarRepository
      * The address is normalized ({@see EmailAddress::normalize()}), as the
      * writers store it. The compare uses `COLLATE utf8mb4_bin`, because the
      * column collation would match an accent or case variant of the address.
-     * `occurred_at` is not compared: a row of any date matches. The element
+     * With `$after`, only rows with `occurred_at` after that time match, so a
+     * row from before a clear of the block does not count. The element
      * check runs first, so a non-string event throws in every case.
      *
      * @param int $userId Owner user ID. A value less than 1 issues no query.
      * @param string $email Recipient address
      * @param list<string> $events Event names. An empty list issues no query.
+     * @param string|null $after Lower bound for `occurred_at` (exclusive), in
+     *                           AppConstants::DATETIME_FORMAT. Null applies no bound.
      * @return bool True when at least one row matches
      * @throws InvalidArgumentException If an element of $events is not a string
      * @throws CarDatabaseException If the query fails
      */
-    public function hasOwnerEmailEventForAddress(int $userId, string $email, array $events): bool
+    public function hasOwnerEmailEventForAddress(int $userId, string $email, array $events, ?string $after): bool
     {
         foreach ($events as $event) {
             if (!is_string($event)) {
@@ -2870,15 +2936,18 @@ class CarRepository
         }
 
         $placeholders = implode(', ', array_fill(0, count($events), '?'));
-        $this->db->query(
-            "SELECT 1
-               FROM er_email_events
-              WHERE user_id = ?
-                AND email = ? COLLATE utf8mb4_bin
-                AND event IN ({$placeholders})
-              LIMIT 1",
-            [$userId, EmailAddress::normalize($email), ...array_values($events)]
-        );
+        $sql = "SELECT 1
+                  FROM er_email_events
+                 WHERE user_id = ?
+                   AND email = ? COLLATE utf8mb4_bin
+                   AND event IN ({$placeholders})";
+        $params = [$userId, EmailAddress::normalize($email), ...array_values($events)];
+        if ($after !== null) {
+            $sql .= ' AND occurred_at > ?';
+            $params[] = $after;
+        }
+
+        $this->db->query($sql . ' LIMIT 1', $params);
         if ($this->db->error()) {
             throw new CarDatabaseException(
                 "CarRepository::hasOwnerEmailEventForAddress failed for user={$userId}: " . $this->db->errorString()
@@ -3624,6 +3693,33 @@ class CarRepository
     }
 
     /**
+     * Delete a deleted user's profiles row (account deletion)
+     *
+     * The account-deletion privacy step calls this in its transaction, after
+     * the event delete and before the holding row delete.
+     *
+     * @param int $userId User ID. A value less than 1 issues no query.
+     * @return int Number of rows deleted (0 or 1)
+     * @throws CarDatabaseException If the query fails
+     */
+    public function deleteProfile(int $userId): int
+    {
+        if ($userId <= 0) {
+            return 0;
+        }
+
+        $this->db->query('DELETE FROM profiles WHERE user_id = ?', [$userId]);
+
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::deleteProfile failed for user={$userId}: " . $this->db->errorString()
+            );
+        }
+
+        return $this->db->count();
+    }
+
+    /**
      * Delete a deleted user's holding row from er_deleted_user_addresses (account deletion)
      *
      * The account-deletion privacy step calls this last, in its transaction,
@@ -4023,6 +4119,9 @@ class CarRepository
      * When participating in an outer transaction (begun by the caller before
      * this repository), this method is a no-op.
      *
+     * If the driver commit() throws, ownership stays, so a later rollback()
+     * still calls the driver rollBack() and ends the open transaction.
+     *
      * @return void
      */
     public function commit(): void
@@ -4030,10 +4129,10 @@ class CarRepository
         if (!$this->transactionOwner) {
             return; // Outer transaction manages commit — no-op
         }
-        $this->transactionOwner = false;
         if ($this->db->inTransaction()) {
             $this->db->commit();
         }
+        $this->transactionOwner = false;
     }
 
     /**
@@ -4042,6 +4141,9 @@ class CarRepository
      * When participating in an outer transaction (begun by the caller before
      * this repository), this method is a no-op.
      *
+     * If the driver rollBack() throws, ownership stays, so a later rollback()
+     * still calls the driver rollBack() and ends the open transaction.
+     *
      * @return void
      */
     public function rollback(): void
@@ -4049,10 +4151,10 @@ class CarRepository
         if (!$this->transactionOwner) {
             return; // Outer transaction manages rollback — no-op
         }
-        $this->transactionOwner = false;
         if ($this->db->inTransaction()) {
             $this->db->rollBack();
         }
+        $this->transactionOwner = false;
     }
 
     /**

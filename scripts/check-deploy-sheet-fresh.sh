@@ -2,10 +2,11 @@
 # Checks whether a rendered deploy sheet is stale: whether a deploy input
 # changed on the milestone branch after the sheet was rendered.
 #
-# /finish-milestone Step 6.6 writes a sidecar stamp file next to the
-# rendered deploy sheet. The stamp records the commit the sheet was
-# rendered against. /finish-milestone, /review-milestone and
-# /release-milestone call this script to decide whether to warn the user.
+# The person who renders the deploy sheet writes a sidecar stamp file next
+# to it (docs/development/RELEASE_INSTRUCTIONS_TEMPLATE.md, "Render the
+# sheet"). The stamp records the commit the sheet was rendered against.
+# scripts/check-deploy-sheet-for-branch.sh calls this script for the
+# milestone_checks and release_checks keys in .claude/project.md.
 #
 # A commit after the stamp makes the sheet stale only when it changes a
 # deploy input. The deploy inputs are the paths that
@@ -61,7 +62,7 @@ fi
 
 if ! printf '%s' "$STAMPED_SHA" | grep -qE '^[0-9a-f]{40}$'; then
   echo "Stamp file $STAMP_FILE does not contain a single valid 40-char SHA (got: '${STAMPED_SHA}')." >&2
-  echo "Cannot verify freshness. Re-render the sheet and its stamp by hand from /finish-milestone Step 6.6, or type /finish-milestone ${VERSION} to run the whole command again." >&2
+  echo "Cannot verify freshness. Render the sheet and its stamp again from docs/development/RELEASE_INSTRUCTIONS_TEMPLATE.md, \"Render the sheet\"." >&2
   exit 2
 fi
 

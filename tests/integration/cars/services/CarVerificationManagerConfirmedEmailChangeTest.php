@@ -305,6 +305,59 @@ final class CarVerificationManagerConfirmedEmailChangeTest extends IntegrationTe
         $this->assertCount(2, $this->flagLogMetadata($ownerId), 'No new log row');
     }
 
+    /**
+     * #2411: an admin edit A to B leaves seen at A. A bounce and a block that
+     * arrive for B afterwards are for the current address, so the next
+     * verifySuccess must keep them.
+     */
+    public function testAdminEditThenFlagsForNewAddressKeepsBothFlagsAndRecordsSeen(): void
+    {
+        $ownerId = $this->createTestUser(['email' => self::ADDRESS_A], true);
+        $this->loggedOwnerIds[] = $ownerId;
+        $this->setEmailAddressSinceSeen($ownerId, self::ADDRESS_A, self::OLD_SINCE);
+        $this->setUserEmailRaw($ownerId, self::ADDRESS_B);
+        $this->setOwnerBounced($ownerId, self::ADDRESS_B, '2026-05-06 07:08:09');
+        $this->setOwnerBlocked($ownerId, self::ADDRESS_B, '2026-04-05 06:07:08', 'spam');
+        $this->assertSame(self::ADDRESS_A, $this->getOwnerEmailFlags($ownerId)['email_address_seen'], 'Test setup: seen still holds A');
+
+        $changed = $this->manager->clearFlagsForConfirmedEmailChange($ownerId, $ownerId);
+
+        $this->assertFalse($changed, 'No flag was cleared');
+        $flags = $this->getOwnerEmailFlags($ownerId);
+        $this->assertSame('1', (string) $flags['email_bounced']);
+        $this->assertSame(self::ADDRESS_B, $flags['email_bounced_address']);
+        $this->assertSame('1', (string) $flags['email_blocked']);
+        $this->assertSame(self::ADDRESS_B, $flags['email_blocked_address']);
+        $this->assertSame(self::ADDRESS_B, $flags['email_address_seen']);
+        $this->assertNotSame(self::OLD_SINCE, $flags['email_address_since']);
+        $this->assertSame([], $this->flagLogMetadata($ownerId), 'No email_change log row');
+    }
+
+    /**
+     * #2411: the bounce is for A and the block is for B. After the admin edit
+     * the bounce clears, and the block for the current address stays.
+     */
+    public function testAdminEditClearsTheBounceForTheOldAddressAndKeepsTheBlockForTheNewOne(): void
+    {
+        $ownerId = $this->createTestUser(['email' => self::ADDRESS_A], true);
+        $this->loggedOwnerIds[] = $ownerId;
+        $this->setEmailAddressSinceSeen($ownerId, self::ADDRESS_A, self::OLD_SINCE);
+        $this->setOwnerBounced($ownerId, self::ADDRESS_A, '2026-05-06 07:08:09');
+        $this->setUserEmailRaw($ownerId, self::ADDRESS_B);
+        $this->setOwnerBlocked($ownerId, self::ADDRESS_B, '2026-04-05 06:07:08', 'spam');
+
+        $changed = $this->manager->clearFlagsForConfirmedEmailChange($ownerId, $ownerId);
+
+        $this->assertTrue($changed);
+        $flags = $this->getOwnerEmailFlags($ownerId);
+        $this->assertSame('0', (string) $flags['email_bounced'], 'The bounce for A is cleared');
+        $this->assertNull($flags['email_bounced_address']);
+        $this->assertSame('1', (string) $flags['email_blocked'], 'The block for B stays');
+        $this->assertSame(self::ADDRESS_B, $flags['email_blocked_address']);
+        $this->assertSame(self::ADDRESS_B, $flags['email_address_seen']);
+        $this->assertSame([$this->logRow($ownerId, 'email_bounced')], $this->flagLogMetadata($ownerId), 'One row, for the bounce only');
+    }
+
     public function testOwnerWithNoProfileRowReturnsFalseWritesNothingAndCommits(): void
     {
         $ownerId = $this->createTestUser(['email' => self::ADDRESS_B]);

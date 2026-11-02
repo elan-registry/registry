@@ -161,7 +161,7 @@ final class AdminVerificationOwnerActionNoOwnerGuardTest extends IntegrationTest
             . "use ElanRegistry\\Exceptions\\CarValidationException;\n"
             . "use ElanRegistry\\Exceptions\\ElanRegistryException;\n"
             . "use ElanRegistry\\Exceptions\\ExceptionLogSummary;\n"
-            . "use ElanRegistry\\Car\\ClearBlockOutcome;\n"
+            . "use ElanRegistry\\Car\\ClearBlockKind;\n"
             . "use ElanRegistry\\Email\\BrevoBlocklistClient;\n"
             . "use ElanRegistry\\Input as ElanInput;\n"
             . "use ElanRegistry\\LogCategories;\n"

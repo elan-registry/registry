@@ -4,7 +4,7 @@ declare(strict_types=1);
 namespace ElanRegistry;
 
 use ElanRegistry\Car\CarRepository;
-use ElanRegistry\Exceptions\OwnerDatabaseException;
+use ElanRegistry\Exceptions\ExceptionLogSummary;
 
 /**
  * Account-deletion privacy step (#2358, #2419).
@@ -26,8 +26,13 @@ use ElanRegistry\Exceptions\OwnerDatabaseException;
  * user's event message IDs, so it runs before the event delete. The holding
  * row goes last: on a failure it stays, so a rerun has the addresses.
  *
- * Log lines name the user ID, the stage, the exception class and code only,
- * because an exception message can contain an address.
+ * The failure line names the user ID, the stage, and an ExceptionLogSummary
+ * of the exception (class, code, SQLSTATE when known, and throw site). No log
+ * line holds an exception message, because it can contain an address.
+ *
+ * A failure at stage `commit` logs "transaction state unknown" and "personal
+ * data may remain", and returns a commitUnknown() result: the server may have
+ * committed before the driver threw.
  *
  * @author Jim Boone
  */
@@ -53,7 +58,10 @@ final class AccountDeletionPrivacyStep
      * step would then delete a live owner's profile), and an ID whose
      * `users` row check fails. A refusal writes a CRITICAL log line and
      * deletes nothing. A failure rolls back every stage and writes a CRITICAL
-     * log line. It does not throw, because the caller must continue with the
+     * log line. A failure at stage `commit` also calls rollback, but the
+     * line says the transaction state is unknown and the result is
+     * AccountDeletionPrivacyResult::commitUnknown(), because the commit may
+     * have landed. It does not throw, because the caller must continue with the
      * car cleanup.
      *
      * @param int $userId ID of the deleted user
@@ -89,7 +97,12 @@ final class AccountDeletionPrivacyStep
         logger($userId, LogCategories::LOG_CATEGORY_USER_DELETION, sprintf(
             'Privacy step for user %d: %s, deleted %d er_email_events rows and %d plg_sendinblue_messages rows',
             $userId,
-            $result->committed ? 'committed' : 'rolled back',
+            match ($result->outcome) {
+                AccountDeletionPrivacyOutcome::Committed => 'committed',
+                AccountDeletionPrivacyOutcome::CommitUnknown => 'transaction state unknown',
+                AccountDeletionPrivacyOutcome::RolledBack => 'rolled back',
+                AccountDeletionPrivacyOutcome::Refused => 'refused',
+            },
             $result->deletedEmailEventCount,
             $result->deletedPluginMessageCount
         ));
@@ -121,38 +134,39 @@ final class AccountDeletionPrivacyStep
             $stage = 'event delete';
             $eventRows = $this->repo->deleteEmailEventsForUser($userId);
             $stage = 'profile delete';
-            $this->db->query('DELETE FROM profiles WHERE user_id = ?', [$userId]);
-            if ($this->db->error()) {
-                throw new OwnerDatabaseException("Failed to delete profile for user $userId");
-            }
+            $this->repo->deleteProfile($userId);
             $stage = 'holding row delete';
             $holdingRows = $this->repo->deleteDeletedUserAddresses($userId);
             $stage = 'commit';
             $this->repo->commit();
         } catch (\Throwable $e) {
             // The users row is already gone. The caller must still run the
-            // car cleanup, so this logs and returns. A rollback that throws (for
-            // example, a lost connection) must not stop the CRITICAL line or
-            // escape to the caller.
-            $rollbackOutcome = 'rolled back';
+            // car cleanup, so this logs and returns.
+            //
+            // A commit that throws may still have landed on the server, so
+            // the rollback cannot prove that the data remains.
+            $commitFailed = $stage === 'commit';
+            $outcome = $commitFailed ? 'transaction state unknown' : 'rolled back';
             try {
+                // Exception to the no-guard rule in ERROR_HANDLING.md: a
+                // rollback() that throws must not escape, because the caller
+                // must still run the car cleanup.
                 $this->repo->rollback();
             } catch (\Throwable $rollbackError) {
-                $rollbackOutcome = sprintf(
-                    'rollback failed: %s (code %s)',
-                    get_class($rollbackError),
-                    (string) $rollbackError->getCode()
-                );
+                $rollbackFailure = 'rollback failed: ' . ExceptionLogSummary::of($rollbackError);
+                $outcome = $commitFailed ? "$outcome, $rollbackFailure" : $rollbackFailure;
             }
             logger($userId, LogCategories::LOG_CATEGORY_USER_DELETION, sprintf(
-                'CRITICAL: privacy step failed for user %d at stage %s, %s, personal data remains: %s (code %s)',
+                'CRITICAL: privacy step failed for user %d at stage %s, %s, %s: %s',
                 $userId,
                 $stage,
-                $rollbackOutcome,
-                get_class($e),
-                (string) $e->getCode()
+                $outcome,
+                $commitFailed ? 'personal data may remain' : 'personal data remains',
+                ExceptionLogSummary::of($e)
             ));
-            return AccountDeletionPrivacyResult::rolledBack($stage);
+            return $commitFailed
+                ? AccountDeletionPrivacyResult::commitUnknown()
+                : AccountDeletionPrivacyResult::rolledBack($stage);
         }
 
         return AccountDeletionPrivacyResult::committed(

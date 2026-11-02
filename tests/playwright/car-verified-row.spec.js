@@ -363,4 +363,39 @@ test.describe('Verified row: vericode landing page', () => {
         await expect(emailLabel(page)).toHaveCount(0);
         expect(await page.content()).not.toContain('Email on file');
     });
+
+    // #2495 is the first change that loads MapLibre on this page. The scripts
+    // load inside the page body, and the inline map config script takes the
+    // page's own CSP nonce, so only a browser shows a blocked script or a map
+    // that does not start.
+    test('car with a position shows a working Location map and no CSP violation', async ({ page }) => {
+        const pageErrors = [];
+        const cspMessages = [];
+        page.on('pageerror', (err) => pageErrors.push(String(err)));
+        page.on('console', (msg) => {
+            const text = msg.text();
+            if (text.includes('Content Security Policy') || text.includes('Refused to')) {
+                cspMessages.push(text);
+            }
+        });
+
+        await page.goto(`app/verify/verify_car.php?vericode=${seeded.vericodes.confirmed}`);
+
+        await expect(page.locator('#map .maplibregl-canvas')).toBeAttached({ timeout: 15000 });
+        // The marker is added only in map.on('load'), so it proves the map
+        // started and did not fall back to "Map unavailable".
+        await expect(page.locator('#map .elan-marker')).toBeVisible({ timeout: 15000 });
+        await expect(page.getByText('Map unavailable')).toHaveCount(0);
+        expect(cspMessages).toEqual([]);
+        expect(pageErrors).toEqual([]);
+    });
+
+    test('car with no position shows the Location placeholder and loads no map', async ({ page }) => {
+        await page.goto(`app/verify/verify_car.php?vericode=${seeded.vericodes.suppressed}`, { waitUntil: 'networkidle' });
+
+        // Non-vacuous: the landing rendered the Location card for this car.
+        await expect(page.getByText('Location information not available for this car.')).toBeVisible();
+        await expect(page.locator('#map')).toHaveCount(0);
+        expect(await page.evaluate(() => typeof window.maplibregl)).toBe('undefined');
+    });
 });

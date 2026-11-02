@@ -17,7 +17,7 @@ use PHPUnit\Framework\TestCase;
  * before the SDK API client is constructed. Since #2357,
  * {@see \ElanRegistry\Cron\BrevoSuppressionSyncClient} and
  * {@see \ElanRegistry\Email\BrevoBlocklistClient} build their client
- * through the factory, so their `createApi()` must call it. Without that call, a local cron
+ * through the factory, so they must call the factory's `createApi()`. Without that call, a local cron
  * run under `US_ENVIRONMENT=development` would build a `Configuration` that
  * always points at the real Brevo API, and mock-brevo would never see the
  * request (see `docs/development/EMAIL_SYSTEM.md`, "What routes to
@@ -76,7 +76,7 @@ final class Issue2245RegressionTest extends TestCase
         return [
             'BrevoEventReconciliationClient' => [
                 'usersc/classes/Cron/BrevoEventReconciliationClient.php',
-                'fetchEvents',
+                'createApi',
             ],
             'BrevoApiFactory' => [
                 'usersc/classes/Email/BrevoApiFactory.php',
@@ -86,45 +86,62 @@ final class Issue2245RegressionTest extends TestCase
     }
 
     /**
-     * @return array<string, array{string}> class name => [source path
-     *         relative to repo root]
+     * @return array<string, array{string, string, string, string}> class name
+     *         => [source path relative to repo root, method that gets the SDK
+     *         client, pattern that gets the factory, pattern that calls the
+     *         factory's createApi()]
      */
     public static function factoryClientProvider(): array
     {
         return [
-            'BrevoSuppressionSyncClient' => ['usersc/classes/Cron/BrevoSuppressionSyncClient.php'],
-            'BrevoBlocklistClient' => ['usersc/classes/Email/BrevoBlocklistClient.php'],
+            'BrevoSuppressionSyncClient' => [
+                'usersc/classes/Cron/BrevoSuppressionSyncClient.php',
+                'createApi',
+                '/\$factory\s*=\s*new\s+BrevoApiFactory\(/',
+                '/return\s+\$factory->createApi\(\$apiKey\)/',
+            ],
+            // The factory is a constructor argument that defaults to a real one.
+            'BrevoBlocklistClient' => [
+                'usersc/classes/Email/BrevoBlocklistClient.php',
+                'unblock',
+                '/\$this->factory->readApiKey\(\)/',
+                '/\$api\s*=\s*\$this->factory->createApi\(\$apiKey\)/',
+            ],
         ];
     }
 
     /**
      * A client that builds its SDK client through {@see \ElanRegistry\Email\BrevoApiFactory}
-     * gets the host override from the factory. Its `createApi()` must call
-     * the factory, and must not build the SDK client itself, which would skip
-     * the override (#2357).
+     * gets the host override from the factory. The method that gets the SDK
+     * client must call the factory, and must not build the SDK client itself,
+     * which would skip the override (#2357).
      */
     #[DataProvider('factoryClientProvider')]
-    public function testFactoryClientBuildsItsSdkClientThroughTheFactory(string $relativePath): void
-    {
+    public function testFactoryClientBuildsItsSdkClientThroughTheFactory(
+        string $relativePath,
+        string $methodName,
+        string $factoryPattern,
+        string $createPattern
+    ): void {
         $filePath = dirname(__DIR__, 3) . '/' . $relativePath;
         $this->assertFileExists($filePath, "Client source file must exist: {$relativePath}");
 
-        $methodBody = $this->uncommentedMethodBody($filePath, 'createApi');
+        $methodBody = $this->uncommentedMethodBody($filePath, $methodName);
 
         $this->assertMatchesRegularExpression(
-            '/\$factory\s*=\s*new\s+BrevoApiFactory\(/',
+            $factoryPattern,
             $methodBody,
-            "REGRESSION (#2245): {$relativePath} createApi() must create a BrevoApiFactory."
+            "REGRESSION (#2245): {$relativePath} {$methodName}() must use a BrevoApiFactory."
         );
         $this->assertMatchesRegularExpression(
-            '/return\s+\$factory->createApi\(\$apiKey\)/',
+            $createPattern,
             $methodBody,
-            "REGRESSION (#2245): {$relativePath} createApi() must return the factory's client, which applies the host override."
+            "REGRESSION (#2245): {$relativePath} {$methodName}() must use the factory's client, which applies the host override."
         );
         $this->assertStringNotContainsString(
             self::SDK_API_CLASS_NEEDLE,
             $methodBody,
-            "REGRESSION (#2245): {$relativePath} createApi() must not build the SDK client itself."
+            "REGRESSION (#2245): {$relativePath} {$methodName}() must not build the SDK client itself."
         );
     }
 
@@ -168,12 +185,12 @@ final class Issue2245RegressionTest extends TestCase
         $mutatedPath = $this->mutateRealSource(
             'usersc/classes/Cron/BrevoEventReconciliationClient.php',
             'if ($hostOverride = \ElanRegistry\Email\BrevoDevOverride::hostOverride()) {'
-                . "\n                \$credentials->setHost(\$hostOverride);\n            }",
+                . "\n            \$credentials->setHost(\$hostOverride);\n        }",
             '// if ($hostOverride = \ElanRegistry\Email\BrevoDevOverride::hostOverride()) {'
-                . "\n            //     \$credentials->setHost(\$hostOverride);\n            // }"
+                . "\n        //     \$credentials->setHost(\$hostOverride);\n        // }"
         );
 
-        $methodBody = $this->uncommentedMethodBody($mutatedPath, 'fetchEvents');
+        $methodBody = $this->uncommentedMethodBody($mutatedPath, 'createApi');
         $failures = $this->findMethodBodyViolations($methodBody, 'mutated');
 
         $this->assertNotSame([], $failures, 'A commented-out hostOverride() call must be rejected.');
@@ -192,7 +209,7 @@ final class Issue2245RegressionTest extends TestCase
             'if (false && ($hostOverride = \ElanRegistry\Email\BrevoDevOverride::hostOverride())) {'
         );
 
-        $methodBody = $this->uncommentedMethodBody($mutatedPath, 'fetchEvents');
+        $methodBody = $this->uncommentedMethodBody($mutatedPath, 'createApi');
         $failures = $this->findMethodBodyViolations($methodBody, 'mutated');
 
         $this->assertNotSame([], $failures, 'A call guarded by "if (false && ...)" must be rejected.');
@@ -206,7 +223,7 @@ final class Issue2245RegressionTest extends TestCase
     public function testOverrideAfterSdkConstructionFails(): void
     {
         $overrideBlock = 'if ($hostOverride = \ElanRegistry\Email\BrevoDevOverride::hostOverride()) {'
-            . "\n                \$credentials->setHost(\$hostOverride);\n            }";
+            . "\n            \$credentials->setHost(\$hostOverride);\n        }";
 
         $original = file_get_contents(dirname(__DIR__, 3) . '/usersc/classes/Cron/BrevoEventReconciliationClient.php');
         $this->assertIsString($original);
@@ -217,18 +234,18 @@ final class Issue2245RegressionTest extends TestCase
         $withoutOverride = str_replace($overrideBlock . "\n\n", '', $original);
         $this->assertNotSame($original, $withoutOverride, 'Fixture setup: could not remove the override block.');
 
-        $constructionEnd = '                $credentials' . "\n            );\n";
+        $constructionEnd = '            $credentials' . "\n        );\n";
         $insertPos = strpos($withoutOverride, $constructionEnd);
         $this->assertIsInt($insertPos, 'Fixture setup: could not locate the end of the SDK construction call.');
         $insertPos += strlen($constructionEnd);
 
         $mutatedSource = substr($withoutOverride, 0, $insertPos)
-            . "\n            " . $overrideBlock . "\n"
+            . "\n        " . $overrideBlock . "\n"
             . substr($withoutOverride, $insertPos);
 
         $mutatedPath = $this->writeMutatedSource($mutatedSource);
 
-        $methodBody = $this->uncommentedMethodBody($mutatedPath, 'fetchEvents');
+        $methodBody = $this->uncommentedMethodBody($mutatedPath, 'createApi');
         $failures = $this->findMethodBodyViolations($methodBody, 'mutated');
 
         $this->assertNotSame(
@@ -246,7 +263,7 @@ final class Issue2245RegressionTest extends TestCase
     public function testDecoyCommentAboveMethodWithCallDeletedFails(): void
     {
         $overrideBlock = 'if ($hostOverride = \ElanRegistry\Email\BrevoDevOverride::hostOverride()) {'
-            . "\n                \$credentials->setHost(\$hostOverride);\n            }";
+            . "\n            \$credentials->setHost(\$hostOverride);\n        }";
 
         $original = file_get_contents(dirname(__DIR__, 3) . '/usersc/classes/Cron/BrevoEventReconciliationClient.php');
         $this->assertIsString($original);
@@ -267,7 +284,7 @@ final class Issue2245RegressionTest extends TestCase
 
         $mutatedPath = $this->writeMutatedSource($mutatedSource);
 
-        $methodBody = $this->uncommentedMethodBody($mutatedPath, 'fetchEvents');
+        $methodBody = $this->uncommentedMethodBody($mutatedPath, 'createApi');
         $failures = $this->findMethodBodyViolations($methodBody, 'mutated');
 
         $this->assertNotSame(

@@ -131,6 +131,41 @@ final class VerificationSettingsTest extends TestCase
         $this->assertSame(LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, $mockLogEntries[0]['category']);
     }
 
+    /**
+     * UserSpice DB::query() reports a failed execute through error() and does
+     * not throw. isEnabledOrNull() returns null then, so the admin tab can
+     * show "Unavailable" and not a guessed "off" (#2457).
+     */
+    public function testIsEnabledOrNullReturnsNullOnQueryErrorAndLogsOnce(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(queryErrors: true);
+
+        $this->assertNull((new VerificationSettings($db))->isEnabledOrNull());
+        $this->assertCount(1, $mockLogEntries, 'A failed read must log exactly one line');
+        $this->assertSame(LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, $mockLogEntries[0]['category']);
+    }
+
+    /** A missing row is not a query failure: it is the fail-closed false, with a warning. */
+    public function testIsEnabledOrNullReturnsFalseWhenNoRow(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase();
+
+        $this->assertFalse((new VerificationSettings($db))->isEnabledOrNull());
+        $this->assertCount(1, $mockLogEntries);
+        $this->assertStringContainsString('missing', $mockLogEntries[0]['message']);
+    }
+
+    public function testIsEnabledOrNullReturnsStoredValue(): void
+    {
+        $db = new VerificationSettingsFakeDatabase(firstRowValue: (object) ['enabled' => 1]);
+
+        $this->assertTrue((new VerificationSettings($db))->isEnabledOrNull());
+    }
+
     // =========================================================================
     // setEnabled() — the asymmetric gate
     // =========================================================================
@@ -386,6 +421,56 @@ final class VerificationSettingsTest extends TestCase
 
         $this->assertSame(10, (new VerificationSettings($db))->batchSize());
         $this->assertSame([], $mockLogEntries, 'An in-range stored batch size must log nothing');
+    }
+
+    /** The callers that need a number (the send job, the admin handlers) keep the default 5. */
+    public function testBatchSizeReturnsDefaultOnQueryError(): void
+    {
+        $db = new VerificationSettingsFakeDatabase(queryErrors: true);
+
+        $this->assertSame(5, (new VerificationSettings($db))->batchSize());
+    }
+
+    public function testBatchSizeReturnsDefaultWhenNoRow(): void
+    {
+        $db = new VerificationSettingsFakeDatabase();
+
+        $this->assertSame(5, (new VerificationSettings($db))->batchSize());
+    }
+
+    /**
+     * The admin tab's editable field must not show 5 after a failed query,
+     * because a Save would write 5 over the real setting (#2457).
+     */
+    public function testBatchSizeOrNullReturnsNullOnQueryErrorAndLogsOnce(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(queryErrors: true);
+
+        $this->assertNull((new VerificationSettings($db))->batchSizeOrNull());
+        $this->assertCount(1, $mockLogEntries, 'A failed read must log exactly one line');
+        $this->assertSame(LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, $mockLogEntries[0]['category']);
+        $this->assertStringContainsString('batch_size', $mockLogEntries[0]['message']);
+    }
+
+    /** A missing row is not a query failure: it is the default 5, with a warning. */
+    public function testBatchSizeOrNullReturnsDefaultWhenNoRow(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase();
+
+        $this->assertSame(5, (new VerificationSettings($db))->batchSizeOrNull());
+        $this->assertCount(1, $mockLogEntries);
+        $this->assertStringContainsString('missing', $mockLogEntries[0]['message']);
+    }
+
+    public function testBatchSizeOrNullClampsStoredValue(): void
+    {
+        $db = new VerificationSettingsFakeDatabase(firstRowValue: (object) ['batch_size' => 255]);
+
+        $this->assertSame(25, (new VerificationSettings($db))->batchSizeOrNull());
     }
 
     // =========================================================================

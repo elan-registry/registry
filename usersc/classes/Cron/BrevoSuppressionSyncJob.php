@@ -56,7 +56,7 @@ use ElanRegistry\LogCategories;
  *
  *   - {@see self::runFullBackfill()} — a NEW public method, deliberately
  *     **not reachable from `run()` or `execute()` at any depth**. This is the
- *     load-bearing design point of this class: the guarded nightly path must
+ *     main design point of this class: the guarded nightly path must
  *     never be able to trigger an unbounded backfill by accident, so the
  *     backfill is not a mode flag on `execute()` but a separate method no
  *     scheduled code path calls. Only an operator, via the manual admin
@@ -66,9 +66,11 @@ use ElanRegistry\LogCategories;
  * The incremental mode's under-fetching is safe for the same reason #1889's is:
  * the window is roughly twice the guard interval so every suppression is
  * offered to at least two runs. An import writes no second event row when
- * the owner already has a row of any date for the same address and the same
- * cause group, from any source (#2502). The profile writers skip a flag that
- * already names the same address.
+ * the owner already has a row for the same address and the same cause
+ * group, from any source (#2502). For a hard bounce, a row of any date
+ * counts. For a spam, unsubscribe or admin-block cause, only a row after the
+ * latest clear of the block counts (#2529). The profile writers skip a flag
+ * that already names the same address.
  *
  * REASON-CODE MAPPING
  * -------------------
@@ -100,7 +102,8 @@ use ElanRegistry\LogCategories;
  * the MD5 of the raw address, the reason code and the raw `blockedAt`. The
  * same contact gets the same ID on each run. The prefix is
  * {@see CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX} for `adminBlocked` and
- * `suppression-import-` for all other codes (#2500). Admin-block rows from
+ * {@see CarRepository::SUPPRESSION_IMPORT_MESSAGE_ID_PREFIX} for all other
+ * codes (#2500). Admin-block rows from
  * before #2500 have the old prefix. A re-run does not write a tagged second
  * row for them, because the cause-group check matches the event name. So
  * before apply(), the job changes the ID of the owner's old row to the
@@ -153,13 +156,6 @@ use ElanRegistry\LogCategories;
  */
 final class BrevoSuppressionSyncJob extends AbstractCronJob
 {
-    /**
-     * Message-ID prefix of an import row for all codes other than `adminBlocked`
-     *
-     * An `adminBlocked` row uses {@see CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX}.
-     */
-    private const MESSAGE_ID_PREFIX = 'suppression-import-';
-
     /** er_cron_job_runs.job_name / CronJobGuard::ALLOWED_JOB_NAMES value. */
     public const JOB_NAME = 'brevo_suppression_sync';
 
@@ -358,21 +354,33 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
      *
      * Reached only after {@see AbstractCronJob::run()} has won the guard claim,
      * so every entry here is a real run. Deliberately does NOT call
-     * {@see self::runFullBackfill()} — see the class docblock's two-modes
-     * section for why that separation is load-bearing rather than incidental.
+     * {@see self::runFullBackfill()}. The guarded nightly path must never call
+     * `runFullBackfill()`. See the two-modes section of the class docblock.
      *
      * The return type stays `void` per {@see AbstractCronJob}'s contract, so
      * the page's {@see SuppressionSyncSummary} is logged and discarded rather
      * than returned: there is no caller here to hand it to, and the log line is
      * the only artifact an unattended run leaves behind.
+     *
+     * The Brevo setup check runs before the poll
+     * ({@see BrevoSuppressionSyncClient::readiness()}, #2480). Its log line,
+     * the summary line and the run's result agree:
+     *
+     * - Brevo is not set up (no plg_sendinblue table, or no key): the client
+     *   logs a `CronJobSkipped` line, no poll runs, and the run succeeds.
+     * - The plg_sendinblue read failed, or the key is set and the SDK is
+     *   absent or does not load: the client logs a `CronJobFailure` line, no
+     *   poll runs, and the job calls `markRunFailed()`.
+     * - The poll failed after a READY check: the client logs a
+     *   `CronJobFailure` line and the job calls `markRunFailed()`.
+     *
+     * `AbstractCronJob::markRunFailed()` changes only the healthcheck ping. The
+     * job has no slug yet, so the call has an effect only once the job has a
+     * slug (#2586). The per-job badge does not show a handled failure.
      */
     protected function execute(): void
     {
-        $summary = $this->syncPage(
-            $this->now->modify('-' . self::LOOKBACK_HOURS . ' hours'),
-            $this->now,
-            self::PAGE_OFFSET
-        );
+        $readiness = $this->client->readiness();
 
         // Logged under EMAIL_WEBHOOK rather than either CRON_JOB_* category:
         // both of those are exception channels (a fault, or a deliberate
@@ -380,7 +388,33 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
         // there would dilute the one category an operator filters on to find
         // broken jobs. EMAIL_WEBHOOK is where every other Brevo email-event
         // observation from this subsystem already lands, so a suppression run's
-        // outcome sits alongside the events it acted on.
+        // outcome sits alongside the events it acted on. A failed run uses the
+        // same category: the client already logged the cause under
+        // CRON_JOB_FAILURE, and a second failure row would count it twice.
+        if ($readiness === BrevoClientReadiness::NOT_CONFIGURED) {
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, 'Brevo suppression sync: incremental run complete — Brevo is not set up here, no poll ran.');
+            return;
+        }
+
+        if ($readiness === BrevoClientReadiness::FAILED) {
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, 'Brevo suppression sync: incremental run FAILED — the Brevo setup check failed, no poll ran. See the CronJobFailure log entry for the cause.');
+            $this->markRunFailed();
+            return;
+        }
+
+        $summary = $this->syncPage(
+            $this->now->modify('-' . self::LOOKBACK_HOURS . ' hours'),
+            $this->now,
+            self::PAGE_OFFSET
+        );
+
+        // syncPage() counts 0 pages only when the poll returned null.
+        if ($summary->pagesFetched === 0) {
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, 'Brevo suppression sync: incremental run FAILED — the Brevo poll failed, no suppressions imported this cycle. See the CronJobFailure log entry for the cause.');
+            $this->markRunFailed();
+            return;
+        }
+
         logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
             'Brevo suppression sync: incremental run complete —'
             . ' %d matched, %d unmatched, %d already flagged, %d skipped,'
@@ -766,7 +800,7 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             // gives it the new prefix.
             $isAdminBlock = $code === self::REASON_CODE_ADMIN_BLOCKED;
             $messageIdHash = md5($rawEmail . '|' . $code . '|' . $this->messageIdDatePart($rawBlockedAt));
-            $messageId = ($isAdminBlock ? CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX : self::MESSAGE_ID_PREFIX)
+            $messageId = ($isAdminBlock ? CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX : CarRepository::SUPPRESSION_IMPORT_MESSAGE_ID_PREFIX)
                 . $messageIdHash;
 
             // Brevo's read API is external input, so it gets the same bound
@@ -818,7 +852,7 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             $wasFlagged = $this->isAlreadyInTargetState($userId, $event);
 
             if ($isAdminBlock) {
-                $this->retagLegacyAdminBlockRow($userId, $event, self::MESSAGE_ID_PREFIX . $messageIdHash, $messageId);
+                $this->retagLegacyAdminBlockRow($userId, $event, CarRepository::SUPPRESSION_IMPORT_MESSAGE_ID_PREFIX . $messageIdHash, $messageId);
             }
 
             try {

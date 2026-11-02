@@ -542,6 +542,37 @@ final class BrevoWebhookEventProcessorTest extends TestCase
         $this->assertSame(date('Y-m-d H:i:s', $ts), $this->applier->calls[0]['occurredAt']);
     }
 
+    /** T16 (#2480): the applier must know when occurredAt is the receipt time. */
+    public function testMissingTimeAndTsPassesTheFallbackFlagToTheApplier(): void
+    {
+        $this->matchUser();
+
+        $this->processor->process($this->basePayload());
+
+        $this->assertCount(1, $this->applier->calls);
+        $this->assertTrue($this->applier->calls[0]['occurredAtIsFallback']);
+        $this->assertSame(EmailEventApplier::MODE_EVENT, $this->applier->calls[0]['mode']);
+    }
+
+    public function testFarFutureTsEventPassesTheFallbackFlagToTheApplier(): void
+    {
+        $this->matchUser();
+
+        $this->processor->process($this->basePayload(['ts_event' => time() + 3600]));
+
+        $this->assertTrue($this->applier->calls[0]['occurredAtIsFallback']);
+    }
+
+    public function testValidTsEventPassesNoFallbackFlagToTheApplier(): void
+    {
+        $this->matchUser();
+
+        $this->processor->process($this->basePayload(['ts_event' => 1_700_000_000]));
+
+        $this->assertCount(1, $this->applier->calls);
+        $this->assertFalse($this->applier->calls[0]['occurredAtIsFallback']);
+    }
+
     // --- sendinblueRecordEvent() (#2355) -------------------------------------
 
     public function testWithoutThePluginFunctionNothingIsLoggedAboutIt(): void

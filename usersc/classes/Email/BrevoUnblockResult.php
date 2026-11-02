@@ -7,57 +7,38 @@ namespace ElanRegistry\Email;
 /**
  * BrevoUnblockResult - the result of one {@see BrevoBlocklistClient::unblock()} call
  *
- * Three outcomes: `removed` (Brevo answered 2xx), `notBlocked` (Brevo
- * answered 404, so the address was not on the blocklist) and `failed`. Both
- * `removed` and `notBlocked` count as success: the address is off the
+ * Three outcomes: `Removed` (Brevo answered 2xx), `NotBlocked` (Brevo
+ * answered 404, so the address was not on the blocklist) and `Failed`. Both
+ * `Removed` and `NotBlocked` count as success: the address is off the
  * blocklist after the call.
  *
- * A failed result holds a reason code, the HTTP status when Brevo sent
- * one, and a log-safe detail: an {@see \ElanRegistry\Exceptions\ExceptionLogSummary},
- * or a {@see BrevoApiFactory} cause code (followed by ": <ExceptionLogSummary>"
- * when the SDK autoloader threw). It holds no address, no response
- * body and no exception message, because the SDK puts the request URL, with
- * the address, in its messages.
+ * Only the named constructors build a result. A failed result holds a
+ * reason, the HTTP status for {@see BrevoUnblockReason::Http} only, and a
+ * log-safe detail: an {@see \ElanRegistry\Exceptions\ExceptionLogSummary},
+ * or a {@see BrevoApiFactory} cause code (followed by " (SQLSTATE <code>)" for
+ * a `db_error` key query failure, or by ": <ExceptionLogSummary>" when the SDK
+ * autoloader threw). A successful result holds no reason, no HTTP status and
+ * no detail. It holds no address, no response body and no exception message,
+ * because the SDK puts the request URL, with the address, in its messages.
  *
  * @package ElanRegistry\Email
  * @since v2.30.9
  * @see https://github.com/elan-registry/registry/issues/2357
  */
-final class BrevoUnblockResult
+final readonly class BrevoUnblockResult
 {
-    public const OUTCOME_REMOVED = 'removed';
-    public const OUTCOME_NOT_BLOCKED = 'notBlocked';
-    public const OUTCOME_FAILED = 'failed';
-
-    /** No Brevo API key could be read. */
-    public const REASON_NO_API_KEY = BrevoApiFactory::REASON_NO_API_KEY;
-
-    /** The vendored Brevo SDK is not installed: no autoloader file. */
-    public const REASON_NO_SDK = BrevoApiFactory::REASON_NO_SDK;
-
     /**
-     * The SDK autoloader is there, but the SDK did not load: the autoloader
-     * threw, or the API class is still undefined. A fault, not a missing setup.
+     * @param BrevoUnblockOutcome     $outcome    What the call did
+     * @param BrevoUnblockReason|null $reason     Why a failed call failed, or null on success
+     * @param int|null                $httpStatus The HTTP status of a {@see BrevoUnblockReason::Http} failure, else null
+     * @param string|null             $detail     A log-safe detail for a failed result, or null.
+     *                                            It holds no address and no exception message.
      */
-    public const REASON_SDK_LOAD_FAILED = 'sdk_load_failed';
-
-    /** Brevo answered with a non-2xx status other than 404. */
-    public const REASON_HTTP = 'http';
-
-    /** The request did not get an HTTP answer (connection, timeout, SDK error). */
-    public const REASON_TRANSPORT = 'transport';
-
-    /** The query that reads the API key failed. A retry can work. No call was made. */
-    public const REASON_DB_ERROR = 'db_error';
-
-    /** The address was empty or whitespace only, so no call was made. */
-    public const REASON_NO_ADDRESS = 'no_address';
-
     private function __construct(
-        private readonly string $outcome,
-        private readonly ?string $reason,
-        private readonly ?int $httpStatus,
-        private readonly ?string $detail = null
+        public BrevoUnblockOutcome $outcome,
+        public ?BrevoUnblockReason $reason = null,
+        public ?int $httpStatus = null,
+        public ?string $detail = null
     ) {
     }
 
@@ -68,7 +49,7 @@ final class BrevoUnblockResult
      */
     public static function removed(): self
     {
-        return new self(self::OUTCOME_REMOVED, null, null);
+        return new self(BrevoUnblockOutcome::Removed);
     }
 
     /**
@@ -78,31 +59,34 @@ final class BrevoUnblockResult
      */
     public static function notBlocked(): self
     {
-        return new self(self::OUTCOME_NOT_BLOCKED, null, 404);
+        return new self(BrevoUnblockOutcome::NotBlocked);
     }
 
     /**
      * The unblock did not happen.
      *
-     * @param string      $reason     One of the `REASON_*` constants
-     * @param int|null    $httpStatus The HTTP status for {@see self::REASON_HTTP}, or null
-     * @param string|null $detail     A log-safe detail: an ExceptionLogSummary,
-     *                                or a BrevoApiFactory cause code, optionally
-     *                                followed by ": <ExceptionLogSummary>". Never
-     *                                an exception message or an address.
+     * @param BrevoUnblockReason $reason     Why the call failed
+     * @param int|null           $httpStatus The HTTP status for {@see BrevoUnblockReason::Http}, else null
+     * @param string|null        $detail     A log-safe detail: an ExceptionLogSummary,
+     *                                       or a BrevoApiFactory cause code, optionally
+     *                                       followed by " (SQLSTATE <code>)" or by
+     *                                       ": <ExceptionLogSummary>". Never
+     *                                       an exception message or an address.
      * @return self The result
+     * @throws \InvalidArgumentException If `$httpStatus` is null for an HTTP failure,
+     *                                   or set for any other reason
      */
-    public static function failed(string $reason, ?int $httpStatus = null, ?string $detail = null): self
+    public static function failed(BrevoUnblockReason $reason, ?int $httpStatus = null, ?string $detail = null): self
     {
-        return new self(self::OUTCOME_FAILED, $reason, $httpStatus, $detail);
-    }
+        if (($reason === BrevoUnblockReason::Http) !== ($httpStatus !== null)) {
+            throw new \InvalidArgumentException(sprintf(
+                'BrevoUnblockResult: reason http needs an HTTP status, and no other reason takes one (reason %s, HTTP status %s)',
+                $reason->value,
+                $httpStatus === null ? 'none' : (string) $httpStatus
+            ));
+        }
 
-    /**
-     * @return string One of the `OUTCOME_*` constants
-     */
-    public function outcome(): string
-    {
-        return $this->outcome;
+        return new self(BrevoUnblockOutcome::Failed, $reason, $httpStatus, $detail);
     }
 
     /**
@@ -112,33 +96,6 @@ final class BrevoUnblockResult
      */
     public function isSuccess(): bool
     {
-        return $this->outcome !== self::OUTCOME_FAILED;
-    }
-
-    /**
-     * @return string|null One of the `REASON_*` constants for a failed
-     *                     result, or null on success
-     */
-    public function reason(): ?string
-    {
-        return $this->reason;
-    }
-
-    /**
-     * @return int|null The HTTP status that Brevo sent, or null when there
-     *                  was no HTTP answer or no call
-     */
-    public function httpStatus(): ?int
-    {
-        return $this->httpStatus;
-    }
-
-    /**
-     * @return string|null A log-safe detail for a failed result, or null.
-     *                     It holds no address and no exception message.
-     */
-    public function detail(): ?string
-    {
-        return $this->detail;
+        return $this->outcome !== BrevoUnblockOutcome::Failed;
     }
 }

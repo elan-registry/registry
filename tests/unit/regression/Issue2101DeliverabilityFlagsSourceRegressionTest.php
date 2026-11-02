@@ -268,7 +268,12 @@ final class Issue2101DeliverabilityFlagsSourceRegressionTest extends TestCase
         $this->assertStringNotContainsString('const OPERATION_', $builder);
 
         $tab = $this->codeOnly('app/admin/includes/tab-verification.php');
-        $this->assertStringContainsString('email_blocked', $tab, 'The tab must still read the profile flags.');
+        $this->assertStringContainsString('EffectiveEmailFlags::fromQueueRow(', $tab, 'The tab must still read the profile flags.');
+        $this->assertStringContainsString(
+            'email_blocked_active',
+            $this->codeOnly('usersc/classes/Car/EffectiveEmailFlags.php'),
+            'fromQueueRow() must read the profile flags of the queue row.'
+        );
         $this->assertStringNotContainsString('suppressedHist', $tab);
     }
 

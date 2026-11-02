@@ -40,7 +40,7 @@ git add app README.md
 git commit -q -m "base"
 git checkout -q -b "milestone/${VERSION}"
 
-# Stamps the current tip, the way /finish-milestone Step 6.6 does.
+# Stamps the current tip, the way "Render the sheet" in RELEASE_INSTRUCTIONS_TEMPLATE.md does.
 stamp() { git rev-parse "milestone/${VERSION}" > "$STAMP"; }
 
 # commit_file <path> <content> — adds or changes one file and commits it.

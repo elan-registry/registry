@@ -651,7 +651,10 @@ false, the milestone is not done.
      (`scripts/check-milestone-scope-drift.sh`).
    - finalizes the release notes, and asks the retrospective questions
      (Step 6.5).
-   - renders the deploy sheet.
+   - checks that the deploy sheet exists and is fresh
+     (`scripts/check-deploy-sheet-for-branch.sh`). You render the sheet by
+     hand before the command runs
+     ([RELEASE_INSTRUCTIONS_TEMPLATE.md](RELEASE_INSTRUCTIONS_TEMPLATE.md#render-the-sheet)).
    - updates the wiki and `CLAUDE.md` when the change needs it.
    - runs the cross-PR security check, the local multi-agent review, and the
      milestone-level deep review. Each Medium or Low finding goes to the
@@ -685,8 +688,7 @@ false, the milestone is not done.
 **Run `/finish-milestone` again** after it stops, or after the branch
 changes. It starts at the top and skips a step when that step's result
 exists for the current branch tip. A new commit makes the review steps run
-again. The retrospective, and the deploy sheet while it is fresh, are not
-redone.
+again. The retrospective is not redone.
 
 **Run `/release-milestone` again** after the script stops. Fix the cause
 first. The script skips the work that is done: the merge, the tag, the release.

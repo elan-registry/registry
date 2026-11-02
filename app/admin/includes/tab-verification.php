@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\Car\CarRepository;
-use ElanRegistry\Car\VerificationSettings;
+use ElanRegistry\Car\EffectiveEmailFlags;
 use ElanRegistry\Car\VerificationTabStatus;
 use ElanRegistry\Cron\CronJobEnabledState;
 use ElanRegistry\Cron\SendVerificationBatchJob;
@@ -98,30 +98,16 @@ $vsStatus = VerificationTabStatus::read(dbi(), $currentUserId);
 // ---------------------------------------------------------------------------
 /** @var array<int, object> $vsEligible */
 $vsEligible       = [];
-$vsBatchSize      = 0;
+// Null means the read threw or its query failed: the Batch size field then
+// shows "Unavailable" and no form (#2457). A missing row is not a failure, so
+// it gives the default of 5. VerificationTabStatus::read() logged the fault,
+// and allHealthy() counts it.
+$vsBatchSize      = $vsStatus->batchSize();
 $vsEligibleError  = null;
-$vsSettings       = null;
 $vsEligibleLoadError = 'The list of eligible cars could not be loaded. Check the system log for details.';
 
-// Read separately from (and before) the eligible-car query below: the
-// Automatic Sending panel renders this as the value of an editable
-// field, and a preview-query failure must not prevent that render.
-// (batchSize() itself already fails closed to 5 on an ordinary DB error,
-// so this split doesn't change that outcome — it only avoids re-running
-// batchSize()'s own error-log line a second time for the same read.)
-try {
-    $vsSettings  = new VerificationSettings(dbi());
-    $vsBatchSize = $vsSettings->batchSize();
-} catch (\Throwable $e) {
-    // Without a batch size the preview would run with LIMIT 0 and show
-    // "no cars are due". Clear the settings so the preview shows an error.
-    $vsSettings = null;
-    logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
-        'Verification tab: could not read the configured batch size: ' . $e->getMessage());
-}
-
 // Only the Eligible queue view shows this preview, so other views skip the query.
-if ($vsIsEligibleView && $verificationSendSvc !== null && $vsSettings !== null) {
+if ($vsIsEligibleView && $verificationSendSvc !== null && $vsBatchSize !== null) {
     try {
         $vsEligible = $verificationSendSvc->findEligible($vsBatchSize, 0);
     } catch (\Throwable $e) {
@@ -133,7 +119,7 @@ if ($vsIsEligibleView && $verificationSendSvc !== null && $vsSettings !== null) 
         ));
     }
 } elseif ($vsIsEligibleView) {
-    // Without the send service or the settings there is no preview. Say so,
+    // Without the send service or the batch size there is no preview. Say so,
     // so that an empty list does not read as "no cars are due".
     $vsEligibleError = $vsEligibleLoadError;
 }
@@ -452,31 +438,7 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
 
             <dt class="col-sm-4">Batch size</dt>
             <dd class="col-sm-8">
-                <?php if ($vsCanToggle) { ?>
-                <form action="index.php?tab=verification" method="POST" class="row g-2 align-items-center">
-                    <input type="hidden" name="csrf" value="<?= vsEsc($csrfToken) ?>">
-                    <input type="hidden" name="command" value="verification_set_batch_size">
-                    <div class="col-auto">
-                        <label class="visually-hidden" for="verificationBatchSize">Batch size</label>
-                        <input type="number" class="form-control form-control-sm"
-                               id="verificationBatchSize" name="batch_size"
-                               min="1" max="25" style="width: 6rem;"
-                               value="<?= vsEsc((string) $vsBatchSize) ?>">
-                    </div>
-                    <div class="col-auto">
-                        <button type="submit" class="btn btn-sm btn-outline-primary">
-                            <i class="fas fa-save"></i> Save
-                        </button>
-                    </div>
-                </form>
-                <small class="form-text text-muted d-block mt-1">
-                    <i class="fas fa-info-circle"></i>
-                    Cars per run, for both the automatic job and the manual send below.
-                    Values outside 1&ndash;25 are clamped when saved.
-                </small>
-                <?php } else { ?>
-                    <?= vsEsc((string) $vsBatchSize) ?> cars per run
-                <?php } ?>
+                <?php require __DIR__ . '/verification-batch-size-field.php'; ?>
             </dd>
 
         </dl>
@@ -807,33 +769,20 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                             : false;
                         $queueDays = $queueSentAt !== false ? (int) $queueSentAt->diff($vsNow)->days : null;
 
-                        // The flags come from the owner's profiles row (#2101). The
-                        // Eligible rows are cars.* only: an eligible car has a
-                        // profile and no flag that applies, so a missing has_profile
-                        // means 1. A block or bounce counts only while it applies to
-                        // the owner's current email (the `_active` columns, #2356).
-                        //
-                        // The stored cause stays in the row when the block does not
-                        // apply, so it is read only for an active block.
-                        $queueHasProfile  = (int) ($queueCar->has_profile ?? 1) === 1;
-                        $queueBounced     = (int) ($queueCar->email_bounced_active ?? 0) === 1;
-                        $queueBlocked     = (int) ($queueCar->email_blocked_active ?? 0) === 1;
-                        $queueOptedOut    = (int) ($queueCar->email_opted_out ?? 0) === 1;
-                        $queueBlockedCause = $queueBlocked && isset($queueCar->email_blocked_cause)
-                            ? (string) $queueCar->email_blocked_cause : null;
+                        // The flags come from the owner's profiles row (#2101). A
+                        // block or bounce counts only while it applies to the owner's
+                        // current email (the `_active` columns, #2356). An Eligible
+                        // preview row has no profile columns: the eligibility query
+                        // already excludes an owner with no profile or with a flag.
+                        $queueFlags = $vsIsEligibleView
+                            ? EffectiveEmailFlags::eligible()
+                            : EffectiveEmailFlags::fromQueueRow($queueCar);
 
-                        $queueChip = VerificationTabStatus::chip(
-                            $vsChipEvents[$queueCarId] ?? null,
-                            $queueHasProfile,
-                            $queueBlocked,
-                            $queueBlockedCause,
-                            $queueOptedOut,
-                            $queueBounced
-                        );
+                        $queueChip = VerificationTabStatus::chip($vsChipEvents[$queueCarId] ?? null, $queueFlags);
 
                         // The owner actions write the profiles row, so an owner
                         // with no row has no action until an admin fixes the row.
-                        if (!$queueHasProfile) {
+                        if (!$queueFlags->hasProfile) {
                             $queueOwnerIsActionable = false;
                             $queueNoActionTitle = 'This owner has no profile row. Fix the profile before you change email state.';
                         }
@@ -846,15 +795,15 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                         // the car Pending (Brevo escalates repeated soft bounces), so Mark
                         // Bounced is disabled there. Clear Block and Clear Opt-out need the
                         // owner's request, so they open the confirm modal ('ownerRequest').
-                        if ($queueBlocked) {
+                        if ($queueFlags->blocked) {
                             $queueAction = ['command' => 'clear_block', 'label' => 'Clear Block',
                                             'class' => 'btn-outline-secondary', 'disabled' => false,
                                             'ownerRequest' => true];
-                        } elseif ($queueOptedOut) {
+                        } elseif ($queueFlags->optedOut) {
                             $queueAction = ['command' => 'clear_opt_out', 'label' => 'Clear Opt-out',
                                             'class' => 'btn-outline-secondary', 'disabled' => false,
                                             'ownerRequest' => true];
-                        } elseif ($queueBounced) {
+                        } elseif ($queueFlags->bounced) {
                             $queueAction = ['command' => 'clear_bounced', 'label' => 'Clear Bounced',
                                             'class' => 'btn-outline-secondary', 'disabled' => false];
                         } else {

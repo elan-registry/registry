@@ -132,13 +132,14 @@ if (!isAdmin()) {
                                         sprintf(
                                             'Brevo event reconciliation manually triggered (cron guard bypassed) —'
                                             . ' %d owners matched, %d unmatched, %d skipped, %d invalid address(es),'
-                                            . ' %d page(s) fetched%s%s',
+                                            . ' %d page(s) fetched%s%s%s',
                                             $summary->matchedCount,
                                             $summary->unmatchedCount,
                                             $summary->skippedCount,
                                             $summary->invalidAddressCount,
                                             $summary->pagesFetched,
-                                            $summary->pollFailed ? ', a Brevo poll failed' : '',
+                                            $summary->pollFailed ? ', a Brevo poll failed or could not start' : '',
+                                            $summary->notConfigured ? ', Brevo is not set up here, no poll ran' : '',
                                             $summary->counterFailureCount > 0
                                                 ? sprintf(', %d unmatched-recipient counter update(s) failed', $summary->counterFailureCount)
                                                 : ''
@@ -150,8 +151,8 @@ if (!isAdmin()) {
                                     ?>
                                     <?php if ($summary->pollFailed): ?>
                                     <div class="alert alert-warning">
-                                        <h5 class="mb-2"><i class="fa fa-exclamation-triangle"></i> Reconciliation incomplete — Brevo poll failed</h5>
-                                        <p class="mb-0">A request to Brevo failed, so the events of at least one type were not fetched this run. The failure is logged under <code>CronJobFailure</code>. Re-run this script once Brevo is reachable — events already reconciled are re-applied harmlessly.</p>
+                                        <h5 class="mb-2"><i class="fa fa-exclamation-triangle"></i> Reconciliation incomplete — Brevo poll failed or could not start</h5>
+                                        <p class="mb-0">Either a request to Brevo failed, or the poll could not start because the <code>plg_sendinblue</code> settings read or the Brevo SDK load failed. The events of at least one type were not fetched this run. The <code>CronJobFailure</code> log line names the cause. Fix that cause, then re-run this script — events already reconciled are re-applied harmlessly.</p>
                                     </div>
                                     <?php endif; ?>
 
@@ -176,6 +177,13 @@ if (!isAdmin()) {
                                     </div>
                                     <?php endif; ?>
 
+                                    <?php if ($summary->notConfigured): ?>
+                                    <div class="alert alert-info">
+                                        <h5 class="mb-2"><i class="fa fa-info-circle"></i> No poll ran — Brevo is not set up on this site</h5>
+                                        <p class="mb-0">The <code>plg_sendinblue</code> table is absent, or it holds no Brevo API key, so no events were fetched. This is normal on a site without Brevo. The <code>CronJobSkipped</code> log line names the cause. To reconcile events, set up the sendinblue plugin with an API key, then re-run this script.</p>
+                                    </div>
+                                    <?php elseif (!($summary->pollFailed && $summary->pagesFetched === 0)): ?>
+                                    <?php // A pre-flight failure fetched no page, so only the warning above shows. A partial poll failure keeps the counts. ?>
                                     <div class="alert alert-success">
                                         <i class="fa fa-check-circle"></i> Reconciliation completed:
                                         <strong><?= (int) $summary->eventsExamined ?></strong> event(s) examined —
@@ -184,6 +192,7 @@ if (!isAdmin()) {
                                         <strong><?= (int) $summary->invalidAddressCount ?></strong> invalid address(es),
                                         across <strong><?= (int) $summary->pagesFetched ?></strong> page(s) fetched.
                                     </div>
+                                    <?php endif; ?>
 
                                     <h5 class="mt-4"><i class="fa fa-table"></i> Events by type</h5>
                                     <?php if ($summary->eventTypeCounts === []): ?>

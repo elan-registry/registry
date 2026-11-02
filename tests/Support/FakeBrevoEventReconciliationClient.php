@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Support;
 
+use ElanRegistry\Cron\BrevoClientReadiness;
 use ElanRegistry\Cron\BrevoEventReconciliationClient;
 
 /**
@@ -22,9 +23,13 @@ use ElanRegistry\Cron\BrevoEventReconciliationClient;
  * call returns all scripted events, like an API that ignores the filter.
  * Use it for events whose type field is not a string.
  *
+ * readiness() returns the scripted `$readiness` (default READY), so a test
+ * can drive the job's "Brevo not set up" and "settings read failed" paths
+ * (#2480). It writes no log row; the real client's checks log.
+ *
  * The real class's constructor is bypassed entirely (no parent::__construct()
  * call): it takes a DatabaseInterface only to read the Brevo API key, and
- * nothing in the overridden method path touches it.
+ * nothing in the overridden method paths touches it.
  *
  * Named class, not anonymous: see FakeDatabase (`impureMethod.pure`).
  *
@@ -46,12 +51,20 @@ class FakeBrevoEventReconciliationClient extends BrevoEventReconciliationClient
      *        real client's `fetchEvents()` has (#2061).
      * @param list<string> $failingTypes Event types whose poll fails (returns null)
      * @param bool $applyTypeFilter False returns every scripted event on every call
+     * @param BrevoClientReadiness $readiness What readiness() returns
      */
     public function __construct(
         private ?array $events = [],
         private array $failingTypes = [],
-        private bool $applyTypeFilter = true
+        private bool $applyTypeFilter = true,
+        private BrevoClientReadiness $readiness = BrevoClientReadiness::READY
     ) {
+    }
+
+    /** @return BrevoClientReadiness The scripted readiness, with no DB read and no log row. */
+    public function readiness(): BrevoClientReadiness
+    {
+        return $this->readiness;
     }
 
     /**

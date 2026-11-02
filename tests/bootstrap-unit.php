@@ -153,9 +153,10 @@ if (!function_exists('logger')) {
 
 // Mock email function — tracks sent emails in $mockSentEmails for test assertions.
 // Return value can be overridden via $GLOBALS['mockEmailSendResult'] to simulate
-// send failures (defaults to true).
+// send failures (defaults to true). A test can also set a non-bool value, as a
+// site-local mailer override can return one.
 if (!function_exists('email')) {
-    function email($to, $subject, $body, $opts = [], $attachment = null): bool {
+    function email($to, $subject, $body, $opts = [], $attachment = null): mixed {
         global $mockSentEmails, $mockEmailSendResult;
         if (!isset($mockSentEmails)) {
             $mockSentEmails = [];

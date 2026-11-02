@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\AccountDeletionPrivacyOutcome;
 use ElanRegistry\AccountDeletionPrivacyStep;
+use ElanRegistry\Exceptions\ExceptionLogSummary;
 use ElanRegistry\Input;
 use ElanRegistry\LogCategories;
 
@@ -113,7 +115,7 @@ $userIdRejected = $is_exec && $targetUserId === false;
                                 try {
                                     $result = (new AccountDeletionPrivacyStep(dbi()))->run($targetUserId);
 
-                                    if ($result->refused) {
+                                    if ($result->outcome === AccountDeletionPrivacyOutcome::Refused) {
                                         logger($adminId, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE,
                                             "Deletion privacy step rerun refused for user {$targetUserId}");
                                         ?>
@@ -121,15 +123,23 @@ $userIdRejected = $is_exec && $targetUserId === false;
                                             <i class="fa fa-ban"></i> Refused: user <?= (int) $targetUserId ?> still has a <code>users</code> row, or the check failed. Nothing was deleted. See the <code>UserDeletion</code> log.
                                         </div>
                                         <?php
-                                    } elseif (!$result->committed) {
+                                    } elseif ($result->outcome === AccountDeletionPrivacyOutcome::CommitUnknown) {
+                                        logger($adminId, LogCategories::LOG_CATEGORY_FIX_SCRIPT_ERROR,
+                                            "Deletion privacy step rerun failed for user {$targetUserId} at stage commit, transaction state unknown: check er_email_events, plg_sendinblue_messages and profiles rows before a rerun");
+                                        ?>
+                                        <div class="alert alert-danger mb-0">
+                                            <i class="fa fa-exclamation-triangle"></i> Failed at stage <strong>commit</strong>. The commit may have landed. Check whether <code>er_email_events</code>, <code>plg_sendinblue_messages</code> and <code>profiles</code> rows remain for user <?= (int) $targetUserId ?> before you rerun. See the <code>UserDeletion</code> log for the exception summary (class, code, SQLSTATE and throw site).
+                                        </div>
+                                        <?php
+                                    } elseif ($result->outcome === AccountDeletionPrivacyOutcome::RolledBack) {
                                         logger($adminId, LogCategories::LOG_CATEGORY_FIX_SCRIPT_ERROR,
                                             "Deletion privacy step rerun rolled back for user {$targetUserId} at stage {$result->failedStage}");
                                         ?>
                                         <div class="alert alert-danger mb-0">
-                                            <i class="fa fa-exclamation-triangle"></i> Failed at stage <strong><?= htmlspecialchars((string) $result->failedStage, ENT_QUOTES, 'UTF-8') ?></strong> and rolled back. The personal data remains. See the <code>UserDeletion</code> log for the exception class and code.
+                                            <i class="fa fa-exclamation-triangle"></i> Failed at stage <strong><?= htmlspecialchars((string) $result->failedStage, ENT_QUOTES, 'UTF-8') ?></strong> and rolled back. The personal data remains. See the <code>UserDeletion</code> log for the exception summary (class, code, SQLSTATE and throw site).
                                         </div>
                                         <?php
-                                    } else {
+                                    } elseif ($result->outcome === AccountDeletionPrivacyOutcome::Committed) {
                                         logger($adminId, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, sprintf(
                                             'Deletion privacy step rerun committed for user %d: %d er_email_events, %d plg_sendinblue_messages, %d er_deleted_user_addresses rows deleted',
                                             $targetUserId,
@@ -172,14 +182,19 @@ $userIdRejected = $is_exec && $targetUserId === false;
                                             </div>
                                         <?php endif; ?>
                                         <?php
+                                    } else {
+                                        // A new outcome must get its own arm. It must never show "Committed".
+                                        throw new \LogicException(sprintf(
+                                            'The rerun page has no arm for the privacy step outcome %s.',
+                                            $result->outcome->name
+                                        ));
                                     }
                                 } catch (\Throwable $e) {
-                                    // The exception message can contain an address, so only the class and code go to the log and the page.
+                                    // The exception message can contain an address, so the log gets a summary without the message and the page gets the class only.
                                     logger($adminId, LogCategories::LOG_CATEGORY_FIX_SCRIPT_ERROR, sprintf(
-                                        'Deletion privacy step rerun failed for user %d: %s (code %s)',
+                                        'Deletion privacy step rerun failed for user %d: %s',
                                         $targetUserId,
-                                        get_class($e),
-                                        (string) $e->getCode()
+                                        ExceptionLogSummary::of($e)
                                     ));
                                     ?>
                                     <div class="alert alert-danger mb-0">

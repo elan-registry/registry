@@ -403,6 +403,23 @@ owner addresses, log `ExceptionLogSummary::of($e)` instead of the message. It
 gives `<Class> (code <code>[, SQLSTATE <x>]) at <file>:<line>`. The SQLSTATE
 comes from `CarDatabaseException::sqlState()` (#2359).
 
+**No guards around `logger()`, `rollback()` or database calls**: do not wrap
+them in `try`/`catch` (issues #2449 and #2561). They throw only when the database
+already failed the request, and a guard changes only the error page or the
+log line. Let the exception reach the caller. Three exceptions are intended,
+each with its reason in the code:
+
+- `AccountDeletionPrivacyStep` catches a failure of its whole transaction,
+  guards its `rollback()`, and returns a result object, because the account
+  deletion hook must still run the car cleanup after a failed privacy step.
+- `AbstractCronJob` guards the `logger()` call after a healthcheck ping
+  throws, because a throw there would skip the failure stamp.
+- `BrevoDevOverride::applyToSdk()` guards its `logger()` call, because it runs
+  on every development request and must never throw.
+
+Older guards remain in other files. The cleanup ledger lists each file for
+removal. Do not copy them into new code.
+
 ### Exceptions
 
 **Choose appropriate exception type**: Use specific exceptions (CarValidationException, OwnerValidationException) not generic Exception.

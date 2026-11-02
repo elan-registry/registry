@@ -231,6 +231,17 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
      *
      * A failed poll is logged, not thrown, so this method calls
      * `markRunFailed()` for it, and `run()` pings `/fail`.
+     *
+     * The Brevo setup check runs once before the polls
+     * ({@see BrevoEventReconciliationClient::readiness()}). Its log line and
+     * the ping agree:
+     *
+     * - Brevo is not configured (no plg_sendinblue table, or no key): the
+     *   client logs a `CronJobSkipped` line, no poll runs, the summary line
+     *   says so, and `run()` pings success. The prune still runs.
+     * - The plg_sendinblue read failed, or a key is set but the SDK is
+     *   absent or did not load: the client logs a `CronJobFailure` line, no
+     *   poll runs, and `run()` pings `/fail`.
      */
     protected function execute(): void
     {
@@ -245,21 +256,23 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
         //
         // The pollFailed suffix matters here specifically: without it, a
         // failed poll logs a line that reads as a quiet night with nothing
-        // to backfill. fetchEvents() already logs the specific cause under
-        // CRON_JOB_FAILURE. This suffix only stops the summary line from
-        // reading as a false all-clear.
+        // to backfill. fetchEvents() or readiness() already logs the specific
+        // cause under CRON_JOB_FAILURE. This suffix only stops the summary line from
+        // reading as a false all-clear. The notConfigured suffix does the
+        // same for a site without Brevo, where no poll ran at all.
         logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
             'Brevo event reconciliation: incremental run complete —'
             . ' %d matched, %d unmatched, %d skipped, %d invalid address(es),'
-            . ' %d page(s) fetched%s%s.',
+            . ' %d page(s) fetched%s%s%s.',
             $summary->matchedCount,
             $summary->unmatchedCount,
             $summary->skippedCount,
             $summary->invalidAddressCount,
             $summary->pagesFetched,
             $summary->pollFailed
-                ? ' — a Brevo poll failed, the events of that type were not backfilled this cycle'
+                ? ' — a Brevo poll failed or could not start, the affected events were not backfilled this cycle'
                 : '',
+            $summary->notConfigured ? ' — Brevo is not set up here, no poll ran' : '',
             // Without this clause the line above reads as a clean run while the
             // dashboard's unmatched-recipient counter silently under-reports.
             // Only the first failure logs its own cause (see countUnmatched()), so
@@ -363,9 +376,19 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
         $eventTypeCounts = [];
         $eventsExamined = 0;
         $pagesFetched = 0;
-        $pollFailed = false;
 
-        foreach (self::EVENT_TYPES as $apiEventType => $eventName) {
+        // Checked once, not once per type: without it each of the type
+        // polls repeats the same setup log line. readiness() writes the log
+        // line, so the job adds none. Exhaustive match: a new readiness case
+        // must be handled here, not fall through to "no poll" silently.
+        $readiness = $this->client->readiness();
+        [$pollFailed, $notConfigured, $eventTypes] = match ($readiness) {
+            BrevoClientReadiness::READY => [false, false, self::EVENT_TYPES],
+            BrevoClientReadiness::NOT_CONFIGURED => [false, true, []],
+            BrevoClientReadiness::FAILED => [true, false, []],
+        };
+
+        foreach ($eventTypes as $apiEventType => $eventName) {
             // fetchEvents() never throws. It logs a poll failure itself and
             // returns null. One failed type does not stop the other types.
             $events = $this->client->fetchEvents(
@@ -397,6 +420,7 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
             pagesFetched: $pagesFetched,
             pollFailed: $pollFailed,
             counterFailureCount: $counts['counterFailures'],
+            notConfigured: $notConfigured,
         );
     }
 
@@ -537,7 +561,8 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
         $userId = $match->userId();
         $reason = $event->getReason();
         $reason = is_string($reason) && $reason !== '' ? $reason : null;
-        $occurredAt = $this->resolveOccurredAt($event->getDate(), $userId, $eventName);
+        ['occurredAt' => $occurredAt, 'usable' => $dateIsUsable]
+            = $this->resolveOccurredAt($event->getDate(), $userId, $eventName);
 
         try {
             $this->applier->apply(
@@ -548,7 +573,8 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
                 $rawMessageId,
                 $occurredAt,
                 DeliverabilityFlagLog::SOURCE_RECONCILIATION,
-                EmailEventApplier::MODE_EVENT
+                EmailEventApplier::MODE_EVENT,
+                occurredAtIsFallback: !$dateIsUsable
             );
         } catch (CarDatabaseException $e) {
             // Log and continue, unlike the webhook (which fails the whole
@@ -671,11 +697,18 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
      * value outside that range takes the same logged fallback as an
      * unparseable one. Both mean "Brevo gave us no usable date".
      *
+     * `usable` is false for the fallback. The run time is not Brevo's date, so
+     * {@see EmailEventApplier::apply()} must not compare it with an admin
+     * Clear Block: a run time is always later, and the backfill would set the
+     * cleared flag again. The applier compares the message time instead.
+     *
      * @param mixed $rawDate The SDK's `date` field, untyped at the boundary
      * @param int $userId The matched user, for the log line
      * @param string $eventName The webhook event name, for the log line
+     * @return array{occurredAt: string, usable: bool} The time in
+     *         AppConstants::DATETIME_FORMAT, and false when it is the run-time fallback
      */
-    private function resolveOccurredAt(mixed $rawDate, int $userId, string $eventName): string
+    private function resolveOccurredAt(mixed $rawDate, int $userId, string $eventName): array
     {
         if (is_string($rawDate) && $rawDate !== '') {
             try {
@@ -691,7 +724,7 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
                     // both must write the same clock — formatting the parsed
                     // value directly would store Brevo's UTC offset and skew
                     // backfilled rows against webhook-written ones.
-                    return date(AppConstants::DATETIME_FORMAT, $seconds);
+                    return ['occurredAt' => date(AppConstants::DATETIME_FORMAT, $seconds), 'usable' => true];
                 }
             } catch (\Exception) {
                 // Fall through to the logged fallback below.
@@ -714,6 +747,6 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
             self::MAX_FUTURE_SECONDS
         ));
 
-        return $this->now->format(AppConstants::DATETIME_FORMAT);
+        return ['occurredAt' => $this->now->format(AppConstants::DATETIME_FORMAT), 'usable' => false];
     }
 }

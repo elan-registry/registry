@@ -91,14 +91,7 @@ final class OwnerEmailStateOrderParityTest extends TestCase
         $this->assertNotNull($notice);
 
         $event    = $eventName !== null ? (object) ['event' => $eventName, 'occurred_at' => '2026-09-01 10:00:00'] : null;
-        $chipKind = VerificationTabStatus::chip(
-            $event,
-            $flags->hasProfile,
-            $flags->blocked,
-            $flags->blockedCause,
-            $flags->optedOut,
-            $flags->bounced
-        )['kind'];
+        $chipKind = VerificationTabStatus::chip($event, $flags)['kind'];
 
         $this->assertSame($expected, $policyKind);
         $this->assertSame($expected, $notice['kind']);

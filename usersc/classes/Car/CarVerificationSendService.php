@@ -42,6 +42,18 @@ use ElanRegistry\Owner;
  */
 final class CarVerificationSendService
 {
+    /**
+     * The sendinblue plugin's fixed precondition texts, mapped to log labels
+     *
+     * These texts hold no address, but the log uses its own labels so that a
+     * changed plugin text falls to the generic value and is not copied.
+     */
+    private const PLUGIN_FAILURE_LABELS = [
+        'FAILED: Attempted to send without all required fields' => 'plugin: missing required fields',
+        'FAILED: No usable recipient address' => 'plugin: no usable recipient address',
+        'FAILED: The Brevo API key is not configured' => 'plugin: Brevo API key not configured',
+    ];
+
     private VerificationSettings $settings;
     private SendPolicy $sendPolicy;
 
@@ -309,12 +321,16 @@ final class CarVerificationSendService
             // The plugin logs its own reason in a separate row with no car id.
             // This row names the car and only a summary of the cause: the
             // plugin text can be a raw Brevo ApiException message, and a
-            // Brevo error body can echo the recipient address.
+            // Brevo error body can echo the recipient address. For the same
+            // reason, the row gives only the type of a return value that is
+            // not a boolean or null: an override can return a string that
+            // holds the address.
             $mailerError = function_exists('sendinblueLastError') ? sendinblueLastError() : null;
+            $returned = is_bool($sendOk) || $sendOk === null ? var_export($sendOk, true) : get_debug_type($sendOk);
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
                 'CarVerificationSendService::sendOne: email() returned %s (expected true) for car %d; '
                 . 'treating as failure, verification_attempts deliberately not incremented. Mailer error: %s',
-                var_export($sendOk, true),
+                $returned,
                 $carId,
                 self::mailerErrorSummary($mailerError)
             ));
@@ -464,13 +480,23 @@ final class CarVerificationSendService
      * Summarize the plugin's last error for a log line, without its text
      *
      * The Brevo SDK starts an ApiException message with the HTTP status in
-     * square brackets. Only the status goes in the log, not the text. Other
-     * text gives "reported (text not logged)": a code that is not three
-     * digits, such as [0], or a Guzzle ConnectException ("cURL error 28: ..."),
-     * which the SDK does not wrap in an ApiException.
+     * square brackets. Only the status goes in the log, not the text.
+     *
+     * A failure with no HTTP response gives "no HTTP response". When the text
+     * starts with Guzzle's "cURL error NN:" (with or without the SDK's "[0] "
+     * prefix), the label also gives the cURL errno, so an operator can tell a
+     * timeout (28) from a DNS failure (6). The SDK does not wrap a Guzzle
+     * ConnectException, so that text has no "[0] " prefix.
+     *
+     * Each of the plugin's fixed "FAILED:" texts gives its own label. Only an
+     * exact match counts, because a later plugin text could hold an address.
+     * All other text gives "reported (text not logged)".
      *
      * @param mixed $mailerError The value of sendinblueLastError(), or null
-     * @return string "HTTP NNN", "reported (text not logged)" or "none reported"
+     * @return string "HTTP NNN", "no HTTP response (cURL error NN)",
+     *                "no HTTP response", a "plugin: ..." label from
+     *                PLUGIN_FAILURE_LABELS, "reported (text not logged)" or
+     *                "none reported"
      */
     private static function mailerErrorSummary(mixed $mailerError): string
     {
@@ -483,7 +509,15 @@ final class CarVerificationSendService
             return 'HTTP ' . $matches[1];
         }
 
-        return 'reported (text not logged)';
+        if (preg_match('/^(?:\[0\] )?cURL error (\d{1,3}):/', $text, $matches) === 1) {
+            return 'no HTTP response (cURL error ' . $matches[1] . ')';
+        }
+
+        if (str_starts_with($text, '[0]')) {
+            return 'no HTTP response';
+        }
+
+        return self::PLUGIN_FAILURE_LABELS[$text] ?? 'reported (text not logged)';
     }
 
     /**

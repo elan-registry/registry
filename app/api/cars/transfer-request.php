@@ -12,6 +12,7 @@ use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\LogCategories;
 use ElanRegistry\Transfer\CarTransferRepository;
 use ElanRegistry\Transfer\TransferEmailService;
+use ElanRegistry\Transfer\TransferNoticeOutcome;
 
 /**
  * transfer-request.php - Car Transfer Request Handler
@@ -203,17 +204,20 @@ try {
     logger($userData->id, LogCategories::LOG_CATEGORY_CAR_TRANSFER, "Transfer request created for car ID {$existingCar->id}, chassis {$chassis}, transfer request ID: {$transferRequestId}");
 
     // Send email notifications; outer catch covers TransferEmailService constructor only —
-    // sendRequest() and sendAdminAlert() each catch Throwable internally and return bool.
+    // sendRequest() and sendAdminAlert() each catch Throwable internally. sendRequest()
+    // returns a TransferNoticeOutcome and sendAdminAlert() returns a bool.
     try {
         $emailService = new TransferEmailService(dbi(), 'email');
         set_time_limit(60);
 
-        $ownerNotified = $emailService->sendRequest($transferRequestId);
-        if (!$ownerNotified) {
-            logger($userData->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Owner notification failed for transfer request #$transferRequestId — owner may not be aware of this request");
-        }
+        $ownerNotice = $emailService->sendRequest($transferRequestId);
+        match ($ownerNotice) {
+            TransferNoticeOutcome::Skipped => logger($userData->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Owner notification skipped by the send policy for transfer request #$transferRequestId — owner may not be aware of this request"),
+            TransferNoticeOutcome::Failed  => logger($userData->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Owner notification failed for transfer request #$transferRequestId — owner may not be aware of this request"),
+            TransferNoticeOutcome::Sent    => null,
+        };
 
-        $adminNotified = $emailService->sendAdminAlert($transferRequestId);
+        $adminNotified = $emailService->sendAdminAlert($transferRequestId, $ownerNotice);
         if (!$adminNotified) {
             logger($userData->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Admin alert failed for transfer request #$transferRequestId");
         }

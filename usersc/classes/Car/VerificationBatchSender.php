@@ -89,6 +89,49 @@ final class VerificationBatchSender
     }
 
     /**
+     * Split submitted ids into positive car ids and rejected values
+     *
+     * Static and pure so the rule is testable without a database. The caller
+     * runs this after capToBatchSize(), and logs and reports each rejected
+     * value. An id is kept only if it is a positive int, or a string that is
+     * the canonical decimal form of a positive int ('12'). Everything else is
+     * rejected: arrays, objects, null, bools, floats, and strings such as
+     * 'abc', '3abc', '1.5', ' 3', '+3', '03', or a value past PHP_INT_MAX.
+     * A plain (int) cast is not safe here: it turns a nested array into 1 and
+     * '3abc' into 3, which are real car ids.
+     *
+     * @param array<mixed> $submitted Submitted ids, already capped
+     * @return array{ids: list<int>, rejected: list<mixed>} Both lists keep the
+     *         submitted order
+     */
+    public static function filterCarIds(array $submitted): array
+    {
+        $ids = [];
+        $rejected = [];
+
+        foreach ($submitted as $value) {
+            if (is_int($value) && $value > 0) {
+                $ids[] = $value;
+                continue;
+            }
+
+            if (is_string($value)) {
+                $intValue = filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+
+                // filter_var() accepts ' 3' and '+3'. The round trip keeps only the canonical form.
+                if (is_int($intValue) && (string) $intValue === $value) {
+                    $ids[] = $intValue;
+                    continue;
+                }
+            }
+
+            $rejected[] = $value;
+        }
+
+        return ['ids' => $ids, 'rejected' => $rejected];
+    }
+
+    /**
      * Process one batch of submitted car ids and bucket the outcome of each
      *
      * Mirrors the original inline loop exactly, including its four
@@ -100,9 +143,7 @@ final class VerificationBatchSender
      * car's vericode rotated with no email ever sent quoting it).
      *
      * Ids that are not positive integers are the caller's responsibility to
-     * filter and report before calling this method — see
-     * app/admin/index.php's handling of non-positive `car_ids[]` entries,
-     * which never reaches this class.
+     * filter and report before calling this method, with filterCarIds().
      *
      * @param array<int> $carIds Positive car ids to process, already cast to int
      * @return array{sent: array<object>, unrecorded: array<array{car: object, reason: string}>,

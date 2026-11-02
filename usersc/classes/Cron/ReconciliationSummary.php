@@ -11,7 +11,8 @@ namespace ElanRegistry\Cron;
  * caller can report what a manual run did without re-querying the database or
  * re-deriving counts from the log. The manual "run now" admin script renders
  * these fields inline: the match/unmatch/skip counts, the per-event-type
- * breakdown, and a warning when the poll itself failed.
+ * breakdown, a warning when the poll itself failed, and a notice when Brevo
+ * is not set up here, so no poll ran.
  *
  * COUNTING. Each count is per event. The matcher gives one user or none for
  * an event, so one event makes at most one write.
@@ -55,8 +56,11 @@ final readonly class ReconciliationSummary
      *                                              run — one for each event type whose poll
      *                                              succeeded, so 0 to
      *                                              `count(BrevoEventReconciliationJob::EVENT_TYPES)`
-     * @param bool               $pollFailed        True when at least one `fetchEvents()` call failed (mirrors
-     *                                              {@see SuppressionSyncSummary}'s `pollFailed`)
+     * @param bool               $pollFailed        True when the client's pre-flight check failed
+     *                                              (the `plg_sendinblue` read or the SDK load, so
+     *                                              no request went out) or at least one
+     *                                              `fetchEvents()` call failed (#2480). Mirrors
+     *                                              {@see SuppressionSyncSummary}'s `pollFailed`
      * @param int                $counterFailureCount Unmatched events whose dashboard
      *                                              unmatched-recipient counter increment did NOT
      *                                              land — a subset of `unmatchedCount`, never
@@ -67,6 +71,11 @@ final readonly class ReconciliationSummary
      *                                              but keeps tallying here, so this stays the true
      *                                              number of unmatched events missing from the
      *                                              counter even though only one failure was logged
+     * @param bool               $notConfigured     True when the client's pre-flight check found
+     *                                              Brevo not set up here (no `plg_sendinblue`
+     *                                              table, or no API key), so no poll ran. Not a
+     *                                              failure: `pollFailed` stays false and the cron
+     *                                              ping stays success
      */
     public function __construct(
         public int $matchedCount,
@@ -78,6 +87,7 @@ final readonly class ReconciliationSummary
         public int $pagesFetched,
         public bool $pollFailed = false,
         public int $counterFailureCount = 0,
+        public bool $notConfigured = false,
     ) {
     }
 }

@@ -7,6 +7,7 @@ use ElanRegistry\Cron\CronJobEnabledState;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
+use Tests\Support\PartialRenderHarness;
 
 /**
  * Render tests for the Verification tab status panel partial (#2330, #2364).
@@ -19,10 +20,13 @@ use PHPUnit\Framework\TestCase;
  *
  * @issue 2330
  * @issue 2364
+ * @issue 2457
  */
 #[Group('fast')]
 final class VerificationStatusPanelRenderTest extends TestCase
 {
+    use PartialRenderHarness;
+
     private const PARTIAL = __DIR__ . '/../../../app/admin/includes/verification-status-panel.php';
 
     private const ROW_ORDER = [
@@ -59,6 +63,7 @@ final class VerificationStatusPanelRenderTest extends TestCase
             'unmatched'      => 0,
             'reconciliation' => self::job(),
             'failureLog'     => ['count' => 0, 'recent' => []],
+            'batchSize'      => 5,
         ];
 
         return new VerificationTabStatus(
@@ -72,46 +77,21 @@ final class VerificationStatusPanelRenderTest extends TestCase
             self::job(),
             self::job(),
             ['counts' => ['sent' => 1, 'skipped' => 0, 'failed' => 0], 'unreadable' => false],
-            $v['failureLog']
+            $v['failureLog'],
+            $v['batchSize']
         );
     }
 
     /** Include the partial the way the tab does and return its HTML. */
     private static function renderHtml(VerificationTabStatus $vsStatus, ?bool $vsCanToggle = true): string
     {
+        $vars = ['vsStatus' => $vsStatus];
         // Null leaves the flag unset, as an including scope that forgot it would.
-        if ($vsCanToggle === null) {
-            unset($vsCanToggle);
+        if ($vsCanToggle !== null) {
+            $vars['vsCanToggle'] = $vsCanToggle;
         }
 
-        // Lets a reviewer prove a test can fail: point the test at a copy of an older partial.
-        $override = getenv('VERIFICATION_STATUS_PANEL_PATH');
-        $file     = is_string($override) && $override !== '' ? $override : self::PARTIAL;
-
-        // A PHP warning or deprecation inside the view is a defect, not noise.
-        set_error_handler(static function (int $severity, string $message, string $errFile, int $line): never {
-            throw new ErrorException($message, 0, $severity, $errFile, $line);
-        });
-        ob_start();
-        try {
-            include $file;
-        } finally {
-            $html = (string) ob_get_clean();
-            restore_error_handler();
-        }
-
-        return $html;
-    }
-
-    private static function dom(string $html): DOMXPath
-    {
-        $doc = new DOMDocument();
-        $previous = libxml_use_internal_errors(true);
-        $doc->loadHTML('<?xml encoding="UTF-8"><body>' . $html . '</body>');
-        libxml_clear_errors();
-        libxml_use_internal_errors($previous);
-
-        return new DOMXPath($doc);
+        return self::renderPartial(self::PARTIAL, 'VERIFICATION_STATUS_PANEL_PATH', $vars);
     }
 
     /** @return list<string> */
@@ -259,6 +239,106 @@ final class VerificationStatusPanelRenderTest extends TestCase
         $this->assertStringStartsWith('Unavailable', self::rowText($xp, 'unmatched'));
         $this->assertStringStartsWith('Unavailable', self::rowText($xp, 'cron_failures'));
         $this->assertFalse($status->allHealthy());
+    }
+
+    /** @return array<string, array{bool}> */
+    public static function viewerProvider(): array
+    {
+        return [
+            'admin'  => [true],
+            'editor' => [false],
+        ];
+    }
+
+    /** A toggle with an unknown state is not safe, so no viewer gets one. */
+    #[DataProvider('viewerProvider')]
+    #[Group('regression')]
+    public function test_panel_settingsProbeFailed_rendersUnavailableInsteadOfTheSwitch(bool $canToggle): void
+    {
+        $xp = self::dom(self::renderHtml(
+            self::build(['probeFailed' => true, 'enabled' => null, 'cronReady' => null]),
+            $canToggle
+        ));
+
+        $this->assertSame(0, $xp->query('//input[@id="verificationEnabledSwitch"]')?->length);
+        $badge = $xp->query('//span[@id="verificationSwitchUnavailable"]')?->item(0);
+        $this->assertInstanceOf(DOMElement::class, $badge);
+        $this->assertStringContainsString('text-bg-danger', $badge->getAttribute('class'));
+        $this->assertSame('Unavailable', trim($badge->textContent));
+        $this->assertStringContainsString(
+            'The switch state could not be read. Check the system log for VerificationConfigWarning entries.',
+            (string) $xp->query('//small[@id="verificationToggleHelp"]')?->item(0)?->textContent
+        );
+        $this->assertStringNotContainsString('Only administrators can change this setting.', (string) $xp->query('//body')?->item(0)?->textContent);
+        $this->assertStringStartsWith('Unavailable The cron state could not be read.', self::rowText($xp, 'cron'));
+        $this->assertSame('verificationToggleHelp', $badge->getAttribute('aria-describedby'));
+    }
+
+    /** A switch state read before a later read threw is real, so an admin can still turn it off. */
+    #[Group('regression')]
+    public function test_panel_probeFailedAfterSwitchOnWasRead_rendersACheckedUsableSwitchForAnAdmin(): void
+    {
+        $xp = self::dom(self::renderHtml(self::build(['probeFailed' => true, 'cronReady' => null]), true));
+
+        $input = $xp->query('//input[@id="verificationEnabledSwitch"]')?->item(0);
+        $this->assertInstanceOf(DOMElement::class, $input);
+        $this->assertTrue($input->hasAttribute('checked'));
+        $this->assertFalse($input->hasAttribute('disabled'));
+        $this->assertSame(0, $xp->query('//span[@id="verificationSwitchUnavailable"]')?->length);
+    }
+
+    /**
+     * @return array<string, array{array<string, mixed>, bool, int}>
+     */
+    public static function incidentStepsProvider(): array
+    {
+        $unread = ['probeFailed' => true, 'enabled' => null, 'cronReady' => null];
+
+        return [
+            'healthy, admin'                        => [[], true, 1],
+            'healthy, editor'                       => [[], false, 0],
+            'Brevo not ready, switch off, admin'    => [['brevoReason' => 'x', 'enabled' => false], true, 0],
+            'Brevo not ready, switch on, admin'     => [['brevoReason' => 'x'], true, 1],
+            'switch not read, admin'                => [$unread, true, 1],
+            'switch not read, editor'               => [$unread, false, 0],
+            // The switch query failed: no throw, so the probe did not fail.
+            'switch query failed, admin'            => [['enabled' => null], true, 1],
+            'switch query failed, editor'           => [['enabled' => null], false, 0],
+            'switch read, later read threw, admin'  => [['probeFailed' => true, 'cronReady' => null], true, 1],
+            'switch off, later read threw, admin'   => [['probeFailed' => true, 'enabled' => false, 'cronReady' => null], true, 1],
+            'switch off, later read threw, editor'  => [['probeFailed' => true, 'enabled' => false, 'cronReady' => null], false, 0],
+        ];
+    }
+
+    /**
+     * The incident steps are the only manual stop procedure. An admin sees
+     * them when the switch has no reason to show, or when a probe failed.
+     *
+     * @param array<string, mixed> $overrides
+     */
+    #[DataProvider('incidentStepsProvider')]
+    #[Group('regression')]
+    public function test_panel_incidentSteps_showOnlyToAnAdminWhoMayNeedThem(
+        array $overrides,
+        bool $canToggle,
+        int $expected
+    ): void {
+        $xp = self::dom(self::renderHtml(self::build($overrides), $canToggle));
+
+        $this->assertSame($expected, $xp->query('//small[@id="verificationIncidentSteps"]')?->length);
+    }
+
+    #[Group('regression')]
+    public function test_panel_unreadableJobState_showsNeedsAttention(): void
+    {
+        $status = self::build(['reconciliation' => self::job(CronJobEnabledState::UNREADABLE, null)]);
+
+        $xp = self::dom(self::renderHtml($status));
+
+        $summary = (string) $xp->query('//details/summary')?->item(0)?->textContent;
+        $this->assertStringContainsString('Needs attention', $summary);
+        $this->assertStringNotContainsString('All healthy', $summary);
+        $this->assertSame('Status unavailable', self::rowText($xp, 'reconciliation'));
     }
 
     #[Group('regression')]

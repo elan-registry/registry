@@ -6,7 +6,7 @@ use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationEmailComposer;
 use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Car\CarVerificationSendService;
-use ElanRegistry\Car\ClearBlockOutcome;
+use ElanRegistry\Car\ClearBlockKind;
 use ElanRegistry\Car\VerificationBatchSender;
 use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\Cron\CronJobEnabledState;
@@ -564,8 +564,8 @@ if (ElanInput::existsPost()) {
 
                     // \Input::get() sanitizes arrays recursively (see
                     // users/classes/Input.php::sanitize()), the same way the
-                    // "merge" case above relies on for its `cars` field. Values
-                    // are cast to int below regardless.
+                    // "merge" case above relies on for its `cars` field. Nested
+                    // arrays survive it, so filterCarIds() below checks each value.
                     /** @var array<int, mixed> $submittedIds */
                     $submittedIds = (array) ElanInput::get('car_ids', []);
 
@@ -591,25 +591,23 @@ if (ElanInput::existsPost()) {
                         $errors[] = $vsCap['adminMessage'];
                     }
 
-                    // Non-positive ids are filtered here, before the batch
+                    // Invalid ids are filtered here, before the batch
                     // reaches VerificationBatchSender — that class assumes
                     // every id it is given is a positive int, matching
                     // findById()'s contract.
-                    $sendCarIds = [];
-                    foreach ($submittedIds as $submittedId) {
-                        $sendCarId = (int) $submittedId;
+                    $vsFiltered = VerificationBatchSender::filterCarIds($submittedIds);
+                    $sendCarIds = $vsFiltered['ids'];
 
-                        if ($sendCarId <= 0) {
-                            logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
-                                'Verification send: non-positive car id in car_ids[]: ' . var_export($submittedId, true));
-                            $sendReportSkipped[] = [
-                                'car'    => (object) ['id' => 0, 'chassis' => '', 'email' => ''],
-                                'reason' => 'Invalid car reference',
-                            ];
-                            continue;
-                        }
-
-                        $sendCarIds[] = $sendCarId;
+                    foreach ($vsFiltered['rejected'] as $rejectedId) {
+                        // Only a scalar is exported. A non-scalar value is logged by its type alone.
+                        $rejectedLog = is_scalar($rejectedId)
+                            ? 'Verification send: non-positive car id in car_ids[]: ' . var_export($rejectedId, true)
+                            : 'Verification send: non-scalar car id in car_ids[]: ' . get_debug_type($rejectedId);
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $rejectedLog);
+                        $sendReportSkipped[] = [
+                            'car'    => (object) ['id' => 0, 'chassis' => '', 'email' => ''],
+                            'reason' => 'Invalid car reference',
+                        ];
                     }
 
                     // The per-car loop (findById() re-read, eligibility
@@ -788,11 +786,15 @@ if (ElanInput::existsPost()) {
 
                     // Read back rather than echoing the submitted value: what
                     // was stored may have been clamped, and the admin needs to
-                    // see the effective setting.
-                    $successes[] = sprintf(
-                        'Batch size updated to %d.',
-                        $verificationSettings->batchSize()
-                    );
+                    // see the effective setting. batchSize() would show the
+                    // default 5 as fact after a failed read, so use the null form.
+                    $savedBatchSize = $verificationSettings->batchSizeOrNull();
+                    if ($savedBatchSize === null) {
+                        $errors[] = 'The batch size was saved, but the new value could not be read back. '
+                            . 'Check the system log for VerificationConfigWarning entries.';
+                        break;
+                    }
+                    $successes[] = sprintf('Batch size updated to %d.', $savedBatchSize);
                     break;
 
                 // Owner-level deliverability actions.
@@ -1001,18 +1003,19 @@ if (ElanInput::existsPost()) {
                                 $currentUserId,
                                 new BrevoBlocklistClient(dbi())
                             );
-                            $requestResult = $requestOutcome->kind;
+                            $requestResult = $requestOutcome->kind->value;
 
                             // No default arm: a new outcome kind must get its own message.
                             [$requestIsError, $requestMessage] = match ($requestOutcome->kind) {
-                                ClearBlockOutcome::NOT_BLOCKED => [false, 'no block to clear.'],
-                                ClearBlockOutcome::CLEARED => [false, 'cleared of the block. Brevo no longer blocks this address.'],
-                                ClearBlockOutcome::CLEARED_NO_ADDRESS => [false, 'cleared of the block in the registry. No address is on record, so Brevo was not called.'],
-                                ClearBlockOutcome::CLEARED_ADDRESS_MOVED => [false, "cleared of the block in the registry. The blocked address is no longer this owner's address. The Brevo block stays."],
-                                ClearBlockOutcome::CLEARED_SHARED_ADDRESS => [false, 'cleared of the block in the registry. Another account uses this address. The Brevo block stays.'],
-                                ClearBlockOutcome::BREVO_FAILED => [true, 'Brevo did not remove the block. Try again later.'],
-                                ClearBlockOutcome::BREVO_NOT_SET_UP => [true, 'Brevo is not set up on this site, so the block was not removed. The registry flag did not change.'],
-                                ClearBlockOutcome::ADDRESS_CHANGED => [true, 'The block changed during this action. The registry flag did not change. Try again.'],
+                                ClearBlockKind::NotBlocked => [false, 'no block to clear.'],
+                                ClearBlockKind::Cleared => [false, 'cleared of the block. Brevo no longer blocks this address.'],
+                                ClearBlockKind::ClearedNoAddress => [false, 'cleared of the block in the registry. No address is on record, so Brevo was not called.'],
+                                ClearBlockKind::ClearedAddressMoved => [false, "cleared of the block in the registry. The blocked address is no longer this owner's address. The Brevo block stays."],
+                                ClearBlockKind::ClearedSharedAddress => [false, 'cleared of the block in the registry. Another account uses this address. The Brevo block stays.'],
+                                ClearBlockKind::BrevoFailed => [true, 'Brevo did not remove the block. Try again later.'],
+                                ClearBlockKind::BrevoNotSetUp => [true, 'Brevo is not set up on this site, so the block was not removed. The registry flag did not change.'],
+                                ClearBlockKind::BrevoPluginFault => [true, 'Brevo did not remove the block because of a fault in the Brevo plugin. The registry flag did not change. Check the logs.'],
+                                ClearBlockKind::AddressChanged => [true, 'The block changed during this action. The registry flag did not change. Try again.'],
                             };
 
                             if ($requestIsError) {
@@ -1020,7 +1023,7 @@ if (ElanInput::existsPost()) {
                             } else {
                                 $successes[] = $requestOwnerLabel . ': ' . $requestMessage;
                                 // Opted out: the row shows Clear Opt-out next, not Clear Bounced.
-                                if ($requestOutcome->isCleared() && $requestOutcome->stillBounced && !$requestOutcome->stillOptedOut) {
+                                if ($requestOutcome->kind->isCleared() && $requestOutcome->stillBounced && !$requestOutcome->stillOptedOut) {
                                     $successes[] = "This owner is also marked bounced. Use Clear Bounced if the owner's mailbox works.";
                                 }
                             }

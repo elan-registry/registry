@@ -49,24 +49,6 @@ parameters:
 			path: app/views/cars/_car_hero_actions.php
 
 		-
-			message: '#^Variable \$buildDate might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: app/views/cars/_factory_data_card.php
-
-		-
-			message: '#^Variable \$factoryData might not be defined\.$#'
-			identifier: variable.undefined
-			count: 16
-			path: app/views/cars/_factory_data_card.php
-
-		-
-			message: '#^Variable \$headingTag might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: app/views/cars/_factory_data_card.php
-
-		-
 			message: '#^Variable \$from might not be defined\.$#'
 			identifier: variable.undefined
 			count: 1

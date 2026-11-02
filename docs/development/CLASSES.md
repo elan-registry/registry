@@ -355,7 +355,9 @@ in production; `find()` returning `bool` covers the not-found case.)
 `create()`/`update()` wrap their writes in `beginTransaction()`/`commit()`/
 `rollback()` (an ownership-flag transaction guard mirroring
 `CarRepository`'s pattern) and catch `\Throwable`, guaranteeing rollback on
-any failure including a PHP `\Error`. Their post-write reload call is
+any failure including a PHP `\Error`. `Owner::commit()` and `rollback()`
+clear the flag only after the driver call returns, so after a failed
+`commit()` the `rollback()` still runs. Their post-write reload call is
 wrapped in its own local `try/catch (OwnerDatabaseException $e)` — a reload
 failure after a successful write is logged, not propagated.
 
@@ -603,7 +605,9 @@ to provide a focused, testable data access layer wrapping the `cars`,
 - Chassis-based and verification-code-based car lookups
 - Car history (`cars_hist`) read/write/transfer
 - Factory serial-number lookup and suffix-code decoding
-- Nested-transaction-safe `beginTransaction()`/`commit()`/`rollback()` (no-op when participating in an outer transaction already begun by the caller)
+- Nested-transaction-safe `beginTransaction()`/`commit()`/`rollback()` (no-op when participating in an outer transaction already begun by the caller).
+  The ownership flag clears only after the driver call returns. A throw keeps
+  ownership, so a `rollback()` after a failed `commit()` still runs
 
 **Methods**:
 
@@ -694,6 +698,12 @@ to provide a focused, testable data access layer wrapping the `cars`,
   converts the BLOB `logs.metadata` (`JSON_EXTRACT(CONVERT(metadata USING utf8mb4), ...)`), matches
   `owner_id` as an integer, never reads `lognote`, and filters on `logtype` first to use
   `idx_logs_logtype_logdate`. Throws `InvalidArgumentException` for an unknown flag or source.
+- `BLOCK_CLEAR_SOURCES` - Public constant. The `logs` sources that clear a block: `admin` and
+  `email_change`.
+- `latestBlockClearAt(int $ownerId): ?string` - Time of the latest Clear Block across
+  `BLOCK_CLEAR_SOURCES`. It is the later of the latest admin Clear Block and the latest confirmed
+  email change clear. It calls `latestFlagClearAt()` once for each source. Returns `null` when no
+  clear exists (#2529). `EmailNoticeBuilder` and `EmailEventApplier` call it.
 - `recentFlagChanges(int $ownerId, int $limit): array` - The owner's latest flag-change `logs` rows,
   newest first (`logdate DESC, id DESC`). Each item has `date`, `flag`, `old`, `new`, `source` and
   `acting_user_id`, and no address. `$limit` is clamped to 1 to 100. A row with malformed metadata is
@@ -729,13 +739,16 @@ to provide a focused, testable data access layer wrapping the `cars`,
   (`resolveOccurredAt()`). `EmailEventApplier::apply()` calls it. In
   `MODE_STATE` (the suppression import), `apply()` does not call it when
   `hasOwnerEmailEventForAddress()` finds a row in the same cause group
-  (#2502)
-- `hasOwnerEmailEventForAddress(int $userId, string $email, array $events): bool` -
+  after the bound (#2502, #2529)
+- `hasOwnerEmailEventForAddress(int $userId, string $email, array $events, ?string $after): bool` -
   True when `er_email_events` has a row for the user, the normalized address
-  and one of the event names (#2502). It returns false for a `$userId` less
+  and one of the event names (#2502). With `$after`, only rows with
+  `occurred_at > ?` count. The bound is exclusive, as in
+  `ownerBlockEventCauses()`. With `null`, the method sets no bound, and a row
+  of any date matches (#2529). It returns false for a `$userId` less
   than 1 or an empty `$events` list. The query is
-  `SELECT 1 ... WHERE user_id = ? AND email = ? COLLATE utf8mb4_bin AND event IN (...) LIMIT 1`.
-  It does not compare `occurred_at`. With the `COLLATE`, the `email` index
+  `SELECT 1 ... WHERE user_id = ? AND email = ? COLLATE utf8mb4_bin AND event IN (...) [AND occurred_at > ?] LIMIT 1`.
+  With the `COLLATE`, the `email` index
   gives only a range scan, and MySQL picks an index that starts with
   `user_id`. Throws `InvalidArgumentException` for an event that is not a string
   (checked before the false cases), and `CarDatabaseException` on a query
@@ -746,8 +759,11 @@ to provide a focused, testable data access layer wrapping the `cars`,
   rows in `er_email_events` for the user and the normalized address (`COLLATE
   utf8mb4_bin`). An `unsubscribed` row whose message ID starts with
   `CarRepository::ADMIN_BLOCK_MESSAGE_ID_PREFIX` gives `blocklist`. Other
-  rows give their event name. With `$after`, only rows with
-  `occurred_at` after that time count. It returns `[]` with no query for a `$userId`
+  rows give their event name. Import rows of the other codes start with
+  `CarRepository::SUPPRESSION_IMPORT_MESSAGE_ID_PREFIX` (`suppression-import-`),
+  which is also a prefix of `ADMIN_BLOCK_MESSAGE_ID_PREFIX`, so a prefix
+  compare on it (this method uses `LEFT()`) matches both. With `$after`, only
+  rows with `occurred_at` after that time count. It returns `[]` with no query for a `$userId`
   less than 1 or an empty address. `EmailNoticeBuilder` uses it for block causes (#2500).
 - `retagOwnerEmailEventMessageId(int $userId, string $event, string $fromId, string $toId): array{retagged: int, removed: int}` -
   When the user already has a row with `$event` and `$toId`, deletes the
@@ -853,9 +869,11 @@ to provide a focused, testable data access layer wrapping the `cars`,
   same compare that `Owner::update()` makes. If they are equal, it writes nothing. If they differ, it clears
   `email_bounced` (with address and date, and sets `email_bounce_cleared_at`), clears `email_blocked`
   (with address, date and cause), and sets `email_address_since` to now and `email_address_seen` to the
-  normalized address. It keeps `email_opted_out`. Returns `array{bounced: int, blocked: int,
-  bouncedHadNoAddress: bool, blockedHadNoAddress: bool, changed: bool}` with the flag values from
-  before the call, or `null` when the owner has no `profiles` row or no `users` row. Used by
+  normalized address. A flag whose stored address is the current `users.email` stays set (#2411).
+  It keeps `email_opted_out`. Returns `array{bounced: int, blocked: int,
+  bouncedHadNoAddress: bool, blockedHadNoAddress: bool, changed: bool, bouncedCleared: bool,
+  blockedCleared: bool}` with the flag values from before the call and which flags it cleared,
+  or `null` when the owner has no `profiles` row or no `users` row. Used by
   `CarVerificationManager::clearFlagsForConfirmedEmailChange()`.
 - `transferEmailEvents(int $fromCarId, int $toCarId): bool` - Move
   `er_email_events` rows from one car to another by changing `car_id` only.
@@ -1036,7 +1054,8 @@ to provide a focused, testable data access layer wrapping the `cars`,
 - `getFactoryInfo(string $chassis, int $suffixLength): ?object` - Look up factory info by full chassis serial, falling back to a suffix-length search
 - `suffixToText(string $suffix): string` - Static; convert a factory suffix code to descriptive text
 - `getFilterOptions(): array` - Distinct series/type/variant values from `car_models` for listing filter pills
-- `beginTransaction()`/`commit()`/`rollback(): void` - Nested-transaction-safe wrappers; no-op when an outer transaction already owns the transaction
+- `beginTransaction()`/`commit()`/`rollback(): void` - Nested-transaction-safe wrappers; no-op when an outer transaction already owns the transaction.
+  If the driver call throws, ownership stays, so a later `rollback()` still runs
 - `lastId(): int` - Last inserted ID
 - `errorString(): string` - Last DB error message
 
@@ -1083,7 +1102,7 @@ row. Add a row and a test here when you add one.
 - User-deletion hook (`reassignCarsByUser()`)
 - `AccountDeletionPrivacyStep` (`lockProfileAndFindAddresses()`,
   `sendinblueMessagesTableExists()`, `deleteSendinblueMessagesForUser()`,
-  `deleteEmailEventsForUser()`, `deleteDeletedUserAddresses()`) (#2358, #2419)
+  `deleteEmailEventsForUser()`, `deleteProfile()`, `deleteDeletedUserAddresses()`) (#2358, #2419)
 - `CarAdministrationService` (`detachEmailEventsFromCar()` on car deletion, `transferEmailEvents()` on car merge)
 - `CarVerificationManager::clearFlagsForConfirmedEmailChange()` (the `verifySuccess` hook) (#2356)
 - `EmailNoticeBuilder`, `CarVerificationSendService`, `BrevoSuppressionSyncJob`, `user_form_hook.php`, `user_settings.php`, and the Email on file row (`effectiveEmailFlags()`)
@@ -1280,9 +1299,10 @@ on success.
 - `clearFlagsForConfirmedEmailChange(int $actingUserId, int $userId): bool` -
   Clear the bounce and the block after a confirmed email change to a new address (#2356). Calls
   `CarRepository::clearFlagsForConfirmedEmailChange()`. It keeps the opt-out. Writes one audit row
-  with source `email_change` for each flag that changed from 1 to 0. If a cleared flag had no
+  with source `email_change` for each flag that the repository cleared. A flag stored for the current
+  address stays and gets no audit row (#2411). If a cleared flag had no
   recorded address, it logs the anomaly after the commit. The log row holds the user ID and the flag
-  name, and no address. Runs its own transaction. Returns true when at least one flag changed. The
+  name, and no address. Runs its own transaction. Returns true when it cleared at least one flag. The
   `verifySuccess` hook (`sync_owner_email_on_verify.php`) is the only caller. The `email_act == 0`
   path in `usersc/user_settings.php` does not call it.
 - `clearFlagsForConfirmedEmailChange()` and `clearBlockedForOwner()` run their own transaction. The other owner
@@ -1397,23 +1417,27 @@ admin methods `clearBlockedForOwner()` and `clearOptedOutForOwner()`, which pass
 readonly value object. Create it only with the named constructors, so
 `$stillBounced` is set only for a kind that cleared the flag.
 
-**Properties**: `$kind` (one of the constants below), `$stillBounced` (true
+**Properties**: `$kind` (a `ClearBlockKind` case, see the table), `$stillBounced` (true
 when `email_bounced` still applies to the owner's current address after the
 clear, read under the `profiles` lock) and `$stillOptedOut` (true when
 `email_opted_out` is still set, read under the same lock).
 
-| Constant | Named constructor | Meaning |
+| `ClearBlockKind` case (value) | Named constructor | Meaning |
 | --- | --- | --- |
-| `NOT_BLOCKED` | `notBlocked()` | The flag was 0, or another request cleared it during this action. No write |
-| `CLEARED` | `cleared(bool $stillBounced, bool $stillOptedOut = false)` | Brevo removed the address or did not hold it. The flag is cleared |
-| `CLEARED_NO_ADDRESS` | `clearedNoAddress(bool $stillBounced, bool $stillOptedOut = false)` | No address to unblock. No Brevo call. The flag is cleared |
-| `CLEARED_ADDRESS_MOVED` | `clearedAddressMoved(bool $stillBounced, bool $stillOptedOut = false)` | The blocked address is not the owner's address. No Brevo call. The flag is cleared |
-| `CLEARED_SHARED_ADDRESS` | `clearedSharedAddress(bool $stillBounced, bool $stillOptedOut = false)` | Another account uses the address. No Brevo call. The flag is cleared |
-| `BREVO_FAILED` | `brevoFailed()` | The Brevo call failed (HTTP or transport), or the API key query failed. No write |
-| `BREVO_NOT_SET_UP` | `brevoNotSetUp()` | No Brevo API key, or the SDK did not load. No write |
-| `ADDRESS_CHANGED` | `addressChanged()` | The stored block changed during this action. The transaction rolled back |
+| `NotBlocked` (`not_blocked`) | `notBlocked()` | The flag was 0, or another request cleared it during this action. No write |
+| `Cleared` (`cleared`) | `cleared(bool $stillBounced, bool $stillOptedOut = false)` | Brevo removed the address or did not hold it. The flag is cleared |
+| `ClearedNoAddress` (`cleared_no_address`) | `clearedNoAddress(bool $stillBounced, bool $stillOptedOut = false)` | No address to unblock. No Brevo call. The flag is cleared |
+| `ClearedAddressMoved` (`cleared_address_moved`) | `clearedAddressMoved(bool $stillBounced, bool $stillOptedOut = false)` | The blocked address is not the owner's address. No Brevo call. The flag is cleared |
+| `ClearedSharedAddress` (`cleared_shared_address`) | `clearedSharedAddress(bool $stillBounced, bool $stillOptedOut = false)` | Another account uses the address. No Brevo call. The flag is cleared |
+| `BrevoFailed` (`brevo_failed`) | `brevoFailed()` | The Brevo call failed (HTTP or transport), or the API key query failed. No write |
+| `BrevoNotSetUp` (`brevo_not_set_up`) | `brevoNotSetUp()` | No Brevo API key. No write |
+| `BrevoPluginFault` (`brevo_plugin_fault`) | `brevoPluginFault()` | A key is set, but the SDK is missing or did not load. This is a fault in the Brevo plugin. No write |
+| `AddressChanged` (`address_changed`) | `addressChanged()` | The stored block changed during this action. The transaction rolled back |
 
-**Methods**: `isCleared(): bool` - True for the four `CLEARED*` kinds.
+**ClearBlockKind** (`/usersc/classes/Car/ClearBlockKind.php`): string-backed
+enum of the kinds above. `isCleared(): bool` - True for the four `Cleared*`
+cases. A `match` on the kind with no `default` arm is exhaustive, so PHPStan
+reports a new case that the `app/admin/index.php` message map does not handle.
 
 **Used By**: `CarVerificationManager::clearBlockedForOwner()` (returns it) and
 the `clear_block` command in `app/admin/index.php` (maps each kind to an admin
@@ -1601,8 +1625,16 @@ returns it.
 - `EffectiveEmailFlags::none()` is the state of an owner with no `profiles`
   row. It has no flag. The caller must treat `hasProfile = false` as "do not
   mail".
+- `EffectiveEmailFlags::fromQueueRow(object $row)` builds the flags from one
+  `CarRepository::findVerificationQueue()` row (`has_profile`,
+  `email_blocked_active`, `email_bounced_active`, `email_opted_out`,
+  `email_blocked_cause`). It throws `\InvalidArgumentException` when a column
+  is missing. The addresses and dates are null.
+- `EffectiveEmailFlags::eligible()` is the state of an Eligible preview row:
+  a profile and no flag. The eligibility query excludes every other owner,
+  so its rows have no profile columns.
 
-**Used By**: `EmailNoticeBuilder`, `CarVerificationSendService::sendOne()`,
+**Used By**: `EmailNoticeBuilder`, `SendPolicy`, `VerificationTabStatus::chip()`, `app/admin/includes/tab-verification.php`, `CarVerificationSendService::sendOne()`,
 `BrevoSuppressionSyncJob`, `user_form_hook.php`, `usersc/user_settings.php`,
 `app/owner/cars/details.php` and `app/views/cars/_vehicle_info_card.php`.
 
@@ -1628,7 +1660,7 @@ It returns a plain array and renders no HTML. The partial
   causes: list<string>, alsoOptedOut: bool, optedOutDate: ?string, contentHash: string}`.
 - Takes `CarRepository` by constructor injection, so a test can supply a mock. It
   calls `CarRepository::effectiveEmailFlags()` for every owner. For a block with
-  an address, it also calls `ownerBlockEventCauses()` and `latestFlagClearAt()`.
+  an address, it also calls `ownerBlockEventCauses()` and `latestBlockClearAt()`.
   A flag stored for an old address does not show.
 - `CAUSE_TEXT`: the raw notice text for each `CarRepository::BLOCKED_CAUSE_*` value.
   `app/views/_email_paused_notice.php` reads and escapes it.
@@ -1643,7 +1675,8 @@ It returns a plain array and renders no HTML. The partial
   value, and each appears once. The profile cause (`email_blocked_cause`) comes first.
   Then the `spam` and `unsubscribed` events after the latest clear of the block add
   their causes, in `BLOCKED_CAUSES` order. The bound is the later of the latest admin
-  Clear Block and the latest confirmed email change clear (`BLOCK_CLEAR_SOURCES`:
+  Clear Block and the latest confirmed email change clear. It comes from
+  `CarRepository::latestBlockClearAt()` (sources `CarRepository::BLOCK_CLEAR_SOURCES`:
   `admin`, `email_change`). A tagged admin-block import row gives
   `blocklist`. A `blocklist` profile cause drops `unsubscribed` events, for the
   untagged admin-block rows from before the tag. An unknown profile cause adds nothing and writes a log
@@ -1748,8 +1781,8 @@ unit test (needs the full UserSpice bootstrap).
   different layer.
 - Not a general-purpose service — assumes the ids it receives already
   passed the admin authorization check and CSRF validation one layer up
-  (`app/admin/index.php` filters non-positive ids before calling this
-  class). Performs no authorization of its own.
+  (`app/admin/index.php` filters invalid ids with `filterCarIds()` before
+  calling this class). Performs no authorization of its own.
 
 **Methods**:
 
@@ -1759,6 +1792,22 @@ unit test (needs the full UserSpice bootstrap).
   'adminMessage' => ?string]`. Messages
   are `null` when no truncation happened. Called before filtering to prevent
   hand-crafted POSTs from starting more blocking Brevo calls than allowed.
+- `filterCarIds(array $submitted): array` - Static and pure. Split submitted
+  ids into valid car ids and rejected values. Returns
+  `['ids' => list<int>, 'rejected' => list<mixed>]`. Both lists keep the
+  submitted order. The caller runs it after `capToBatchSize()`. A value is
+  accepted only if it is a positive `int`, or a string that is the canonical
+  decimal form of a positive int (`'12'`). A value is rejected if it is an
+  array, object, `null`, bool, or float. A string is rejected if it is
+  `'abc'`, `'3abc'`, `'1.5'`, `' 3'`, `'+3'`, `'03'`, or past `PHP_INT_MAX`.
+  A plain `(int)` cast is not safe: it turns a nested array into 1 and
+  `'3abc'` into 3, and both are real car ids. For each rejected value,
+  `verification_send_batch` writes one `LOG_CATEGORY_CAR_VERIFICATION` log
+  entry and adds one "Invalid car reference" row to the skipped report. The
+  log text is `Verification send: non-positive car id in car_ids[]: <value>`
+  for a scalar. For a non-scalar it is
+  `Verification send: non-scalar car id in car_ids[]: <type>`, with the type
+  from `get_debug_type()` and no value
 - `processBatch(array $carIds): array` - Given positive car ids, re-reads
   each via `CarRepository::findById()`, re-checks eligibility via
   `VerificationEligibility::skipReason()`, sends via
@@ -1811,7 +1860,9 @@ other probes.
   and recent failure entries
 - `allHealthy()` is `false` when the settings probe failed, the switch is off,
   Brevo is not ready, cron is not running, the unmatched-recipient count is not
-  0 (or unreadable), or the cron failure count is not 0 (or unreadable)
+  0 (or unreadable), the cron failure count is not 0 (or unreadable), the
+  batch size is unreadable, or the reconciliation or suppression sync job
+  state is `UNREADABLE` or `MISSING`
 - `autoSendState()`, `autoSendLastRunAt()`, `autoSendBadge()`, `autoSendPaused()`,
   `autoSendLastRunFailed()`, `autoSendCounts()`, `autoSendCountsUnreadable()`,
   `autoSendNextEligibleAt()`, `autoSendDesiredState()` give the automatic send job
@@ -1827,21 +1878,37 @@ other probes.
 **Methods**:
 
 - `read(DatabaseInterface $db, int $userId): self` - Static factory; run all
-  status probes, each in its own try/catch. Logs a settings probe failure under
-  `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING` and a cron job probe failure under
-  `LOG_CATEGORY_CRON_JOB_FAILURE`
+  status probes, each in its own try/catch. Logs a settings probe failure and a
+  batch size probe failure under `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING` and
+  a cron job probe failure under `LOG_CATEGORY_CRON_JOB_FAILURE`
 - `probeFailed(): bool` - True when the VerificationSettings probe threw
+- `batchSize(): ?int` - The configured batch size, or `null` when the probe
+  threw or the query failed. The Batch size field then shows "Unavailable"
+  and no form (#2457)
 - `brevoReady(): bool` - True when Brevo is ready to send tagged mail: the
   settings probe did not fail and it gave no not-ready reason
 - `rows(): array` - Give the panel rows in render order. Each row is an associative
   array with `key`, `label`, `badgeText`, `badgeClass`, `icon`, `detail`,
   `detailIcon`, and `recent` (list of recent failure entries)
 - `allHealthy(): bool` - True when the settings probe worked, the switch is on,
-  Brevo is ready, cron runs, the unmatched count is 0, and the cron failure
-  count is 0. An unreadable counter or failure log is not healthy.
-  Reconciliation, suppression sync and automatic send job states do not count
+  Brevo is ready, cron runs, the unmatched count is 0, the cron failure
+  count is 0, and the batch size was read. An unreadable counter, failure
+  log or batch size is not healthy. A
+  reconciliation or suppression sync state that is `UNREADABLE` or `MISSING`
+  is not healthy. A paused (`DISABLED`) job stays healthy. The automatic send
+  job state does not count
 - `featureSwitch(bool $canToggle): array` - Give the feature switch state for the
-  panel. Returns `['checked' => bool, 'disabled' => bool, 'disabledReason' => string]`
+  panel. Returns `['checked' => bool, 'disabled' => bool, 'disabledReason' =>
+  string, 'unavailable' => bool]`. When the settings probe threw before it
+  read the switch state, or the switch query failed, the state is unknown.
+  The method then returns
+  `unavailable` as `true`, `checked` as `false`, `disabled` as `true`, and a
+  reason for every viewer. The panel then shows a red "Unavailable" badge and
+  no switch. When the probe read the switch state and a later read threw, the
+  method returns the real `checked` value. An admin can then turn the switch
+  off, but not on, because the Brevo status is not known. The cron row shows
+  a red "Unavailable" badge, not "Stalled", only when the probe threw before
+  it read the cron state.
 - `autoSendState(): CronJobEnabledState` - The automatic send job's enabled state
 - `autoSendLastRunAt(): ?DateTimeImmutable` - When the automatic send job last
   claimed a run, or `null` if never
@@ -1859,11 +1926,12 @@ other probes.
   guard allows the next automatic run, or `null` when the job never ran
 - `autoSendDesiredState(): string` - Give the state the Pause/Resume button asks
   for. Returns `'disable'` when the job is enabled, `'enable'` when not
-- `chip(?object $event, bool $hasProfile = true, bool $blocked = false,
-  ?string $blockedCause = null, bool $optedOut = false,
-  bool $bounced = false): array` - Static method. Give the
-  Status chip for a car row. `$blocked` and `$bounced` are true only when the
-  flag applies to the owner's current address. Order: no profile, blocked,
+- `chip(?object $event, EffectiveEmailFlags $flags): array` - Static method.
+  Give the Status chip for a car row. `$flags` is the same value object that
+  `SendPolicy` and `EmailNoticeBuilder` read, so `blocked` and `bounced` are
+  true only when the flag applies to the owner's current address. The tab
+  builds it with `EffectiveEmailFlags::fromQueueRow()`, or
+  `EffectiveEmailFlags::eligible()` in the Eligible view. Order: no profile, blocked,
   bounced, opted out, the same as `SendPolicy::verificationReason()` (#2461).
   Otherwise the chip shows the car's latest email event. A hard-bounce event
   still shows "Bounced" for an owner with no bounce flag. Returns
@@ -1927,7 +1995,12 @@ dependency exists between the two.
 
 **Methods**:
 
-- `isEnabled(): bool` - Whether verification is currently switched on
+- `isEnabled(): bool` - Whether verification is currently switched on;
+  `false` on a failed query or a missing row
+- `isEnabledOrNull(): ?bool` - Like `isEnabled()`, but `null` when the
+  settings query failed (UserSpice `DB::query()` reports it through
+  `error()` and does not throw). A missing row still gives `false`. The
+  admin Verification tab uses it to show "Unavailable" (#2457)
 - `setEnabled(bool $enabled, int $actingUserId = 0): bool` - Turn verification on or off
 - `brevoReady(): bool` - True only if `brevoNotReadyReason()` returns `null`:
   the plugin table is readable, the API key is saved, `plugins.ini.php` has
@@ -1968,6 +2041,10 @@ dependency exists between the two.
   (`er_verification_settings.batch_size`); fails closed to `5` on any read
   problem (#1884). Clamps a stored value outside `[1, 25]` to that range and
   logs a `VERIFICATION_CONFIG_WARNING` with the stored value (#2363)
+- `batchSizeOrNull(): ?int` - Like `batchSize()`, but `null` when the
+  settings query failed. A missing row still gives `5`. The admin
+  Verification tab uses it, so its Batch size form never shows, and a Save
+  never writes, a guessed value (#2457)
 - `setBatchSize(int $size, int $actingUserId = 0): bool` - Set the batch
   size, clamped to `[1, 25]` regardless of the submitted value; never throws
   (logs and returns `false` on a DB error or unconfirmed write) (#1885)
@@ -2405,8 +2482,10 @@ same rules.
     also only records the row. No caller passes another name: the webhook
     logs and drops an event that is not a delivery event
   - `spam` sets the owner's `email_blocked` with cause `spam`, and
-    `unsubscribed` sets it with cause `unsubscribed`. The event must be later
-    than the owner's latest admin Clear Block
+    `unsubscribed` sets it with cause `unsubscribed`. The compare time must be
+    later than the owner's latest admin Clear Block. It is the event time,
+    or the message time when the event time is a fallback in `MODE_EVENT`
+    (#2480)
 - The flag changes only when the event address is the owner's current
   `users.email`
 - `HARD_BOUNCE_EVENTS` and `SUPPRESSION_EVENTS` are `public const`, so
@@ -2416,7 +2495,8 @@ same rules.
 **Constants**: `MODE_EVENT = 'event'` and `MODE_STATE = 'state'`.
 
 - `MODE_EVENT` (webhook, reconciliation): the flag changes only when the event
-  row is new.
+  row is new. With a fallback event time, the Clear Block compare uses the
+  message time (#2480).
 - `MODE_STATE` (suppression import): Brevo's blocklist is a current state. The
   flag changes when it is clear, or when its stored address differs from the
   event address. The `join_date` and `email_address_since` guards do not
@@ -2456,24 +2536,30 @@ public function apply(
   only for a suppression event in `MODE_STATE`, and must be one of
   `CarRepository::BLOCKED_CAUSES`. The import passes `blocklist` for Brevo's
   `adminBlocked`, while the event row stays `unsubscribed`.
-- `$occurredAtIsFallback` is true when `$occurredAt` is the import's run time
-  and not a date from Brevo (#2426). It is valid only with `MODE_STATE`.
-  When it is set and a clear that counts is on record for the flag that the
-  event sets, `apply()` writes no event row and no flag. It logs the event
-  name and the user ID, and returns `EmailEventApplyResult(false, false)`.
-  A hard bounce checks `email_bounce_cleared_at`. `spam` and `unsubscribed`
-  check `CarRepository::latestFlagClearAt()` for an admin Clear Block. A clear
-  counts only when it is later than `email_address_since` (#2482). When
-  `email_address_since` is NULL or not a valid datetime, or the clear time is
-  not a valid datetime, the clear counts. With no clear that counts, the run
-  time applies.
+- `$occurredAtIsFallback` is true when `$occurredAt` is a fallback time, not
+  a date from Brevo. It is allowed in both modes (#2426, #2480). The
+  fallback is the import's run time, or the run or receipt time for the
+  reconciliation job and the webhook.
+  - `MODE_STATE`: when the fallback is set and a clear that counts is on
+    record for the flag that the event sets, `apply()` writes no event row
+    and no flag. It logs the event name and the user ID, and returns
+    `EmailEventApplyResult(false, false)`. A hard bounce checks
+    `email_bounce_cleared_at`. `spam` and `unsubscribed` check
+    `CarRepository::latestFlagClearAt()` for an admin Clear Block. A clear
+    counts only when it is later than `email_address_since` (#2482). When
+    `email_address_since` is NULL or not a valid datetime, or the clear time is
+    not a valid datetime, the clear counts. With no clear that counts, the run
+    time applies.
+  - `MODE_EVENT`: this check does not run. The bounce guard already uses the
+    message time. Step 7 compares the message time with the latest admin
+    Clear Block. A message sent at or before the clear sets no block. The
+    event row still stores `$occurredAt`.
 - Returns an `EmailEventApplyResult` with `eventRowWritten` (true when a new
   event row was written) and `flagApplied` (true when the flag step ran for
   the current address; false for a skipped step such as no profile row, address
   mismatch, or date guard failure).
 - Throws `InvalidArgumentException` for an unmatched result, an unknown source
-  or mode, a cause that is not allowed, or `$occurredAtIsFallback` with
-  `MODE_EVENT` (nothing is written).
+  or mode, or a cause that is not allowed (nothing is written).
   Throws `CarValidationException` for an invalid datetime (nothing is written).
   Throws `CarDatabaseException` when a read or write fails (all writes roll back).
 
@@ -2624,7 +2710,10 @@ public function __construct(
   `BrevoSuppressionSyncJob` keeps the default.
 - `final protected markRunFailed(): void` — A job calls this for a soft failure
   (a failure it handles without throwing). `run()` then pings `/fail`
-  instead of success. It does not stamp `last_failure_at` and does not change
+  instead of success. Callers: `SendVerificationBatchJob::execute()` (eligible
+  query failed, full send outage, `unrecorded > 0`) and
+  `BrevoEventReconciliationJob::execute()` (poll failed, or Brevo settings
+  read failed). It does not stamp `last_failure_at` and does not change
   the dashboard badge.
 - `run()` pings success after `execute()` returns without a failure flag. It
   pings `/fail` when `execute()` throws or when `markRunFailed()` was called.
@@ -2788,6 +2877,44 @@ boolean.
 - `AbstractCronJob` — Logs the three non-enabled cases distinctly
 - `CronJobRunsReader` — Display-side counterpart reading the same table for admin UI
 - [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_CRON_JOB_SKIPPED` (DISABLED), `LOG_CATEGORY_CRON_JOB_FAILURE` (MISSING/UNREADABLE)
+
+---
+
+### BrevoClientReadiness (enum)
+
+**Location**: `/usersc/classes/Cron/BrevoClientReadiness.php`
+
+**Namespace**: `ElanRegistry\Cron`
+
+**Purpose**: Outcome of the pre-flight checks in `BrevoEventReconciliationClient`.
+`fetchEvents()` returns `null` both when Brevo is not set up here and when the
+settings read fails. The job must tell them apart, because they call for
+opposite pings (#2480).
+
+**Cases**:
+
+- `READY` — The API key is set and the SDK loaded. The client can poll.
+- `NOT_CONFIGURED` — The `plg_sendinblue` table is absent, or the API key is
+  empty. The client logs `CronJobSkipped`. The job pings success.
+- `FAILED` — The `plg_sendinblue` read failed, or a key is set and the SDK
+  autoloader is absent, throws, or does not load the API class. The client
+  logs `CronJobFailure`. The job pings `/fail`.
+
+**Used By**:
+
+- `BrevoEventReconciliationClient::readiness()` — Returns one case
+- `BrevoEventReconciliationJob::backfillEvents()` — Chooses the polls and
+  whether to mark the run failed
+- `BrevoSuppressionSyncClient::readiness()` — Returns one case. With the key
+  set, any SDK fault (absent, does not load, API class missing) is `FAILED`
+- `BrevoSuppressionSyncJob::execute()` — Skips the poll unless `READY`, and
+  marks the run failed for `FAILED` or a failed poll. The job has no
+  healthcheck slug, so it sends no ping
+
+**See Also**:
+
+- `CronJobEnabledState` — The same closed tri-state pattern
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_CRON_JOB_SKIPPED`, `LOG_CATEGORY_CRON_JOB_FAILURE`
 
 ---
 
@@ -3034,7 +3161,11 @@ public function __construct(
   hand ids to `VerificationBatchSender::processBatch()`, persist outcome
   counts, log a routine completion line under `LOG_CATEGORY_CAR_VERIFICATION`.
   If the eligible-car query fails, it logs, calls `markRunFailed()` and
-  returns, so `run()` pings `/fail`
+  returns, so `run()` pings `/fail`. After the batch, it calls
+  `markRunFailed()` when no send succeeded and at least one send failed (a
+  full send outage), or when any send is `unrecorded`. Each of these two
+  cases also logs one `LOG_CATEGORY_CRON_JOB_FAILURE` line with counts only.
+  A partial send failure pings success on purpose (#2480)
 
 **Private Methods**:
 
@@ -3109,14 +3240,17 @@ development environment. It never changes the host in test or production.
 
 **Purpose**: Builds the Brevo SDK's `TransactionalEmailsApi` for the project's
 own Brevo clients (#2357). It holds the steps that `BrevoSuppressionSyncClient`
-and `BrevoBlocklistClient` share. The class is final and never logs. A failed
+and `BrevoBlocklistClient` share. The class is not final, so a unit test can
+pass a double to `BrevoBlocklistClient`. It never logs. A failed
 step returns a reason code, so each caller logs in its own category.
 
 **Methods**:
 
 - `__construct(DatabaseInterface $db)`
 - `readApiKey(): array` - Reads the key from the `plg_sendinblue` row. Returns
-  `key`, `reason`, `cause` and `detail`. On failure `key` is null, `reason` is
+  `key`, `reason`, `cause`, `detail` and `sqlState`. `sqlState` is the
+  5-character SQLSTATE (`string|null`) when the query failed, else null. It is
+  present on every return path. On failure `key` is null, `reason` is
   `REASON_NO_API_KEY`, and `cause` is `CAUSE_TABLE_ABSENT`, `CAUSE_DB_ERROR` or
   `CAUSE_KEY_NOT_SET`
 - `loadSdk(): array` - Loads the vendored SDK autoloader in the sendinblue
@@ -3124,12 +3258,15 @@ step returns a reason code, so each caller logs in its own category.
   failure `reason` is `REASON_NO_SDK`, and `cause` is `CAUSE_AUTOLOADER_ABSENT`,
   `CAUSE_AUTOLOADER_FAILED` or `CAUSE_API_CLASS_MISSING`. A detail string never
   holds an exception message
-- `createApi(string $apiKey): \Brevo\Client\Api\TransactionalEmailsApi` -
-  Builds the API object with a 30-second timeout and a 10-second connect
-  timeout. It applies `BrevoDevOverride::hostOverride()`. Call `loadSdk()` first
+- `createApi(string $apiKey): object` - Returns a
+  `\Brevo\Client\Api\TransactionalEmailsApi` (PHPDoc type). The native type
+  is `object`, so a double works when the SDK is absent. Builds the API
+  object with a 30-second timeout and a 10-second connect timeout. It
+  applies `BrevoDevOverride::hostOverride()`. Call `loadSdk()` first
 
-**Used By**: `BrevoSuppressionSyncClient` (its `createApi()` seam calls the
-factory, and its log lines are unchanged), `BrevoBlocklistClient`
+**Used By**: `BrevoSuppressionSyncClient` and `BrevoBlocklistClient`. The
+suppression client's `createApi()` seam calls the factory. With a key set, a
+missing autoloader logs `CronJobFailure`.
 
 **See Also**: `BrevoDevOverride`
 
@@ -3143,13 +3280,15 @@ factory, and its log lines are unchanged), `BrevoBlocklistClient`
 
 **Purpose**: Removes one address from Brevo's transactional blocklist
 (`DELETE /v3/smtp/blockedContacts/{email}`) for admin Clear Block (#2357).
-The class is not final, because a unit test replaces the protected
-`createApi()` seam with a fake. It never logs and never keeps an exception
-message. The SDK puts the request URL, with the address, in its messages.
+It takes its `BrevoApiFactory` as a constructor argument, so a unit test
+passes a double (`tests/Support/FakeBrevoApiFactory.php`). The class is not
+final, because the Clear Block tests replace `unblock()`. It never logs and
+never keeps an exception message. The SDK puts the request URL, with the address, in its messages.
 
 **Methods**:
 
-- `__construct(DatabaseInterface $db)`
+- `__construct(DatabaseInterface $db, ?BrevoApiFactory $factory = null)` -
+  Null builds a factory on `$db`
 - `unblock(string $address): BrevoUnblockResult` - Never throws. Pass the raw
   address, not a URL-encoded one. The SDK encodes the path value once
   (`ObjectSerializer::toPathValue()`). An address that is encoded first reaches
@@ -3161,11 +3300,10 @@ message. The SDK puts the request URL, with the address, in its messages.
   status) or `transport` (no HTTP answer, or a throw before the call). A
   failed result carries a log-safe detail: the `BrevoApiFactory` cause for a
   key or SDK failure (followed by the factory's `ExceptionLogSummary` when the
-  SDK autoloader threw), or `ExceptionLogSummary::of()` for `http` and
-  `transport`
-- `createApi(string $apiKey): ?object` - Protected seam. Loads the SDK and
-  builds the API object through `BrevoApiFactory`. Returns null when the SDK
-  did not load
+  SDK autoloader threw). For `db_error`, the detail is
+  `db_error (SQLSTATE <x>)` when `readApiKey()` returns a `sqlState`, else
+  `db_error`. It never holds `errorString()` text. For `http` and `transport`,
+  the detail is `ExceptionLogSummary::of()`
 
 **Used By**: `CarVerificationManager::clearBlockedForOwner()`, which the
 `clear_block` command in `app/admin/index.php` calls
@@ -3181,28 +3319,33 @@ message. The SDK puts the request URL, with the address, in its messages.
 **Namespace**: `ElanRegistry\Email`
 
 **Purpose**: The result of one `BrevoBlocklistClient::unblock()` call (#2357).
-The class is final. It holds an outcome, a reason, an HTTP status and a
-log-safe detail. It holds no address, no response body and no exception
-message.
+A final readonly value object with public properties. It holds an outcome,
+a reason, an HTTP status and a log-safe detail. It holds no address, no
+response body and no exception message.
 
 **Methods**:
 
-- `removed()`, `notBlocked()` and `failed(string $reason, ?int $httpStatus = null, ?string $detail = null)` -
-  Static constructors. `notBlocked()` has the status 404
-- `outcome(): string` - `OUTCOME_REMOVED`, `OUTCOME_NOT_BLOCKED` or
-  `OUTCOME_FAILED`
-- `isSuccess(): bool` - True for `removed` and `notBlocked`. The address is off
+- `removed()`, `notBlocked()` and `failed(BrevoUnblockReason $reason, ?int $httpStatus = null, ?string $detail = null)` -
+  Static constructors. `failed()` throws `\InvalidArgumentException` when the
+  reason is `Http` with no status, or another reason with a status. A success
+  holds no reason, no status and no detail
+- `$outcome` (`BrevoUnblockOutcome`: `Removed`, `NotBlocked`, `Failed`)
+- `isSuccess(): bool` - True for `Removed` and `NotBlocked`. The address is off
   the blocklist after the call
-- `reason(): ?string` - One of `REASON_NO_API_KEY`, `REASON_NO_SDK`,
-  `REASON_SDK_LOAD_FAILED`, `REASON_HTTP`, `REASON_TRANSPORT`,
-  `REASON_DB_ERROR` or `REASON_NO_ADDRESS` for a failed result.
-  Null on success. `CarVerificationManager` reports `REASON_NO_API_KEY` and
-  `REASON_NO_SDK` as "Brevo is not set up", and every other reason as a
-  Brevo failure
-- `httpStatus(): ?int` - The status that Brevo sent, or null
-- `detail(): ?string` - For a failed result, an `ExceptionLogSummary`, or a
-  `BrevoApiFactory` cause code (followed by `: <ExceptionLogSummary>` when
-  the SDK autoloader threw). Null on success
+- `$reason` (`?BrevoUnblockReason`: `NoApiKey`, `NoSdk`, `SdkLoadFailed`,
+  `Http`, `Transport`, `DbError`, `NoAddress`, or null on success).
+  `CarVerificationManager` reports `NoApiKey` as "Brevo is not set up", `NoSdk`
+  and `SdkLoadFailed` as a Brevo plugin fault (the client checks for the SDK
+  only after it finds a key), and every other reason as a Brevo failure, with
+  no `default` arm
+- `$httpStatus` (`?int`) - The status that Brevo sent, set for `Http` only
+- `$detail` (`?string`) - For a failed result, an `ExceptionLogSummary`, or a
+  `BrevoApiFactory` cause code (followed by `(SQLSTATE <code>)` for a
+  `db_error` key query failure, or by `: <ExceptionLogSummary>` when the SDK
+  autoloader threw). Null on success
+
+Both enums are string-backed and live in `/usersc/classes/Email/`. Their values
+are the strings that the log lines use.
 
 **Used By**: `BrevoBlocklistClient`, `CarVerificationManager::clearBlockedForOwner()`
 
@@ -3233,8 +3376,8 @@ holding cron runs open indefinitely.
 - Defensive reads of the API key from `plg_sendinblue`, with distinct
   logging: `SKIPPED` for "no API key" (expected), `FAILURE` for
   "key may exist but the read or call failed" (infrastructure fault). The
-  client checks only the key. It does not run the six-check readiness gate
-  of `VerificationSettings::brevoReady()`
+  client checks the key and the SDK (see `readiness()`). It does not run the
+  six-check readiness gate of `VerificationSettings::brevoReady()`
 - Idempotent SDK autoloader with `require_once` and `class_exists()` short-circuit
 
 **Constructor**:
@@ -3251,15 +3394,30 @@ public function __construct(private readonly DatabaseInterface $db)
   for each call, because a mixed page lets a high-volume type push a bounce
   out of the page. Returns
   `\Brevo\Client\Model\GetEmailEventReportEvents[]` on success (empty array if
-  Brevo returned no events), or `null` if the poll itself failed (never
-  throws)
+  Brevo returned no events), or `null` if the poll failed or Brevo is not set
+  up here (never throws). `readiness()` tells the two `null` causes apart
+- `readiness(): BrevoClientReadiness` — Run the pre-flight checks of
+  `fetchEvents()` and return the outcome: `READY`, `NOT_CONFIGURED` or
+  `FAILED`. It makes no API call. It writes the same log lines as those
+  checks, and no others. The job calls it once before the type loop (#2480)
+
+**Protected Methods**:
+
+- `createApi(string $apiKey): ?object` — Build the `TransactionalEmailsApi`
+  client, or return `null` if the SDK did not load. A test seam, as in
+  `BrevoSuppressionSyncClient::createApi()`. A subclass can return a double
+  that throws, to reach the poll `catch` of `fetchEvents()` (#2480)
 
 **Private Methods**:
 
-- `apiKey(): ?string` — Read Brevo API key from plugin settings; null if
-  there is no API key or the row is unreadable
-- `loadSdk(): bool` — Load vendored SDK autoloader; idempotent, safe to call
-  when already loaded
+- `apiKey(): array{key: ?string, readiness: BrevoClientReadiness}` — Read the
+  Brevo API key from plugin settings. Returns the key with `READY`. Returns a
+  null key with `NOT_CONFIGURED` (no table, or no key) or `FAILED` (any other
+  read error)
+- `loadSdk(): BrevoClientReadiness` — Load vendored SDK autoloader; idempotent,
+  safe to call when already loaded. Called only after a key is found. Returns
+  `FAILED` when the autoloader file is absent, throws, or does not load the API
+  class
 
 **Used By**:
 
@@ -3318,7 +3476,14 @@ applies events of all registry mail (#2359). It passes the source
   user, then calls `EmailEventApplier::apply()` once. An event that is not ours
   is skipped silently. An address longer than 155 bytes or one that fails
   `FILTER_VALIDATE_EMAIL` is skipped and counted. A date more than 5 minutes
-  after the run time is treated as missing
+  after the run time is treated as missing. The run time is then passed to
+  `apply()` as a fallback (`occurredAtIsFallback`) (#2480)
+- **Brevo setup check** (#2480): `backfillEvents()` calls
+  `BrevoEventReconciliationClient::readiness()` once, before the type loop.
+  `NOT_CONFIGURED` polls nothing, gives an empty summary with `notConfigured`
+  set, adds " — Brevo is not set up here, no poll ran" to the summary log
+  line, and `run()` pings success. `FAILED` polls nothing, sets `pollFailed`, and `run()` pings `/fail`.
+  `READY` polls each type as before. The prune runs in all three cases
 - **Unmatched counter**: `countUnmatched()` increments the unmatched recipient
   counter only for a verification-tagged event with no single user
 - **No address in logs**: lines name the user ID or the address hash prefix.
@@ -3364,8 +3529,9 @@ The `$now` parameter is injectable for testing; defaults to wall-clock time.
   because this job always pings
 - `execute(): void` — Backfill one page, prune expired rows in a `finally`
   block, then log a one-line summary (with a distinct suffix if the poll
-  failed). The prune logs its count. A failed poll calls `markRunFailed()`,
-  so `run()` pings `/fail`
+  failed). The prune logs its count. A failed poll, or a `FAILED` Brevo setup
+  check, calls `markRunFailed()`, so `run()` pings `/fail`. A `NOT_CONFIGURED`
+  check does not (#2480)
 - `runNowWithSummary(): ReconciliationSummary` — Sibling to the inherited
   `final runNow()` for the manual "run now" admin path (#2061). Not an
   override — `runNow()` stays `final`/void. Wraps the backfill and prune in
@@ -3376,8 +3542,10 @@ The `$now` parameter is injectable for testing; defaults to wall-clock time.
 
 **Private Methods**:
 
-- `backfillEvents(): ReconciliationSummary` — Fetch one page of each event type
-  and apply each event, returning the run's counts
+- `backfillEvents(): ReconciliationSummary` — Check the Brevo setup once with
+  `readiness()`. Then fetch one page of each event type and apply each event,
+  returning the run's counts. With `NOT_CONFIGURED` it fetches nothing and sets `notConfigured` (#2480).
+  An exhaustive `match` on the readiness case picks the outcome
 - `applyEvent(object $event, string $apiEventType, string $eventName, array &$counts, array &$eventTypeCounts): void`
   — Apply one Brevo statistics-API event (field and address validation,
   `EmailEventMatcher::matchByMessageId()`, `EmailEventApplier::apply()`),
@@ -3388,9 +3556,12 @@ The `$now` parameter is injectable for testing; defaults to wall-clock time.
   verification-tagged one
 - `pruneExpiredEvents(): void` — Call `CarRepository::deleteEmailEventsOlderThan()`
   with the two cutoffs
-- `resolveOccurredAt(mixed $rawDate, int $userId, string $eventName): string` —
-  Parse Brevo's UTC date string into a PHP-default-timezone DATETIME string,
-  with logged fallback to "now" on parse failure or out-of-range value
+- `resolveOccurredAt(mixed $rawDate, int $userId, string $eventName): array{occurredAt: string, usable: bool}` —
+  Parse Brevo's UTC date string into a PHP-default-timezone DATETIME string.
+  On a parse failure or an out-of-range value, log and use the run time with
+  `usable: false`. `applyEvent()` passes `!usable` as `occurredAtIsFallback`.
+  The applier then compares the message time with an admin Clear Block, not
+  the run time (#2480)
 
 **Used By**:
 
@@ -3432,7 +3603,7 @@ inline, instead of requiring a trip to Admin → Logs. Mirrors
   field answering "how many events did Brevo return." Script 27 labels
   `matchedCount` "owners matched"
 
-**Constructor** (all params required except `pollFailed` and `counterFailureCount`):
+**Constructor** (all params required except `pollFailed`, `counterFailureCount` and `notConfigured`):
 
 ```php
 public function __construct(
@@ -3445,6 +3616,7 @@ public function __construct(
     public int $pagesFetched,        // one for each event type whose poll succeeded
     public bool $pollFailed = false, // true when at least one fetchEvents() call failed
     public int $counterFailureCount = 0, // unmatched events missing from the dashboard counter
+    public bool $notConfigured = false,  // true when Brevo is not set up here (no table or no key), so no poll ran
 )
 ```
 
@@ -3508,15 +3680,22 @@ $emailService = new TransferEmailService(
   `email_bounced`, `email_opted_out` or `email_blocked`.
 - On a skip, the service logs one line in the `EMAIL_ERROR` category. The
   line names the user ID and the flag names, and never an email address.
-- `sendRequest()` returns `true` on a skip, so the caller does not log the
-  skip as a failure. `sendResponse()` returns `true` only when at least one
-  notice was sent. A skip counts as not sent, so the caller logs "No transfer
-  ... notification sent" when each notice failed or was skipped.
+- `sendRequest()` returns `TransferNoticeOutcome::Skipped` on a skip. The
+  endpoint logs "Owner notification skipped by the send policy ... owner may
+  not be aware of this request" and passes the outcome to `sendAdminAlert()`.
+  For `Skipped` or `Failed`, the admin alert says "The registry sent no notice
+  of this request to the current owner."
+- `sendResponse()` returns `true` only when at least one notice was sent. A
+  skip counts as not sent, so the caller logs "No transfer ... notification
+  sent" when each notice failed or was skipped.
 
 **Public Methods**:
 
-- `sendRequest(int $transferRequestId): bool` — Notify the current car owner that a transfer has been requested
-- `sendAdminAlert(int $transferRequestId): bool` — Alert admin(s) to review a pending transfer request
+- `sendRequest(int $transferRequestId): TransferNoticeOutcome` — Notify the current car owner that a transfer
+  has been requested. Returns `Sent`, `Skipped` (send policy) or `Failed` (lookup failure, mailer false, or an error)
+- `sendAdminAlert(int $transferRequestId, TransferNoticeOutcome $ownerNotice = TransferNoticeOutcome::Sent): bool`
+  — Alert admin(s) to review a pending transfer request. When `$ownerNotice` is not `Sent`, the alert says that
+  the current owner got no notice
 - `sendResponse(int $transferRequestId, bool $isApproved, string $adminNotes = '', ?int $previousOwnerId = null): bool`
   — Send approval or denial to requester and notify the previous/current owner
   (uses `$previousOwnerId` for approvals, car's current `user_id` for denials)
@@ -3529,8 +3708,8 @@ use ElanRegistry\Transfer\TransferEmailService;
 $emailService = new TransferEmailService(dbi(), 'email');
 
 // When transfer request is created
-$emailService->sendRequest($transferRequestId);
-$emailService->sendAdminAlert($transferRequestId);
+$ownerNotice = $emailService->sendRequest($transferRequestId);
+$emailService->sendAdminAlert($transferRequestId, $ownerNotice);
 
 // When admin approves transfer
 $emailService->sendResponse($transferRequestId, true, 'Approved', $previousOwnerId);
@@ -3566,12 +3745,30 @@ $mockDb = new class {
 };
 $mockMailer = fn($to, $subject, $body) => true;
 $service = new TransferEmailService($mockDb, $mockMailer);
-$this->assertFalse($service->sendRequest(999));
+$this->assertSame(TransferNoticeOutcome::Failed, $service->sendRequest(999));
 ```
 
 **See Also**:
 
 - [ERROR_HANDLING.md](ERROR_HANDLING.md) - Exception patterns for email failures
+
+---
+
+### TransferNoticeOutcome (enum)
+
+**Location**: `/usersc/classes/Transfer/TransferNoticeOutcome.php`
+
+**Namespace**: `ElanRegistry\Transfer`
+
+**Purpose**: The result of `TransferEmailService::sendRequest()` (#2476). A
+bool cannot tell a send policy skip from a delivery. The endpoint and the
+admin alert must know when the current owner got no notice.
+
+| Case | Value | Meaning | `ownerWasNotified()` |
+| --- | --- | --- | --- |
+| `Sent` | `sent` | The mailer accepted the notice | `true` |
+| `Skipped` | `skipped` | `SendPolicy` refused the notice (no profile, bounced, opted out, blocked) | `false` |
+| `Failed` | `failed` | A lookup failed, the mailer returned false, or an error occurred | `false` |
 
 ---
 
@@ -3753,13 +3950,17 @@ mail rows, the `er_email_events` rows, the `profiles` row, and the
     writes a CRITICAL log line. On a refusal, `after_user_deletion.php` stops
     and skips the car cleanup.
   - If the rollback itself throws, the CRITICAL line says `rollback failed`
-    with that exception's class and code in place of `rolled back`, and
-    `run()` still returns.
+    with that exception's summary in place of `rolled back`, and `run()`
+    still returns.
+  - A failure at the `commit` stage says `transaction state unknown` and
+    `personal data may remain`, because the server may have committed. It
+    returns `AccountDeletionPrivacyResult::commitUnknown()`, and the summary
+    line says `transaction state unknown` in place of `rolled back`.
   - Otherwise it runs these stages in one transaction:
     `lockProfileAndFindAddresses()`, the plugin delete
     (`deleteSendinblueMessagesForUser()`, only when
-    `sendinblueMessagesTableExists()`), `deleteEmailEventsForUser()`, the
-    `profiles` delete, then `deleteDeletedUserAddresses()`. The plugin delete
+    `sendinblueMessagesTableExists()`), `deleteEmailEventsForUser()`,
+    `deleteProfile()`, then `deleteDeletedUserAddresses()`. The plugin delete
     reads the event message IDs, so it runs before the event delete. The
     holding row goes last, so on a failure it stays and a rerun has the
     addresses.
@@ -3767,9 +3968,10 @@ mail rows, the `er_email_events` rows, the `profiles` row, and the
     that names the stage.
   - After the transaction it logs the outcome and the row counts, and that the
     plugin table is absent when that is so. All lines use
-    `LOG_CATEGORY_USER_DELETION`. A log line names the user ID, the stage, the
-    exception class and code only, never the exception message, because a
-    message can contain an address.
+    `LOG_CATEGORY_USER_DELETION`. A log line names the user ID, the stage and
+    the `ExceptionLogSummary::of()` summary (class, code, SQLSTATE, throw
+    site), never the exception message, because a message can contain an
+    address.
 
 **Used By**:
 
@@ -3786,20 +3988,24 @@ mail rows, the `er_email_events` rows, the `profiles` row, and the
 
 **Namespace**: `ElanRegistry`
 
-**Purpose**: `final` value object with readonly properties that holds the
+**Purpose**: `final readonly` value object that holds the
 outcome of `AccountDeletionPrivacyStep::run()` (#2419). It holds no address,
 so a caller can show it on a page or write it to a log.
 
-**Properties**: `$committed`, `$refused`, `$failedStage` (`?string`, the stage
-that failed when the step rolled back), `$deletedEmailEventCount`,
-`$deletedPluginMessageCount`, `$deletedHoldingRowCount` (0 or 1) and
-`$pluginTableAbsent`. The counts are 0 when the run did not commit.
+**Properties**: `$outcome` (`AccountDeletionPrivacyOutcome`: `Committed`,
+`RolledBack`, `CommitUnknown` or `Refused`), `$failedStage` (`?string`, the
+stage that failed for `RolledBack`, `commit` for `CommitUnknown`, else null),
+`$deletedEmailEventCount`, `$deletedPluginMessageCount`,
+`$deletedHoldingRowCount` (0 or 1) and `$pluginTableAbsent`. The counts are 0
+when the run did not commit. A negative count throws
+`\InvalidArgumentException`.
 
 | Outcome | How to create it | Properties |
 | --- | --- | --- |
-| Committed | `committed(int $deletedEmailEventCount, int $deletedPluginMessageCount, int $deletedHoldingRowCount, bool $pluginTableAbsent)` | `committed` true and the row counts |
-| Rolled back | `rolledBack(string $stage)` | `committed` false, `failedStage` set |
-| Refused | `refused()` | `committed` false, `refused` true |
+| Committed | `committed(int $deletedEmailEventCount, int $deletedPluginMessageCount, int $deletedHoldingRowCount, bool $pluginTableAbsent)` | `outcome` `Committed` and the row counts |
+| Rolled back | `rolledBack(string $stage)` | `outcome` `RolledBack`, `failedStage` set |
+| Commit unknown | `commitUnknown()` | `outcome` `CommitUnknown`, `failedStage` `commit` |
+| Refused | `refused()` | `outcome` `Refused` |
 
 **Used By**: `AccountDeletionPrivacyStep::run()` (returns it) and the rerun
 script `30-Rerun-Deletion-Privacy-Step.php` (shows it)

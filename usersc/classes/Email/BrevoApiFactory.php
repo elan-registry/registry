@@ -25,11 +25,15 @@ use ElanRegistry\Exceptions\ExceptionLogSummary;
  * Detail strings never hold an exception message. They hold a database error
  * string or an {@see ExceptionLogSummary}.
  *
+ * Not `final`: {@see BrevoBlocklistClient} takes a factory as a constructor
+ * argument, so a unit test passes a double that replaces the SDK API object.
+ * Subclassing outside of test doubles is not intended.
+ *
  * @package ElanRegistry\Email
  * @since v2.30.9
  * @see https://github.com/elan-registry/registry/issues/2357
  */
-final class BrevoApiFactory
+class BrevoApiFactory
 {
     /** The API key could not be read, or no key is set. */
     public const REASON_NO_API_KEY = 'no_api_key';
@@ -85,13 +89,16 @@ final class BrevoApiFactory
      * Checks that the query succeeded before it reads the row, unlike the
      * plugin's own `sendinblue()` function.
      *
-     * @return array{key: string|null, reason: string|null, cause: string|null, detail: string}
+     * @return array{key: string|null, reason: string|null, cause: string|null, detail: string, sqlState: string|null}
      *         On success, `key` holds the key and the other values are null
      *         and ''. On failure, `key` is null, `reason` is
      *         {@see self::REASON_NO_API_KEY}, `cause` is one of the
      *         `CAUSE_TABLE_ABSENT`, `CAUSE_DB_ERROR` or `CAUSE_KEY_NOT_SET`
      *         constants, and `detail` holds the database error string for a
      *         failed query ('unknown' when it is empty), or '' otherwise.
+     *         `sqlState` holds the 5-character SQLSTATE of a failed query,
+     *         or null when the query did not fail or the SQLSTATE is not
+     *         valid. Unlike `detail`, it can hold no SQL text.
      */
     public function readApiKey(): array
     {
@@ -105,6 +112,7 @@ final class BrevoApiFactory
                 'reason' => self::REASON_NO_API_KEY,
                 'cause' => $sqlState === '42S02' ? self::CAUSE_TABLE_ABSENT : self::CAUSE_DB_ERROR,
                 'detail' => $this->db->errorString() ?: 'unknown',
+                'sqlState' => preg_match('/^[0-9A-Z]{5}$/', $sqlState) === 1 ? $sqlState : null,
             ];
         }
 
@@ -115,10 +123,11 @@ final class BrevoApiFactory
                 'reason' => self::REASON_NO_API_KEY,
                 'cause' => self::CAUSE_KEY_NOT_SET,
                 'detail' => '',
+                'sqlState' => null,
             ];
         }
 
-        return ['key' => (string) $settings->key, 'reason' => null, 'cause' => null, 'detail' => ''];
+        return ['key' => (string) $settings->key, 'reason' => null, 'cause' => null, 'detail' => '', 'sqlState' => null];
     }
 
     /**
@@ -188,10 +197,14 @@ final class BrevoApiFactory
      * loaded. In local development, {@see BrevoDevOverride::hostOverride()}
      * points the client at mock-brevo, so a local run makes no live call.
      *
+     * The native return type is `object`, not the SDK class: a test double
+     * cannot extend the SDK class when the SDK is absent (CI), and PHP
+     * rejects an override with a wider return type.
+     *
      * @param string $apiKey The Brevo API key
      * @return TransactionalEmailsApi The client
      */
-    public function createApi(string $apiKey): TransactionalEmailsApi
+    public function createApi(string $apiKey): object
     {
         $credentials = \Brevo\Client\Configuration::getDefaultConfiguration()
             ->setApiKey('api-key', $apiKey);

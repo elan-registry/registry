@@ -32,20 +32,35 @@ class VerificationTabStatusProbeFakeDatabase extends CronJobRunsReaderFakeDataba
     /** When true, every er_verification_settings and plg_sendinblue query throws. */
     public bool $throwOnSettings = false;
 
+    /** When true, only the plg_sendinblue query throws, after the switch read worked. */
+    public bool $throwOnBrevoPlugin = false;
+
+    /**
+     * er_verification_settings columns whose SELECT reports error() without a
+     * throw, as UserSpice DB::query() does for a failed execute.
+     *
+     * @var list<string>
+     */
+    public array $settingsErrorColumns = [];
+
     /** First bound parameter for which error() throws. Null means never. */
     public ?string $throwOnErrorForParam = null;
 
     private bool $lastWasSettings = false;
     private bool $lastWasFailureCount = false;
     private ?string $lastParam = null;
+    private string $lastSql = '';
 
     public function query(string $sql, array $params = []): self
     {
         $this->lastWasSettings     = stripos($sql, 'er_verification_settings') !== false;
         $this->lastWasFailureCount = stripos($sql, 'COUNT(*) AS cnt FROM logs') !== false;
         $this->lastParam           = isset($params[0]) ? (string) $params[0] : null;
+        $this->lastSql             = $sql;
 
-        if ($this->throwOnSettings && ($this->lastWasSettings || stripos($sql, 'plg_sendinblue') !== false)) {
+        $isBrevoPlugin = stripos($sql, 'plg_sendinblue') !== false;
+        if (($this->throwOnSettings && ($this->lastWasSettings || $isBrevoPlugin))
+            || ($this->throwOnBrevoPlugin && $isBrevoPlugin)) {
             throw new RuntimeException('simulated settings outage');
         }
 
@@ -58,6 +73,13 @@ class VerificationTabStatusProbeFakeDatabase extends CronJobRunsReaderFakeDataba
     {
         if ($this->throwOnErrorForParam !== null && $this->lastParam === $this->throwOnErrorForParam) {
             throw new RuntimeException('simulated reader outage');
+        }
+        if ($this->lastWasSettings) {
+            foreach ($this->settingsErrorColumns as $column) {
+                if (stripos($this->lastSql, "SELECT {$column} FROM") !== false) {
+                    return true;
+                }
+            }
         }
 
         return parent::error();
@@ -131,6 +153,7 @@ final class VerificationTabStatusTest extends TestCase
             'autoSend'        => self::job(),
             'autoSendOutcome' => ['counts' => ['sent' => 3, 'skipped' => 2, 'failed' => 1], 'unreadable' => false],
             'failureLog'      => ['count' => 0, 'recent' => []],
+            'batchSize'       => 5,
         ];
 
         return new VerificationTabStatus(
@@ -144,7 +167,8 @@ final class VerificationTabStatusTest extends TestCase
             $v['suppressionSync'],
             $v['autoSend'],
             $v['autoSendOutcome'],
-            $v['failureLog']
+            $v['failureLog'],
+            $v['batchSize']
         );
     }
 
@@ -229,18 +253,18 @@ final class VerificationTabStatusTest extends TestCase
         $this->assertSame('Ready', self::row('brevo', ['enabled' => false])['badgeText']);
     }
 
-    /** @return array<string, array{bool}> */
+    /** @return array<string, array{?bool}> */
     public static function switchStateProvider(): array
     {
-        return ['switch value on' => [true], 'switch value off' => [false]];
+        return ['switch value on' => [true], 'switch value off' => [false], 'switch value not read' => [null]];
     }
 
     /**
      * Approved deviation: a thrown settings probe is "not ready", not "ready".
-     * The switch state is unknown then, so it never says "switch is off".
+     * The switch state may be unknown then, so it never says "switch is off".
      */
     #[DataProvider('switchStateProvider')]
-    public function test_brevoRow_settingsProbeThrew_isNotReadyWithTheCouldNotBeCheckedReason(bool $enabled): void
+    public function test_brevoRow_settingsProbeThrew_isNotReadyWithTheCouldNotBeCheckedReason(?bool $enabled): void
     {
         $status = self::makeStatus(['probeFailed' => true, 'enabled' => $enabled]);
         $row    = self::row('brevo', ['probeFailed' => true, 'enabled' => $enabled]);
@@ -297,6 +321,33 @@ final class VerificationTabStatusTest extends TestCase
         $this->assertSame('Stalled', $row['badgeText']);
         $this->assertSame('no cron request has ever been logged', $row['detail']);
         $this->assertSame('', $row['detailIcon']);
+    }
+
+    /** A failed probe did not read the cron state, so "Stalled" would be a guess. */
+    #[DataProvider('switchStateProvider')]
+    public function test_cronRow_settingsProbeThrew_isUnavailableWithAReason(?bool $enabled): void
+    {
+        $row = self::row('cron', ['probeFailed' => true, 'enabled' => $enabled, 'cronReady' => null, 'lastCronAt' => null]);
+
+        $this->assertSame('Unavailable', $row['badgeText']);
+        $this->assertSame('badge text-bg-danger', $row['badgeClass']);
+        $this->assertSame('fa-exclamation-circle', $row['icon']);
+        $this->assertSame(
+            'The cron state could not be read. Check the system log for VerificationConfigWarning entries.',
+            $row['detail']
+        );
+        $this->assertSame('', $row['detailIcon']);
+    }
+
+    /** A cron state that was read before a later read threw is real, not a guess. */
+    #[Group('regression')]
+    public function test_cronRow_probeFailedAfterTheCronStateWasRead_showsRunning(): void
+    {
+        $row = self::row('cron', ['probeFailed' => true, 'cronReady' => true]);
+
+        $this->assertSame('Running', $row['badgeText']);
+        $this->assertSame('badge text-bg-success', $row['badgeClass']);
+        $this->assertSame('last seen Oct 19, 2026 2:05 PM', $row['detail']);
     }
 
     // ---- Webhook row ----
@@ -525,6 +576,8 @@ final class VerificationTabStatusTest extends TestCase
         return [
             'probe failed'         => [['probeFailed' => true]],
             'switch off'           => [['enabled' => false]],
+            'switch not read'      => [['enabled' => null]],
+            'cron not read'        => [['cronReady' => null]],
             'brevo not ready'      => [['brevoReason' => 'No API key is saved in the Brevo plugin.']],
             'cron stalled'         => [['cronReady' => false]],
             'unmatched positive'   => [['unmatched' => 1]],
@@ -532,6 +585,7 @@ final class VerificationTabStatusTest extends TestCase
             'failures positive'    => [['failureLog' => ['count' => 1, 'recent' => []]]],
             'failure count null'   => [['failureLog' => ['count' => null, 'recent' => []]]],
             'failure log failed'   => [['failureLog' => null]],
+            'batch size unread'    => [['batchSize' => null]],
         ];
     }
 
@@ -542,16 +596,52 @@ final class VerificationTabStatusTest extends TestCase
         $this->assertFalse(self::makeStatus($override)->allHealthy());
     }
 
-    /** The reconciliation and suppression-sync badges are shown but are not health conditions. */
-    public function test_allHealthy_failedJobBadgesDoNotChangeIt(): void
+    /**
+     * A failed last run counts through the cron failure log, a pause is an
+     * admin decision, and the automatic send job has its own card.
+     */
+    public function test_allHealthy_failedPausedOrAutoSendJobStatesDoNotChangeIt(): void
     {
         $status = self::makeStatus([
             'reconciliation'  => self::job(CronJobEnabledState::ENABLED, '2026-10-18 02:00:00', '2026-10-18 02:00:01'),
-            'suppressionSync' => self::job(CronJobEnabledState::UNREADABLE, null),
+            'suppressionSync' => self::job(CronJobEnabledState::DISABLED, null),
             'autoSend'        => self::job(CronJobEnabledState::UNREADABLE, null),
         ]);
 
         $this->assertTrue($status->allHealthy());
+    }
+
+    /** @return array<string, array{string, CronJobEnabledState}> */
+    public static function unknownJobStateProvider(): array
+    {
+        return [
+            'reconciliation unreadable'   => ['reconciliation', CronJobEnabledState::UNREADABLE],
+            'reconciliation missing'      => ['reconciliation', CronJobEnabledState::MISSING],
+            'suppression sync unreadable' => ['suppressionSync', CronJobEnabledState::UNREADABLE],
+            'suppression sync missing'    => ['suppressionSync', CronJobEnabledState::MISSING],
+        ];
+    }
+
+    #[DataProvider('unknownJobStateProvider')]
+    #[Group('regression')]
+    public function test_allHealthy_jobStateUnknown_isNotHealthy(string $job, CronJobEnabledState $state): void
+    {
+        $this->assertFalse(self::makeStatus([$job => self::job($state, null)])->allHealthy());
+    }
+
+    /** @return array<string, array{string}> */
+    public static function healthJobProvider(): array
+    {
+        return [
+            'reconciliation'   => ['reconciliation'],
+            'suppression sync' => ['suppressionSync'],
+        ];
+    }
+
+    #[DataProvider('healthJobProvider')]
+    public function test_allHealthy_pausedJob_staysHealthy(string $job): void
+    {
+        $this->assertTrue(self::makeStatus([$job => self::job(CronJobEnabledState::DISABLED, null)])->allHealthy());
     }
 
     // ---- Feature switch ----
@@ -559,7 +649,7 @@ final class VerificationTabStatusTest extends TestCase
     public function test_featureSwitch_adminWithBrevoReady_isEnabledAndHasNoReason(): void
     {
         $this->assertSame(
-            ['checked' => true, 'disabled' => false, 'disabledReason' => ''],
+            ['checked' => true, 'disabled' => false, 'disabledReason' => '', 'unavailable' => false],
             self::makeStatus()->featureSwitch(true)
         );
     }
@@ -567,7 +657,12 @@ final class VerificationTabStatusTest extends TestCase
     public function test_featureSwitch_viewerWhoCannotToggle_isDisabledWithTheAdminOnlyReason(): void
     {
         $this->assertSame(
-            ['checked' => true, 'disabled' => true, 'disabledReason' => 'Only administrators can change this setting.'],
+            [
+                'checked'        => true,
+                'disabled'       => true,
+                'disabledReason' => 'Only administrators can change this setting.',
+                'unavailable'    => false,
+            ],
             self::makeStatus()->featureSwitch(false)
         );
     }
@@ -596,12 +691,73 @@ final class VerificationTabStatusTest extends TestCase
         $this->assertSame('', $switch['disabledReason']);
     }
 
-    public function test_featureSwitch_settingsProbeThrewWhileOff_usesTheCouldNotBeCheckedReason(): void
+    /** @return array<string, array{bool, ?string}> */
+    public static function probeFailedSwitchProvider(): array
     {
-        $switch = self::makeStatus(['probeFailed' => true, 'enabled' => false])->featureSwitch(true);
+        return [
+            'admin, no Brevo reason'   => [true, null],
+            'admin, Brevo reason set'  => [true, 'No API key is saved in the Brevo plugin.'],
+            'editor, no Brevo reason'  => [false, null],
+            'editor, Brevo reason set' => [false, 'No API key is saved in the Brevo plugin.'],
+        ];
+    }
 
+    /**
+     * The switch state was not read, so no viewer sees a guessed state, the
+     * admin-only reason or a Brevo reason.
+     */
+    #[DataProvider('probeFailedSwitchProvider')]
+    #[Group('regression')]
+    public function test_featureSwitch_switchStateNotRead_isUnavailableWithTheUnreadableReason(bool $canToggle, ?string $brevoReason): void
+    {
+        $this->assertSame(
+            [
+                'checked'        => false,
+                'disabled'       => true,
+                'disabledReason' => 'The switch state could not be read. Check the system log for'
+                    . ' VerificationConfigWarning entries.',
+                'unavailable'    => true,
+            ],
+            self::makeStatus(['probeFailed' => true, 'enabled' => null, 'brevoReason' => $brevoReason, 'cronReady' => null])
+                ->featureSwitch($canToggle)
+        );
+    }
+
+    /** An admin must always be able to turn verification off, even after a later read threw. */
+    #[Group('regression')]
+    public function test_featureSwitch_probeFailedAfterSwitchOnWasRead_adminCanTurnItOff(): void
+    {
+        $this->assertSame(
+            ['checked' => true, 'disabled' => false, 'disabledReason' => '', 'unavailable' => false],
+            self::makeStatus(['probeFailed' => true, 'enabled' => true, 'cronReady' => null])->featureSwitch(true)
+        );
+    }
+
+    #[Group('regression')]
+    public function test_featureSwitch_probeFailedAfterSwitchOnWasRead_editorSeesTheAdminOnlyReason(): void
+    {
+        $this->assertSame(
+            [
+                'checked'        => true,
+                'disabled'       => true,
+                'disabledReason' => 'Only administrators can change this setting.',
+                'unavailable'    => false,
+            ],
+            self::makeStatus(['probeFailed' => true, 'enabled' => true, 'cronReady' => null])->featureSwitch(false)
+        );
+    }
+
+    /** Turning on stays blocked, because the probe did not check the Brevo status. */
+    #[Group('regression')]
+    public function test_featureSwitch_probeFailedAfterSwitchOffWasRead_blocksTurningOnWithTheNotCheckedReason(): void
+    {
+        $switch = self::makeStatus(['probeFailed' => true, 'enabled' => false, 'cronReady' => null])
+            ->featureSwitch(true);
+
+        $this->assertFalse($switch['checked']);
         $this->assertTrue($switch['disabled']);
-        $this->assertStringContainsString('The Brevo status could not be checked.', $switch['disabledReason']);
+        $this->assertFalse($switch['unavailable']);
+        $this->assertStringContainsString('Some verification settings could not be read.', $switch['disabledReason']);
     }
 
     // ---- Automatic Sending card state (#1885, #2148) ----
@@ -877,7 +1033,7 @@ final class VerificationTabStatusTest extends TestCase
     /**
      * One failed job read marks only that job's row Unavailable
      *
-     * Job state is not part of allHealthy(); test_allHealthy_failedJobBadgesDoNotChangeIt pins that.
+     * test_allHealthy_jobStateUnknown_isNotHealthy pins the allHealthy() side.
      */
     #[DataProvider('failedJobRowProvider')]
     #[Group('regression')]
@@ -1031,11 +1187,12 @@ final class VerificationTabStatusTest extends TestCase
     }
 
     /**
-     * read() leaves the switch value false when the settings probe throws.
-     * The real switch state is unknown, so the row must not say "switch is off".
+     * read() leaves the switch value null when the settings probe throws first.
+     * The real switch state is unknown, so the row must not say "switch is off",
+     * and the switch and cron row must not show a guessed value.
      */
     #[Group('regression')]
-    public function test_read_settingsProbeThrows_brevoRowIsNotReadyWithTheCheckTheLogHint(): void
+    public function test_read_settingsProbeThrows_brevoRowIsNotReadyAndSwitchAndCronAreUnavailable(): void
     {
         $db = self::healthyJobsDb();
         $db->throwOnSettings = true;
@@ -1052,13 +1209,143 @@ final class VerificationTabStatusTest extends TestCase
         );
 
         $switch = $status->featureSwitch(true);
+        $this->assertTrue($switch['unavailable']);
         $this->assertFalse($switch['checked']);
         $this->assertTrue($switch['disabled']);
         $this->assertSame(
-            'Verification cannot be enabled until Brevo is ready. The Brevo status could not be checked.'
-                . ' Fix this, then reload this page.',
+            'The switch state could not be read. Check the system log for VerificationConfigWarning entries.',
             $switch['disabledReason']
         );
+
+        $this->assertSame('Unavailable', self::badgesByKey($status)['cron']['badgeText']);
+    }
+
+    /**
+     * The switch read worked and the later Brevo read threw. The admin keeps
+     * a real, usable switch, so verification can be turned off in an incident.
+     */
+    #[Group('regression')]
+    public function test_read_brevoReadThrowsAfterSwitchOnWasRead_adminGetsACheckedUsableSwitch(): void
+    {
+        $db = self::healthyJobsDb();
+        $db->settingsRow        = ['enabled' => 1];
+        $db->throwOnBrevoPlugin = true;
+
+        $status = VerificationTabStatus::read($db, 7);
+
+        $this->assertTrue($status->probeFailed());
+        $this->assertSame(
+            ['checked' => true, 'disabled' => false, 'disabledReason' => '', 'unavailable' => false],
+            $status->featureSwitch(true)
+        );
+        $this->assertSame('Unavailable', self::badgesByKey($status)['cron']['badgeText']);
+    }
+
+    /**
+     * UserSpice DB::query() reports a failed execute through error() and does
+     * not throw. The switch and the batch size must then show "Unavailable",
+     * not the fail-closed defaults "off" and 5 (#2457).
+     */
+    #[Group('regression')]
+    public function test_read_switchAndBatchSizeQueriesFail_bothAreUnavailableAndTheTabIsNotHealthy(): void
+    {
+        $db = self::healthyJobsDb();
+        $db->settingsRow          = ['enabled' => 1, 'batch_size' => 12, 'unmatched_recipient_count' => 0];
+        $db->settingsErrorColumns = ['enabled', 'batch_size'];
+
+        $status = VerificationTabStatus::read($db, 7);
+
+        $this->assertFalse($status->probeFailed());
+        $this->assertNull($status->batchSize());
+        $this->assertTrue($status->featureSwitch(true)['unavailable']);
+        $this->assertFalse($status->allHealthy());
+        $this->assertLogged(
+            LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING,
+            'Failed to read er_verification_settings.batch_size'
+        );
+    }
+
+    /** A missing row is not a query failure, so the batch size is the default 5. */
+    public function test_read_settingsRowMissing_batchSizeIsTheDefault(): void
+    {
+        $db = self::healthyJobsDb();
+
+        $status = VerificationTabStatus::read($db, 7);
+
+        $this->assertSame(5, $status->batchSize());
+        $this->assertFalse($status->featureSwitch(true)['unavailable']);
+    }
+
+    public function test_read_storedBatchSizeReachesTheTab(): void
+    {
+        $db = self::healthyJobsDb();
+        $db->settingsRow = ['batch_size' => 12];
+
+        $this->assertSame(12, VerificationTabStatus::read($db, 7)->batchSize());
+    }
+
+    /** Only the batch size query failed: the badge must not be green next to "Unavailable". */
+    #[Group('regression')]
+    public function test_read_onlyBatchSizeQueryFails_isNotHealthyAndTheRestIsRead(): void
+    {
+        $db = self::healthyJobsDb();
+        $db->settingsRow          = [
+            'enabled'                   => 1,
+            'batch_size'                => 12,
+            'unmatched_recipient_count' => 0,
+            'last_cron_request_at'      => date('Y-m-d H:i:s'),
+        ];
+        $db->settingsErrorColumns = ['batch_size'];
+
+        $status = VerificationTabStatus::read($db, 7);
+
+        $this->assertNull($status->batchSize());
+        $this->assertTrue($status->featureSwitch(true)['checked']);
+        $this->assertFalse($status->allHealthy());
+        $this->assertTrue(self::makeStatus(['batchSize' => 12])->allHealthy(), 'Control: a read batch size is healthy');
+    }
+
+    /** A throw in the settings probe must not hide a batch size that can be read. */
+    #[Group('regression')]
+    public function test_read_brevoReadThrows_batchSizeIsStillRead(): void
+    {
+        $db = self::healthyJobsDb();
+        $db->settingsRow        = ['enabled' => 1, 'batch_size' => 12];
+        $db->throwOnBrevoPlugin = true;
+
+        $status = VerificationTabStatus::read($db, 7);
+
+        $this->assertTrue($status->probeFailed());
+        $this->assertSame(12, $status->batchSize());
+    }
+
+    #[Group('regression')]
+    public function test_read_batchSizeProbeThrows_isUnavailableAndLogsUnderConfigWarning(): void
+    {
+        $db = self::healthyJobsDb();
+        $db->throwOnSettings = true;
+
+        $status = VerificationTabStatus::read($db, 7);
+
+        $this->assertNull($status->batchSize());
+        $this->assertLogged(
+            LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING,
+            'Verification tab batch size probe failed: RuntimeException (code '
+        );
+        foreach ($GLOBALS['mockLogEntries'] as $entry) {
+            if (str_starts_with((string) $entry['message'], 'Verification tab batch size probe failed')) {
+                $this->assertStringNotContainsString('simulated settings outage', (string) $entry['message'], 'The log holds no exception message');
+            }
+        }
+    }
+
+    /** An unread switch is not "off", so the Brevo row must not say "switch is off". */
+    public function test_brevoRow_switchNotReadAndBrevoNotReady_showsTheBrevoReason(): void
+    {
+        $row = self::row('brevo', ['enabled' => null, 'brevoReason' => 'No API key is saved in the Brevo plugin.']);
+
+        $this->assertSame('Not ready', $row['badgeText']);
+        $this->assertSame('No API key is saved in the Brevo plugin.', $row['detail']);
     }
 
     public function test_read_logsAreAttributedToTheActingUser(): void

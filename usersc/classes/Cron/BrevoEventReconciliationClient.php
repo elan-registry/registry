@@ -42,6 +42,12 @@ use ElanRegistry\LogCategories;
  * report"), though that method's own success shape differs: it returns a
  * single page object (never `[]`), not an array.
  *
+ * Because `null` covers both "Brevo is not set up here" (no plg_sendinblue
+ * table, no key) and a pre-flight fault (the settings read failed, or a key
+ * is set but the SDK is missing or does not load), {@see readiness()} runs
+ * the same pre-flight checks and tells the two apart, so the job can ping
+ * success for the first and `/fail` for the second (#2480).
+ *
  * Not `final`, matching {@see \ElanRegistry\Car\CarRepository} and
  * {@see \ElanRegistry\Car\CarVerificationManager}: this class is an injected
  * collaborator of {@see BrevoEventReconciliationJob}, and the job's unit tests
@@ -88,6 +94,32 @@ class BrevoEventReconciliationClient
     }
 
     /**
+     * Run the pre-flight checks of {@see fetchEvents()} and say whether a poll can run.
+     *
+     * Writes the same log lines as those checks: a `CronJobSkipped` row for
+     * each NOT_CONFIGURED cause and a `CronJobFailure` row for each FAILED
+     * cause. It adds no log line of its own. The settings read runs here
+     * once and again in each fetchEvents() call.
+     *
+     * loadSdk() runs only after a key is found, so each SDK fault here is
+     * a FAILED: with a key set, Brevo is meant to run on this site.
+     *
+     * @return BrevoClientReadiness READY if the key is set and the SDK loaded;
+     *         NOT_CONFIGURED if the plg_sendinblue table or the key is absent;
+     *         FAILED if the plg_sendinblue read failed, or if the key is set
+     *         and the SDK autoloader is absent or did not load the API class
+     */
+    public function readiness(): BrevoClientReadiness
+    {
+        $apiKey = $this->apiKey();
+        if ($apiKey['key'] === null) {
+            return $apiKey['readiness'];
+        }
+
+        return $this->loadSdk();
+    }
+
+    /**
      * Fetch one page of transactional delivery events of one type for the given window.
      *
      * One type per call: in a mixed page, a high-volume type such as
@@ -120,29 +152,16 @@ class BrevoEventReconciliationClient
         int $offset,
         string $eventType
     ): ?array {
-        $apiKey = $this->apiKey();
+        $apiKey = $this->apiKey()['key'];
         if ($apiKey === null) {
             return null;
         }
 
-        if (!$this->loadSdk()) {
-            return null;
-        }
-
         try {
-            $credentials = \Brevo\Client\Configuration::getDefaultConfiguration()
-                ->setApiKey('api-key', $apiKey);
-            if ($hostOverride = \ElanRegistry\Email\BrevoDevOverride::hostOverride()) {
-                $credentials->setHost($hostOverride);
+            $apiInstance = $this->createApi($apiKey);
+            if ($apiInstance === null) {
+                return null;
             }
-
-            $apiInstance = new \Brevo\Client\Api\TransactionalEmailsApi(
-                new \GuzzleHttp\Client([
-                    'timeout' => self::TIMEOUT_SECONDS,
-                    'connect_timeout' => self::CONNECT_TIMEOUT_SECONDS,
-                ]),
-                $credentials
-            );
 
             // Positional arguments, per the generated SDK signature:
             //   getEmailEventReport($limit, $offset, $startDate, $endDate, $days,
@@ -192,6 +211,43 @@ class BrevoEventReconciliationClient
     }
 
     /**
+     * Build the Brevo transactional email API client.
+     *
+     * A test seam, as in {@see BrevoSuppressionSyncClient::createApi()}: a
+     * subclass can return a double that throws, to reach the poll catch of
+     * fetchEvents() without a network call. The seam covers the SDK load
+     * too, because the SDK may be absent and a seam after loadSdk() could
+     * then not be reached. The return type is `?object`, not the SDK class, because
+     * a double of another class would fail a native SDK return type when the
+     * SDK is absent.
+     *
+     * @param string $apiKey The Brevo API key
+     * @return \Brevo\Client\Api\TransactionalEmailsApi|null The client, or
+     *         null if the SDK did not load (loadSdk() has logged why). An
+     *         override that returns null must log why too.
+     */
+    protected function createApi(string $apiKey): ?object
+    {
+        if ($this->loadSdk() !== BrevoClientReadiness::READY) {
+            return null;
+        }
+
+        $credentials = \Brevo\Client\Configuration::getDefaultConfiguration()
+            ->setApiKey('api-key', $apiKey);
+        if ($hostOverride = \ElanRegistry\Email\BrevoDevOverride::hostOverride()) {
+            $credentials->setHost($hostOverride);
+        }
+
+        return new \Brevo\Client\Api\TransactionalEmailsApi(
+            new \GuzzleHttp\Client([
+                'timeout' => self::TIMEOUT_SECONDS,
+                'connect_timeout' => self::CONNECT_TIMEOUT_SECONDS,
+            ]),
+            $credentials
+        );
+    }
+
+    /**
      * Read the Brevo API key from the sendinblue plugin's settings row.
      *
      * Mirrors the defensive read in
@@ -199,10 +255,11 @@ class BrevoEventReconciliationClient
      * the looser style of the plugin's own `sendinblue()` function, which
      * dereferences the row without checking that the query succeeded.
      *
-     * @return string|null The key, or null if there is no API key or the
-     *                     row could not be read
+     * @return array{key: string|null, readiness: BrevoClientReadiness} The
+     *         key with READY; or a null key with NOT_CONFIGURED (no table, no
+     *         key) or FAILED (any other read error)
      */
-    private function apiKey(): ?string
+    private function apiKey(): array
     {
         $this->db->query('SELECT * FROM plg_sendinblue');
 
@@ -235,19 +292,25 @@ class BrevoEventReconciliationClient
                     $this->db->errorString() ?: 'unknown'
                 )
             );
-            return null;
+            return [
+                'key' => null,
+                'readiness' => $sqlState === '42S02'
+                    ? BrevoClientReadiness::NOT_CONFIGURED
+                    : BrevoClientReadiness::FAILED,
+            ];
         }
 
         $settings = $this->db->first();
         if (!is_object($settings) || empty($settings->key)) {
             // SKIPPED, not FAILURE: an environment with no Brevo key is
             // a valid setup, and would otherwise log a
-            // "failure" every claimed run in perpetuity.
+            // "failure" every claimed run in perpetuity. NOT_CONFIGURED
+            // lets the job ping success for the same reason (#2480).
             logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_SKIPPED, 'Brevo event reconciliation: no Brevo API key configured in plg_sendinblue — skipping poll.');
-            return null;
+            return ['key' => null, 'readiness' => BrevoClientReadiness::NOT_CONFIGURED];
         }
 
-        return (string) $settings->key;
+        return ['key' => (string) $settings->key, 'readiness' => BrevoClientReadiness::READY];
     }
 
     /**
@@ -256,29 +319,36 @@ class BrevoEventReconciliationClient
      * Idempotent (`require_once`) and safe to call when the SDK is already
      * loaded — for instance when `sendinblue()` ran earlier in the same
      * request. Guarded by a class_exists() short-circuit and a file_exists()
-     * check so that a missing plugin is a logged skip rather than a fatal,
-     * which also keeps this class constructible in unit tests without the
-     * plugin present.
+     * check so that a missing autoloader is a logged failure rather than a
+     * fatal, which also keeps this class constructible in unit tests without
+     * the plugin present.
      *
-     * @return bool True if the SDK is available
+     * Call it only after apiKey() found a key (readiness() and createApi()
+     * both do). With a key set, a missing autoloader is a fault, for example
+     * a deploy that deleted the plugin vendor tree, not a site without Brevo.
+     *
+     * @return BrevoClientReadiness READY if the SDK is available; FAILED if
+     *         its autoloader is absent, throws, or does not load the API class
      */
-    private function loadSdk(): bool
+    private function loadSdk(): BrevoClientReadiness
     {
         if (class_exists('\Brevo\Client\Api\TransactionalEmailsApi')) {
-            return true;
+            return BrevoClientReadiness::READY;
         }
 
         global $abs_us_root, $us_url_root;
         $autoload = ($abs_us_root ?? '') . ($us_url_root ?? '') . self::SDK_AUTOLOAD_RELATIVE_PATH;
 
         if (!file_exists($autoload)) {
-            // SKIPPED, not FAILURE: no plugin installed is an expected steady
-            // state (see apiKey()'s 42S02 branch for the same reasoning).
-            logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_SKIPPED, sprintf(
-                'Brevo event reconciliation: SDK autoloader not found at %s (sendinblue plugin not installed) — skipping poll.',
+            // FAILURE, not SKIPPED: a key is set, so Brevo is meant to run
+            // here. A skip would let the job ping success and keep the
+            // Verification tab at "Ready" while no poll can run.
+            logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
+                'Brevo event reconciliation: a Brevo API key is set, but the SDK autoloader is not found at %s'
+                . ' — the sendinblue plugin vendor tree looks missing. Skipping poll.',
                 $autoload
             ));
-            return false;
+            return BrevoClientReadiness::FAILED;
         }
 
         try {
@@ -296,7 +366,7 @@ class BrevoEventReconciliationClient
                 $autoload,
                 ExceptionLogSummary::of($e)
             ));
-            return false;
+            return BrevoClientReadiness::FAILED;
         }
 
         if (!class_exists('\Brevo\Client\Api\TransactionalEmailsApi')) {
@@ -309,9 +379,9 @@ class BrevoEventReconciliationClient
                 . ' the vendored SDK tree looks incomplete. Skipping poll.',
                 $autoload
             ));
-            return false;
+            return BrevoClientReadiness::FAILED;
         }
 
-        return true;
+        return BrevoClientReadiness::READY;
     }
 }

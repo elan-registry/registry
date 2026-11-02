@@ -34,14 +34,18 @@ use ElanRegistry\Car\CarRepository;
  *
  *  - confirmed:  last_verified 30 days ago, owner_last_updated 2 years ago.
  *                The row says "Last confirmed <date>". It also has a vericode,
- *                for the vericode landing page.
+ *                for the vericode landing page, and a lat/lon, so the landing
+ *                draws the Location map (#2495). The owner profile has no
+ *                lat/lon, so a confirm or an owner sync on this car clears
+ *                the car's lat/lon and the map test then fails.
  *  - current:    last_verified NULL, owner_last_updated 45 days ago. The row
  *                says "Current since <date>".
  *  - stale:      both dates 2 years ago. The row says "Not specified".
  *  - bounced:    fresh. Its owner is a second user, with a profile that has
  *                email_bounced = 1 and a bounced address.
  *  - suppressed: fresh. Its owner is a third user, with a profile that has
- *                email_opted_out = 1. It also has a vericode.
+ *                email_opted_out = 1. It also has a vericode. It has no
+ *                lat/lon, so the landing shows the Location placeholder.
  *
  * Two more cars show the Email on file states of #2361. Each has its own
  * owner, and both are listed apart from the five above, under "stateCars" in
@@ -327,6 +331,7 @@ if ($verifiedRowMode) {
             'year' => 1970, 'chassis' => SEED_CHASSIS_PREFIX . 'C',
             'ctime' => $twoYearsAgo, 'purchasedate' => '1990-05-01',
             'last_verified' => $thirtyDaysAgo, 'owner_last_updated' => $twoYearsAgo,
+            'lat' => 51.5072, 'lon' => -0.1276,
         ],
         'current' => [
             'year' => 1971, 'chassis' => SEED_CHASSIS_PREFIX . 'U',

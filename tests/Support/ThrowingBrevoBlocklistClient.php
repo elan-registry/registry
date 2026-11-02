@@ -4,14 +4,18 @@ declare(strict_types=1);
 
 namespace Tests\Support;
 
+use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Email\BrevoBlocklistClient;
+
+require_once __DIR__ . '/FakeBrevoApiFactory.php';
 
 /**
  * ThrowingBrevoBlocklistClient - BrevoBlocklistClient whose SDK call throws,
  * for the Clear Block log tests
  *
- * It replaces the `createApi()` seam only, so the real `unblock()` runs: the
- * address check, the API key read, the call, and the catch. The API object
+ * It passes a {@see FakeBrevoApiFactory} whose API object throws, so the real
+ * `unblock()` runs: the address check, the API key read, the call, and the
+ * catch. The API object
  * throws a RuntimeException whose message holds an address, as the SDK does
  * (its messages hold the request URL). A test can then show that the address
  * reaches neither the result nor the log.
@@ -33,10 +37,9 @@ class ThrowingBrevoBlocklistClient extends BrevoBlocklistClient
     /** The code of the thrown exception. Not an HTTP status. */
     public const EXCEPTION_CODE = 2357;
 
-    protected function createApi(string $apiKey): object
+    public function __construct(DatabaseInterface $db)
     {
-        // @phpstan-ignore return.type (intentional: the stand-in cannot extend the SDK class, which CI does not have)
-        return new ThrowingBrevoUnblockApi();
+        parent::__construct($db, new FakeBrevoApiFactory($db, new ThrowingBrevoUnblockApi()));
     }
 }
 

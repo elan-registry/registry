@@ -1,6 +1,43 @@
 <?php
 if (count(get_included_files()) == 1) { die(); }
 
+/**
+ * Factory Data card, shared by app/owner/cars/details.php and
+ * usersc/account.php.
+ *
+ * Caller must set:
+ *   $factoryData object Factory row (Car::factory()). A null value logs an
+ *                       error, so include the card only when it is not null.
+ *   $headingTag  string Card heading element, h1-h6 (default h3)
+ *
+ * Caller may set:
+ *   $carId       int    Car ID for the log lines. Default 0.
+ *
+ * The defaults below let PHPStan analyze this file alone. When $factoryData is
+ * missing or is not an object, the card draws nothing and logs one entry.
+ */
+$factoryData ??= null;
+$headingTag ??= 'h3';
+$carId ??= 0;
+
+if (!is_object($factoryData)) {
+    logger(0, ElanRegistry\LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
+        "_factory_data_card.php: \$factoryData is " . get_debug_type($factoryData) . " for car ID $carId, not an object. Card not drawn.");
+    return;
+}
+
+// The card parses the build date itself, so each caller does not repeat the
+// parse. A bad value hides the Build Date row and does not stop the page.
+$buildDate = null;
+if (!empty($factoryData->builddate)) {
+    try {
+        $buildDate = new DateTime($factoryData->builddate);
+    } catch (DateMalformedStringException $e) {
+        logger(0, ElanRegistry\LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
+            "_factory_data_card.php: invalid build date format for car ID $carId: " . $factoryData->builddate . ' (' . $e->getMessage() . ')');
+    }
+}
+
 $headingTag       = in_array($headingTag, ['h1','h2','h3','h4','h5','h6'], true) ? $headingTag : 'h3';
 $_cardHeaderClass = $headingTag === 'h4' ? ' card-header-er-l2' : '';
 $_headingClass    = $headingTag === 'h4' ? 'mb-0 card-header-er-l2-text' : 'mb-0';

@@ -53,8 +53,8 @@ class TransferEmailService
     /**
      * Ask the send policy whether one owner can get a transfer notice
      *
-     * A skip is logged here, so that sendRequest() can return true with no
-     * failure log. sendResponse() counts a skip as not sent.
+     * The service logs a skip here with the flag names. sendResponse() counts
+     * a skip as not sent.
      *
      * @param int $userId Owner user ID
      * @param string $context Caller label used in the log message (e.g. "Transfer request notification")
@@ -120,33 +120,39 @@ class TransferEmailService
     /**
      * Send transfer request notification to current owner.
      *
+     * A policy skip is not a send. The caller must know that the owner got
+     * no notice, so that it can tell the admin.
+     *
      * @param int $transferRequestId Transfer request ID
-     * @return bool True if the email was delivered, or the send policy skipped it
+     * @return TransferNoticeOutcome Sent when the mailer accepted the notice,
+     *                               Skipped when the send policy refused it,
+     *                               Failed on a lookup failure, a mailer
+     *                               failure, or an error
      */
-    public function sendRequest(int $transferRequestId): bool
+    public function sendRequest(int $transferRequestId): TransferNoticeOutcome
     {
         try {
             $ctx = $this->fetchTransferContext($transferRequestId, 'Transfer request notification');
             if ($ctx === false) {
-                return false;
+                return TransferNoticeOutcome::Failed;
             }
             ['transferData' => $transferData, 'carData' => $carData, 'carInfo' => $carInfo] = $ctx;
 
             $currentOwner = (new Owner(dbInt($carData, 'user_id'), $this->db))->data();
             if (!$currentOwner) {
                 logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer request notification failed: Current owner ID {$carData->user_id} not found");
-                return false;
+                return TransferNoticeOutcome::Failed;
             }
 
             $requester = (new Owner(dbInt($transferData, 'requested_by_user_id'), $this->db))->data();
             if (!$requester) {
                 logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer request notification failed: Requester ID {$transferData->requested_by_user_id} not found");
-                return false;
+                return TransferNoticeOutcome::Failed;
             }
 
             $currentOwnerId = dbInt($carData, 'user_id');
             if (!$this->policyAllows($currentOwnerId, 'Transfer request notification')) {
-                return true;
+                return TransferNoticeOutcome::Skipped;
             }
 
             $transferRequest = (object)[
@@ -163,11 +169,11 @@ class TransferEmailService
 
             if ($result) {
                 logger($transferData->requested_by_user_id, LogCategories::LOG_CATEGORY_EMAIL_SUCCESS, "Transfer request notification sent to current owner: user $currentOwnerId");
-                return true;
+                return TransferNoticeOutcome::Sent;
             }
 
             logger($transferData->requested_by_user_id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Failed to send transfer request notification to current owner: user $currentOwnerId");
-            return false;
+            return TransferNoticeOutcome::Failed;
 
         } catch (Throwable $e) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
@@ -175,7 +181,7 @@ class TransferEmailService
                 $transferRequestId,
                 ExceptionLogSummary::of($e)
             ));
-            return false;
+            return TransferNoticeOutcome::Failed;
         }
     }
 
@@ -183,9 +189,11 @@ class TransferEmailService
      * Send transfer request admin alert.
      *
      * @param int $transferRequestId Transfer request ID
+     * @param TransferNoticeOutcome $ownerNotice Result of sendRequest(). When the
+     *                                           owner got no notice, the alert says so.
      * @return bool True if at least one admin email was delivered
      */
-    public function sendAdminAlert(int $transferRequestId): bool
+    public function sendAdminAlert(int $transferRequestId, TransferNoticeOutcome $ownerNotice = TransferNoticeOutcome::Sent): bool
     {
         try {
             $adminEmails = array_filter(array_map('trim', explode(',', getAdminEmails())));
@@ -221,7 +229,7 @@ class TransferEmailService
 
             $reviewUrl = getBaseUrl() . '/app/admin/index.php';
 
-            $emailBody = $this->buildAdminEmailBody($currentOwner, $requester, $carInfo, $transferRequest, $reviewUrl);
+            $emailBody = $this->buildAdminEmailBody($currentOwner, $requester, $carInfo, $transferRequest, $reviewUrl, $ownerNotice);
 
             $subject = EMAIL_SUBJECT_PREFIX . " ADMIN ALERT: Transfer Request #$transferRequestId - {$carData->year} {$carData->series} (Chassis: {$carData->chassis})";
 
@@ -461,6 +469,7 @@ class TransferEmailService
      * @param object $carInfo Car detail object
      * @param object $transferRequest Transfer request detail object
      * @param string $reviewUrl Admin review URL
+     * @param TransferNoticeOutcome $ownerNotice Result of the notice to the current owner
      * @return string Rendered HTML email body
      */
     private function buildAdminEmailBody(
@@ -468,7 +477,8 @@ class TransferEmailService
         object $requester,
         object $carInfo,
         object $transferRequest,
-        string $reviewUrl
+        string $reviewUrl,
+        TransferNoticeOutcome $ownerNotice
     ): string {
         $et = new EmailTemplate();
         $carDetails =
@@ -491,8 +501,13 @@ class TransferEmailService
             $et->createDetailRow('Request ID', (string)$transferRequest->id) .
             $et->createDetailRow('Submitted', $this->formatDate($transferRequest->request_date, 'request_date')) .
             $et->createDetailRow('Expires', $this->formatDate($transferRequest->expires_at, 'expires_at'));
+        // Without this box the admin can approve a transfer that the owner got no notice of.
+        $ownerNoticeBox = $ownerNotice->ownerWasNotified() ? '' :
+            $et->createMessageBox('Owner Not Notified',
+                '<p>The registry sent no notice of this request to the current owner.</p>', 'alert');
         $content = '
     <p><strong>A new car ownership transfer request requires administrative review.</strong></p>
+    ' . $ownerNoticeBox . '
     ' . $et->createMessageBox('Transfer Request Details', $requestDetails, 'alert') . '
     ' . $et->createButton('Review Transfer Request', $reviewUrl, 'primary') . '
     ' . $et->createMessageBox('Car Information', $carDetails) . '
