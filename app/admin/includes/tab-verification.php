@@ -778,13 +778,28 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                             ? EffectiveEmailFlags::eligible()
                             : EffectiveEmailFlags::fromQueueRow($queueCar);
 
-                        $queueChip = VerificationTabStatus::chip($vsChipEvents[$queueCarId] ?? null, $queueFlags);
+                        // An Eligible preview row comes from findVerificationEligible()
+                        // (`cars.*`) and has no queue columns. The eligibility query
+                        // excludes a malformed address, so such a row is never one (#2594).
+                        $queueAddressMalformed = !$vsIsEligibleView
+                            && (int) $queueCar->email_address_malformed === 1;
+
+                        $queueChip = VerificationTabStatus::chip(
+                            $vsChipEvents[$queueCarId] ?? null,
+                            $queueFlags,
+                            $queueAddressMalformed
+                        );
 
                         // The owner actions write the profiles row, so an owner
                         // with no row has no action until an admin fixes the row.
                         if (!$queueFlags->hasProfile) {
                             $queueOwnerIsActionable = false;
                             $queueNoActionTitle = 'This owner has no profile row. Fix the profile before you change email state.';
+                        } elseif ($queueAddressMalformed && $queueOwnerIsActionable) {
+                            // The fix is the address itself, not an email-state action.
+                            // A row that is already not actionable keeps its own title.
+                            $queueOwnerIsActionable = false;
+                            $queueNoActionTitle = "This owner's email address is not valid. Fix the address on the owner's account.";
                         }
 
                         // One action per row, from the owner's state, in the order Clear Block,

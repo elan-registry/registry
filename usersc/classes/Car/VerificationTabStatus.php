@@ -436,10 +436,13 @@ final readonly class VerificationTabStatus
     /**
      * Give the Status chip for one queue row
      *
-     * The owner's profile state comes first, because it stops all
-     * verification email to the owner (#2101): no profiles row, then a
-     * block, then a bounce, then an opt-out (#2461). The order is the same
-     * as SendPolicy::verificationReason() and
+     * The owner's state comes first, because it stops all verification
+     * email to the owner (#2101): no profiles row, then a malformed address
+     * (#2594), then a block, then a bounce, then an opt-out (#2461). The
+     * eligibility query keeps a car with a malformed address out of the
+     * batch, and the admin must fix the address first, so that state comes
+     * before the flags. For the block, the bounce and the opt-out, the order
+     * is the same as SendPolicy::verificationReason() and
      * EmailNoticeBuilder::buildForOwner(): a block and a bounce are facts
      * about the address, and an opt-out is a preference. The chip takes the
      * same EffectiveEmailFlags value as the other two views, so `blocked`
@@ -454,10 +457,12 @@ final readonly class VerificationTabStatus
      *
      * @param object|null         $event The chip event row, or null if the car has none
      * @param EffectiveEmailFlags $flags The owner's flags, for example from {@see EffectiveEmailFlags::fromQueueRow()}
+     * @param bool                $addressMalformed True when the owner's current address is malformed,
+     *                                              from the queue row's `email_address_malformed`
      * @return array{kind: string, label: string, class: string, reason: string}
      *         `kind` is '' when there is no event to show
      */
-    public static function chip(?object $event, EffectiveEmailFlags $flags): array
+    public static function chip(?object $event, EffectiveEmailFlags $flags, bool $addressMalformed = false): array
     {
         $name   = isset($event->event) ? (string) $event->event : null;
         $reason = trim((string) ($event->reason ?? ''));
@@ -466,6 +471,9 @@ final readonly class VerificationTabStatus
 
         if (!$flags->hasProfile) {
             return ['kind' => 'no_profile', 'label' => 'No profile', 'class' => 'text-bg-warning', 'reason' => ''];
+        }
+        if ($addressMalformed) {
+            return ['kind' => 'bad_address', 'label' => 'Invalid email', 'class' => 'text-bg-warning', 'reason' => ''];
         }
         if ($flags->blocked) {
             return ['kind' => 'blocked', 'label' => 'Blocked', 'class' => 'text-bg-danger',

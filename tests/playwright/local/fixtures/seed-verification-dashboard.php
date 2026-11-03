@@ -30,6 +30,9 @@ use ElanRegistry\DatabaseInterface;
  *    blocklist — lands in the Blocked pill, chip "Blocked".
  *  - NO_PROFILE_USERNAME / NO_PROFILE car: pending, and the owner has no
  *    profiles row — chip "No profile", with no action button.
+ *  - BAD_ADDRESS_USERNAME / BAD_ADDRESS car (#2594): unsold, a live
+ *    link (so Pending), and the owner's users.email is `None`. Chip
+ *    "Invalid email", with no action button.
  *  - SOFT_BOUNCE_USERNAME / SOFT_BOUNCE car: pending (no bounce flag),
  *    with one `soft_bounce` er_email_events row after its `sent` row, and an
  *    owner-level `delivered` row with car_id NULL AFTER that soft bounce. A
@@ -156,6 +159,13 @@ const SEED_NO_PROFILE_USERNAME = '__playwright_seed_vd_noprofile_owner__';
 const SEED_NO_PROFILE_EMAIL = 'playwright-seed-vd-noprofile-owner@example.invalid';
 const SEED_NO_PROFILE_CAR_MODEL = '__PW_SEED_VD_NOPROFILE__';
 
+// #2594: the address has no `@`, so a send would fail. The car is pending
+// (a link was sent before the address went bad) so that the Pending pill
+// lists it: "All" is ordered by id and is flooded with low-id rows locally.
+const SEED_BAD_ADDRESS_USERNAME = '__playwright_seed_vd_badaddress_owner__';
+const SEED_BAD_ADDRESS_EMAIL = 'None';
+const SEED_BAD_ADDRESS_CAR_MODEL = '__PW_SEED_VD_BADADDRESS__';
+
 const SEED_SOFT_BOUNCE_USERNAME = '__playwright_seed_vd_softbounce_owner__';
 const SEED_SOFT_BOUNCE_EMAIL = 'playwright-seed-vd-softbounce-owner@example.invalid';
 const SEED_SOFT_BOUNCE_CAR_MODEL = '__PW_SEED_VD_SOFTBOUNCE__';
@@ -207,6 +217,7 @@ const SEED_USERNAME_MODEL_PAIRS = [
     [SEED_SUPPRESSED_USERNAME, SEED_SUPPRESSED_CAR_MODEL],
     [SEED_BLOCKED_USERNAME, SEED_BLOCKED_CAR_MODEL],
     [SEED_NO_PROFILE_USERNAME, SEED_NO_PROFILE_CAR_MODEL],
+    [SEED_BAD_ADDRESS_USERNAME, SEED_BAD_ADDRESS_CAR_MODEL],
     [SEED_SOFT_BOUNCE_USERNAME, SEED_SOFT_BOUNCE_CAR_MODEL],
     [SEED_PRECEDENCE_USERNAME, SEED_PRECEDENCE_CAR_MODEL],
     [SEED_VERIFIED_USERNAME, SEED_VERIFIED_CAR_MODEL],
@@ -554,6 +565,22 @@ $bouncedCarIdB = $carRepository->lastId();
     null
 );
 
+// --- Bad address (#2594): Pending pill, "Invalid email" chip, no action ---
+[$badAddressUserId, $badAddressCarId] = seedDashboardOwnerAndCar(
+    $db,
+    $carRepository,
+    SEED_BAD_ADDRESS_USERNAME,
+    SEED_BAD_ADDRESS_EMAIL,
+    [
+        'model'              => SEED_BAD_ADDRESS_CAR_MODEL,
+        'chassis'            => 'SEEDVDB' . bin2hex(random_bytes(3)),
+        'vericode'           => hashVericode('seed-vd-badaddress-code'),
+        'vericode_sent_at'   => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+        'last_verified'      => null,
+        'owner_last_updated' => $now->modify('-3 days')->format('Y-m-d H:i:s'),
+    ]
+);
+
 // --- Soft bounce: Pending pill, "Soft bounce" chip, Mark Bounced disabled --
 [$softBounceUserId, $softBounceCarId] = seedDashboardOwnerAndCar(
     $db,
@@ -775,6 +802,8 @@ echo json_encode([
     'blockedUserId'      => $blockedUserId,
     'noProfileCarId'     => $noProfileCarId,
     'noProfileUserId'    => $noProfileUserId,
+    'badAddressCarId'    => $badAddressCarId,
+    'badAddressUserId'   => $badAddressUserId,
     'softBounceCarId'    => $softBounceCarId,
     'softBounceUserId'   => $softBounceUserId,
     'precedenceCarId'    => $precedenceCarId,

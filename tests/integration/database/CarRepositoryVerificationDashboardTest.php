@@ -577,6 +577,88 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
         $this->assertSame($before - 1, $after, 'The all count includes the no-profile car');
     }
 
+    // --- malformed owner address (#2594) --------------------------------------------
+
+    /** The all-queue row of a car, or null when the car is not listed. */
+    private function allQueueRow(int $carId): ?object
+    {
+        foreach ($this->repo->findVerificationQueue('all', null, 100000) as $row) {
+            if ((int) $row->id === $carId) {
+                return $row;
+            }
+        }
+        return null;
+    }
+
+    #[Group('fast')]
+    public function testMalformedOwnerAddressCarIsInAllQueueAndCountButNotEligible(): void
+    {
+        $before = $this->repo->countVerificationSummary(null);
+
+        $badOwnerId = $this->createTestUser(['email' => 'None'], true);
+        $badCarId = $this->createTestCar($badOwnerId, $this->eligibleFields('dash-malformed@example.com'));
+        $goodCarId = $this->createTestCar($this->userId, $this->eligibleFields('dash-malformed-control@example.com'));
+
+        $after = $this->repo->countVerificationSummary(null);
+
+        $badRow = $this->allQueueRow($badCarId);
+        $this->assertNotNull($badRow, 'The malformed-address car must be listed under all');
+        $this->assertSame(1, (int) $badRow->email_address_malformed, 'The row must be marked as malformed');
+
+        $goodRow = $this->allQueueRow($goodCarId);
+        $this->assertNotNull($goodRow, 'Control: the well-formed car is listed under all');
+        $this->assertSame(0, (int) $goodRow->email_address_malformed, 'A well-formed address is not marked');
+
+        $this->assertNotContains(
+            $badCarId,
+            $this->queueIds($this->repo->findVerificationQueue('eligible', null, 100000)),
+            'A malformed-address car is not eligible'
+        );
+        // Two cars added; only the well-formed one is eligible, both are in all.
+        $this->assertSame($before['eligible'] + 1, $after['eligible'], 'Only the well-formed car is counted eligible');
+        $this->assertSame($before['all'] + 2, $after['all'], 'The all count includes the malformed car');
+    }
+
+    /**
+     * A malformed address matters only for a car that is a verification
+     * candidate. A sold car, a noowner car and an empty address are left out.
+     *
+     * @return array<string, array{string}>
+     */
+    public static function notMalformedCandidateProvider(): array
+    {
+        return [
+            'sold car'                   => ['sold'],
+            'noowner account'            => ['noowner'],
+            'white-space only address'   => ['blank'],
+        ];
+    }
+
+    #[Group('fast')]
+    #[DataProvider('notMalformedCandidateProvider')]
+    public function testMalformedAddressConditionIgnoresSoldNoownerAndBlankAddressCars(string $case): void
+    {
+        $fields = $this->eligibleFields('dash-not-candidate@example.com');
+        $ownerId = $this->createTestUser(['email' => 'None'], true);
+        if ($case === 'sold') {
+            $fields['solddate'] = date('Y-m-d');
+        } elseif ($case === 'noowner') {
+            $row = $this->db->query('SELECT id, email FROM users WHERE username = ?', ['noowner'])->first();
+            $this->assertNotEmpty($row, 'noowner system account missing');
+            $ownerId = (int) $row->id;
+            // Control: the account address is malformed, so only the noowner rule can leave the car out.
+            $this->assertDoesNotMatchRegularExpression('/^[^@\s]+@[^@\s]+\.[^@\s]+$/', (string) $row->email);
+        } else {
+            $this->setUserEmailRaw($ownerId, " \t ");
+        }
+        $carId = $this->createTestCar($ownerId, $fields);
+
+        $before = $this->repo->countVerificationSummary(null)['all'];
+        $this->assertNull($this->allQueueRow($carId), 'This car must not be listed under all');
+        $this->db->query('DELETE FROM cars WHERE id = ?', [$carId]);
+        $this->assertSame($before, $this->repo->countVerificationSummary(null)['all'], 'The all count ignores this car');
+    }
+
     // --- verified / sold: distinct cars, not raw cars_hist rows ------------------
 
     #[Group('fast')]

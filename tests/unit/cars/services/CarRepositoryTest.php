@@ -1569,6 +1569,15 @@ final class CarRepositoryTest extends TestCase
             'The empty test must strip all white space, as the send does. MySQL TRIM() strips only spaces.'
         );
         $this->assertStringNotContainsString('cars.email', $capturedSql);
+        // A malformed address fails at send time but takes a batch slot (#2594).
+        // The trimmed, lower-cased address must match one local part, one @,
+        // and a domain with a dot, with no white space.
+        $this->assertStringContainsString(
+            "AND LOWER(REGEXP_REPLACE(u.email, '^[[:space:]]+|[[:space:]]+$', '')) "
+                . "REGEXP '^[^@[:space:]]+@[^@[:space:]]+[.][^@[:space:]]+$'",
+            $capturedSql,
+            'Eligibility must require a well-formed owner address (#2594)'
+        );
         $this->assertStringContainsString(
             'SELECT cars.*',
             $capturedSql,
