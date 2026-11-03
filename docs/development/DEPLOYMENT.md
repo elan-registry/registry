@@ -1219,8 +1219,14 @@ After each deployment, verify:
       session landed on — `curl -I` showing `cf-cache-status: HIT` with a
       pre-deploy `age` on `usersc/js/*` was the tell). Purge
       `usersc/js/*`/`usersc/css/*` on every deploy that ran `npm run build`,
-      not only when a path is added/removed. Cloudflare dashboard → Caching →
-      Purge by prefix for `usersc/js/*`/`usersc/css/*`. Do not purge these by
+      not only when a path is added/removed. Run
+      `scripts/purge-cloudflare-cache.sh elanregistry.org` (or
+      `test.elanregistry.org`). It purges both prefixes through the
+      Cloudflare API with the purge-only token in 1Password, then checks the
+      edge (see [scripts/README.md](../../scripts/README.md#purge-cloudflare-cachesh)).
+      In the dashboard (Caching → Purge by prefix), enter each prefix as host
+      and path with no scheme, for example `elanregistry.org/usersc/js/`. Do
+      not purge these by
       URL: pages request them with a `?v=` query, and a purge by URL may not
       clear those cache entries. For other moved files, purge by URL, one
       entry per old path. Run `npm run test:e2e` afterwards; the redirect

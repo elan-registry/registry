@@ -240,10 +240,12 @@ deploy-wide, and can pass smoke testing if your own session happens to land
 on an already-fresh PoP. Purge before smoke testing below, on every deploy
 that ran npm run build — not only when a file was added, renamed, or removed.
 
-- [ ] Cloudflare dashboard → Caching → Purge by prefix — purge
-      usersc/js/* and usersc/css/* for test.elanregistry.org. Do not purge by URL. Pages
-      request these files with a ?v= query, and a purge by URL may not clear
-      those cache entries.
+- [ ] Purge usersc/js/ and usersc/css/ by prefix for test.elanregistry.org
+      (from <repo-path>). Do not purge by URL. Pages request these files
+      with a ?v= query, and a purge by URL may not clear those cache entries.
+
+scripts/purge-cloudflare-cache.sh test.elanregistry.org
+
 - [ ] Re-check the worker URL that browsers request for cf-cache-status: MISS
       (or a fresh age) after the purge (from <repo-path>):
 
@@ -324,10 +326,12 @@ Run 21-Fix-Page-Permissions.php from the Maintenance page on prod.
 
 Same reasoning as step 13 — required on every deploy that ran npm run build.
 
-- [ ] Cloudflare dashboard → Caching → Purge by prefix — purge
-      usersc/js/* and usersc/css/* for elanregistry.org. Do not purge by URL. Pages
-      request these files with a ?v= query, and a purge by URL may not clear
-      those cache entries.
+- [ ] Purge usersc/js/ and usersc/css/ by prefix for elanregistry.org
+      (from <repo-path>). Do not purge by URL. Pages request these files
+      with a ?v= query, and a purge by URL may not clear those cache entries.
+
+scripts/purge-cloudflare-cache.sh elanregistry.org
+
 - [ ] Re-check the worker URL that browsers request for cf-cache-status: MISS
       (or a fresh age) after the purge (from <repo-path>):
 
