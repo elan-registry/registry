@@ -88,6 +88,26 @@ Run after creating a new tag locally.
 ./scripts/update-version.sh
 ```
 
+## Deployment
+
+### purge-cloudflare-cache.sh
+
+Purges the Cloudflare cache for `usersc/js/` and `usersc/css/` on one host,
+by prefix, then checks that the edge no longer serves a cached copy of
+`usersc/js/chart.umd.min.js`. Run it after each deploy that ran
+`npm run build` (DEPLOYMENT.md, "Deployment Verification Checklist").
+
+```bash
+./scripts/purge-cloudflare-cache.sh elanregistry.org
+./scripts/purge-cloudflare-cache.sh test.elanregistry.org
+```
+
+It needs `op`, `curl` and `jq`. It reads the purge-only API token (Zone →
+Cache Purge → Purge, zone `elanregistry.org`) from 1Password with `op run`:
+`op://ElanRegistry/Cloudflare Purge ElanRegistry Cache API token/credential`.
+Exit codes: 0 purged and checked, 1 the API refused the purge, 2 bad usage,
+3 purged but the edge still serves an old copy.
+
 ## Git Hooks Management
 
 ### setup-git-hooks.sh
