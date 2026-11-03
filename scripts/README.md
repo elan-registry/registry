@@ -106,7 +106,7 @@ It needs `op`, `curl` and `jq`. It reads the purge-only API token (Zone →
 Cache Purge → Purge, zone `elanregistry.org`) from 1Password with `op run`:
 `op://ElanRegistry/Cloudflare Purge ElanRegistry Cache API token/credential`.
 Exit codes: 0 purged and checked, 1 the API refused the purge, 2 bad usage,
-3 purged but the edge still serves an old copy.
+3 purged but the edge check failed or the edge still serves an old copy.
 
 ## Git Hooks Management
 

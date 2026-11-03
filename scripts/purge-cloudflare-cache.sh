@@ -17,7 +17,8 @@
 #   scripts/purge-cloudflare-cache.sh test.elanregistry.org
 #
 # Exit codes: 0 purged and checked, 1 the API refused the purge,
-# 2 bad usage, 3 purged but the check still sees a cached copy.
+# 2 bad usage, 3 purged but the edge check failed or still sees a cached
+# copy.
 
 set -euo pipefail
 
@@ -68,16 +69,22 @@ echo "Purged $host/usersc/js/ and $host/usersc/css/."
 
 # A purge takes a few seconds to reach every edge.
 sleep 10
+# `|| true`: a failed check must not end the script silently, because the
+# purge already succeeded. An empty status reports the failure below.
 status=$(curl -sI "https://$host/$CHECK_PATH" | tr -d '\r' |
-    awk -F': ' 'tolower($1) == "cf-cache-status" {print $2}')
-echo "https://$host/$CHECK_PATH: cf-cache-status ${status:-unknown}"
+    awk -F': ' 'tolower($1) == "cf-cache-status" {print $2}' || true)
+if [ -z "$status" ]; then
+    echo "ERROR: edge check failed: no cf-cache-status from https://$host/$CHECK_PATH. The purge succeeded." >&2
+    exit 3
+fi
+echo "https://$host/$CHECK_PATH: cf-cache-status $status"
 
 # MISS (or any status other than HIT) passes: the edge fetched the file
 # from the origin, so it holds no pre-purge copy. HIT is correct only when
 # this request filled the cache after the purge, so check its age.
 if [ "$status" = "HIT" ]; then
     age=$(curl -sI "https://$host/$CHECK_PATH" | tr -d '\r' |
-        awk -F': ' 'tolower($1) == "age" {print $2}')
+        awk -F': ' 'tolower($1) == "age" {print $2}' || true)
     if ! [[ "${age:-0}" =~ ^[0-9]+$ ]]; then
         echo "ERROR: the edge returned HIT with an age header that is not a number: '$age'." >&2
         exit 3
