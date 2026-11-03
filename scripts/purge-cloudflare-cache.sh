@@ -56,9 +56,12 @@ response=$(CF_PURGE_BODY="$body" CF_ZONE_ID="$ZONE_ID" \
             --data "$CF_PURGE_BODY"
     ')
 
-if [ "$(jq -r '.success' <<<"$response")" != "true" ]; then
+# A network or proxy failure can return a body that is not JSON. Treat it
+# as a refusal and show the raw body.
+success=$(jq -r '.success // false' <<<"$response" 2>/dev/null || echo false)
+if [ "$success" != "true" ]; then
     echo "ERROR: Cloudflare refused the purge for $host:" >&2
-    jq -c '.errors' <<<"$response" >&2
+    jq -c '.errors' <<<"$response" >&2 2>/dev/null || echo "$response" >&2
     exit 1
 fi
 echo "Purged $host/usersc/js/ and $host/usersc/css/."
@@ -69,10 +72,16 @@ status=$(curl -sI "https://$host/$CHECK_PATH" | tr -d '\r' |
     awk -F': ' 'tolower($1) == "cf-cache-status" {print $2}')
 echo "https://$host/$CHECK_PATH: cf-cache-status ${status:-unknown}"
 
-# HIT is correct only when this request filled the cache after the purge.
+# MISS (or any status other than HIT) passes: the edge fetched the file
+# from the origin, so it holds no pre-purge copy. HIT is correct only when
+# this request filled the cache after the purge, so check its age.
 if [ "$status" = "HIT" ]; then
     age=$(curl -sI "https://$host/$CHECK_PATH" | tr -d '\r' |
         awk -F': ' 'tolower($1) == "age" {print $2}')
+    if ! [[ "${age:-0}" =~ ^[0-9]+$ ]]; then
+        echo "ERROR: the edge returned HIT with an age header that is not a number: '$age'." >&2
+        exit 3
+    fi
     if [ "${age:-0}" -gt 60 ]; then
         echo "ERROR: the edge still serves a copy that is ${age}s old." >&2
         exit 3
