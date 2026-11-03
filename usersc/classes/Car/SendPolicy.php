@@ -140,7 +140,9 @@ final class SendPolicy
      * methods named below. The priority is: no profile, blocked, bounced,
      * opted out. A block and a bounce are facts about the address. An
      * opt-out is a preference. VerificationTabStatus::chip() and
-     * EmailNoticeBuilder::buildForOwner() use the same order (#2461).
+     * EmailNoticeBuilder::buildForOwner() use the same order for blocked,
+     * bounced and opted out (#2461). The chip also has an Invalid email step
+     * after no profile (#2594).
      *
      * @param SendDecision $decision Result of {@see self::forUser()}
      * @return string|null The first reason, or null when the send is allowed

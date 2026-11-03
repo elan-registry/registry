@@ -842,4 +842,102 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
             'The stored counter must agree with the number of sends actually made'
         );
     }
+
+    /**
+     * Address shapes for #2594. `{u}` becomes a unique token, so each case
+     * keeps its shape and the users table sees a new address every run.
+     *
+     * @return array<string, array{string, bool}> [address template, stays eligible]
+     */
+    public static function userEmailShapeProvider(): array
+    {
+        return [
+            'string None'            => ['None{u}', false],
+            'no at sign'             => ['owner{u}.example.com', false],
+            'at replaced by dash'    => ['owner{u}-at-example.com', false],
+            'no dot in domain'       => ['owner{u}@localhost', false],
+            'space in local part'    => ['a{u} b@example.com', false],
+            'two at signs'           => ['a{u}@@example.com', false],
+            'plain well formed'      => ['owner{u}@example.com', true],
+            'padded and mixed case'  => ["  Owner{u}@Example.COM\t", true],
+            'plus tag, long domain'  => ['first.last+tag{u}@sub.example.co.uk', true],
+        ];
+    }
+
+    /**
+     * #2594: a malformed users.email fails at send time but still takes a
+     * batch slot, so the car must not be selected. The well-formed cases are
+     * the control: they prove the pattern does not reject real addresses.
+     */
+    #[Group('fast')]
+    #[DataProvider('userEmailShapeProvider')]
+    public function testFindVerificationEligibleSelectsCarOnlyWhenOwnerEmailIsWellFormed(
+        string $template,
+        bool $expectedEligible
+    ): void {
+        $address = str_replace('{u}', substr(uniqid(), -8), $template);
+        $ownerId = $this->createTestUser(['email' => $address], true);
+        $carId = $this->createTestCar($ownerId, $this->staleCarFields('car-copy-' . uniqid() . '@example.com'));
+
+        $stored = $this->db->query('SELECT email FROM users WHERE id = ?', [$ownerId])->first();
+        $this->assertSame($address, $stored->email, 'Test setup: users.email must hold the raw address');
+
+        $eligible = $this->eligibleIds();
+        if ($expectedEligible) {
+            $this->assertContains($carId, $eligible, "A car whose owner email is '{$address}' must stay eligible");
+        } else {
+            $this->assertNotContains($carId, $eligible, "A car whose owner email is '{$address}' must not be eligible");
+        }
+    }
+
+    /**
+     * #2594 acceptance: a batch of 5 with one malformed car sends to 5 other
+     * cars. The malformed car has the oldest last_verified, so it sorts first
+     * and without the filter it takes one of the 5 slots. A setup assertion
+     * fails if another eligible car sorts ahead of the 6 test cars.
+     */
+    #[Group('fast')]
+    public function testFindVerificationEligibleBatchOfFiveSkipsMalformedCarAndFillsFromOthers(): void
+    {
+        $malformedOwnerId = $this->createTestUser(['email' => 'None'], true);
+        $malformedCarId = $this->createTestCar(
+            $malformedOwnerId,
+            array_merge($this->staleCarFields('batch-malformed@example.com'), ['last_verified' => '1990-01-01 00:00:00'])
+        );
+
+        $goodCarIds = [];
+        for ($day = 2; $day <= 6; $day++) {
+            $goodCarIds[] = $this->createTestCar(
+                $this->testUserId,
+                array_merge(
+                    $this->staleCarFields('batch-good-' . $day . '@example.com'),
+                    ['last_verified' => sprintf('1990-01-%02d 00:00:00', $day)]
+                )
+            );
+        }
+
+        // The batch sorts by last_verified ASC with NULL first. Another eligible
+        // car that sorts ahead of 1990-01-07 would take a slot, and the
+        // malformed car would then miss the batch even without the fix.
+        $testCarIds = array_merge([$malformedCarId], $goodCarIds);
+        $ahead = array_filter(
+            $this->repo->findVerificationEligible(1000, 0),
+            static fn ($row) => !in_array((int) $row->id, $testCarIds, true)
+                && ($row->last_verified === null || $row->last_verified < '1990-01-07')
+        );
+        $this->assertSame([], array_values($ahead), 'Setup: other eligible cars sort ahead of the test cars');
+
+        $batchIds = array_map(
+            static fn ($row) => (int) $row->id,
+            $this->repo->findVerificationEligible(5, 0)
+        );
+
+        $this->assertCount(5, $batchIds, 'The batch must be full');
+        $this->assertNotContains($malformedCarId, $batchIds, 'The malformed-address car must not take a slot');
+        $this->assertEqualsCanonicalizing(
+            $goodCarIds,
+            $batchIds,
+            'The 5 slots must go to the 5 cars with a well-formed owner email'
+        );
+    }
 }

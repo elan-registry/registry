@@ -266,7 +266,7 @@ sold / update, and the record's freshness clock resets. That cycle was
 broken for years (see §6) and its send pipeline shipped in v2.30.3 — the
 cron job, the email composition, the public confirm/sold/opt-out landing
 page, and the eligibility rules (staleness, a 60-day re-send cooldown, a
-2-sends-per-year cap, suppression/bounce exclusion) all exist and are
+2-sends-per-year cap, suppression, bounce, and malformed-address exclusion) all exist and are
 exercised by an integration test suite. What is missing is an admin turning
 it on: the job ships paused (`er_cron_job_runs.enabled = 0`) and the
 site-wide feature switch defaults off (`er_verification_settings.enabled = 0`),

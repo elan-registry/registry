@@ -969,7 +969,7 @@ to provide a focused, testable data access layer wrapping the `cars`,
   `CarValidationException` for a car id that is not a positive int.
 - `findVerificationEligible(int $limit, int $offset): array` - Paginated
   query for cars eligible for a verification email: not sold, an owner with a
-  non-empty `users.email` (the address the send mails), and stale — neither verified nor updated by its owner within the last
+  non-empty, well-formed `users.email` (the address the send mails), and stale — neither verified nor updated by its owner within the last
   year (see `stalenessSql()`). No longer falls back to `cars.mtime`. Since #2101 it
   also excludes a car whose owner has `email_opted_out` set, or has an `email_blocked` or
   `email_bounced` that applies to the owner's current address
@@ -977,6 +977,11 @@ to provide a focused, testable data access layer wrapping the `cars`,
   including a car registered after the flag was set (#2319), and a car whose owner has no
   `profiles` row. The query uses `LEFT JOIN profiles p ON p.user_id = cars.user_id`. The rows are
   `cars.*` only, with no profile fields.
+  Since #2594 the query also excludes a car whose owner address is not well formed. The
+  check runs on the address after trim and lower-casing, with the pattern
+  `^[^@[:space:]]+@[^@[:space:]]+[.][^@[:space:]]+$`. It is a shape check, not full RFC validation.
+  Brevo rejects a malformed address with HTTP 400. A failed send does not increment
+  `verification_attempts`, so the car would return in every batch.
 - `countVerificationSummary(?int $windowDays): array` - Count cars in each
   verification dashboard state: `all`, `eligible`, `pending`, `bounced`,
   `blocked`, `opted_out`, `verified`, `sold`, and count owners for the three
@@ -991,7 +996,9 @@ to provide a focused, testable data access layer wrapping the `cars`,
   pending, bounced, blocked or opted out — it excludes verified and sold, since
   those are history, not a queue state. One owner can have more than one flag,
   so `all` can be less than the sum of the pills. `all` also counts the unsold cars of a live owner
-  (not `noowner`) who has no `profiles` row, so the queue shows them as "No profile". `bounced` and
+  (not `noowner`) who has no `profiles` row, so the queue shows them as "No profile". The same applies to the unsold cars of a live owner
+  (not `noowner`) whose address is not NULL, not empty, and not well formed
+  (#2594). The queue shows them as "Invalid email". `bounced` and
   `blocked` count cars whose owner's flag applies to the owner's current address
   (`emailFlagActiveSql()`). `opted_out` counts cars whose owner has `email_opted_out = 1`; an
   opt-out is not tied to an address. `pending` leaves out the bounced, blocked and opted-out cars. Throws
@@ -1007,7 +1014,9 @@ to provide a focused, testable data access layer wrapping the `cars`,
   ascending. Each row carries the owner's state from `profiles`: `has_profile`,
   `email_opted_out`, `email_blocked_active`, `email_blocked_cause` and `email_bounced_active`. The
   `_active` columns are 1 only while the flag applies to the owner's current address
-  (`emailFlagActiveSql()`). Throws
+  (`emailFlagActiveSql()`). The row also carries `email_address_malformed` (0 or 1).
+  It is 1 for an unsold car of a live owner who is not `noowner`, when the
+  owner's address is not NULL, not empty, and not well formed (#2594). Throws
   `CarValidationException` for an unknown `$status` or an invalid `$windowDays`, and
   `CarDatabaseException` on a query failure.
 - `findRecentVerificationActivity(?int $windowDays, int $limit = 20): array` -
@@ -1868,7 +1877,7 @@ other probes.
   `autoSendNextEligibleAt()`, `autoSendDesiredState()` give the automatic send job
   state and the card and Pause/Resume button state
 - Static `chip()` method generates the Status chip for a car row, in this
-  order: no profile, blocked, the bounce flag, opted out, then the car's
+  order: no profile, invalid email, blocked, the bounce flag, opted out, then the car's
   latest email event
 
 **Constants**:
@@ -1926,13 +1935,16 @@ other probes.
   guard allows the next automatic run, or `null` when the job never ran
 - `autoSendDesiredState(): string` - Give the state the Pause/Resume button asks
   for. Returns `'disable'` when the job is enabled, `'enable'` when not
-- `chip(?object $event, EffectiveEmailFlags $flags): array` - Static method.
+- `chip(?object $event, EffectiveEmailFlags $flags, bool $addressMalformed = false): array` - Static method.
   Give the Status chip for a car row. `$flags` is the same value object that
   `SendPolicy` and `EmailNoticeBuilder` read, so `blocked` and `bounced` are
   true only when the flag applies to the owner's current address. The tab
   builds it with `EffectiveEmailFlags::fromQueueRow()`, or
-  `EffectiveEmailFlags::eligible()` in the Eligible view. Order: no profile, blocked,
-  bounced, opted out, the same as `SendPolicy::verificationReason()` (#2461).
+  `EffectiveEmailFlags::eligible()` in the Eligible view. Order: no profile, invalid email,
+  blocked, bounced, opted out. The blocked, bounced and opted out steps match
+  `SendPolicy::verificationReason()` (#2461). `$addressMalformed` is the queue row's
+  `email_address_malformed`. The invalid email step gives kind
+  `bad_address`, label "Invalid email", class `text-bg-warning`, and no reason (#2594).
   Otherwise the chip shows the car's latest email event. A hard-bounce event
   still shows "Bounced" for an owner with no bounce flag. Returns
   `['kind' => string, 'label' => string, 'class' => string, 'reason' => string]`.
@@ -2230,7 +2242,9 @@ send, owner contact and admin contact cannot drift apart. The mail table is in
 - `verificationReason(SendDecision $decision): ?string` - The first refusal
   reason for the admin report, or `null` when allowed. Order: no profile,
   blocked, bounced, opted out. `VerificationTabStatus::chip()` and
-  `EmailNoticeBuilder::buildForOwner()` use the same order (#2461)
+  `EmailNoticeBuilder::buildForOwner()` use the same order (#2461). The chip
+  also has "Invalid email" after no profile. That state has no reason here,
+  because eligibility keeps the car out of the batch (#2594)
 - `adminMessage(SendDecision $decision): string` - The text for `usError()`.
   It starts with "Message not sent." and adds one sentence for each reason.
   It escapes the bounce date. It returns an empty string when allowed

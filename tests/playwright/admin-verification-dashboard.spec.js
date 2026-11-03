@@ -23,6 +23,8 @@
 //     flag does not apply, so the owner is in no Blocked count (#2356)
 //   - one NO-PROFILE car: pending, and its owner has no profiles row. Chip
 //     "No profile", and no action button
+//   - one BAD-ADDRESS car (#2594): pending, and its owner's users.email is
+//     `None`. Chip "Invalid email", and no action button
 //   - one SOFT-BOUNCE car: Pending pill, but one `soft_bounce`
 //     er_email_events row after its `sent` row, so its Status chip reads
 //     "Soft bounce" and its Mark Bounced button must render disabled
@@ -322,6 +324,7 @@ let staleBlockedCarId;
 let suppressedCarId;
 let blockedCarId;
 let noProfileCarId;
+let badAddressCarId;
 let softBounceCarId;
 let precedenceCarId;
 let precedenceChassis;
@@ -345,6 +348,7 @@ function seedVerificationFixture() {
     suppressedCarId = seeded.suppressedCarId;
     blockedCarId = seeded.blockedCarId;
     noProfileCarId = seeded.noProfileCarId;
+    badAddressCarId = seeded.badAddressCarId;
     softBounceCarId = seeded.softBounceCarId;
     precedenceCarId = seeded.precedenceCarId;
     precedenceChassis = seeded.precedenceChassis;
@@ -354,7 +358,7 @@ function seedVerificationFixture() {
     twinCarIdA = seeded.twinCarIdA;
     twinCarIdB = seeded.twinCarIdB;
 
-    for (const id of [pendingCarId, bouncedCarId, bouncedCarIdB, staleBlockedCarId, suppressedCarId, blockedCarId, noProfileCarId, softBounceCarId, precedenceCarId, verifiedCarId, soldCarId, transferCarId, twinCarIdA, twinCarIdB]) {
+    for (const id of [pendingCarId, bouncedCarId, bouncedCarIdB, staleBlockedCarId, suppressedCarId, blockedCarId, noProfileCarId, badAddressCarId, softBounceCarId, precedenceCarId, verifiedCarId, soldCarId, transferCarId, twinCarIdA, twinCarIdB]) {
         expect(id).toBeGreaterThan(0);
     }
     expect(precedenceChassis).toContain('<script>');
@@ -601,11 +605,13 @@ test.describe('Admin Verification Dashboard', () => {
     // The owner's profile state comes before the car's email events. Each case
     // loads its own pill, for the row-flooding reason above. The no-profile
     // car is pending, so the Pending pill lists it.
-    test('profile state sets the Status chip: opted out, blocked, no profile', async ({ page }) => {
+    test('profile state sets the Status chip: opted out, blocked, no profile, invalid email', async ({ page }) => {
         const cases = [
             { id: suppressedCarId, status: 'opted_out', chip: 'opted_out', text: /Opted out/, action: 'Clear Opt-out' },
             { id: blockedCarId, status: 'blocked', chip: 'blocked', text: /^\s*Blocked\s*$/, action: 'Clear Block' },
             { id: noProfileCarId, status: 'pending', chip: 'no_profile', text: /No profile/, action: null },
+            // #2594: the address is `None`, so the row has no action button.
+            { id: badAddressCarId, status: 'pending', chip: 'bad_address', text: /Invalid email/, action: null },
         ];
 
         for (const { id, status, chip, text, action } of cases) {
@@ -620,7 +626,7 @@ test.describe('Admin Verification Dashboard', () => {
 
             const actionButtons = row.locator('td').last().locator('button');
             if (action === null) {
-                // An owner with no profile row has no action until an admin fixes the profile.
+                // No profile row, or an invalid address: no action until an admin fixes the account.
                 await expect(actionButtons).toHaveCount(0);
             } else {
                 await expect(actionButtons).toHaveCount(1);

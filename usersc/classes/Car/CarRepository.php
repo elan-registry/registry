@@ -145,6 +145,24 @@ class CarRepository
     private const CURRENT_ADDRESS_SQL = self::NORMALIZE_SQL_OPEN . 'u.email' . self::NORMALIZE_SQL_CLOSE;
 
     /**
+     * MySQL REGEXP for the shape of an email address (#2594)
+     *
+     * One local part, one `@`, and a domain with at least one dot, with no
+     * white space. The send fails on an address such as `None` or
+     * `owner-at-example.com`, but the car still takes a batch slot. The rule
+     * is a shape check, not RFC validation. It accepts some addresses that
+     * `FILTER_VALIDATE_EMAIL` rejects (`a..b@example.com`), so a send can
+     * still fail on one of them. It rejects a quoted local part that holds
+     * an `@` or white space (`"a@b"@example.com`), which RFC 5321 allows.
+     * `[.]` matches a literal dot, so no escape level is needed in PHP or SQL.
+     */
+    private const WELL_FORMED_ADDRESS_REGEXP = '^[^@[:space:]]+@[^@[:space:]]+[.][^@[:space:]]+$';
+
+    /** SQL for an owner's current address that has the shape of {@see self::WELL_FORMED_ADDRESS_REGEXP}. Alias `u`. */
+    private const ADDRESS_WELL_FORMED_SQL = self::CURRENT_ADDRESS_SQL
+        . " REGEXP '" . self::WELL_FORMED_ADDRESS_REGEXP . "'";
+
+    /**
      * SQL for an `email_blocked` that applies to the owner's current address.
      * A NULL or empty address applies (fail closed). Aliases `p` and `u`.
      * The PHP form is {@see EffectiveEmailFlags::flagApplies()}. Change the two together.
@@ -1600,6 +1618,9 @@ class CarRepository
      * ({@see emailFlagActiveSql()}), or when the owner has no profiles row.
      * See the join comment in verificationEligibleFromSql().
      *
+     * A car is also ineligible when the owner's current address does not have
+     * the shape of an address ({@see self::WELL_FORMED_ADDRESS_REGEXP}, #2594).
+     *
      * @param int $limit Maximum rows to return (values below 1 return no rows)
      * @param int $offset Rows to skip (negative values are treated as 0)
      * @return array<object> Eligible car rows (empty if none)
@@ -1713,6 +1734,10 @@ class CarRepository
         // MySQL TRIM() removes only spaces. The send trims all white space,
         // so a tab-only address must also count as empty here.
         $address = self::CURRENT_ADDRESS_SQL;
+        // A malformed address (#2594) fails at send time but still takes a
+        // slot in the batch, so it is excluded here. The admin queue shows
+        // such a car as "Invalid email" (see verificationMalformedAddressWhereSql()).
+        $addressWellFormed = self::ADDRESS_WELL_FORMED_SQL;
 
         return "FROM cars
               INNER JOIN users u ON u.id = cars.user_id
@@ -1723,6 +1748,7 @@ class CarRepository
                 AND NOT ({$blocked})
                 AND NOT ({$bounced})
                 AND u.email IS NOT NULL AND {$address} != ''
+                AND {$addressWellFormed}
                 AND cars.user_id IS NOT NULL
                 AND u.username != 'noowner'
                 AND {$stale}
@@ -1781,6 +1807,31 @@ class CarRepository
         return "(p.id IS NULL
                  AND cars.solddate IS NULL
                  AND EXISTS (SELECT 1 FROM users nu WHERE nu.id = cars.user_id AND nu.username != 'noowner'))";
+    }
+
+    /**
+     * Build the WHERE condition for a car whose owner's current address is malformed (#2594)
+     *
+     * Such a car is never eligible ({@see verificationEligibleFromSql()}).
+     * It is in the `all` queue so that the admin sees it, as "Invalid email",
+     * and can fix the address. A sold car, an ownerless car and a `noowner`
+     * car are left out: none of them is a verification candidate. A NULL or
+     * empty address is not malformed, so it does not match.
+     *
+     * The value is never NULL: when `u.id` or `u.email` is NULL, its own
+     * `IS NOT NULL` term is false, and false AND NULL is false. Needs the
+     * `cars` alias and the `u` alias (from {@see self::USERS_JOIN_SQL} or
+     * the INNER JOIN of the eligibility FROM).
+     *
+     * @return string SQL boolean expression
+     */
+    private static function verificationMalformedAddressWhereSql(): string
+    {
+        return '(cars.solddate IS NULL
+                 AND u.id IS NOT NULL
+                 AND u.username != \'noowner\'
+                 AND u.email IS NOT NULL AND ' . self::CURRENT_ADDRESS_SQL . " != ''
+                 AND NOT (" . self::ADDRESS_WELL_FORMED_SQL . '))';
     }
 
     /**
@@ -1892,8 +1943,9 @@ class CarRepository
      * - `sold`: distinct existing cars with a `cars_hist` `VERIFIED SOLD` row in the window.
      * - `all`: distinct cars in eligible, pending, bounced, blocked or opted
      *   out, plus the cars of a live owner with no profiles row (see
-     *   verificationNoProfileWhereSql()). Verified and Sold are history, not
-     *   a queue state, so they are not in `all`.
+     *   verificationNoProfileWhereSql()) or with a malformed address (see
+     *   verificationMalformedAddressWhereSql(), #2594). Verified and Sold are
+     *   history, not a queue state, so they are not in `all`.
      *
      * Owner counts (the summary cards): `bounced_owners`, `blocked_owners` and
      * `opted_out_owners` count the distinct `cars.user_id` values of the cars
@@ -1919,6 +1971,7 @@ class CarRepository
         $blocked      = self::verificationBlockedWhereSql();
         $optedOut     = self::verificationOptedOutWhereSql();
         $noProfile    = self::verificationNoProfileWhereSql();
+        $malformed    = self::verificationMalformedAddressWhereSql();
         [$window, $windowParams] = self::windowSql('h.timestamp', $windowDays);
 
         $carsFrom = 'FROM cars ' . self::PROFILE_JOIN_SQL . ' ' . self::USERS_JOIN_SQL;
@@ -1945,7 +1998,8 @@ class CarRepository
                      OR {$bounced}
                      OR {$blocked}
                      OR {$optedOut}
-                     OR {$noProfile} THEN 1 ELSE 0 END) AS all_count
+                     OR {$noProfile}
+                     OR {$malformed} THEN 1 ELSE 0 END) AS all_count
              {$carsFrom}",
             array_merge(
                 [self::OPERATION_VERIFIED],
@@ -2008,7 +2062,8 @@ class CarRepository
      * owner's current address ({@see emailFlagActiveSql()}). `email_blocked_cause` is
      * the stored cause, also when the block does not apply. For a car whose
      * owner has no profiles row, `has_profile` is 0, the three flag columns
-     * are 0 and `email_blocked_cause` is null.
+     * are 0 and `email_blocked_cause` is null. `email_address_malformed` is 1
+     * for a car in {@see verificationMalformedAddressWhereSql()} (#2594), else 0.
      *
      * @param string $status One of {@see self::QUEUE_STATUSES}
      * @param int|null $windowDays Window for `verified` and `sold`, in days back from now. Null = all time.
@@ -2016,7 +2071,8 @@ class CarRepository
      * @return array<object{id: int|string, year: int|string|null, chassis: string, fname: ?string, lname: ?string,
      *         user_id: int|string|null, vericode_sent_at: ?string, last_verified: ?string, solddate: ?string,
      *         has_profile: int|string, email_opted_out: int|string, email_blocked_active: int|string,
-     *         email_blocked_cause: ?string, email_bounced_active: int|string, hist_timestamp: ?string}>
+     *         email_blocked_cause: ?string, email_bounced_active: int|string,
+     *         email_address_malformed: int|string, hist_timestamp: ?string}>
      * @throws CarValidationException If $status is not in QUEUE_STATUSES, or $windowDays is zero or negative
      * @throws CarDatabaseException If the query fails
      */
@@ -2041,13 +2097,15 @@ class CarRepository
                         AS email_blocked_active,
                     p.email_blocked_cause,
                     COALESCE((' . self::emailFlagActiveSql(DeliverabilityFlagLog::FLAG_BOUNCED) . '), 0)
-                        AS email_bounced_active';
+                        AS email_bounced_active,
+                    ' . self::verificationMalformedAddressWhereSql() . ' AS email_address_malformed';
         $carsFrom   = 'FROM cars ' . self::PROFILE_JOIN_SQL . ' ' . self::USERS_JOIN_SQL;
         $pending    = self::verificationPendingWhereSql();
         $bounced    = self::verificationBouncedWhereSql();
         $blocked    = self::verificationBlockedWhereSql();
         $optedOut   = self::verificationOptedOutWhereSql();
         $noProfile  = self::verificationNoProfileWhereSql();
+        $malformed  = self::verificationMalformedAddressWhereSql();
         $params     = [];
 
         switch ($status) {
@@ -2096,6 +2154,7 @@ class CarRepository
                             OR {$blocked}
                             OR {$optedOut}
                             OR {$noProfile}
+                            OR {$malformed}
                          ORDER BY cars.id ASC";
                 break;
         }

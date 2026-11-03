@@ -597,7 +597,10 @@ count. The allowed values are in `CarRepository::QUEUE_STATUSES`. An unknown
 **What `All` counts.** `All` is the distinct count of cars that are
 Eligible, Pending, Bounced, Blocked, or Opted out. It also counts the unsold
 cars of a live owner (not `noowner`) who has no `profiles` row, so the admin
-can see them as "No profile". It excludes Verified and Sold: those two are
+can see them as "No profile". The same applies to the unsold cars of a live
+owner (not `noowner`) whose address is not NULL, not empty, and not well
+formed. The admin sees them as "Invalid email" (#2594). It excludes Verified
+and Sold: those two are
 history, not a current queue state. Multiple status flags on one owner may
 apply to the same car, so `All` can be less than the sum of the pills.
 
@@ -653,14 +656,19 @@ Rules for the controls:
 **Status chip.** The Status column shows the owner's profile flags first, then
 the car's latest email event. `VerificationTabStatus::chip()` builds the chip,
 and `CarRepository::findLatestEmailEventPerCarWithPrecedence()` selects the
-event. The chip uses this order: no profile, blocked, bounced, opted out, then
-the latest event. The batch report (`SendPolicy::verificationReason()`) and
-the account notice (`EmailNoticeBuilder`) use the same order, so the three
-views give one reason for an owner with more than one flag (#2461). The
-possible chips, not in priority order, are: No profile, Blocked, Opted out, Sent, Delivered, Soft bounce (with
+event. The chip uses this order: no profile, invalid email, blocked, bounced, opted out, then
+the latest event. For the flags (blocked, bounced, opted out), the batch
+report (`SendPolicy::verificationReason()`) and the account
+notice (`EmailNoticeBuilder`) use the same order, so the three views give one
+reason for an owner with more than one flag (#2461). "Invalid email" is in
+the chip only. The eligibility query keeps such a car out of the batch, so
+the batch report never gives it as a reason (#2594). The
+possible chips, not in priority order, are: No profile, Invalid email, Blocked, Opted out, Sent, Delivered, Soft bounce (with
 reason), Bounced, Spam complaint, and Unknown event names.
 "Bounced" covers `EmailEventApplier::HARD_BOUNCE_EVENTS` (`hard_bounce`,
-`blocked`, `invalid`, `invalid_email`). "Delivered" covers four Brevo event
+`blocked`, `invalid`, `invalid_email`). The Brevo event `invalid_email` still
+shows "Bounced". The "Invalid email" chip comes from the owner's address, not
+from an event. Its kind is `bad_address`. "Delivered" covers four Brevo event
 names: `delivered`, `unique_opened`, `opened`, and `click` — an open or a
 click proves the message arrived, so each renders the same chip as a plain
 delivery. "Spam complaint" renders for the `spam` event. The reason text on
@@ -708,17 +716,23 @@ latest event, because it stops all verification email to the owner. The
 checks run in this order, and the first match wins (`VerificationTabStatus::chip()`):
 
 1. The owner has no `profiles` row: "No profile". The row has no action button.
-2. `email_blocked = 1`: "Blocked". The reason text is `email_blocked_cause`
+2. The owner's address is not NULL, not empty, and not well formed. The car
+   is not sold, and the owner is a live user who is not `noowner`. The chip
+   shows "Invalid email". The row has no action button. Its title says: "This
+   owner's email address is not valid. Fix the address on the owner's
+   account." The check uses the same pattern as `findVerificationEligible()`
+   in CLASSES.md (#2594).
+3. `email_blocked = 1`: "Blocked". The reason text is `email_blocked_cause`
    (`spam`, `unsubscribed`, `blocklist`), or "cause unknown" when the cause
    is NULL. The reason shows as small muted text under the badge.
-3. `email_bounced = 1`: "Bounced". The reason text is the reason of the
+4. `email_bounced = 1`: "Bounced". The reason text is the reason of the
    latest event when that event is a hard bounce, else empty.
-4. `email_opted_out = 1`: "Opted out".
-5. Otherwise the chip shows the latest email event, as the rules above select it.
+5. `email_opted_out = 1`: "Opted out".
+6. Otherwise the chip shows the latest email event, as the rules above select it.
    A hard-bounce event shows "Bounced" also for an owner with no bounce flag.
 
 The tab does not read suppression events or `cars_hist` to find the cause.
-The cause is the stored `email_blocked_cause`. Steps 2 and 3 count a flag only
+The cause is the stored `email_blocked_cause`. Steps 3 and 4 count a flag only
 when it applies to the owner's current address (#2356). The tab reads the
 `email_blocked_active` and `email_bounced_active` columns for this.
 

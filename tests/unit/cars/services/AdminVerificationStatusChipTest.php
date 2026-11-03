@@ -183,6 +183,53 @@ final class AdminVerificationStatusChipTest extends TestCase
         $this->assertSame('', $chip['reason']);
     }
 
+    public function testMalformedAddressShowsInvalidEmailChipWithoutAReason(): void
+    {
+        $chip = VerificationTabStatus::chip(null, self::flags(), true);
+
+        $this->assertSame(
+            ['kind' => 'bad_address', 'label' => 'Invalid email', 'class' => 'text-bg-warning', 'reason' => ''],
+            $chip
+        );
+    }
+
+    /**
+     * @return array<string, array{EffectiveEmailFlags, ?object}>
+     */
+    public static function suppressionsBelowInvalidEmailProvider(): array
+    {
+        return [
+            'blocked'       => [self::flags(blocked: true, blockedCause: 'spam'), null],
+            'bounced'       => [self::flags(bounced: true), null],
+            'opted out'     => [self::flags(optedOut: true), null],
+            'latest event'  => [self::flags(), self::event('delivered', '2026-09-01 10:00:00')],
+            'hard bounce event' => [self::flags(), self::event('hard_bounce', '2026-09-01 10:00:00')],
+        ];
+    }
+
+    #[DataProvider('suppressionsBelowInvalidEmailProvider')]
+    public function testMalformedAddressWinsOverFlagsAndEvents(EffectiveEmailFlags $flags, ?object $event): void
+    {
+        $chip = VerificationTabStatus::chip($event, $flags, true);
+
+        $this->assertSame('bad_address', $chip['kind']);
+    }
+
+    public function testNoProfileWinsOverMalformedAddress(): void
+    {
+        $chip = VerificationTabStatus::chip(null, self::flags(hasProfile: false), true);
+
+        $this->assertSame('no_profile', $chip['kind']);
+    }
+
+    public function testWellFormedAddressIsTheDefaultAndKeepsOtherChips(): void
+    {
+        $chip = VerificationTabStatus::chip(null, self::flags(blocked: true, blockedCause: 'spam'), false);
+
+        $this->assertSame('blocked', $chip['kind']);
+        $this->assertSame('', VerificationTabStatus::chip(null, self::flags())['kind']);
+    }
+
     public function testLiveSpamEventOnANonSuppressedCarStillShowsSpamComplaint(): void
     {
         // A live 'spam' event on an owner with no block flag yet takes the
