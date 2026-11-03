@@ -428,7 +428,3 @@ after an item is written.
 ### `usersc/includes/rate_limits_dev_override.php`
 
 - [ ] Rename to a general name such as `dev_overrides.php` and update its includes. The file also applies the Brevo SDK host override (#2184), so its name no longer describes its scope. (found in #2385)
-
-### `usersc/login.php` + `tests/bootstrap-integration.php`
-
-- [ ] Remove the pre-6.1.7 version guards. Production runs UserSpice 6.1.7 since v2.30.10 (2026-10-28), so this can be done now: `method_exists($loginUser, 'recordLogin')` in `$recordCompletedLogin` (call `$loginUser->recordLogin($userId)` directly), `function_exists('reauthClearConfirmed')` in `$clearReauthConfirmation`, and `method_exists($totpHandler, 'encryptionAvailable')`. Also remove the `_instance` reflection fallback in `tests/bootstrap-integration.php`, and update the guard assertions in `tests/unit/security/LoginWiringTest.php`. (found in #2253)

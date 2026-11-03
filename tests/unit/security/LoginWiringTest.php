@@ -16,7 +16,7 @@ use PHPUnit\Framework\TestCase;
  *   LoginFailureLoggingTest covers the behavior, but CI does not run
  *   integration tests.
  * - The UserSpice 6.1.7 port: the TOTP rate limit, the TOTP-unavailable
- *   message, the version guard on `recordLogin`, the `loginEmail()` call that
+ *   message, the `recordLogin` call after TOTP, the `loginEmail()` call that
  *   skips the early login count, `$currentSessionName` set on every path, and
  *   the session unset in each inline TOTP branch without a verified code.
  *
@@ -82,11 +82,7 @@ final class LoginWiringTest extends TestCase
 
     public function test_unreadableTotpKeyShowsUnavailableMessageInsteadOfInvalidCode(): void
     {
-        $this->assertStringContainsString('encryptionAvailable', $this->source);
-        $this->assertMatchesRegularExpression(
-            "/method_exists\\(\\\$totpHandler,\\s*'encryptionAvailable'\\)\\s*&&\\s*!\\\$totpHandler->encryptionAvailable\\(\\)/",
-            $this->source
-        );
+        $this->assertStringContainsString('if ($totpHandler && !$totpHandler->encryptionAvailable()) {', $this->source);
         $this->assertGreaterThanOrEqual(
             2,
             substr_count($this->source, '$totpUnavailableMsg ?: lang("2FA_ERR_INVALID_CODE")'),
@@ -94,12 +90,9 @@ final class LoginWiringTest extends TestCase
         );
     }
 
-    public function test_recordLoginIsGuardedByMethodExists(): void
+    public function test_completedLoginIsRecordedOnEveryPath(): void
     {
-        $this->assertMatchesRegularExpression(
-            "/method_exists\\(\\\$loginUser,\\s*'recordLogin'\\)/",
-            $this->source
-        );
+        $this->assertStringContainsString('$loginUser->recordLogin($userId);', $this->source);
         $this->assertSame(
             3,
             substr_count($this->source, '$recordCompletedLogin($user'),

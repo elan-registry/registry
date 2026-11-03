@@ -23,6 +23,10 @@ declare(strict_types=1);
 try {
     require_once __DIR__ . '/../vendor/autoload.php';
 
+    // This script skips users/init.php. Use the same zone, so NOW() in the
+    // log row is Pacific time like the other logs writers (#2589).
+    date_default_timezone_set(\ElanRegistry\Database\SessionTimeZone::APP_TIMEZONE);
+
     [, $version, $environment, $branch, $gitHash] = $argv + [null, null, null, null, null];
     if ($version === null || $environment === null || $branch === null || $gitHash === null) {
         throw new InvalidArgumentException(
@@ -67,7 +71,10 @@ try {
         "mysql:host=$dbHost;port=$dbPort;dbname=$dbName;charset=utf8mb4",
         $dbUser,
         $dbPass,
-        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+        [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            Pdo\Mysql::ATTR_INIT_COMMAND => \ElanRegistry\Database\SessionTimeZone::initCommand(),
+        ]
     );
 
     $lognote = "Deployed {$version} ({$shortHash}) to {$environment} on branch {$branch}";

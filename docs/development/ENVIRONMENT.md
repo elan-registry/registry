@@ -508,6 +508,15 @@ comment in `docker/mysql-init/01-grant-all-elanregi-schemas.sql` for the
 test, mechanism, and failure mode. Add the same permission to the grant file
 for each new checkout.
 
+**The Docker database server uses `-07:00`.** `docker-compose.yml` starts the
+`db` service with `--default-time-zone=-07:00`. This matches the a2hosting
+server (MST, no DST). The app sets the MySQL session zone on each connection,
+so the server default matters only if that hook is missing. In that case local
+clocks differ from November to March, as the server did before the fix. The
+`phinx.php` init command sets the session zone, which lets the clock guard in
+migration `20260905172137_convert_car_timestamps_to_datetime.php` pass. See
+`DATABASE.md`, "Time zone".
+
 ### Brevo Plugin Local Setup
 
 Git does not track the sendinblue plugin. A fresh clone does not have it. Do

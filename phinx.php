@@ -4,6 +4,12 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/vendor/autoload.php';
 
+use ElanRegistry\Database\SessionTimeZone;
+
+// Phinx does not load users/init.php. Use the same zone, so migration NOW()
+// values match the application (#2589).
+date_default_timezone_set(SessionTimeZone::APP_TIMEZONE);
+
 // createImmutable: won't overwrite keys already in $_ENV (shell env takes precedence — CI-friendly).
 // safeLoad() is used so a missing .env is not fatal; CI supplies vars via the process environment.
 // The getenv() fallback on each config line handles that case (no .env → $_ENV empty → fall through).
@@ -43,6 +49,7 @@ return [
             'port'      => (int)($_ENV['DB_PORT'] ?? getenv('DB_PORT') ?: 3306),
             'charset'   => 'utf8mb4',
             'collation' => 'utf8mb4_unicode_ci',
+            'mysql_attr_init_command' => SessionTimeZone::initCommand(),
         ],
     ],
     'version_order' => 'creation',

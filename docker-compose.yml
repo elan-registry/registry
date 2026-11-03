@@ -75,17 +75,18 @@ services:
     # simplest to turn it off outright rather than grant SUPER to work
     # around it.
     #
-    # default-time-zone: one historical migration
-    # (20260905172137_convert_car_timestamps_to_datetime.php) hardcodes
-    # 'America/Los_Angeles' as APPLICATION_TIMEZONE and refuses to run
-    # unless MySQL's NOW() is within a few seconds of PHP time evaluated in
-    # that zone — a one-time guard against corrupting production data that
-    # was originally written under LA wall-clock time. The container's
-    # default (UTC) fails that check even against a brand-new, empty
-    # database, so `composer migrate`/`provision-schema.sh` cannot get past
-    # this migration without it. Undocumented anywhere else in the repo —
-    # found only by running provision-schema.sh from scratch.
-    command: --disable-log-bin --default-time-zone=America/Los_Angeles
+    # default-time-zone: -07:00 matches the a2hosting server (MST, no DST).
+    # The app sets the MySQL session time_zone on every connection (see
+    # docs/development/DATABASE.md "Time zone"), so this server default only
+    # matters if that hook is missing. In that case local clocks differ
+    # from November to March, as they did on the server before the hook.
+    # Migration 20260905172137_convert_car_timestamps_to_datetime.php
+    # refuses to run unless MySQL's NOW() is within a few seconds of PHP
+    # time in America/Los_Angeles. phinx.php sets the session zone with a
+    # mysql_attr_init_command, so the guard passes even on an empty database.
+    # A numeric offset is used because the mysql.time_zone_name tables may
+    # be missing.
+    command: --disable-log-bin --default-time-zone=-07:00
     environment:
       # :? fails fast with a clear message if .env is missing or incomplete,
       # instead of Compose silently substituting an empty string and MySQL's

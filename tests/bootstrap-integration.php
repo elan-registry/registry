@@ -239,24 +239,14 @@ if (!isset($GLOBALS['user'])) {
 // Try to verify database connection and reinitialize $db if configuration was fixed
 try {
     if (class_exists('DB')) {
-        // Reset the DB singleton cache to force reconnection with corrected config
-        // The DB class caches the PDO connection, so we need to clear it to force a new one.
-        // UserSpice 6.1.7 replaced the static $_instance with a keyed $_instances pool and
-        // added closeShared(). The reflection fallback keeps a pre-6.1.7 users/ working.
-        // hasMethod(), not method_exists(): PHPStan does not scan users/, so it reads
-        // method_exists(DB::class, ...) as always false.
+        // Reset the DB singleton cache to force reconnection with corrected config.
+        // The DB class caches the PDO connection, so clear it to force a new one.
         //
         // A failed reset aborts the run. Otherwise the outer catch would skip the
         // database-identity check below, and $GLOBALS['db'] would keep whatever
         // connection users/init.php opened.
         try {
-            $reflectionClass = new ReflectionClass(DB::class);
-            if ($reflectionClass->hasMethod('closeShared')) {
-                DB::closeShared();
-            } else {
-                $instanceProperty = $reflectionClass->getProperty('_instance');
-                $instanceProperty->setValue(null, null); // static property: first arg is object (null), second is new value
-            }
+            DB::closeShared();
         } catch (\Throwable $e) {
             fwrite(STDERR, "ERROR: Could not reset the DB singleton: {$e->getMessage()}\n");
             fwrite(STDERR, "Refusing to proceed: the database-identity check cannot run without the reset.\n");
@@ -299,73 +289,33 @@ try {
             exit(1);
         }
 
+        // The reconnect above opened a new session; set its time_zone again,
+        // as usersc/includes/loader.php does for every request (#2589).
+        // Abort on failure: a session on the server zone makes the
+        // time-boundary tests fail with no link to the cause.
+        try {
+            \ElanRegistry\Database\SessionTimeZone::apply(new \ElanRegistry\Database\DbAdapter($testDb));
+        } catch (\Throwable $e) {
+            fwrite(STDERR, "ERROR: Could not set the test session time_zone: {$e->getMessage()}\n");
+            fwrite(STDERR, "Refusing to proceed: MySQL NOW() and PHP time would differ.\n");
+            exit(1);
+        }
+        fwrite(STDERR, 'NOTE: Set test session time_zone to '
+            . \ElanRegistry\Database\SessionTimeZone::offsetFor(
+                new \DateTimeZone(date_default_timezone_get()),
+                new \DateTimeImmutable('now')
+            )
+            . ' (' . date_default_timezone_get() . ")\n");
+
         // Re-initialize the global $db after configuration fixes
         // This ensures $db in tests uses the corrected configuration
         $GLOBALS['db'] = $testDb;
         fwrite(STDERR, "NOTE: Re-initialized global \$db for integration tests\n");
-
-        // Pin this session's MySQL clock to PHP's ACTUAL runtime timezone —
-        // not php.ini's date.timezone (this project's is UTC), because
-        // users/init.php:143 unconditionally calls
-        // `date_default_timezone_set('America/Los_Angeles')`, hardcoded, with
-        // no environment override — upstream UserSpice code, off-limits to
-        // modify per CLAUDE.md. That call runs on every request, including
-        // this bootstrap's own `require_once $initPath` above, so by the time
-        // any test file runs, PHP's *effective* clock is always Pacific time
-        // regardless of php.ini or the host OS. Read date_default_timezone_get()
-        // AFTER init.php has run (not before, and not by trusting php.ini)
-        // so this reflects the value tests will actually observe.
-        //
-        // MySQL's own time_zone defaults to 'SYSTEM' — the host OS's local
-        // timezone, which has nothing to do with either PHP value above and
-        // varies per developer machine. Without reconciling the two, `NOW()`
-        // in a query and `new DateTimeImmutable('now')` in the calling PHP
-        // can disagree by whatever offset happens to separate PHP's
-        // hardcoded Pacific clock from this machine's OS timezone — on this
-        // developer's machine that was MDT vs. PST/PDT, a ~1-7 hour skew
-        // depending on DST. That's invisible most of the time, but it breaks
-        // any test asserting an exact boundary against real datetime
-        // arithmetic (e.g.
-        // CronJobGuardIntegrationTest::testClaimBoundaryIsStrictlyExclusive,
-        // which computes "-24 hours" in PHP and expects MySQL's own
-        // `NOW() - INTERVAL 24 HOUR` to agree with it to the second) — and it
-        // fails identically for every developer whose OS timezone isn't
-        // exactly Pacific, not just occasionally.
-        //
-        // MySQL's SET time_zone accepts a named zone only when the
-        // mysql.time_zone_name tables are populated (`mysql_tzinfo_to_sql`),
-        // which a fresh MySQL install (including the Docker `db` service)
-        // typically has not run — asserting a bare named zone here would
-        // silently fail on exactly the environments most likely to need this
-        // fix. Falling back to the
-        // zone's current UTC offset (computed by PHP, which already resolved
-        // the named zone above) sidesteps that dependency entirely and is
-        // still correct for "right now" — the only thing any test in this
-        // suite's lifetime cares about. A session-scoped SET here (not a
-        // server-wide my.cnf change, which only one developer could apply)
-        // fixes the mismatch for whoever runs this suite, wherever they are,
-        // with no machine-level setup required.
-        $phpTimezone = new \DateTimeZone(date_default_timezone_get());
-        $phpOffset = $phpTimezone->getOffset(new \DateTimeImmutable('now', $phpTimezone));
-        $offsetHours = intdiv(abs($phpOffset), 3600);
-        $offsetMinutes = intdiv(abs($phpOffset) % 3600, 60);
-        $offsetSign = $phpOffset < 0 ? '-' : '+';
-        $offsetString = sprintf('%s%02d:%02d', $offsetSign, $offsetHours, $offsetMinutes);
-
-        $testDb->query('SET time_zone = ?', [$offsetString]);
-        if ($testDb->error()) {
-            fwrite(STDERR, "NOTE: Could not set test session time_zone to {$offsetString}: "
-                . ($testDb->errorString() ?: 'unknown') . " — datetime-boundary tests "
-                . "may be sensitive to this machine's timezone configuration.\n");
-        } else {
-            fwrite(STDERR, "NOTE: Set test session time_zone to {$offsetString}"
-                . " (matching PHP's effective timezone, {$phpTimezone->getName()})\n");
-        }
     }
 } catch (Throwable $e) {
-    // Intentionally non-fatal (unlike the stricter inner catches above at the singleton reset
-    // and the database-identity check, which abort): this outer catch covers the reconnection
-    // attempt itself. If that step fails, IntegrationTestCase::setUp()'s own
+    // Intentionally non-fatal (unlike the stricter inner catches above at the singleton reset,
+    // the database-identity check, and the session time_zone set, which abort): this outer
+    // catch covers the reconnection attempt itself. If that step fails, IntegrationTestCase::setUp()'s own
     // DB::getInstance() + requireDatabase() will independently detect the same unreachable
     // database and skip tests gracefully — that's the authoritative check, this is just an
     // earlier best-effort reconnection step whose failure the real check will catch anyway.

@@ -7,7 +7,7 @@ The Verification tab shows the cars in the order the batch sends them, with a li
 
 ## Admin-Facing Changes
 
-- [To be filled in as issues complete.]
+- From November to March, the Verification tab "cron last seen" and next-send times are no longer 1 hour off.
 
 ## Issues Resolved
 

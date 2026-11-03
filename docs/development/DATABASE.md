@@ -566,6 +566,71 @@ statement about car-adjacent tables generally).
 through direct queries or the application layer. For combined user and profile
 data, use `(new Owner($userId))->data()`.
 
+## Time zone
+
+PHP and MySQL both use Pacific wall time. This file owns the rule.
+
+**Why it needs a rule.** `users/init.php` is upstream UserSpice. It sets PHP
+to `America/Los_Angeles`. The a2hosting MySQL server uses `SYSTEM`, which is
+MST (UTC-7) with no DST. Before the fix, nothing set the session zone. From
+November to March, MySQL `NOW()` was PHP time plus one hour.
+
+**The rule.** Each connection sets the MySQL session `time_zone` to the
+current UTC offset of PHP: `-08:00` in winter and `-07:00` in summer. The code
+uses a numeric offset because the `mysql.time_zone_name` tables may be missing
+on the server and in Docker.
+
+**Where the code runs.**
+
+- `ElanRegistry\Database\SessionTimeZone` (`usersc/classes/Database/SessionTimeZone.php`)
+  holds the logic. See `CLASSES.md`, "SessionTimeZone".
+- `usersc/includes/loader.php` calls `SessionTimeZone::apply(dbi())`
+  before its other code. `users/init.php` includes it on every request, API
+  call, and cron run. Upstream code runs some queries before this hook (the
+  remember-me login and the queries in `users/includes/loader.php`). Those
+  queries use PHP `date()` values or `TIMESTAMP` columns, so the server zone
+  does not change them.
+- If a host sets the UserSpice config key `mysql/force_utc_mysql`, `DB`
+  sets the session to `+00:00` at connect. The hook then sets the Pacific
+  offset, so the hook wins.
+- `tests/bootstrap-integration.php` calls `SessionTimeZone::apply()` for the
+  test connection.
+
+**Raw PDO and phinx.** A raw PDO connection does not pass through the hook.
+Each such entry point must set the PHP zone to `SessionTimeZone::APP_TIMEZONE`.
+It must also run `SessionTimeZone::initCommand()` as the PDO init command.
+
+- `phinx.php` sets the PHP zone and `mysql_attr_init_command`.
+- `scripts/log-deployment.php` sets the PHP zone and
+  `Pdo\Mysql::ATTR_INIT_COMMAND`.
+- A new raw-PDO entry point must do the same.
+- Exempt: `scripts/dev/generate-baseline-diff.php`, the `scripts/spike-*`
+  scripts, and the second connections that integration tests open for locks
+  or migration sandboxes (for example `MigrationSandbox.php`). They compare
+  no times.
+
+**Caveat.** `DB::reconnect()` drops the session zone. `DB::getDB()`
+connections never get it. No project code calls either method. A future
+caller must call `SessionTimeZone::apply()` again.
+
+**A request across a DST change.** The request keeps the old offset until it
+ends. This is accepted.
+
+**TIMESTAMP and DATETIME.**
+
+| Type | Stored as | Effect of the session zone |
+| --- | --- | --- |
+| `TIMESTAMP` | UTC | MySQL converts on read. The session zone changes how values read. Old and new rows read correctly. |
+| `DATETIME` | Pacific wall time, as written | None. MySQL does not convert. |
+
+`TIMESTAMP` columns: `logs.logdate`, `crons_logs.datetime`,
+`audit.timestamp`, `us_rate_limits.attempt_time`, and the
+`car_transfer_requests` time columns.
+
+`DATETIME` values that MySQL wrote with `NOW()` or `CURRENT_TIMESTAMP` from
+2026-11-01 02:00 to the v2.31.1 deploy are 1 hour ahead. The project accepts
+this error and does not repair these rows (#2589).
+
 ## System Features
 
 ### Database Triggers
