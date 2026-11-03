@@ -44,6 +44,7 @@ The Elan Registry uses namespaces to organize classes by their architectural rol
 | **(root)** | Entity classes (domain objects) | `/usersc/classes/` | Car, Owner |
 | `ElanRegistry\Exceptions` | Custom exception types | `/usersc/classes/Exceptions/` | CarNotFoundException, CarValidationException |
 | `ElanRegistry\Retention` | Retention rules for the daily purge | `/usersc/classes/Retention/` | RetentionRule, RetentionPolicy, RetentionResult, SendinblueMessagesRetentionRule, DeletedUserAddressesBacklogRule |
+| `ElanRegistry\Database` | Database connection setup | `/usersc/classes/Database/` | SessionTimeZone |
 | `ElanRegistry\Reference` | **External reference data** | `/usersc/classes/Reference/` | CarModel |
 
 ### Reference Data vs. Entity Classes
@@ -899,11 +900,9 @@ to provide a focused, testable data access layer wrapping the `cars`,
   where the SQL form uses MySQL's `NOW()`. First production caller is the admin
   user-view's "Verification & Email" card (`usersc/plugins/hooker/hooks/user_form_hook.php`,
   #1924), which renders per-car Verified/Unverified badges from it. Both clocks
-  must resolve to the same timezone or the two forms can disagree at the
-  one-year boundary from skew alone. Sharing a host does **not** guarantee
-  this: `users/init.php` pins PHP to `America/Los_Angeles` on every web
-  request, while MySQL follows its own `time_zone`, so agreement must be
-  verified per environment. Validates **both** operands before comparing —
+  use Pacific wall time: `users/init.php` sets PHP to `America/Los_Angeles`,
+  and `SessionTimeZone::apply()` sets the MySQL session to the same zone.
+  See `DATABASE.md`, "Time zone". Validates **both** operands before comparing —
   deliberately not short-circuiting on a fresh `$ownerLastUpdated` — and throws
   `CarValidationException` if either is empty, malformed, or not a real
   calendar date (`2026-02-30` is rejected rather than rolled over to March 2),
@@ -3833,6 +3832,32 @@ if ($result['valid']) {
     'format_type' => 'detected format type'
 ]
 ```
+
+### SessionTimeZone
+
+**Location**: `/usersc/classes/Database/SessionTimeZone.php`
+(namespace `ElanRegistry\Database`)
+
+**Purpose**: Sets the MySQL session `time_zone` to the named PHP zone
+(`America/Los_Angeles`), so PHP and MySQL both use Pacific wall time all year.
+The named zone needs the MySQL time zone tables. The rule and its
+reasons are in `DATABASE.md`, "Time zone".
+
+**Public API**:
+
+- `APP_TIMEZONE` - constant, `'America/Los_Angeles'`. Entry points that do not
+  load `users/init.php` use it to set the PHP zone.
+- `apply(DatabaseInterface $db): void` - Runs `SET time_zone = ?` with the
+  PHP zone name on the connection. Throws `SessionTimeZoneException` on a
+  database error, for example when the time zone tables are missing.
+- `initCommand(): string` - Returns `SET time_zone = '<zone>'` for raw PDO
+  connections and the phinx `mysql_attr_init_command`.
+
+**Usage**:
+
+- `usersc/includes/loader.php` calls `SessionTimeZone::apply(dbi())`. See
+  `DATABASE.md`, "Time zone", for where the hook runs and its limits,
+  including `DB::reconnect()` and `DB::getDB()`.
 
 ## Retention
 

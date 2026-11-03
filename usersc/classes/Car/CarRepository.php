@@ -1335,15 +1335,11 @@ class CarRepository
      *     never-verified car, which is the majority of the registry.
      *
      * CLOCK CONSISTENCY: this fragment compares against MySQL's NOW(), while the
-     * PHP-side equivalent isFresh() uses PHP's clock. Both must resolve to the
-     * same timezone, or the two forms can disagree at the one-year boundary from
-     * clock skew alone. Sharing a host does NOT guarantee that: users/init.php
-     * pins PHP to `America/Los_Angeles` on every web request, while MySQL
-     * follows its own `time_zone` setting. They agree only when MySQL's resolved
-     * zone matches that one — which must be checked per environment, not
-     * assumed. (Production 2026-09-05: MySQL `SYSTEM` => MST (-7) and web PHP
-     * PDT (-7) agree, but MST does not observe DST and LA does, so they diverge
-     * by an hour from November to March.)
+     * PHP-side equivalent isFresh() uses PHP's clock. Both use Pacific wall time.
+     * users/init.php sets PHP to `America/Los_Angeles`, and
+     * SessionTimeZone::apply() sets the MySQL session `time_zone` to the same
+     * named zone on every connection. See docs/development/DATABASE.md,
+     * "Time zone".
      *
      * @param string $alias Table alias to qualify the columns with. Developer-supplied,
      *                      never request-derived; validated as a SQL identifier before
@@ -1396,11 +1392,8 @@ class CarRepository
      * suppress it — the exact never-fires failure mode this rule exists to avoid.
      *
      * CLOCK CONSISTENCY: this method uses PHP's clock, while freshnessSql()
-     * compares against MySQL's NOW(). Both must resolve to the same timezone, or
-     * the two forms can disagree at the one-year boundary from clock skew alone.
-     * Sharing a host does NOT guarantee that — see freshnessSql()'s note; PHP is
-     * pinned to `America/Los_Angeles` by users/init.php while MySQL follows its
-     * own `time_zone`.
+     * compares against MySQL's NOW(). Both use Pacific wall time; see
+     * freshnessSql()'s note and docs/development/DATABASE.md, "Time zone".
      *
      * @param string|null $lastVerified      Datetime string, or null if never verified
      * @param string      $ownerLastUpdated  Datetime string (NOT NULL by schema)

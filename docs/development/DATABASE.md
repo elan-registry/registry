@@ -566,6 +566,96 @@ statement about car-adjacent tables generally).
 through direct queries or the application layer. For combined user and profile
 data, use `(new Owner($userId))->data()`.
 
+## Time zone
+
+PHP and MySQL both use Pacific wall time. This file owns the rule.
+
+**Why it needs a rule.** `users/init.php` is upstream UserSpice. It sets PHP
+to `America/Los_Angeles`. The a2hosting MySQL server uses `SYSTEM`, which is
+MST (UTC-7) with no DST. Before the fix, nothing set the session zone. From
+November to March, MySQL `NOW()` was PHP time plus one hour.
+
+**The rule.** Each connection sets the MySQL session `time_zone` to the named
+PHP zone, `America/Los_Angeles`. A named zone follows DST, so `NOW()` matches
+PHP all year. MySQL also reads each `TIMESTAMP` with the offset of its own
+date. A fixed offset such as `-08:00` reads the rows from the other half of
+the year 1 hour off.
+
+A named zone needs the MySQL time zone tables (`mysql.time_zone_name`). The
+a2hosting server and the Docker `db` image have them. If a table is missing,
+MySQL rejects the zone name and `SessionTimeZone::apply()` throws
+`SessionTimeZoneException`. There is no fallback to a numeric offset.
+`usersc/includes/loader.php` does not catch the exception, so the request,
+API call, or cron run stops with a fatal error. This is deliberate. Do not add
+a catch that continues on the server zone.
+
+**Where the code runs.**
+
+- `ElanRegistry\Database\SessionTimeZone` (`usersc/classes/Database/SessionTimeZone.php`)
+  holds the logic. See `CLASSES.md`, "SessionTimeZone".
+- `usersc/includes/loader.php` calls `SessionTimeZone::apply(dbi())`
+  before its other code. `users/init.php` includes it on every request, API
+  call, and cron run. The queries in `users/includes/loader.php` run before
+  this hook and still use the server zone. From November to March, a PHP
+  `date()` string that they write to a `TIMESTAMP` column (for example a
+  `logger()` row before a redirect) is stored 1 hour early. The project
+  accepts this error.
+- The remember-me login in `users/init.php` runs before `init.php` sets the
+  PHP zone, so its `date()` values use the php.ini zone. This upstream error
+  is outside this rule.
+- If a host sets the UserSpice config key `mysql/force_utc_mysql`, `DB`
+  sets the session to `+00:00` at connect. The hook then sets the Pacific
+  zone, so the hook wins.
+- `tests/bootstrap-integration.php` calls `SessionTimeZone::apply()` for the
+  test connection.
+
+**Raw PDO and phinx.** A raw PDO connection does not pass through the hook.
+Each such entry point must set the PHP zone to `SessionTimeZone::APP_TIMEZONE`.
+It must also run `SessionTimeZone::initCommand()` as the PDO init command.
+
+- `phinx.php` sets the PHP zone and `mysql_attr_init_command`.
+- `scripts/log-deployment.php` sets the PHP zone and
+  `Pdo\Mysql::ATTR_INIT_COMMAND`.
+- A new raw-PDO entry point must do the same.
+- Exempt: `scripts/dev/generate-baseline-diff.php`, the `scripts/spike-*`
+  scripts, and the second connections that integration tests open for locks
+  or migration sandboxes (for example `MigrationSandbox.php`). They compare
+  no times.
+
+**Caveat.** `DB::reconnect()` drops the session zone. `DB::getDB()`
+connections never get it. No project code calls either method. A future
+caller must call `SessionTimeZone::apply()` again. `dbi()` keeps its first
+`DbAdapter`, so after `DB::closeShared()` it still holds the old connection.
+The integration bootstrap calls `closeShared()` and then sets the zone on the
+new connection itself.
+
+**TIMESTAMP and DATETIME.**
+
+| Type | Stored as | Effect of the session zone |
+| --- | --- | --- |
+| `TIMESTAMP` | UTC | MySQL converts on write and on read, in the session zone. `NOW()` and `CURRENT_TIMESTAMP` values are correct. A PHP `date()` string is read as Pacific time, with the offset of its own date. |
+| `DATETIME` | Pacific wall time, as written | None. MySQL does not convert. |
+
+`TIMESTAMP` columns include `logs.logdate`, `crons_logs.datetime`,
+`audit.timestamp`, `us_rate_limits.attempt_time`, the
+`car_transfer_requests` time columns, and many upstream UserSpice columns
+(for example `us_ip_list.timestamp`). To list them all, query
+`information_schema.columns` for `DATA_TYPE = 'timestamp'`.
+
+`TIMESTAMP` rows that PHP writes as `date()` strings after the v2.31.1 deploy
+read correctly all year. One exception: at the end of DST, the wall-clock hour
+from 01:00 to 02:00 occurs twice, so a `date()` string in that hour is
+ambiguous.
+
+`TIMESTAMP` rows that PHP wrote as `date()` strings before the v2.31.1 deploy
+were stored in the server zone (`-07:00`). Rows written in summer read
+correctly. Rows written from November to March read 1 hour early. The project
+accepts this error and does not repair these rows (#2589).
+
+`DATETIME` values that MySQL wrote with `NOW()` or `CURRENT_TIMESTAMP` from
+November to March before the v2.31.1 deploy are 1 hour ahead. The project
+accepts this error and does not repair these rows (#2589).
+
 ## System Features
 
 ### Database Triggers

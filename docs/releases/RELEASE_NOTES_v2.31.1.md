@@ -3,11 +3,13 @@
 **Release Date:** November 3, 2026
 **Type:** Patch Release - Verification Tab Shows the Real Queue
 
-The Verification tab shows the cars in the order the batch sends them, with a link to each car and owner. A failed read no longer shows as a default value or a success.
+The Verification tab shows the cars in the order the batch sends them, with a link to each car and owner.
+A failed read no longer shows as a default value or a success.
 
 ## Admin-Facing Changes
 
-- [To be filled in as issues complete.]
+- From November to March, the Verification tab "cron last seen" and next-send times are no longer 1 hour off.
+- Some times recorded from November to March before this release, for example log entries, stay 1 hour off. They are not corrected.
 
 ## Issues Resolved
 
