@@ -901,7 +901,7 @@ to provide a focused, testable data access layer wrapping the `cars`,
   user-view's "Verification & Email" card (`usersc/plugins/hooker/hooks/user_form_hook.php`,
   #1924), which renders per-car Verified/Unverified badges from it. Both clocks
   use Pacific wall time: `users/init.php` sets PHP to `America/Los_Angeles`,
-  and `SessionTimeZone::apply()` sets the MySQL session to the same offset.
+  and `SessionTimeZone::apply()` sets the MySQL session to the same zone.
   See `DATABASE.md`, "Time zone". Validates **both** operands before comparing —
   deliberately not short-circuiting on a fresh `$ownerLastUpdated` — and throws
   `CarValidationException` if either is empty, malformed, or not a real
@@ -3838,27 +3838,26 @@ if ($result['valid']) {
 **Location**: `/usersc/classes/Database/SessionTimeZone.php`
 (namespace `ElanRegistry\Database`)
 
-**Purpose**: Sets the MySQL session `time_zone` to the current UTC offset of
-the PHP zone, so PHP and MySQL both use Pacific wall time. The rule and its
+**Purpose**: Sets the MySQL session `time_zone` to the named PHP zone
+(`America/Los_Angeles`), so PHP and MySQL both use Pacific wall time all year.
+The named zone needs the MySQL time zone tables. The rule and its
 reasons are in `DATABASE.md`, "Time zone".
 
 **Public API**:
 
 - `APP_TIMEZONE` - constant, `'America/Los_Angeles'`. Entry points that do not
   load `users/init.php` use it to set the PHP zone.
-- `offsetFor(DateTimeZone $zone, DateTimeImmutable $at): string` - Pure
-  function. Returns the UTC offset of `$zone` at `$at`, for example `-08:00`.
-- `apply(DatabaseInterface $db): void` - Runs `SET time_zone = ?` on the
-  connection. Throws `SessionTimeZoneException` on a database error.
-- `initCommand(): string` - Returns `SET time_zone = '<offset>'` for raw PDO
+- `apply(DatabaseInterface $db): void` - Runs `SET time_zone = ?` with the
+  PHP zone name on the connection. Throws `SessionTimeZoneException` on a
+  database error, for example when the time zone tables are missing.
+- `initCommand(): string` - Returns `SET time_zone = '<zone>'` for raw PDO
   connections and the phinx `mysql_attr_init_command`.
 
 **Usage**:
 
 - `usersc/includes/loader.php` calls `SessionTimeZone::apply(dbi())`. See
-  `DATABASE.md`, "Time zone", for where the hook runs and its limits.
-- `DB::reconnect()` drops the session zone, and `DB::getDB()` connections do
-  not get it. Call `apply()` again after either.
+  `DATABASE.md`, "Time zone", for where the hook runs and its limits,
+  including `DB::reconnect()` and `DB::getDB()`.
 
 ## Retention
 

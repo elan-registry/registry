@@ -13,11 +13,13 @@ use PHPUnit\Framework\Attributes\Group;
  * MySQL NOW() and PHP date() must agree within a minute after the hook runs.
  * The first test pins the session to UTC, so the gap is hours in every month
  * of the year. A server zone that happens to match PHP cannot hide an apply()
- * that does not set PHP's offset. The second test starts a fresh PHP process
+ * that does not set PHP's zone. The second test starts a fresh PHP process
  * through users/init.php, the path that every request and cron run takes. It
  * detects a missing loader.php hook only while the server zone differs from
- * PHP's offset: the Docker db is -07:00, so from November to March.
- * SessionTimeZoneTest checks the hook in the source all year.
+ * PHP's current UTC offset: the Docker db is -07:00, so from November to March.
+ * SessionTimeZoneTest checks the hook in the source all year. The third test
+ * writes a winter and a summer TIMESTAMP and checks the stored UTC instant.
+ * A fixed offset stores one of them 1 hour off, in every month of the year.
  */
 #[Group('integration')]
 #[Group('database')]
@@ -69,6 +71,41 @@ final class SessionTimeZoneIntegrationTest extends IntegrationTestCase
             abs($dbNow - $phpNow),
             "NOW() was {$result['json']['db_now']}, PHP date() was {$result['json']['php_now']}"
         );
+    }
+
+    public function testWinterAndSummerTimestampsStoreTheTrueUtcInstant(): void
+    {
+        $this->requireDatabase();
+
+        SessionTimeZone::apply($this->db);
+        // PHP date() text for two UTC instants, as the application writes it.
+        $winterInstant = gmmktime(18, 0, 0, 1, 15, 2027);
+        $summerInstant = gmmktime(17, 0, 0, 7, 15, 2027);
+        $winter = date('Y-m-d H:i:s', $winterInstant);
+        $summer = date('Y-m-d H:i:s', $summerInstant);
+
+        $this->db->query('CREATE TEMPORARY TABLE tz_probe (id INT PRIMARY KEY, ts TIMESTAMP NULL)');
+        $this->assertFalse($this->db->error(), 'Test setup: CREATE TEMPORARY TABLE failed: ' . $this->db->errorString());
+        try {
+            $this->db->query('INSERT INTO tz_probe (id, ts) VALUES (1, ?), (2, ?)', [$winter, $summer]);
+            $this->assertFalse($this->db->error(), 'INSERT failed: ' . $this->db->errorString());
+
+            // A write and a read in the same fixed offset give back the same
+            // text, so check the stored UTC instant too. UNIX_TIMESTAMP() of a
+            // TIMESTAMP column reads the stored value with no zone conversion.
+            $this->db->query(
+                "SELECT DATE_FORMAT(ts, '%Y-%m-%d %H:%i:%s') AS ts, UNIX_TIMESTAMP(ts) AS utc FROM tz_probe ORDER BY id"
+            );
+            $this->assertFalse($this->db->error(), 'SELECT failed: ' . $this->db->errorString());
+            $rows = $this->db->results();
+
+            $this->assertSame($winter, $rows[0]->ts, 'The January TIMESTAMP must read back as written');
+            $this->assertSame($summer, $rows[1]->ts, 'The July TIMESTAMP must read back as written');
+            $this->assertSame($winterInstant, (int) $rows[0]->utc, 'The January TIMESTAMP must store the true UTC instant');
+            $this->assertSame($summerInstant, (int) $rows[1]->utc, 'The July TIMESTAMP must store the true UTC instant');
+        } finally {
+            $this->db->query('DROP TEMPORARY TABLE IF EXISTS tz_probe');
+        }
     }
 
     /**

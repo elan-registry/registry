@@ -23,8 +23,9 @@ declare(strict_types=1);
 try {
     require_once __DIR__ . '/../vendor/autoload.php';
 
-    // This script skips users/init.php. Use the same zone, so NOW() in the
-    // log row is Pacific time like the other logs writers (#2589).
+    // This script skips users/init.php. Each raw-PDO entry point sets the app
+    // zone (DATABASE.md, "Time zone"). logs.logdate is TIMESTAMP, so this
+    // script's NOW() row is correct in any zone.
     date_default_timezone_set(\ElanRegistry\Database\SessionTimeZone::APP_TIMEZONE);
 
     [, $version, $environment, $branch, $gitHash] = $argv + [null, null, null, null, null];

@@ -300,12 +300,7 @@ try {
             fwrite(STDERR, "Refusing to proceed: MySQL NOW() and PHP time would differ.\n");
             exit(1);
         }
-        fwrite(STDERR, 'NOTE: Set test session time_zone to '
-            . \ElanRegistry\Database\SessionTimeZone::offsetFor(
-                new \DateTimeZone(date_default_timezone_get()),
-                new \DateTimeImmutable('now')
-            )
-            . ' (' . date_default_timezone_get() . ")\n");
+        fwrite(STDERR, 'NOTE: Set test session time_zone to ' . date_default_timezone_get() . "\n");
 
         // Re-initialize the global $db after configuration fixes
         // This ensures $db in tests uses the corrected configuration
@@ -315,8 +310,8 @@ try {
 } catch (Throwable $e) {
     // Intentionally non-fatal (unlike the stricter inner catches above at the singleton reset,
     // the database-identity check, and the session time_zone set, which abort): this outer
-    // catch covers the reconnection attempt itself. If that step fails, IntegrationTestCase::setUp()'s own
-    // DB::getInstance() + requireDatabase() will independently detect the same unreachable
+    // catch covers the reconnection attempt itself. If that step fails,
+    // IntegrationTestCase::setUp()'s own DB::getInstance() + requireDatabase() will independently detect the same unreachable
     // database and skip tests gracefully — that's the authoritative check, this is just an
     // earlier best-effort reconnection step whose failure the real check will catch anyway.
     fwrite(STDERR, "NOTE: Database reconnection attempt failed: {$e->getMessage()}\n");

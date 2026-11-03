@@ -9,7 +9,7 @@ use ElanRegistry\LogCategories;
 /**
  * SessionTimeZoneException
  *
- * Thrown when the MySQL session time_zone cannot be set to PHP's UTC offset.
+ * Thrown when the MySQL session time_zone cannot be set to PHP's named zone.
  * Without it, MySQL NOW() and PHP time can differ by one hour or more.
  *
  * @package ElanRegistry

@@ -6,8 +6,8 @@ require_once __DIR__ . '/vendor/autoload.php';
 
 use ElanRegistry\Database\SessionTimeZone;
 
-// Phinx does not load users/init.php. Use the same zone, so migration NOW()
-// values match the application (#2589).
+// Phinx does not load users/init.php. Set the application zone here, so
+// migration NOW() values match the application (#2589).
 date_default_timezone_set(SessionTimeZone::APP_TIMEZONE);
 
 // createImmutable: won't overwrite keys already in $_ENV (shell env takes precedence — CI-friendly).

@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Database;
 
-use DateTimeImmutable;
-use DateTimeZone;
 use ElanRegistry\Database\SessionTimeZone;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Exceptions\SessionTimeZoneException;
@@ -16,8 +14,8 @@ use PHPUnit\Framework\TestCase;
 /**
  * Unit test for SessionTimeZone (#2589).
  *
- * The offset must follow DST, because PHP time in America/Los_Angeles moves
- * between -08:00 and -07:00 while the MySQL server zone does not.
+ * The session must use PHP's named zone, not a numeric offset. A named zone
+ * follows DST, so TIMESTAMP rows from winter and summer both read correctly.
  */
 #[Group('fast')]
 final class SessionTimeZoneTest extends TestCase
@@ -36,40 +34,31 @@ final class SessionTimeZoneTest extends TestCase
         parent::tearDown();
     }
 
-    /**
-     * @return array<string, array{string, string, string}>
-     */
-    public static function offsetProvider(): array
-    {
-        return [
-            'Los Angeles in winter (PST)' => ['America/Los_Angeles', '2027-01-15 12:00:00', '-08:00'],
-            'Los Angeles in summer (PDT)' => ['America/Los_Angeles', '2027-07-15 12:00:00', '-07:00'],
-            'Kolkata has a half-hour offset' => ['Asia/Kolkata', '2027-01-15 12:00:00', '+05:30'],
-            'UTC' => ['UTC', '2027-01-15 12:00:00', '+00:00'],
-        ];
-    }
-
-    #[DataProvider('offsetProvider')]
-    public function testOffsetForReturnsTheZoneOffsetAtThatInstant(string $zoneName, string $instant, string $expected): void
-    {
-        $zone = new DateTimeZone($zoneName);
-
-        $this->assertSame($expected, SessionTimeZone::offsetFor($zone, new DateTimeImmutable($instant, $zone)));
-    }
-
     public function testInitCommandHasTheSetStatementFormat(): void
     {
         $this->assertMatchesRegularExpression(
-            "/^SET time_zone = '[+-]\\d{2}:\\d{2}'\$/",
+            "/^SET time_zone = '[A-Za-z0-9\\/_+-]+'\$/",
             SessionTimeZone::initCommand()
         );
     }
 
-    public function testInitCommandUsesPhpsCurrentZone(): void
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function zoneProvider(): array
     {
-        date_default_timezone_set('Asia/Kolkata');
+        return [
+            'Los Angeles' => ['America/Los_Angeles'],
+            'Kolkata' => ['Asia/Kolkata'],
+        ];
+    }
 
-        $this->assertSame("SET time_zone = '+05:30'", SessionTimeZone::initCommand());
+    #[DataProvider('zoneProvider')]
+    public function testInitCommandUsesPhpsNamedZone(string $zone): void
+    {
+        date_default_timezone_set($zone);
+
+        $this->assertSame("SET time_zone = '{$zone}'", SessionTimeZone::initCommand());
     }
 
     public function testAppTimezoneMatchesTheZoneThatInitPhpSets(): void
@@ -87,7 +76,7 @@ final class SessionTimeZoneTest extends TestCase
     {
         // Source check, so CI catches a removed hook in every month. The
         // integration probe catches it only while the server zone differs
-        // from PHP's offset.
+        // from PHP's current UTC offset.
         $loader = file_get_contents(dirname(__DIR__, 3) . '/usersc/includes/loader.php');
         $this->assertIsString($loader);
 
@@ -134,20 +123,20 @@ final class SessionTimeZoneTest extends TestCase
         $this->assertLessThan($initPos, $zonePos, "{$path} must set the PHP zone before initCommand()");
     }
 
-    public function testApplyPassesTheOffsetAsAParameter(): void
+    public function testApplyPassesTheNamedZoneAsAParameter(): void
     {
         date_default_timezone_set('Asia/Kolkata');
         $db = $this->createMock(DatabaseInterface::class);
         $db->expects($this->once())
             ->method('query')
-            ->with('SET time_zone = ?', ['+05:30'])
+            ->with('SET time_zone = ?', ['Asia/Kolkata'])
             ->willReturnSelf();
         $db->method('error')->willReturn(false);
 
         SessionTimeZone::apply($db);
     }
 
-    public function testApplyThrowsWithTheOffsetWhenMysqlRejectsTheStatement(): void
+    public function testApplyThrowsWithTheZoneWhenMysqlRejectsTheStatement(): void
     {
         date_default_timezone_set('Asia/Kolkata');
         $db = $this->createStub(DatabaseInterface::class);
@@ -156,7 +145,7 @@ final class SessionTimeZoneTest extends TestCase
         $db->method('errorString')->willReturn('mock failure');
 
         $this->expectException(SessionTimeZoneException::class);
-        $this->expectExceptionMessage('+05:30');
+        $this->expectExceptionMessage('Asia/Kolkata');
 
         SessionTimeZone::apply($db);
     }

@@ -75,17 +75,10 @@ services:
     # simplest to turn it off outright rather than grant SUPER to work
     # around it.
     #
-    # default-time-zone: -07:00 matches the a2hosting server (MST, no DST).
-    # The app sets the MySQL session time_zone on every connection (see
-    # docs/development/DATABASE.md "Time zone"), so this server default only
-    # matters if that hook is missing. In that case local clocks differ
-    # from November to March, as they did on the server before the hook.
-    # Migration 20260905172137_convert_car_timestamps_to_datetime.php
-    # refuses to run unless MySQL's NOW() is within a few seconds of PHP
-    # time in America/Los_Angeles. phinx.php sets the session zone with a
-    # mysql_attr_init_command, so the guard passes even on an empty database.
-    # A numeric offset is used because the mysql.time_zone_name tables may
-    # be missing.
+    # default-time-zone: -07:00 matches the a2hosting server (MST, no DST),
+    # so a connection that skips the app's session-zone hook (the mysql
+    # CLI, raw-PDO scripts, test lock connections) sees the same clock here
+    # as on the server. See docs/development/DATABASE.md, "Time zone".
     command: --disable-log-bin --default-time-zone=-07:00
     environment:
       # :? fails fast with a clear message if .env is missing or incomplete,
