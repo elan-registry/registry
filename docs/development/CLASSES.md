@@ -975,13 +975,13 @@ to provide a focused, testable data access layer wrapping the `cars`,
   `email_bounced` that applies to the owner's current address
   (`emailFlagActiveSql()`, #2356),
   including a car registered after the flag was set (#2319), and a car whose owner has no
-  `profiles` row. Since #2594 it also excludes a car whose owner address is not well formed. The
+  `profiles` row. The query uses `LEFT JOIN profiles p ON p.user_id = cars.user_id`. The rows are
+  `cars.*` only, with no profile fields.
+  Since #2594 the query also excludes a car whose owner address is not well formed. The
   check runs on the address after trim and lower-casing, with the pattern
   `^[^@[:space:]]+@[^@[:space:]]+[.][^@[:space:]]+$`. It is a shape check, not full RFC validation.
   Brevo rejects a malformed address with HTTP 400. A failed send does not increment
   `verification_attempts`, so the car would return in every batch.
-  The query uses `LEFT JOIN profiles p ON p.user_id = cars.user_id`. The rows are
-  `cars.*` only, with no profile fields.
 - `countVerificationSummary(?int $windowDays): array` - Count cars in each
   verification dashboard state: `all`, `eligible`, `pending`, `bounced`,
   `blocked`, `opted_out`, `verified`, `sold`, and count owners for the three

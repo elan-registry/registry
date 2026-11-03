@@ -150,10 +150,11 @@ class CarRepository
      * One local part, one `@`, and a domain with at least one dot, with no
      * white space. The send fails on an address such as `None` or
      * `owner-at-example.com`, but the car still takes a batch slot. The rule
-     * is a shape check that accepts some addresses `FILTER_VALIDATE_EMAIL`
-     * rejects, so it does not exclude an unusual address that Brevo can
-     * deliver. `[.]` matches a literal dot, so no escape level is needed in
-     * PHP or SQL.
+     * is a shape check, not RFC validation. It accepts some addresses that
+     * `FILTER_VALIDATE_EMAIL` rejects (`a..b@example.com`), so a send can
+     * still fail on one of them. It rejects a quoted local part that holds
+     * an `@` or white space (`"a@b"@example.com`), which RFC 5321 allows.
+     * `[.]` matches a literal dot, so no escape level is needed in PHP or SQL.
      */
     private const WELL_FORMED_ADDRESS_REGEXP = '^[^@[:space:]]+@[^@[:space:]]+[.][^@[:space:]]+$';
 
@@ -1735,7 +1736,7 @@ class CarRepository
         $address = self::CURRENT_ADDRESS_SQL;
         // A malformed address (#2594) fails at send time but still takes a
         // slot in the batch, so it is excluded here. The admin queue shows
-        // such a car as "Invalid email" ({@see verificationMalformedAddressWhereSql()}).
+        // such a car as "Invalid email" (see verificationMalformedAddressWhereSql()).
         $addressWellFormed = self::ADDRESS_WELL_FORMED_SQL;
 
         return "FROM cars

@@ -621,7 +621,7 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
 
     /**
      * A malformed address matters only for a car that is a verification
-     * candidate. A sold car, a noowner car and an empty address are left out.
+     * candidate. A sold car, a noowner car and a white-space-only address are left out.
      *
      * @return array<string, array{string}>
      */
@@ -653,6 +653,7 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
         }
         $carId = $this->createTestCar($ownerId, $fields);
 
+        // $before counts with the car present. The count must not change when the car is deleted.
         $before = $this->repo->countVerificationSummary(null)['all'];
         $this->assertNull($this->allQueueRow($carId), 'This car must not be listed under all');
         $this->db->query('DELETE FROM cars WHERE id = ?', [$carId]);

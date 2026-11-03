@@ -780,7 +780,7 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
 
                         // An Eligible preview row comes from findVerificationEligible()
                         // (`cars.*`) and has no queue columns. The eligibility query
-                        // excludes a malformed address, so such a row is never one (#2594).
+                        // excludes a malformed address, so an Eligible row is never malformed (#2594).
                         $queueAddressMalformed = !$vsIsEligibleView
                             && (int) $queueCar->email_address_malformed === 1;
 

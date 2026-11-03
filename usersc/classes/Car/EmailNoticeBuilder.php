@@ -23,7 +23,8 @@ use ElanRegistry\LogCategories;
  * about the owner, not about a car: an owner with no car still gets it
  * (#2319). One state wins, in the order blocked, bounced, opted out. Both
  * SendPolicy::verificationReason() and VerificationTabStatus::chip() use this
- * order (#2461):
+ * order for these three states (#2461). Both also check other states first,
+ * such as no profile. The three states:
  * - `blocked`: `email_blocked_address`, dated `email_blocked_at`. A block
  *   wins over a bounce. A block can have more than one cause (#2500), but
  *   the profile holds only one. So the builder also reads the suppression

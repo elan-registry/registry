@@ -436,13 +436,15 @@ final readonly class VerificationTabStatus
     /**
      * Give the Status chip for one queue row
      *
-     * The owner's state comes first, because it stops all verification
-     * email to the owner (#2101): no profiles row, then a malformed address
-     * (#2594), then a block, then a bounce, then an opt-out (#2461). The
-     * eligibility query keeps a car with a malformed address out of the
-     * batch, and the admin must fix the address first, so that state comes
-     * before the flags. For the block, the bounce and the opt-out, the order
-     * is the same as SendPolicy::verificationReason() and
+     * The owner's state comes first, in this order: no profiles row (#2101),
+     * then a malformed address (#2594), then a block, then a bounce, then an
+     * opt-out (#2461). No profile and a malformed address come before the
+     * flags, because the admin must fix the profile or the address before a
+     * flag matters. The eligibility query keeps a car with a malformed
+     * address out of the batch.
+     *
+     * The block, the bounce and the opt-out keep the order of
+     * SendPolicy::verificationReason() and
      * EmailNoticeBuilder::buildForOwner(): a block and a bounce are facts
      * about the address, and an opt-out is a preference. The chip takes the
      * same EffectiveEmailFlags value as the other two views, so `blocked`
