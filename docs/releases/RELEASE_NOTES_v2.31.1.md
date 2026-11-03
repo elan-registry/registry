@@ -13,7 +13,7 @@ A failed read no longer shows as a default value or a success.
 
 ## Issues Resolved
 
-- WIP: [#2589](https://github.com/elan-registry/registry/issues/2589) — PHP and MySQL use the same time zone all year.
+- [#2589](https://github.com/elan-registry/registry/issues/2589) — PHP and MySQL use the same time zone all year.
 - WIP: [#2572](https://github.com/elan-registry/registry/issues/2572) — The Save form no longer overwrites the batch size with 5 when the settings read fails.
 - WIP: [#2587](https://github.com/elan-registry/registry/issues/2587) — The auto-send job sends no emails when the batch-size read fails.
 - WIP: [#2573](https://github.com/elan-registry/registry/issues/2573) — The status panel gives a reason and a next step for an unreadable or missing job state.
