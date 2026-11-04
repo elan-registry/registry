@@ -10,7 +10,8 @@ A failed read no longer shows as a default value or a success.
 
 - From November to March, the Verification tab "cron last seen" and next-send times are no longer 1 hour off.
 - Some times recorded from November to March before this release, for example log entries, stay 1 hour off. They are not corrected.
-- When a setting cannot be read, the Verification tab shows "Unavailable" for it. An unreadable batch size also hides the batch size Save form.
+- If the switch, the batch size, or the cron state cannot be read, the Verification tab shows "Unavailable" for it.
+  An unreadable batch size also hides the batch size Save form.
 - If the switch or batch size cannot be read, auto-send sends nothing. A manual send with an unreadable batch size shows an error.
 - An unreadable or missing job state row now says what failed and which next step to take.
 

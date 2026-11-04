@@ -591,7 +591,7 @@ parts appear in this order, from top to bottom:
    If the batch size is unreadable (a failed query or a missing `id = 1`
    row), the Batch size row shows a `text-bg-danger` "Unavailable" badge and
    no Save form for every viewer. The form would post a placeholder value
-   over the real setting. A missing row no longer shows the default of 5.
+   over the real setting. The tab never shows a default batch size.
    The job does not send while the batch size or the switch is unreadable.
    It logs the reason under `CronJobFailure` and pings `/fail` from `run()`.
    See [Preview & Send Flow](#preview--send-flow) for the admin send.

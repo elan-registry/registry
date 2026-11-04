@@ -148,10 +148,6 @@ after an item is written.
 
 - [ ] `BrevoOverrideStub` writes `"<?php\n"` and `sweep()` deletes any file with that exact content. Add a unique marker comment to the stub content (found in /finish-milestone v2.30.7)
 
-### `tests/Support/VerificationSettingsFakeDatabase.php` (test-only)
-
-- [ ] `first()` returns the configured row even when `error()` is true for that select. A real failed query returns no row. Return an empty result when the select errored, so a test cannot pass on a row that production never sees (found in #2572 review)
-
 ### `tests/integration/AdminClearBlockAndOptOutTest.php` (test coverage)
 
 - [ ] Only the `CLEARED` outcome runs an import afterwards. Add one after a shared-address (and moved-address) Clear Block: Brevo's entry with its original `blockedAt` and with none; the flag stays clear and the other account does not change (found in /finish-milestone v2.30.9)

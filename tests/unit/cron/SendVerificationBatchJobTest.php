@@ -220,7 +220,7 @@ final class SendVerificationBatchJobTest extends TestCase
 
     /**
      * makeSettings() builds a real VerificationSettings over a fake DB row, so
-     * the read-side clamp in batchSize() runs. A stored 255 must reach the
+     * the read-side clamp in batchSizeOrNull() runs. A stored 255 must reach the
      * query as 25 (#2363).
      */
     public function testExecuteClampsAnOutOfRangeStoredBatchSizeToTwentyFive(): void

@@ -382,12 +382,12 @@ final class VerificationSettingsTest extends TestCase
     }
 
     // =========================================================================
-    // batchSize() — read-side clamp to [1, 25] (#2363)
+    // batchSizeOrNull() — read-side clamp to [1, 25] (#2363)
     // =========================================================================
 
     /**
      * A direct database write can store a value that setBatchSize() would
-     * never write. batchSize() must still return a value in [1, 25] and
+     * never write. batchSizeOrNull() must still return a value in [1, 25] and
      * log one warning that names the stored value.
      *
      * @return array<string, array{int, int}> [stored, expected return]
@@ -401,13 +401,13 @@ final class VerificationSettingsTest extends TestCase
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('outOfRangeStoredBatchSizeProvider')]
-    public function testBatchSizeClampsOutOfRangeStoredValueAndLogsOneWarning(int $stored, int $expected): void
+    public function testBatchSizeOrNullClampsOutOfRangeStoredValueAndLogsOneWarning(int $stored, int $expected): void
     {
         global $mockLogEntries;
 
         $db = new VerificationSettingsFakeDatabase(firstRowValue: (object) ['batch_size' => $stored]);
 
-        $this->assertSame($expected, (new VerificationSettings($db))->batchSize());
+        $this->assertSame($expected, (new VerificationSettings($db))->batchSizeOrNull());
 
         $warnings = array_values(array_filter(
             $mockLogEntries,
@@ -417,29 +417,14 @@ final class VerificationSettingsTest extends TestCase
         $this->assertStringContainsString((string) $stored, $warnings[0]['message']);
     }
 
-    public function testBatchSizeReturnsInRangeStoredValueWithoutWarning(): void
+    public function testBatchSizeOrNullReturnsInRangeStoredValueWithoutWarning(): void
     {
         global $mockLogEntries;
 
         $db = new VerificationSettingsFakeDatabase(firstRowValue: (object) ['batch_size' => 10]);
 
-        $this->assertSame(10, (new VerificationSettings($db))->batchSize());
+        $this->assertSame(10, (new VerificationSettings($db))->batchSizeOrNull());
         $this->assertSame([], $mockLogEntries, 'An in-range stored batch size must log nothing');
-    }
-
-    /** The callers that need a number (the send job, the admin handlers) keep the default 5. */
-    public function testBatchSizeReturnsDefaultOnQueryError(): void
-    {
-        $db = new VerificationSettingsFakeDatabase(queryErrors: true);
-
-        $this->assertSame(5, (new VerificationSettings($db))->batchSize());
-    }
-
-    public function testBatchSizeReturnsDefaultWhenNoRow(): void
-    {
-        $db = new VerificationSettingsFakeDatabase();
-
-        $this->assertSame(5, (new VerificationSettings($db))->batchSize());
     }
 
     /**
@@ -472,13 +457,6 @@ final class VerificationSettingsTest extends TestCase
         $this->assertCount(1, $mockLogEntries);
         $this->assertSame(LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, $mockLogEntries[0]['category']);
         $this->assertStringContainsString('missing', $mockLogEntries[0]['message']);
-    }
-
-    public function testBatchSizeOrNullClampsStoredValue(): void
-    {
-        $db = new VerificationSettingsFakeDatabase(firstRowValue: (object) ['batch_size' => 255]);
-
-        $this->assertSame(25, (new VerificationSettings($db))->batchSizeOrNull());
     }
 
     // =========================================================================
@@ -520,7 +498,7 @@ final class VerificationSettingsTest extends TestCase
 
     /**
      * The clamped value — not the submitted one — must round-trip through
-     * batchSize(), proving the write actually persisted the effective value
+     * batchSizeOrNull(), proving the write actually persisted the effective value
      * rather than merely returning true.
      */
     #[\PHPUnit\Framework\Attributes\DataProvider('setBatchSizeClampingProvider')]
@@ -536,8 +514,8 @@ final class VerificationSettingsTest extends TestCase
         $this->assertTrue($settings->setBatchSize($submitted));
         $this->assertSame(
             $expectedClamped,
-            $settings->batchSize(),
-            'batchSize() must read back the clamped value that was actually written'
+            $settings->batchSizeOrNull(),
+            'batchSizeOrNull() must read back the clamped value that was actually written'
         );
     }
 

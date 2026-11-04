@@ -800,8 +800,8 @@ if (ElanInput::existsPost()) {
 
                     // Read back rather than echoing the submitted value: what
                     // was stored may have been clamped, and the admin needs to
-                    // see the effective setting. batchSize() would show the
-                    // default 5 as fact after a failed read, so use the null form.
+                    // see the effective setting. A failed read must not show a
+                    // guessed value as fact.
                     $savedBatchSize = $verificationSettings->batchSizeOrNull();
                     if ($savedBatchSize === null) {
                         $errors[] = 'The batch size was saved, but the new value could not be read back. '

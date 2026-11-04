@@ -48,7 +48,7 @@ final class VerificationSettings
     private const SETTINGS_ROW_ID = 1;
 
     /**
-     * Smallest batch size {@see setBatchSize()} will persist and {@see batchSize()} will return.
+     * Smallest batch size {@see setBatchSize()} will persist and {@see batchSizeOrNull()} will return.
      *
      * A batch of zero or fewer is not "sending paused" — pausing is what the
      * feature switch and the cron job's own enable flag are for — it is a
@@ -58,18 +58,13 @@ final class VerificationSettings
     private const BATCH_SIZE_MIN = 1;
 
     /**
-     * Largest batch size {@see setBatchSize()} will persist and {@see batchSize()} will return.
+     * Largest batch size {@see setBatchSize()} will persist and {@see batchSizeOrNull()} will return.
      *
      * The verification programme deliberately sends in small batches to protect
      * sender reputation (#1922); 25 is the ceiling an admin can reach from the
      * dashboard without a code change.
      */
     private const BATCH_SIZE_MAX = 25;
-
-    /**
-     * Batch size {@see batchSize()} returns when the settings row is missing or unreadable.
-     */
-    private const BATCH_SIZE_DEFAULT = 5;
 
     /**
      * Minutes to fall back to for {@see cronStaleAfterSeconds()} if
@@ -132,7 +127,7 @@ final class VerificationSettings
      * class runs the same three steps — issue the scoped single-row SELECT,
      * check `error()`, check the returned row is an object carrying the column —
      * but each one then applies a *different* fail-closed policy on top:
-     * a different sentinel (`false`, `5`, `null`), a different amount of extra
+     * a different sentinel (`false`, `null`), a different amount of extra
      * validation (numeric range, date parsing), and a different log wording.
      * This helper owns only the part that is genuinely identical, and hands the
      * caller back a bare `null` for "could not read it" so the caller can apply
@@ -149,10 +144,10 @@ final class VerificationSettings
      * by hand-rolling the query again.
      *
      * The two failure modes return the same `null` but are distinguishable via
-     * `$queryFailed`, set by reference. Every caller uses it to decide whether
-     * to add its own row-shape warning line, since the query-error line has
-     * already been written by then and this class has always logged exactly
-     * one line per failed read. Reporting it out here
+     * `$queryFailed`, set by reference. A caller that adds its own row-shape
+     * warning line uses it to skip that line after a failed query, since the
+     * query-error line has already been written by then and this class has
+     * always logged exactly one line per failed read. Reporting it out here
      * rather than having callers re-check `$this->db->error()` keeps the answer
      * tied to the read that produced it instead of to whatever state the
      * connection happens to be in afterwards.
@@ -385,35 +380,19 @@ final class VerificationSettings
     }
 
     /**
-     * Configured verification batch size, or the default when it cannot be read
-     *
-     * Fails closed: a missing settings row or a failed query reports the default
-     * of 5 rather than throwing. A caller that acts on the value, or shows it
-     * as fact, must use {@see batchSizeOrNull()}: the default here hides an
-     * unreadable setting.
-     *
-     * {@see self::setBatchSize()} clamps to `[1, 25]` before it writes, but a
-     * direct database write (a test fixture, a manual edit) can bypass it. The
-     * read clamps to the same range too, so no caller ever sends more than 25
-     * emails in one batch. An out-of-range stored value logs a warning.
-     *
-     * @return int Configured batch size in `[1, 25]`, or 5 if it could not be read
-     */
-    public function batchSize(): int
-    {
-        return $this->batchSizeOrNull() ?? self::BATCH_SIZE_DEFAULT;
-    }
-
-    /**
      * Configured batch size, or null when the batch size is unreadable
      *
      * For the admin Verification tab and the send paths. The tab's editable
      * Batch size field must not show the default 5 for an unreadable value,
      * because a Save would then write 5 over the real setting (#2457).
      * Unreadable means a failed query or a missing `id = 1` row. Each logs
-     * one VerificationConfigWarning line. UserSpice `DB::query()` reports a
-     * failed execute through `error()` and does not throw, so a caller cannot
-     * see that failure through {@see batchSize()}.
+     * one VerificationConfigWarning line. There is no read with a default:
+     * a guessed batch size is not the admin's setting.
+     *
+     * {@see self::setBatchSize()} clamps to `[1, 25]` before it writes, but a
+     * direct database write (a test fixture, a manual edit) can bypass it. The
+     * read clamps to the same range too, so no caller ever sends more than 25
+     * emails in one batch. An out-of-range stored value logs a warning.
      *
      * @return int|null Configured batch size in `[1, 25]`, or null if the
      *                  query failed or the row is missing

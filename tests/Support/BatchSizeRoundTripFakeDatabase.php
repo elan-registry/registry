@@ -6,11 +6,11 @@ namespace Tests\Support;
 
 /**
  * BatchSizeRoundTripFakeDatabase - FakeDatabase double for
- * VerificationSettingsTest's setBatchSize()/batchSize() round-trip test
+ * VerificationSettingsTest's setBatchSize()/batchSizeOrNull() round-trip test
  *
  * A single instance backs both the write (`setBatchSize()`'s `UPDATE
  * er_verification_settings SET batch_size ...`) and the read-back
- * (`batchSize()`'s `SELECT batch_size FROM er_verification_settings ...`),
+ * (`batchSizeOrNull()`'s `SELECT batch_size FROM er_verification_settings ...`),
  * so the read always answers with whatever was actually written — proving
  * the clamped value genuinely persisted, rather than asserting against a
  * second, independently-configured double that could silently drift from

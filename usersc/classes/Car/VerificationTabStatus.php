@@ -31,9 +31,8 @@ use ElanRegistry\LogCategories;
  * uses the VerificationSettings `*OrNull()` reads. They return null for a
  * failed settings query and for a missing settings row, and the tab counts
  * that null as "not read". UserSpice `DB::query()` reports a failed query
- * through `error()` and does not throw, so the plain reads
- * `VerificationSettings::isEnabled()` and `VerificationSettings::batchSize()`
- * cannot see a failed query.
+ * through `error()` and does not throw, so the plain read
+ * `VerificationSettings::isEnabled()` cannot see a failed query.
  * {@see self::allHealthy()} lists which probe failures make the tab
  * unhealthy. An unreadable value is never shown as a green zero, because a
  * zero tells an admin to stop looking.
@@ -640,9 +639,8 @@ final readonly class VerificationTabStatus
      */
     private function jobRow(string $key, string $label, array $status): array
     {
-        $badge = CronJobRunsReader::badgeFor($status['state'], $status['lastRunAt'], $status['lastFailureAt']);
-
         $lastRunAt = $status['lastRunAt'];
+        $badge = CronJobRunsReader::badgeFor($status['state'], $lastRunAt, $status['lastFailureAt']);
 
         // The badge text is shared with the auto-send card, so the reason for
         // an unreadable state goes in the detail only.

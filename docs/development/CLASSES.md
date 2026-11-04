@@ -2000,19 +2000,21 @@ dependency exists between the two.
 - **Asymmetric gate**: `setEnabled(true)` throws `VerificationConfigException`
   when `brevoReady()` is false; `setEnabled(false)` never throws, for any
   reason — an admin must always be able to disable verification mid-incident
-- Every probe fails closed and logs rather than throwing, so a database or
-  filesystem hiccup hides the feature instead of breaking the page
+- No probe throws, so a database or filesystem fault does not break the
+  page. The plain reads return a closed default. `lastCronRequestAt()` and
+  `cronReady()` do not log a failed read. The `*OrNull()` reads log and
+  return `null`, so the caller can show "Unavailable"
 - Performs no permission checks itself — callers must run `hasPerm()` before
   calling `setEnabled()`
-
-**Methods**:
 
 **Unreadable state**: A `*OrNull()` read returns `null` when it cannot read
 the value. The value is unreadable when the query fails or the `id = 1` row
 is missing. Each `*OrNull()` read logs one `VerificationConfigWarning` line
 in that case. The plain reads keep their defaults: `isEnabled()` returns
-`false`, and `batchSize()` returns `5`. Code that acts on the value must use
-the `*OrNull()` read. A default must not look like a real setting.
+`false`. The batch size has no plain read. Code that acts on the value must
+use the `*OrNull()` read. A default must not look like a real setting.
+
+**Methods**:
 
 - `isEnabled(): bool` - Whether verification is currently switched on;
   `false` on a failed query or a missing row
@@ -2070,15 +2072,14 @@ the `*OrNull()` read. A default must not look like a real setting.
   counter must not render alike. The admin Verification tab shows a
   `text-bg-danger` "Unavailable" badge for the `null` case
   (`app/admin/includes/tab-verification.php`, #2085)
-- `batchSize(): int` - Configured verification-email batch size
-  (`er_verification_settings.batch_size`); fails closed to `5` on any read
-  problem (#1884). Clamps a stored value outside `[1, 25]` to that range and
-  logs a `VERIFICATION_CONFIG_WARNING` with the stored value (#2363)
-- `batchSizeOrNull(): ?int` - Like `batchSize()`, but `null` when the batch
-  size is unreadable: a failed query or a missing row. The admin Verification
-  tab uses it, so its Batch size form never shows, and a Save never writes, a
-  guessed value (#2457). The send job and the admin send do not send on
-  `null` (#2572)
+- `batchSizeOrNull(): ?int` - Configured verification-email batch size
+  (`er_verification_settings.batch_size`), or `null` when the batch size is
+  unreadable: a failed query or a missing row. Clamps a stored value outside
+  `[1, 25]` to that range and logs a `VERIFICATION_CONFIG_WARNING` with the
+  stored value (#2363). The admin Verification tab uses it, so its Batch size
+  form never shows, and a Save never writes, a guessed value (#2457). The
+  send job and the admin send do not send on `null` (#2572). There is no read
+  with a default
 - `setBatchSize(int $size, int $actingUserId = 0): bool` - Set the batch
   size, clamped to `[1, 25]` regardless of the submitted value; never throws
   (logs and returns `false` on a DB error or unconfirmed write) (#1885)

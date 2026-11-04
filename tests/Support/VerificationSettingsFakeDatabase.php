@@ -272,6 +272,11 @@ class VerificationSettingsFakeDatabase extends FakeDatabase
 
     public function first(bool $assoc = false): array|object
     {
+        // UserSpice DB::query() sets no results on a failed query, so a test
+        // must not read a row that production never sees.
+        if ($this->error()) {
+            return [];
+        }
         if ($this->unmatchedCounterSelectWasIssued) {
             return $this->unmatchedCounterRowValue;
         }
