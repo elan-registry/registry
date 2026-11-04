@@ -38,12 +38,16 @@ class CarRepository
     public const FRESHNESS_MONTHS = 12;
 
     /**
-     * Verification queue pills accepted by findVerificationQueue().
+     * Verification queue pills, in the order the dashboard shows them.
      *
      * Public so the dashboard can check a `?status=` value against the same list.
+     * findVerificationQueue() accepts each value except `next_queue`: the Next
+     * Queue view gets its rows from CarVerificationSendService::findEligible(),
+     * so the rows it shows are the rows that the send form sends.
      */
     public const QUEUE_STATUSES = [
-        'all', 'eligible', 'pending', 'bounced', 'blocked', 'opted_out', 'verified', 'sold',
+        'eligible', 'next_queue', 'pending', 'bounced', 'blocked', 'opted_out', 'verified', 'sold',
+        'invalid_email',
     ];
 
     /**
@@ -113,6 +117,15 @@ class CarRepository
         DeliverabilityFlagLog::SOURCE_ADMIN,
         DeliverabilityFlagLog::SOURCE_EMAIL_CHANGE,
     ];
+
+    /**
+     * SQL ORDER BY clause for the verification send order.
+     *
+     * The Eligible view and findVerificationEligible() share it, so the list
+     * on screen and the rows that a batch reads have one order. The id
+     * tiebreak keeps the order stable for cars with the same date.
+     */
+    private const VERIFICATION_SEND_ORDER_SQL = 'ORDER BY cars.last_verified ASC, cars.id ASC';
 
     /**
      * SQL that normalizes a column the way
@@ -1614,9 +1627,14 @@ class CarRepository
      * A car is also ineligible when the owner's current address does not have
      * the shape of an address ({@see self::WELL_FORMED_ADDRESS_REGEXP}, #2594).
      *
+     * Send order: oldest-verified first (`last_verified` ASC, so a car that
+     * was never verified comes first), then car id ASC. The id tiebreak makes
+     * the order stable, so the Eligible view, the Next Queue preview and the
+     * batch send list the same cars in the same order (#2599).
+     *
      * @param int $limit Maximum rows to return (values below 1 return no rows)
      * @param int $offset Rows to skip (negative values are treated as 0)
-     * @return array<object> Eligible car rows (empty if none)
+     * @return array<object> Eligible car rows in send order (empty if none)
      * @throws CarDatabaseException If the query fails
      * @throws CarValidationException If the freshness alias is rejected (unreachable — literal)
      */
@@ -1634,9 +1652,8 @@ class CarRepository
         $from = self::verificationEligibleFromSql();
 
         $result = $this->db->query(
-            "SELECT cars.* {$from}
-              ORDER BY cars.last_verified ASC
-              LIMIT {$limit} OFFSET {$offset}"
+            "SELECT cars.* {$from} " . self::VERIFICATION_SEND_ORDER_SQL
+            . " LIMIT {$limit} OFFSET {$offset}"
         );
         if ($this->db->error()) {
             throw new CarDatabaseException(
@@ -1787,7 +1804,7 @@ class CarRepository
      * Build the WHERE condition for a car with a live owner who has no profiles row
      *
      * Such a car is never eligible ({@see verificationEligibleFromSql()}).
-     * It is in the `all` queue so that the admin sees it, as "no profile",
+     * It is in the `invalid_email` queue so that the admin sees it, as "no profile",
      * and can fix the row. A sold car, an ownerless car and a `noowner` car
      * are left out: none of them is a verification candidate.
      *
@@ -1806,7 +1823,7 @@ class CarRepository
      * Build the WHERE condition for a car whose owner's current address is malformed (#2594)
      *
      * Such a car is never eligible ({@see verificationEligibleFromSql()}).
-     * It is in the `all` queue so that the admin sees it, as "Invalid email",
+     * It is in the `invalid_email` queue so that the admin sees it, as "Invalid email",
      * and can fix the address. A sold car, an ownerless car and a `noowner`
      * car are left out: none of them is a verification candidate. A NULL or
      * empty address is not malformed, so it does not match.
@@ -1934,11 +1951,12 @@ class CarRepository
      * - `opted_out`: the owner opted out, whatever the address. Current state.
      * - `verified`: distinct existing cars with a `cars_hist` `VERIFIED` row in the window.
      * - `sold`: distinct existing cars with a `cars_hist` `VERIFIED SOLD` row in the window.
-     * - `all`: distinct cars in eligible, pending, bounced, blocked or opted
-     *   out, plus the cars of a live owner with no profiles row (see
+     * - `invalid_email`: the cars of a live owner with no profiles row (see
      *   verificationNoProfileWhereSql()) or with a malformed address (see
-     *   verificationMalformedAddressWhereSql(), #2594). Verified and Sold are
-     *   history, not a queue state, so they are not in `all`.
+     *   verificationMalformedAddressWhereSql(), #2594). A car with both
+     *   counts once. Current state. It can overlap the other counts.
+     *
+     * The Next Queue pill has no count here: it is the first batch of `eligible`.
      *
      * Owner counts (the summary cards): `bounced_owners`, `blocked_owners` and
      * `opted_out_owners` count the distinct `cars.user_id` values of the cars
@@ -1946,11 +1964,12 @@ class CarRepository
      * counts once. An owner with no cars does not count.
      *
      * A flag on an old address does not count ({@see emailFlagActiveSql()}).
-     * Bounced, Blocked and Opted out can overlap, so `all` can be less than the sum.
+     * Bounced, Blocked and Opted out can overlap.
      *
      * @param int|null $windowDays Window for `verified` and `sold`, in days back from now. Null = all time.
-     * @return array{all: int, eligible: int, pending: int, bounced: int, blocked: int, opted_out: int,
-     *         verified: int, sold: int, bounced_owners: int, blocked_owners: int, opted_out_owners: int}
+     * @return array{eligible: int, pending: int, bounced: int, blocked: int, opted_out: int,
+     *         verified: int, sold: int, invalid_email: int, bounced_owners: int, blocked_owners: int,
+     *         opted_out_owners: int}
      * @throws CarValidationException If $windowDays is zero or negative
      * @throws CarDatabaseException If the query fails
      */
@@ -1972,7 +1991,7 @@ class CarRepository
 
         // One pass over cars, joined to profiles and users, gives the
         // queue-state counts. A WHERE on this outer query would change every
-        // SUM and the all count. Eligible and the cars_hist counts keep their
+        // SUM. Eligible and the cars_hist counts keep their
         // own FROM, so they stay scalar subqueries.
         $this->db->query(
             "SELECT
@@ -1986,13 +2005,7 @@ class CarRepository
                 COUNT(DISTINCT CASE WHEN {$optedOut} THEN cars.user_id END) AS opted_out_owners,
                 (SELECT COUNT(DISTINCT h.car_id) {$histFrom} WHERE h.operation = ?{$window}) AS verified,
                 (SELECT COUNT(DISTINCT h.car_id) {$histFrom} WHERE h.operation = ?{$window}) AS sold,
-                SUM(CASE WHEN cars.id IN (SELECT cars.id {$eligibleFrom})
-                     OR {$pending}
-                     OR {$bounced}
-                     OR {$blocked}
-                     OR {$optedOut}
-                     OR {$noProfile}
-                     OR {$malformed} THEN 1 ELSE 0 END) AS all_count
+                SUM(CASE WHEN {$noProfile} OR {$malformed} THEN 1 ELSE 0 END) AS invalid_email
              {$carsFrom}",
             array_merge(
                 [self::OPERATION_VERIFIED],
@@ -2018,7 +2031,6 @@ class CarRepository
 
         // SUM() over no cars is NULL; the int cast makes it 0.
         return [
-            'all'              => (int) $row->all_count,
             'eligible'         => (int) $row->eligible,
             'pending'          => (int) $row->pending,
             'bounced'          => (int) $row->bounced,
@@ -2026,6 +2038,7 @@ class CarRepository
             'opted_out'        => (int) $row->opted_out,
             'verified'         => (int) $row->verified,
             'sold'             => (int) $row->sold,
+            'invalid_email'    => (int) $row->invalid_email,
             'bounced_owners'   => (int) $row->bounced_owners,
             'blocked_owners'   => (int) $row->blocked_owners,
             'opted_out_owners' => (int) $row->opted_out_owners,
@@ -2037,18 +2050,25 @@ class CarRepository
      *
      * Each status uses the same definition as its count in
      * countVerificationSummary(). Order per status:
+     * - `eligible`: the send order of findVerificationEligible()
+     *   (`last_verified` ASC, then car id ASC).
      * - `pending`: longest-waiting first (`vericode_sent_at` ASC).
-     * - `eligible`: oldest-verified first, the same as findVerificationEligible().
      * - `verified` / `sold`: most recent history row first.
-     * - `all` / `bounced` / `blocked` / `opted_out`: car id ASC.
+     * - `bounced` / `blocked` / `opted_out` / `invalid_email`: car id ASC.
+     *
+     * `invalid_email` lists the cars of a live owner with no profiles row
+     * ({@see verificationNoProfileWhereSql()}) or with a malformed address
+     * ({@see verificationMalformedAddressWhereSql()}). It can overlap the
+     * other pills.
      *
      * `$windowDays` applies only to `verified` and `sold`. The other statuses
      * are current state. For `verified` / `sold`, each car shows once, with the
      * time of its latest matching `cars_hist` row in `hist_timestamp`. For the
      * other statuses `hist_timestamp` is null.
      *
-     * The Eligible view keeps its preview-before-send through
-     * findVerificationEligible(). This method only lists the rows for the table.
+     * `next_queue` is rejected: the Next Queue view gets its rows from
+     * CarVerificationSendService::findEligible(), so the preview and the send
+     * use one query.
      *
      * The profile columns are the owner's state. `email_blocked_active` and
      * `email_bounced_active` are 1 only while the flag applies to the
@@ -2066,7 +2086,8 @@ class CarRepository
      *         has_profile: int|string, email_opted_out: int|string, email_blocked_active: int|string,
      *         email_blocked_cause: ?string, email_bounced_active: int|string,
      *         email_address_malformed: int|string, hist_timestamp: ?string}>
-     * @throws CarValidationException If $status is not in QUEUE_STATUSES, or $windowDays is zero or negative
+     * @throws CarValidationException If $status is not in QUEUE_STATUSES, is `next_queue`, or $windowDays
+     *         is zero or negative
      * @throws CarDatabaseException If the query fails
      */
     public function findVerificationQueue(string $status, ?int $windowDays, int $limit): array
@@ -2074,7 +2095,13 @@ class CarRepository
         if (!in_array($status, self::QUEUE_STATUSES, true)) {
             throw new CarValidationException(
                 "CarRepository::findVerificationQueue received an unknown status '{$status}'. "
-                . 'Use one of: ' . implode(', ', self::QUEUE_STATUSES) . '.'
+                . 'Use one of: ' . implode(', ', array_diff(self::QUEUE_STATUSES, ['next_queue'])) . '.'
+            );
+        }
+        if ($status === 'next_queue') {
+            throw new CarValidationException(
+                "CarRepository::findVerificationQueue does not accept the status 'next_queue'. "
+                . 'Use CarVerificationSendService::findEligible() for the Next Queue rows.'
             );
         }
         self::assertValidWindowDays($windowDays, 'findVerificationQueue');
@@ -2104,7 +2131,7 @@ class CarRepository
         switch ($status) {
             case 'eligible':
                 $sql = "SELECT {$columns}, NULL AS hist_timestamp " . self::verificationEligibleFromSql()
-                    . ' ORDER BY cars.last_verified ASC';
+                    . ' ' . self::VERIFICATION_SEND_ORDER_SQL;
                 break;
             case 'pending':
                 $sql = "SELECT {$columns}, NULL AS hist_timestamp {$carsFrom} WHERE {$pending}"
@@ -2120,6 +2147,10 @@ class CarRepository
                 break;
             case 'opted_out':
                 $sql = "SELECT {$columns}, NULL AS hist_timestamp {$carsFrom} WHERE {$optedOut}"
+                    . ' ORDER BY cars.id ASC';
+                break;
+            case 'invalid_email':
+                $sql = "SELECT {$columns}, NULL AS hist_timestamp {$carsFrom} WHERE {$noProfile} OR {$malformed}"
                     . ' ORDER BY cars.id ASC';
                 break;
             case 'verified':
@@ -2139,17 +2170,11 @@ class CarRepository
                                ) h ON h.car_id = cars.id
                          ORDER BY h.hist_timestamp DESC, cars.id DESC";
                 break;
-            default: // 'all'
-                $sql = "SELECT {$columns}, NULL AS hist_timestamp {$carsFrom}
-                         WHERE cars.id IN (SELECT cars.id " . self::verificationEligibleFromSql() . ")
-                            OR {$pending}
-                            OR {$bounced}
-                            OR {$blocked}
-                            OR {$optedOut}
-                            OR {$noProfile}
-                            OR {$malformed}
-                         ORDER BY cars.id ASC";
-                break;
+            default:
+                // Unreachable: the allow-list check above rejects any other status.
+                throw new CarValidationException(
+                    "CarRepository::findVerificationQueue has no query for the status '{$status}'."
+                );
         }
 
         $result = $this->db->query("{$sql} LIMIT {$limit}", $params);

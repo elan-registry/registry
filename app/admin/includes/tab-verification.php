@@ -54,12 +54,12 @@ $verificationRepo    = $verificationRepo ?? null;
 // checks each value against its allow-list in CarRepository. The window
 // defaults here are null, not 30: null is the valid "all time" value, and
 // `?? 30` would replace it.
-$queueStatus        = $queueStatus ?? 'all';
+$queueStatus        = $queueStatus ?? 'eligible';
 $queueWindowDays    = $queueWindowDays ?? null;
 $queueShowLimit     = $queueShowLimit ?? 25;
 $activityWindowDays = $activityWindowDays ?? null;
 
-$vsIsEligibleView = $queueStatus === 'eligible';
+$vsIsNextQueueView = $queueStatus === 'next_queue';
 
 // ---------------------------------------------------------------------------
 // Status probes. VerificationTabStatus runs each probe in its own fault domain
@@ -68,7 +68,7 @@ $vsIsEligibleView = $queueStatus === 'eligible';
 $vsStatus = VerificationTabStatus::read(dbi(), $currentUserId);
 
 // ---------------------------------------------------------------------------
-// Eligible-car preview (read-only). Its own fault domain: a failure here must
+// Next Queue batch preview (read-only). Its own fault domain: a failure here must
 // not blank out the status panel.
 //
 // DELIBERATELY DOES NOT CONSULT VerificationSettings::isEnabled(). That switch
@@ -106,8 +106,8 @@ $vsBatchSize      = $vsStatus->batchSize();
 $vsEligibleError  = null;
 $vsEligibleLoadError = 'The list of eligible cars could not be loaded. Check the system log for details.';
 
-// Only the Eligible queue view shows this preview, so other views skip the query.
-if ($vsIsEligibleView && $verificationSendSvc !== null && $vsBatchSize !== null) {
+// Only the Next Queue view shows this preview, so other views skip the query.
+if ($vsIsNextQueueView && $verificationSendSvc !== null && $vsBatchSize !== null) {
     try {
         $vsEligible = $verificationSendSvc->findEligible($vsBatchSize, 0);
     } catch (\Throwable $e) {
@@ -117,7 +117,7 @@ if ($vsIsEligibleView && $verificationSendSvc !== null && $vsBatchSize !== null)
             ExceptionLogSummary::of($e)
         ));
     }
-} elseif ($vsIsEligibleView) {
+} elseif ($vsIsNextQueueView) {
     // Without the send service or the batch size there is no preview. Say so,
     // so that an empty list does not read as "no cars are due".
     $vsEligibleError = $vsEligibleLoadError;
@@ -158,8 +158,8 @@ if (!function_exists('vsWindowLabel')) {
 // still render.
 // ---------------------------------------------------------------------------
 /**
- * @var array{all: int, eligible: int, pending: int, bounced: int, blocked: int, opted_out: int,
- *     verified: int, sold: int, bounced_owners: int, blocked_owners: int, opted_out_owners: int}|null $vsSummary
+ * @var array{eligible: int, pending: int, bounced: int, blocked: int, opted_out: int, verified: int,
+ *     sold: int, invalid_email: int, bounced_owners: int, blocked_owners: int, opted_out_owners: int}|null $vsSummary
  */
 $vsSummary = null;
 $vsRepo    = $verificationRepo ?? new CarRepository(dbi());
@@ -175,22 +175,65 @@ try {
 }
 
 // ---------------------------------------------------------------------------
-// Verification queue rows. Their own fault domain. The Eligible view uses the
-// eligible-car preview above (the same rows the batch form sends), so it does
-// not run a second query.
+// Verification queue rows and their email flags. Their own fault domain. The
+// Next Queue view uses the batch preview above (the same rows the batch form
+// sends), so it does not run a second query.
+//
+// The flags are built here, not in the render loop: a row without the queue
+// columns makes fromQueueRow() throw, and a throw inside the open <tbody>
+// would stop the page mid-table with no message and no log line.
 // ---------------------------------------------------------------------------
 /** @var array<int, object> $vsQueueRows */
 $vsQueueRows  = [];
+/** @var array<int, EffectiveEmailFlags> $vsQueueFlags Keyed like $vsQueueRows */
+$vsQueueFlags = [];
+/** @var array<int, bool> $vsQueueMalformed Keyed like $vsQueueRows */
+$vsQueueMalformed = [];
 $vsQueueError = null;
+$vsQueueLoadError = 'The verification queue could not be loaded. Check the system log for details.';
 
-if ($vsIsEligibleView) {
+if ($vsIsNextQueueView) {
+    // A Next Queue row comes from findVerificationEligible() (`cars.*`) and
+    // has no profile or queue columns: the eligibility query already
+    // excludes an owner with no profile, a flag, or a malformed address (#2594).
     $vsQueueRows  = $vsEligible;
     $vsQueueError = $vsEligibleError;
+    foreach ($vsQueueRows as $vsQueueRowKey => $vsQueueRow) {
+        $vsQueueFlags[$vsQueueRowKey]     = EffectiveEmailFlags::eligible();
+        $vsQueueMalformed[$vsQueueRowKey] = false;
+    }
 } else {
     try {
         $vsQueueRows = $vsRepo->findVerificationQueue($queueStatus, $queueWindowDays, $queueShowLimit);
+        // The flags come from the owner's profiles row (#2101). A block or
+        // bounce counts only while it applies to the owner's current email
+        // (the `_active` columns, #2356).
+        foreach ($vsQueueRows as $vsQueueRowKey => $vsQueueRow) {
+            $vsQueueFlags[$vsQueueRowKey] = EffectiveEmailFlags::fromQueueRow($vsQueueRow);
+            // A missing column would cast to 0 and show a malformed address
+            // as well-formed, so it fails here like a missing flag column.
+            if (!property_exists($vsQueueRow, 'email_address_malformed')) {
+                throw new \InvalidArgumentException(
+                    "Verification tab: a queue row has no 'email_address_malformed' column."
+                );
+            }
+            $vsQueueMalformed[$vsQueueRowKey] = (int) $vsQueueRow->email_address_malformed === 1;
+        }
+    } catch (\InvalidArgumentException $e) {
+        $vsQueueRows      = [];
+        $vsQueueFlags     = [];
+        $vsQueueMalformed = [];
+        $vsQueueError     = $vsQueueLoadError;
+        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
+            'Verification tab: a %s queue row has no email flag columns: %s',
+            $queueStatus,
+            ExceptionLogSummary::of($e)
+        ));
     } catch (\Throwable $e) {
-        $vsQueueError = 'The verification queue could not be loaded. Check the system log for details.';
+        $vsQueueRows      = [];
+        $vsQueueFlags     = [];
+        $vsQueueMalformed = [];
+        $vsQueueError     = $vsQueueLoadError;
         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
             'Verification tab: could not load the %s queue: %s',
             $queueStatus,
@@ -260,15 +303,24 @@ $vsTabUrl = static fn (array $overrides = []): string
     => 'index.php?' . http_build_query(array_merge($vsUrlState, $overrides));
 
 $vsStatusLabels = [
-    'all'        => 'All',
-    'eligible'   => 'Eligible',
-    'pending'    => 'Pending',
-    'bounced'    => 'Bounced',
-    'blocked'    => 'Blocked',
-    'opted_out'  => 'Opted out',
-    'verified'   => 'Verified',
-    'sold'       => 'Sold',
+    'eligible'      => 'Eligible',
+    'next_queue'    => 'Next Queue',
+    'pending'       => 'Pending',
+    'bounced'       => 'Bounced',
+    'blocked'       => 'Blocked',
+    'opted_out'     => 'Opted out',
+    'verified'      => 'Verified',
+    'sold'          => 'Sold',
+    'invalid_email' => 'Invalid email',
 ];
+
+// Pill counts. Next Queue has no summary key: its count is
+// min(eligible, batch size). If the summary or the batch size could not be
+// read, the Next Queue pill shows no count.
+$vsPillCounts = $vsSummary ?? [];
+if ($vsSummary !== null && $vsBatchSize !== null) {
+    $vsPillCounts['next_queue'] = min($vsSummary['eligible'], $vsBatchSize);
+}
 
 $vsNow = new \DateTimeImmutable();
 ?>
@@ -445,10 +497,10 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
         <!-- Gated on $vsCanToggle to match this tab's "read-only for editors"
              contract. The server re-checks hasPerm([2]) on the POST side; this
              only avoids showing an editor a control their click would reject.
-             Send Batch Now is a link, not a POST: it opens the Eligible view,
+             Send Batch Now is a link, not a POST: it opens the Next Queue view,
              which previews the batch before its Send batch button sends it. -->
         <div class="d-flex flex-wrap gap-2 align-items-center">
-        <a class="btn btn-outline-primary" href="<?= vsEsc($vsTabUrl(['status' => 'eligible'])) ?>#verificationQueue">
+        <a class="btn btn-outline-primary" href="<?= vsEsc($vsTabUrl(['status' => 'next_queue'])) ?>#verificationQueue">
             <i class="fas fa-paper-plane"></i> Send Batch Now
         </a>
         <form action="index.php?tab=verification" method="POST">
@@ -494,8 +546,8 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                data-status="<?= vsEsc($vsPillStatus) ?>"
                <?= $vsPillActive ? 'aria-current="page"' : '' ?>>
                 <?= vsEsc($vsStatusLabels[$vsPillStatus]) ?>
-                <?php if ($vsSummary !== null) { ?>
-                <span class="ms-1">(<?= vsEsc(number_format($vsSummary[$vsPillStatus])) ?>)</span>
+                <?php if (isset($vsPillCounts[$vsPillStatus])) { ?>
+                <span class="ms-1">(<?= vsEsc(number_format($vsPillCounts[$vsPillStatus])) ?>)</span>
                 <?php } ?>
             </a>
             <?php } ?>
@@ -537,7 +589,7 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
         <small class="form-text text-muted d-block mb-3">
             <i class="fas fa-info-circle"></i>
             Window applies to Verified and Sold (and to their summary cards). The other views show the
-            current state. Show does not apply to Eligible, which previews one batch.
+            current state. Show applies to every view except Next Queue, which previews one batch.
         </small>
 
 <?php if ($sendBatchJustRan) { ?>
@@ -642,7 +694,7 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
 
 <?php } ?>
 
-<?php if ($vsIsEligibleView) { ?>
+<?php if ($vsIsNextQueueView) { ?>
         <h6 class="text-primary mb-2"><i class="fas fa-envelope-circle-check"></i> Send Verification Emails</h6>
         <p class="text-muted">
             Review the cars currently due a verification email, then send the batch.
@@ -652,7 +704,7 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
         <p class="text-muted">Showing <strong>Pending</strong>, longest-waiting first.</p>
 <?php } else { ?>
         <p class="text-muted">
-            Showing <strong><?= vsEsc($vsStatusLabels[$queueStatus] ?? $vsStatusLabels['all']) ?></strong>,
+            Showing <strong><?= vsEsc($vsStatusLabels[$queueStatus] ?? $vsStatusLabels['eligible']) ?></strong>,
             up to <?= vsEsc((string) $queueShowLimit) ?> rows.
         </p>
 <?php } ?>
@@ -667,12 +719,12 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
 
         <div class="alert alert-info" role="alert">
             <i class="fas fa-info-circle"></i>
-            <?= $vsIsEligibleView ? 'No cars are currently due a verification email.' : 'No cars match this view.' ?>
+            <?= $vsIsNextQueueView ? 'No cars are currently due a verification email.' : 'No cars match this view.' ?>
         </div>
 
 <?php } else { ?>
 
-        <?php if ($vsIsEligibleView) { ?>
+        <?php if ($vsIsNextQueueView) { ?>
         <p class="text-muted">
             Showing up to the configured batch size (<?= vsEsc((string) $vsBatchSize) ?>)
             of the oldest-verified eligible cars.
@@ -687,11 +739,11 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
         </div>
         <?php } ?>
 
-        <?php if ($vsIsEligibleView) { ?>
-        <!-- The batch form wraps the Eligible table, so the previewed rows are the rows sent.
+        <?php if ($vsIsNextQueueView) { ?>
+        <!-- The batch form wraps the Next Queue table, so the previewed rows are the rows sent.
              The per-row action buttons submit their own sibling forms through form=, so
              Send batch is the only submit button in this form with no form= attribute. -->
-        <form action="<?= vsEsc($vsTabUrl(['status' => 'eligible'])) ?>" method="POST">
+        <form action="<?= vsEsc($vsTabUrl(['status' => 'next_queue'])) ?>" method="POST">
             <input type="hidden" name="csrf" value="<?= vsEsc($csrfToken) ?>">
             <input type="hidden" name="command" value="verification_send_batch">
         <?php } ?>
@@ -711,7 +763,7 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                         </tr>
                     </thead>
                     <tbody>
-                    <?php foreach ($vsQueueRows as $queueCar) {
+                    <?php foreach ($vsQueueRows as $queueRowKey => $queueCar) {
                         $queueCarId = (int) ($queueCar->id ?? 0);
                         $queueOwnerId = (int) ($queueCar->user_id ?? 0);
 
@@ -720,7 +772,7 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                         // DATABASE.md), but they are a synced copy that can drift from the
                         // authoritative users/profiles values. The owner name shown here is
                         // resolved per row via Owner::data() rather than trusting the
-                        // denormalized cars columns, so the Eligible preview matches what the
+                        // denormalized cars columns, so the Next Queue preview matches what the
                         // send actually uses (CarVerificationSendService also loads Owner fresh).
                         // Guarded per row: this loop runs inside an already-open <tbody>, well
                         // past the try/catch that built the row list above — that catch's fault
@@ -745,6 +797,7 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                             ));
                             $vsOwnerName = trim(($queueCar->fname ?? '') . ' ' . ($queueCar->lname ?? ''));
                         }
+                        $queueOwnerLabel = $vsOwnerName !== '' ? $vsOwnerName : "owner #{$queueCar->user_id}";
 
                         // The `noowner` system account (GDPR-erasure reassignment
                         // target, see CarAdministrationService) and a row with no
@@ -767,20 +820,9 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                             : false;
                         $queueDays = $queueSentAt !== false ? (int) $queueSentAt->diff($vsNow)->days : null;
 
-                        // The flags come from the owner's profiles row (#2101). A
-                        // block or bounce counts only while it applies to the owner's
-                        // current email (the `_active` columns, #2356). An Eligible
-                        // preview row has no profile columns: the eligibility query
-                        // already excludes an owner with no profile or with a flag.
-                        $queueFlags = $vsIsEligibleView
-                            ? EffectiveEmailFlags::eligible()
-                            : EffectiveEmailFlags::fromQueueRow($queueCar);
-
-                        // An Eligible preview row comes from findVerificationEligible()
-                        // (`cars.*`) and has no queue columns. The eligibility query
-                        // excludes a malformed address, so an Eligible row is never malformed (#2594).
-                        $queueAddressMalformed = !$vsIsEligibleView
-                            && (int) $queueCar->email_address_malformed === 1;
+                        // Built with the rows, before <tbody> (see the queue fault domain above).
+                        $queueFlags            = $vsQueueFlags[$queueRowKey];
+                        $queueAddressMalformed = $vsQueueMalformed[$queueRowKey];
 
                         $queueChip = VerificationTabStatus::chip(
                             $vsChipEvents[$queueCarId] ?? null,
@@ -827,13 +869,19 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                     ?>
                         <tr>
                             <td>
-                                <?php if ($vsIsEligibleView) { ?>
+                                <?php if ($vsIsNextQueueView) { ?>
                                 <input type="hidden" name="car_ids[]" value="<?= vsEsc($queueCarId) ?>">
                                 <?php } ?>
-                                <?= vsEsc($queueCarId) ?>
+                                <a href="<?= vsEsc($us_url_root . 'app/owner/cars/details.php?car_id=' . $queueCarId) ?>" target="_blank" rel="noopener"><?= vsEsc($queueCarId) ?></a>
                             </td>
                             <td><?= vsEsc($queueCar->chassis ?? '') ?></td>
-                            <td><?= vsEsc($vsOwnerName !== '' ? $vsOwnerName : "owner #{$queueCar->user_id}") ?></td>
+                            <td>
+                                <?php if ($queueOwnerId > 0) { ?>
+                                <a href="<?= vsEsc($us_url_root . 'app/admin/index.php?tab=owner-mgmt&owner_id=' . $queueOwnerId) ?>" target="_blank" rel="noopener"><?= vsEsc($queueOwnerLabel) ?></a>
+                                <?php } else { ?>
+                                <?= vsEsc($queueOwnerLabel) ?>
+                                <?php } ?>
+                            </td>
                             <td>
                                 <?php if ($queueOwnerId > 0) { ?>
                                 <a href="<?= vsEsc($us_url_root . 'users/admin.php?view=user&id=' . $queueOwnerId) ?>" target="_blank" rel="noopener"><?= vsEsc($queueOwnerId) ?></a>
@@ -895,7 +943,7 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                 </table>
             </div>
 
-        <?php if ($vsIsEligibleView) { ?>
+        <?php if ($vsIsNextQueueView) { ?>
             <?php if ($vsCanToggle) { ?>
             <button type="submit" class="btn btn-primary">
                 <i class="fas fa-paper-plane"></i> Send batch

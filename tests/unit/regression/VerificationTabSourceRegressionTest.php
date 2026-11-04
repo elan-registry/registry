@@ -14,7 +14,7 @@ use PHPUnit\Framework\TestCase;
  * - `$vsBatchSize` does not come from `$vsStatus->batchSize()`. The status
  *   probe gives null after a failed read (#2457). A value with a default
  *   shows 5 as fact, and a Save then writes 5 over the real setting.
- * - The Eligible view builds its flags from the queue row. The Eligible
+ * - The Next Queue view builds its flags from the queue row. The batch
  *   preview row has no profile columns, so fromQueueRow() throws for it.
  *
  * Every checker has a negative control: an in-memory string that holds the
@@ -48,17 +48,34 @@ final class VerificationTabSourceRegressionTest extends TestCase
         return $code;
     }
 
+    /**
+     * A second assignment after the status probe would override it, so the
+     * probe must be the only assignment, not just the first one.
+     */
     private static function batchSizeComesFromStatus(string $code): bool
     {
-        return preg_match('/\$vsBatchSize\s*=\s*\$vsStatus->batchSize\(\);/', $code) === 1;
+        $assignments = preg_match_all('/\$vsBatchSize\s*(?:\?\?|[-+.*\/])?=(?![=>])/', $code);
+
+        return $assignments === 1
+            && preg_match('/\$vsBatchSize\s*=\s*\$vsStatus->batchSize\(\);/', $code) === 1;
     }
 
-    private static function eligibleViewUsesEligibleFlags(string $code): bool
+    /**
+     * The flags are built with the rows, before <tbody>: Next Queue rows get
+     * eligible(), every other view gets fromQueueRow() of its row.
+     */
+    private static function nextQueueViewUsesEligibleFlags(string $code): bool
     {
         return preg_match(
-            '/\$queueFlags\s*=\s*\$vsIsEligibleView\s*\?\s*EffectiveEmailFlags::eligible\(\)\s*:\s*EffectiveEmailFlags::fromQueueRow\(\$queueCar\);/',
+            '/if\s*\(\$vsIsNextQueueView\)\s*\{.*?\$vsQueueFlags\[\$vsQueueRowKey\]\s*=\s*EffectiveEmailFlags::eligible\(\);'
+            . '.*?\}\s*else\s*\{.*?\$vsQueueFlags\[\$vsQueueRowKey\]\s*=\s*EffectiveEmailFlags::fromQueueRow\(\$vsQueueRow\);/s',
             $code
         ) === 1;
+    }
+
+    private static function sendFormPostsToTheNextQueueView(string $code): bool
+    {
+        return preg_match('/<form action="<\?=\s*vsEsc\(\$vsTabUrl\(\[\'status\'\s*=>\s*\'next_queue\'\]\)\)\s*\?>" method="POST">/', $code) === 1;
     }
 
     public function testBatchSizeComesFromTheStatusProbe(): void
@@ -69,11 +86,19 @@ final class VerificationTabSourceRegressionTest extends TestCase
         );
     }
 
-    public function testEligibleViewUsesEligibleFlagsNotTheQueueRow(): void
+    public function testNextQueueViewUsesEligibleFlagsNotTheQueueRow(): void
     {
         $this->assertTrue(
-            self::eligibleViewUsesEligibleFlags($this->code()),
-            'The Eligible view must use EffectiveEmailFlags::eligible(). Its rows have no profile columns.'
+            self::nextQueueViewUsesEligibleFlags($this->code()),
+            'The Next Queue view must use EffectiveEmailFlags::eligible(). Its rows have no profile columns.'
+        );
+    }
+
+    public function testSendFormActionIsTheNextQueueView(): void
+    {
+        $this->assertTrue(
+            self::sendFormPostsToTheNextQueueView($this->code()),
+            'The send form must post to status=next_queue, the view that previews the rows it sends.'
         );
     }
 
@@ -86,8 +111,32 @@ final class VerificationTabSourceRegressionTest extends TestCase
         $this->assertFalse(self::batchSizeComesFromStatus($code));
     }
 
+    public function testNegativeControlSecondBatchSizeAssignmentIsFound(): void
+    {
+        $code = '$vsBatchSize = $vsStatus->batchSize(); if ($x) { $vsBatchSize ??= 5; }';
+
+        $this->assertFalse(self::batchSizeComesFromStatus($code));
+    }
+
+    public function testControlComparisonIsNotCountedAsAnAssignment(): void
+    {
+        $code = '$vsBatchSize = $vsStatus->batchSize(); if ($vsBatchSize === null || $vsBatchSize == 0) {}';
+
+        $this->assertTrue(self::batchSizeComesFromStatus($code));
+    }
+
     public function testNegativeControlQueueRowFlagsForEveryViewIsFound(): void
     {
-        $this->assertFalse(self::eligibleViewUsesEligibleFlags('$queueFlags = EffectiveEmailFlags::fromQueueRow($queueCar);'));
+        $this->assertFalse(self::nextQueueViewUsesEligibleFlags(
+            'if ($vsIsNextQueueView) { $vsQueueFlags[$vsQueueRowKey] = EffectiveEmailFlags::fromQueueRow($vsQueueRow); }'
+            . ' else { $vsQueueFlags[$vsQueueRowKey] = EffectiveEmailFlags::fromQueueRow($vsQueueRow); }'
+        ));
+    }
+
+    public function testNegativeControlSendFormToTheEligibleViewIsFound(): void
+    {
+        $this->assertFalse(self::sendFormPostsToTheNextQueueView(
+            '<form action="<?= vsEsc($vsTabUrl([\'status\' => \'eligible\'])) ?>" method="POST">'
+        ));
     }
 }

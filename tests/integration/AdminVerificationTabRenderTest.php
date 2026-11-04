@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
 
+use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Cron\SendVerificationBatchJob;
 use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -69,11 +70,15 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
     /** @var list<int> logs ids whose logdate this test moved back */
     private array $shiftedLogIds = [];
 
+    /** @var list<int> Cars that createFirstInLineEligibleCar() made in this test */
+    private array $firstInLineCarIds = [];
+
     protected function setUp(): void
     {
         parent::setUp();
         $this->requireDatabase();
         $this->shiftedLogIds = [];
+        $this->firstInLineCarIds = [];
         $this->originalSettings = null;
         $this->originalAutoSendRow = null;
         $this->deletedSettingsRow = null;
@@ -211,9 +216,16 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
      *
      * @param string|null $status Raw value of `?status=`, or null for none
      * @param int|null $userId User who makes the request, or null for the test admin
+     * @param array<string, string> $extraQuery More query values, such as `show`
+     * @param list<array<string, mixed>>|null $stubQueueRows When set, the request includes the tab file
+     *        directly with a repository whose findVerificationQueue() returns these rows as objects
      */
-    private function getVerificationTab(?string $status, ?int $userId = null): DOMXPath
-    {
+    private function getVerificationTab(
+        ?string $status,
+        ?int $userId = null,
+        array $extraQuery = [],
+        ?array $stubQueueRows = null
+    ): DOMXPath {
         $projectRoot = dirname(__DIR__, 2);
         $adminDir = getenv('VERIFICATION_TAB_RENDER_ADMIN_DIR') ?: $projectRoot . '/app/admin';
         $page = $adminDir . '/index.php';
@@ -230,6 +242,18 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
         if ($status !== null) {
             $query['status'] = $status;
         }
+        $query += $extraQuery;
+
+        if ($stubQueueRows === null) {
+            $tail = 'require ' . var_export($page, true) . ';';
+        } else {
+            // app/admin/index.php builds its own repository, so a stub needs the tab file itself.
+            $tail = 'class StubQueueRepository extends \\ElanRegistry\\Car\\CarRepository { '
+                . 'public function findVerificationQueue(string $status, ?int $windowDays, int $limit): array { '
+                . 'return array_map(static fn (array $r): object => (object) $r, ' . var_export($stubQueueRows, true) . '); } } '
+                . '$verificationRepo = new StubQueueRepository(dbi()); $queueStatus = "pending"; '
+                . 'require ' . var_export($adminDir . '/includes/tab-verification.php', true) . ';';
+        }
 
         $script = sprintf(
             'require %s; ' .
@@ -244,7 +268,7 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
             '$prop = $reflection->getProperty("_isLoggedIn"); $prop->setValue($loggedInUser, true); ' .
             'global $user; $user = $loggedInUser; $GLOBALS["user"] = $loggedInUser; ' .
             '$_GET = %s; $_REQUEST = $_GET; ' .
-            'require %s;',
+            '%s',
             var_export($projectRoot . '/vendor/autoload.php', true),
             var_export($projectRoot, true),
             var_export($projectRoot, true),
@@ -252,7 +276,7 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
             var_export($projectRoot . '/users/init.php', true),
             $userId ?? $this->adminId,
             var_export($query, true),
-            var_export($page, true)
+            $tail
         );
 
         $raw = (string) shell_exec('php -r ' . escapeshellarg($script) . ' 2>&1; echo "___EXIT:$?"');
@@ -527,9 +551,9 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
         // The page must render in full for an editor.
         $this->assertSame(7, $xpath->query('//*[@data-summary]')->length, 'Seven summary cards');
         $this->assertSame(
-            8,
+            9,
             $xpath->query('//a[contains(concat(" ", normalize-space(@class), " "), " filter-pill ")]')->length,
-            'Eight filter pills'
+            'Nine filter pills'
         );
         $this->assertPanelDirectlyBeforeAutomaticSending($xpath);
         $this->assertSame('Needs attention', $this->badgeText($xpath));
@@ -640,8 +664,10 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
     public static function filterPillProvider(): array
     {
         return [
-            'blocked'   => ['blocked'],
-            'opted_out' => ['opted_out'],
+            'blocked'       => ['blocked'],
+            'opted_out'     => ['opted_out'],
+            'next_queue'    => ['next_queue'],
+            'invalid_email' => ['invalid_email'],
         ];
     }
 
@@ -659,14 +685,14 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
         $this->assertSame($status, $hidden->getAttribute('value'), 'The queue controls keep the chosen status');
     }
 
-    public function testUnknownStatusShowsAllAndIsNeverPrinted(): void
+    public function testUnknownStatusShowsEligibleAndIsNeverPrinted(): void
     {
         $this->seedNotHealthy();
         $payload = '<script>alert(1)</script>';
 
         $xpath = $this->getVerificationTab($payload);
 
-        $this->assertSame('all', $this->activePillStatus($xpath), 'An unknown status shows all rows');
+        $this->assertSame('eligible', $this->activePillStatus($xpath), 'An unknown status shows Eligible');
 
         // The payload would show as a script element, as an escaped text node or as an attribute value.
         $this->assertSame(
@@ -679,5 +705,336 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
             $xpath->query('//text()[contains(., "alert(1)")] | //@*[contains(., "alert(1)")] | //comment()[contains(., "alert(1)")]')->length,
             'The page must not print the unknown status in any form'
         );
+    }
+
+    // --- #2599: pills, Next Queue, links -----------------------------------------------
+
+    /** @return list<string> The data-status of each filter pill, in page order. */
+    private function pillStatuses(DOMXPath $xpath): array
+    {
+        $statuses = [];
+        foreach ($xpath->query('//a[contains(concat(" ", normalize-space(@class), " "), " filter-pill ")]') as $pill) {
+            $this->assertInstanceOf(DOMElement::class, $pill);
+            $statuses[] = $pill->getAttribute('data-status');
+        }
+
+        return $statuses;
+    }
+
+    /** The "(n)" count of a pill as an int, or null when the pill shows no count. */
+    private function pillCount(DOMXPath $xpath, string $status): ?int
+    {
+        $pills = $xpath->query('//a[contains(concat(" ", normalize-space(@class), " "), " filter-pill ")][@data-status="' . $status . '"]');
+        $this->assertSame(1, $pills->length, "One {$status} pill");
+        $spans = $xpath->query('span', $pills->item(0));
+        if ($spans->length === 0) {
+            return null;
+        }
+        $this->assertSame(1, preg_match('/^\((\d[\d,]*)\)$/', trim($spans->item(0)->textContent), $m), 'Pill count text');
+
+        return (int) str_replace(',', '', $m[1]);
+    }
+
+    private function sendBatchFormCount(DOMXPath $xpath): int
+    {
+        return $xpath->query('//form[.//input[@name="command"][@value="verification_send_batch"]]')->length;
+    }
+
+    /**
+     * Create an eligible car with a fixed last_verified (default 1988-01-01)
+     *
+     * The send order puts NULL first, so the date alone does not put the car
+     * first. A setup assertion fails the test when an eligible car that this
+     * helper did not create has last_verified NULL or on or before the date of
+     * this call. Thus the cars from this helper sort ahead of all other
+     * eligible cars. Among themselves they sort by date, then by car id. The
+     * setup check of the call with the latest date covers all helper cars, in
+     * any call order.
+     */
+    private function createFirstInLineEligibleCar(
+        int $ownerId,
+        string $label,
+        string $lastVerified = '1988-01-01 00:00:00'
+    ): int {
+        $stale = date('Y-m-d H:i:s', strtotime('-3 years'));
+
+        $carId = $this->createTestCar($ownerId, [
+            'email'              => $label . '-' . uniqid() . '@example.com',
+            'last_verified'      => $lastVerified,
+            'owner_last_updated' => $stale,
+            'mtime'              => $stale,
+            'solddate'           => null,
+            'vericode'           => null,
+            'vericode_sent_at'   => null,
+        ]);
+        $this->firstInLineCarIds[] = $carId;
+
+        $ahead = array_filter(
+            (new CarRepository($this->db))->findVerificationEligible(1000, 0),
+            fn ($row) => !in_array((int) $row->id, $this->firstInLineCarIds, true)
+                && ($row->last_verified === null || $row->last_verified <= $lastVerified)
+        );
+        $this->assertSame([], array_values($ahead), 'Setup: no other eligible car sorts ahead of the first-in-line cars');
+
+        return $carId;
+    }
+
+    public function testPillsAreTheNineQueueViewsInOrderWithNoAllPill(): void
+    {
+        $this->seedNotHealthy();
+
+        $statuses = $this->pillStatuses($this->getVerificationTab(null));
+
+        $this->assertSame(
+            ['eligible', 'next_queue', 'pending', 'bounced', 'blocked', 'opted_out', 'verified', 'sold', 'invalid_email'],
+            $statuses
+        );
+    }
+
+    public function testDefaultAndRemovedAllStatusShowEligibleWithNoSendForm(): void
+    {
+        $this->seedNotHealthy();
+        $ownerId = $this->createTestUser([], true);
+        $this->createFirstInLineEligibleCar($ownerId, 'default-view');
+
+        foreach ([null, 'all'] as $status) {
+            $xpath = $this->getVerificationTab($status);
+
+            $label = $status ?? 'no status';
+            $this->assertSame('eligible', $this->activePillStatus($xpath), "{$label}: Eligible is active");
+            $this->assertSame(0, $this->sendBatchFormCount($xpath), "{$label}: no send form on Eligible");
+            $this->assertSame(0, $xpath->query('//input[@name="car_ids[]"]')->length, "{$label}: no car_ids to send");
+            $this->assertSame(0, $xpath->query('//*[contains(@class, "alert-danger")][contains(., "queue could not be loaded")]')->length);
+        }
+    }
+
+    public function testSendBatchNowLinkOpensTheNextQueueView(): void
+    {
+        $this->seedNotHealthy();
+
+        $xpath = $this->getVerificationTab(null);
+        $links = $xpath->query('//a[contains(normalize-space(.), "Send Batch Now")]');
+
+        $this->assertSame(1, $links->length, 'The admin sees one Send Batch Now link');
+        $link = $links->item(0);
+        $this->assertInstanceOf(\DOMElement::class, $link);
+        $href = $link->getAttribute('href');
+        // Only Next Queue has the send form, so the link must open that view.
+        $this->assertStringContainsString('status=next_queue', $href);
+        $this->assertStringEndsWith('#verificationQueue', $href);
+    }
+
+    public function testNextQueueRendersThePreviewAndASendFormForNextQueue(): void
+    {
+        $this->seedNotHealthy();
+        $ownerId = $this->createTestUser([], true);
+        $carId = $this->createFirstInLineEligibleCar($ownerId, 'next-queue');
+
+        $xpath = $this->getVerificationTab('next_queue');
+
+        $this->assertSame('next_queue', $this->activePillStatus($xpath));
+        $forms = $xpath->query('//form[.//input[@name="command"][@value="verification_send_batch"]]');
+        $this->assertSame(1, $forms->length, 'One send form');
+        $form = $forms->item(0);
+        $this->assertInstanceOf(DOMElement::class, $form);
+        $this->assertSame('POST', strtoupper($form->getAttribute('method')));
+        $this->assertStringContainsString('status=next_queue', $form->getAttribute('action'));
+        $sent = [];
+        foreach ($xpath->query('.//input[@name="car_ids[]"]', $form) as $input) {
+            $this->assertInstanceOf(DOMElement::class, $input);
+            $sent[] = (int) $input->getAttribute('value');
+        }
+        $this->assertContains($carId, $sent, 'The oldest-verified car is in the batch');
+        $this->assertSame($carId, $sent[0], 'The car with the oldest last_verified is first');
+    }
+
+    /**
+     * The dates run in reverse id order: the highest id has the oldest date.
+     * With ORDER BY id alone, Eligible would list [c1, c2, c3], so the test
+     * fails when the query drops last_verified from the order. Expected send
+     * order: [c3, c2, c1], and Next Queue (batch size 2) is [c3, c2].
+     */
+    public function testNextQueueRowsAreTheFirstRowsOfEligible(): void
+    {
+        $this->seedNotHealthy();
+        $ownerId = $this->createTestUser([], true);
+        // The setup check of the call with the latest date covers all three cars, in any call order.
+        $c1 = $this->createFirstInLineEligibleCar($ownerId, 'same-order-1', '1988-03-01 00:00:00');
+        $c2 = $this->createFirstInLineEligibleCar($ownerId, 'same-order-2', '1988-02-01 00:00:00');
+        $c3 = $this->createFirstInLineEligibleCar($ownerId, 'same-order-3', '1988-01-01 00:00:00');
+        // Batch size 2, below the 3 cars: Next Queue is a strict prefix of Eligible.
+        $this->db->query('UPDATE er_verification_settings SET batch_size = 2 WHERE id = 1');
+        $this->assertFalse($this->db->error(), 'Test setup: batch_size 2: ' . $this->db->errorString());
+        $ids = static function (DOMXPath $xpath): array {
+            $out = [];
+            foreach ($xpath->query('//*[@id="verificationQueue"]//table/tbody/tr/td[1]/a') as $a) {
+                $out[] = (int) trim($a->textContent);
+            }
+
+            return $out;
+        };
+
+        $eligible = $ids($this->getVerificationTab('eligible'));
+        $nextQueueTab = $this->getVerificationTab('next_queue');
+        $nextQueue = $ids($nextQueueTab);
+        $sent = [];
+        foreach ($nextQueueTab->query('//form[.//input[@name="command"][@value="verification_send_batch"]]//input[@name="car_ids[]"]') as $input) {
+            $this->assertInstanceOf(DOMElement::class, $input);
+            $sent[] = (int) $input->getAttribute('value');
+        }
+
+        $this->assertSame([$c3, $c2, $c1], array_slice($eligible, 0, 3), 'Eligible lists the oldest last_verified first');
+        $this->assertSame([$c3, $c2], $nextQueue, 'Next Queue shows the first batch of 2 rows of Eligible');
+        $this->assertSame([$c3, $c2], $sent, 'The Next Queue send form posts the same ids, in the same order');
+    }
+
+    /** @return array<string, array{0: string}> The column that the queue row lacks */
+    public static function queueRowMissingColumnProvider(): array
+    {
+        return [
+            'no email_address_malformed' => ['email_address_malformed'],
+            'no has_profile'             => ['has_profile'],
+        ];
+    }
+
+    /**
+     * A queue row that lacks a column is a fault of the queue, not an empty
+     * queue and not a page error: the tab shows the alert, renders no rows,
+     * and writes one log line.
+     */
+    #[DataProvider('queueRowMissingColumnProvider')]
+    public function testQueueRowWithAMissingColumnShowsTheAlertRendersNoRowsAndLogsOnce(string $missingColumn): void
+    {
+        $this->seedNotHealthy();
+        $row = [
+            'id'                      => 987654,
+            'has_profile'             => 1,
+            'email_opted_out'         => 0,
+            'email_blocked_active'    => 0,
+            'email_blocked_cause'     => null,
+            'email_bounced_active'    => 0,
+            'email_address_malformed' => 0,
+        ];
+        unset($row[$missingColumn]);
+        $countSql = 'SELECT COUNT(*) AS n FROM logs WHERE user_id = ? AND logtype = ? AND lognote LIKE ?';
+        $countParams = [$this->adminId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, '%has no email flag columns%'];
+        $this->assertSame(0, (int) $this->db->query($countSql, $countParams)->first()->n, 'Test setup: no such log row yet');
+
+        $xpath = $this->getVerificationTab('pending', null, [], [$row]);
+
+        $this->assertSame(
+            1,
+            $xpath->query('//*[contains(@class, "alert-danger")][contains(normalize-space(.), "The verification queue could not be loaded. Check the system log for details.")]')->length,
+            'The tab shows the queue fault alert'
+        );
+        $this->assertSame(0, $xpath->query('//*[@id="verificationQueue"]//table/tbody/tr')->length, 'No queue row renders');
+        $this->assertSame(1, (int) $this->db->query($countSql, $countParams)->first()->n, 'One log line for the fault');
+    }
+
+    public function testNextQueuePillCountIsTheSmallerOfEligibleAndTheBatchSize(): void
+    {
+        $this->seedNotHealthy();
+        $ownerId = $this->createTestUser([], true);
+        for ($i = 0; $i < 3; $i++) {
+            $this->createFirstInLineEligibleCar($ownerId, "count-{$i}");
+        }
+
+        // Batch size 1, eligible 3 or more: the batch size is the smaller.
+        $this->db->query('UPDATE er_verification_settings SET batch_size = 1 WHERE id = 1');
+        $this->assertFalse($this->db->error(), 'Test setup: batch_size 1: ' . $this->db->errorString());
+        $xpath = $this->getVerificationTab('eligible');
+        $eligibleCount = $this->pillCount($xpath, 'eligible');
+        $this->assertGreaterThanOrEqual(3, $eligibleCount);
+        $this->assertSame(1, $this->pillCount($xpath, 'next_queue'), 'The batch size is below the eligible count');
+
+        // Batch size 25: the smaller is the eligible count (below the batch size), or 25 when more are eligible.
+        $this->db->query('UPDATE er_verification_settings SET batch_size = 25 WHERE id = 1');
+        $xpath = $this->getVerificationTab('eligible');
+        $eligibleCount = $this->pillCount($xpath, 'eligible');
+        $this->assertNotNull($eligibleCount);
+        $this->assertSame(min($eligibleCount, 25), $this->pillCount($xpath, 'next_queue'));
+    }
+
+    public function testNextQueuePillShowsNoCountWhenTheBatchSizeCannotBeRead(): void
+    {
+        $row = $this->db->query('SELECT * FROM er_verification_settings WHERE id = 1')->first();
+        $this->assertIsObject($row, 'Test setup: the id = 1 row exists before the delete');
+        $this->deletedSettingsRow = (array) $row;
+        $this->db->query('DELETE FROM er_verification_settings WHERE id = 1');
+        $this->assertFalse($this->db->error(), 'Test setup: delete row: ' . $this->db->errorString());
+
+        $xpath = $this->getVerificationTab('eligible');
+
+        $this->assertNull($this->pillCount($xpath, 'next_queue'), 'No batch size, no Next Queue count');
+        $this->assertNotNull($this->pillCount($xpath, 'eligible'), 'Control: the Eligible pill keeps its count');
+    }
+
+    /** @return array<string, array{0: string}> */
+    public static function linkedViewProvider(): array
+    {
+        return [
+            'eligible'      => ['eligible'],
+            'next_queue'    => ['next_queue'],
+            'invalid_email' => ['invalid_email'],
+        ];
+    }
+
+    #[DataProvider('linkedViewProvider')]
+    public function testQueueRowLinksTheCarAndTheOwnerInANewTab(string $view): void
+    {
+        $this->seedNotHealthy();
+        $ownerId = $view === 'invalid_email'
+            ? $this->createTestUser(['email' => 'None'], true)
+            : $this->createTestUser([], true);
+        $carId = $this->createFirstInLineEligibleCar($ownerId, 'links-' . $view);
+        // Invalid email lists by id ASC, so show the most rows.
+        $extra = $view === 'eligible' ? [] : ['show' => '100'];
+
+        $xpath = $this->getVerificationTab($view, null, $extra);
+
+        $rows = $xpath->query(sprintf(
+            '//*[@id="verificationQueue"]//table/tbody/tr[normalize-space(td[1]) = "%d"]',
+            $carId
+        ));
+        $this->assertSame(1, $rows->length, "Car {$carId} has one row in {$view}");
+
+        $carLinks = $xpath->query('td[1]/a', $rows->item(0));
+        $this->assertSame(1, $carLinks->length, 'One car link');
+        $carLink = $carLinks->item(0);
+        $this->assertInstanceOf(DOMElement::class, $carLink);
+        $this->assertSame('/app/owner/cars/details.php?car_id=' . $carId, $carLink->getAttribute('href'));
+        $this->assertSame('_blank', $carLink->getAttribute('target'));
+        $this->assertSame('noopener', $carLink->getAttribute('rel'));
+
+        $ownerLinks = $xpath->query('td[3]/a', $rows->item(0));
+        $this->assertSame(1, $ownerLinks->length, 'One owner link');
+        $ownerLink = $ownerLinks->item(0);
+        $this->assertInstanceOf(DOMElement::class, $ownerLink);
+        $this->assertSame('/app/admin/index.php?tab=owner-mgmt&owner_id=' . $ownerId, $ownerLink->getAttribute('href'));
+        $this->assertSame('_blank', $ownerLink->getAttribute('target'));
+        $this->assertSame('noopener', $ownerLink->getAttribute('rel'));
+
+        // Unchanged: the User ID link.
+        $userLink = $xpath->query('td[4]/a', $rows->item(0))->item(0);
+        $this->assertInstanceOf(DOMElement::class, $userLink);
+        $this->assertSame('/users/admin.php?view=user&id=' . $ownerId, $userLink->getAttribute('href'));
+    }
+
+    public function testOwnerNameIsEscapedInTheOwnerLink(): void
+    {
+        $this->seedNotHealthy();
+        $payload = '<b>x</b>"&';
+        $ownerId = $this->createTestUser(['fname' => $payload, 'lname' => 'Q'], true);
+        $carId = $this->createFirstInLineEligibleCar($ownerId, 'escape');
+
+        $xpath = $this->getVerificationTab('eligible');
+
+        $link = $xpath->query(sprintf(
+            '//*[@id="verificationQueue"]//table/tbody/tr[normalize-space(td[1]) = "%d"]/td[3]/a',
+            $carId
+        ))->item(0);
+        $this->assertInstanceOf(DOMElement::class, $link);
+        $this->assertSame(0, $xpath->query('a/b', $link)->length, 'The name is text, not markup');
+        $this->assertStringContainsString($payload, $link->textContent, 'The raw characters show as text');
     }
 }

@@ -57,7 +57,6 @@ after an item is written.
 
 - [ ] The summary, chip, activity and cron-state catches (~L173, ~L228, ~L247, ~L744) still log `get_class($e)` and `$e->getMessage()`. Log `ExceptionLogSummary::of($e)`, as the eligible-preview and queue catches do (found in #2572 review)
 - [ ] The Automatic Sending card shows only "Status unavailable" for an `UNREADABLE` or `MISSING` job state, and its "Next eligible" row says "the job status could not be read" for `MISSING` too. Show the same detail lines as the status panel rows, from one shared source next to `CronJobRunsReader::badgeFor()` (found in #2572 review)
-- [ ] `EffectiveEmailFlags::fromQueueRow()` runs inside the render loop, after `<tbody>` opens. A throw stops the page mid-table with no admin message and no `logger()` line. Build the flags with the queue rows and catch `\InvalidArgumentException` in the queue fault domain (found in /flow:finish-milestone v2.31.0)
 
 ### `app/admin/includes/verification-status-panel.php`
 
@@ -201,10 +200,6 @@ after an item is written.
 
 - [ ] `testRepositorySqlHasNoMaxOverTheProfileFlagColumns` (~L151) and `testCarDetailsPageLoadsTheOwnerProfileStateForTheCard` (~L392) read source text with `file_get_contents()`. Replace them with behavior tests (found in #2330)
 
-### `tests/integration/cars/services/CarRepositoryProfileFlagReadersTest.php` (test coverage)
-
-- [ ] Only the `all` status checks the queue columns. Loop over `CarRepository::QUEUE_STATUSES` except `eligible` and call `EffectiveEmailFlags::fromQueueRow()` on each row (found in /flow:finish-milestone v2.31.0)
-
 ### `tests/integration/database/AddCronJobRunsLastFailureAtMigrationTest.php`
 
 - [ ] The class has its own copy of `phinxAdapter()` and `pdoForPhinx()`. Move it onto `MigrationSandboxTestCase` (from #2167), which binds the migration to its own schema, and delete the copy (found in #2167)
@@ -256,6 +251,10 @@ after an item is written.
 
 - [ ] `runWasMarkedFailed()` reads the private `AbstractCronJob::$runFailed` through reflection. When the job gets a healthcheck slug (#2586), assert the `/fail` ping through an injected pinger and delete the helper (found in /flow:finish-milestone v2.31.0)
 
+### `tests/unit/cron/SendVerificationBatchJobTest.php` (test coverage)
+
+- [ ] `testEligibleCarIdsPassThroughUnchangedToProcessBatch` (~L255) uses `assertContains`, so a reordered batch passes, and no test checks that `VerificationBatchSender::processBatch()` sends in the submitted order. Assert the exact id order in both (found in #2599)
+
 ### `tests/unit/regression/Issue2360SendPolicySourceRegressionTest.php`
 
 - [ ] The source-position checks at ~L317, ~L322 and ~L353 repeat behavior tests (`SendOwnerEmailSendPolicyTest` ~L246, ~L334, `AdminContactSendPolicyTest`). Delete them, and keep the tests of the checker helper (found in /finish-milestone v2.30.8)
@@ -268,10 +267,6 @@ after an item is written.
 ### `tests/unit/regression/JoinFailureReportUsesDedicatedRateLimitBucketRegressionTest.php`
 
 - [ ] Rename `testExactlyOneConfigEntryExistsPerAction`. It asserts presence, not uniqueness (from #2169)
-
-### `tests/unit/regression/VerificationTabSourceRegressionTest.php` (test quality)
-
-- [ ] `batchSizeComesFromStatus()` matches the first assignment only. Assert exactly one assignment to `$vsBatchSize`, with a negative control (found in /flow:finish-milestone v2.31.0)
 
 ### `tests/unit/security/AdminAjaxGuardTest.php`
 

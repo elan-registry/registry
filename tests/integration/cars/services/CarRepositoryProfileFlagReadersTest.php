@@ -184,9 +184,14 @@ final class CarRepositoryProfileFlagReadersTest extends IntegrationTestCase
         $owners = $this->createOwnerPerFlag();
         $carIds = array_column($owners, 'car');
 
-        $rows = $this->queueRows('all', $carIds);
+        // Each fixture car sits in the queue of its own state: the control car is Eligible.
+        $rows = $this->queueRows('opted_out', [$owners['opted']['car']])
+            + $this->queueRows('blocked', [$owners['blocked']['car']])
+            + $this->queueRows('bounced', [$owners['bounced']['car']])
+            + $this->queueRows('eligible', [$owners['none']['car']]);
 
-        $this->assertCount(4, $rows, 'Each of the 4 fixture cars must be in the all queue');
+        $this->assertCount(4, $rows, 'Each of the 4 fixture cars must be in the queue of its state');
+        $this->assertEqualsCanonicalizing($carIds, array_keys($rows));
         $expected = [
             'opted'   => [1, 0, 0],
             'blocked' => [0, 1, 0],
@@ -240,6 +245,61 @@ final class CarRepositoryProfileFlagReadersTest extends IntegrationTestCase
         $this->assertNotContains($owners['none']['car'], $optedIds);
         $this->assertGreaterThanOrEqual(1, $summary['blocked_owners']);
         $this->assertGreaterThanOrEqual(1, $summary['opted_out_owners']);
+    }
+
+    /**
+     * Every queue row carries the columns that EffectiveEmailFlags::fromQueueRow()
+     * needs, in every status that findVerificationQueue() accepts. The tab builds
+     * its flags from these rows, so a status without the columns fails the tab.
+     */
+    public function testEveryQueueStatusRowHasTheColumnsFromQueueRowNeeds(): void
+    {
+        $owners = $this->createOwnerPerFlag();
+        $pending = $this->createOwner('pending');
+        $this->db->query(
+            'UPDATE cars SET vericode = ?, vericode_sent_at = ? WHERE id = ?',
+            ['hash-flag-readers-pending', date('Y-m-d H:i:s', strtotime('-1 day')), $pending['car']]
+        );
+        $malformed = $this->createOwner('malformed');
+        $this->setUserEmailRaw($malformed['owner'], 'None');
+        $verified = $this->createOwner('verified');
+        $sold = $this->createOwner('sold');
+        foreach ([[$verified['car'], 'VERIFIED'], [$sold['car'], 'VERIFIED SOLD']] as [$carId, $operation]) {
+            $this->assertTrue($this->db->insert('cars_hist', [
+                'operation' => $operation,
+                'car_id'    => $carId,
+                'model'     => 'Elan',
+                'series'    => 'S4',
+                'variant'   => 'SE',
+                'type'      => 'FHC',
+                'chassis'   => 'VDFLAGREADERS',
+                'timestamp' => date('Y-m-d H:i:s', strtotime('-1 hour')),
+            ]), 'Test setup: cars_hist row');
+        }
+
+        $seeded = [
+            'eligible'      => $owners['none']['car'],
+            'pending'       => $pending['car'],
+            'bounced'       => $owners['bounced']['car'],
+            'blocked'       => $owners['blocked']['car'],
+            'opted_out'     => $owners['opted']['car'],
+            'verified'      => $verified['car'],
+            'sold'          => $sold['car'],
+            'invalid_email' => $malformed['car'],
+        ];
+        $statuses = array_values(array_diff(CarRepository::QUEUE_STATUSES, ['next_queue']));
+        $this->assertEqualsCanonicalizing($statuses, array_keys($seeded), 'Test setup: one seeded car per status');
+
+        foreach ($statuses as $status) {
+            $rows = $this->repo->findVerificationQueue($status, null, PHP_INT_MAX);
+            $this->assertNotEmpty($rows, "Test setup: the {$status} queue holds its seeded car");
+            $ids = array_map(static fn (object $r): int => (int) $r->id, $rows);
+            $this->assertContains($seeded[$status], $ids, "The {$status} queue lists its seeded car");
+            foreach ($rows as $row) {
+                // Throws \InvalidArgumentException when a queue column is missing.
+                EffectiveEmailFlags::fromQueueRow($row);
+            }
+        }
     }
 
     public function testQueueRejectsTheRemovedSuppressedStatus(): void

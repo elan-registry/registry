@@ -257,7 +257,7 @@ if (!function_exists('verificationGetMappedChoice')) {
 
 $queueStatus = isset($_GET['status']) && is_string($_GET['status'])
     && in_array($_GET['status'], CarRepository::QUEUE_STATUSES, true)
-    ? $_GET['status'] : 'all';
+    ? $_GET['status'] : 'eligible';
 
 $queueWindowDays = verificationGetMappedChoice('window', CarRepository::QUEUE_WINDOW_CHOICES, 30);
 
@@ -505,13 +505,14 @@ if (ElanInput::existsPost()) {
                 // Verification batch send.
                 //
                 // NOTHING IS SENT ON A GET. The Verification System tab renders a
-                // read-only preview; email leaves the building only when an admin
-                // submits this command.
+                // read-only preview (the Next Queue view); email leaves the
+                // building only when an admin submits this command.
                 //
                 // RESIDUAL DOUBLE-SUBMISSION RISK, accepted.
-                // findVerificationEligible() orders by last_verified ASC and does
-                // not exclude a car merely because its vericode_sent_at is very
-                // recent, so re-POSTing the same batch within one request window
+                // findVerificationEligible() orders by last_verified ASC, then
+                // car id ASC (the send order), and does not exclude a car
+                // merely because its vericode_sent_at is very recent, so
+                // re-POSTing the same batch within one request window
                 // would pass the re-check below again and mail the same owners
                 // twice. Accepted under this tool's manual, single-operator,
                 // low-frequency trust model — the same acceptance made for
