@@ -8,8 +8,8 @@ declare(strict_types=1);
  * tab-verification.php includes it inside the Batch size <dd>.
  *
  * Expects from the including scope:
- *   $vsBatchSize ?int, the configured batch size; null when the read threw or
- *                its query failed
+ *   $vsBatchSize ?int, the configured batch size; null when the read threw,
+ *                its query failed, or the settings row is missing
  *   $vsCanToggle bool, true when the viewer may change the batch size (admin)
  *   $csrfToken   string, the CSRF token for the Save form
  *

@@ -12,10 +12,8 @@ use PHPUnit\Framework\TestCase;
  * fails when:
  *
  * - `$vsBatchSize` does not come from `$vsStatus->batchSize()`. The status
- *   probe gives null after a failed read (#2457). A direct
- *   `VerificationSettings::batchSize()` call gives the default 5 as fact, and
- *   a Save then writes 5 over the real setting.
- * - The tab calls `->batchSize()` on a `VerificationSettings` instance.
+ *   probe gives null after a failed read (#2457). A value with a default
+ *   shows 5 as fact, and a Save then writes 5 over the real setting.
  * - The Eligible view builds its flags from the queue row. The Eligible
  *   preview row has no profile columns, so fromQueueRow() throws for it.
  *
@@ -55,27 +53,6 @@ final class VerificationTabSourceRegressionTest extends TestCase
         return preg_match('/\$vsBatchSize\s*=\s*\$vsStatus->batchSize\(\);/', $code) === 1;
     }
 
-    /**
-     * Return each `->batchSize()` call on a VerificationSettings instance.
-     *
-     * @return list<string>
-     */
-    private static function settingsBatchSizeCalls(string $code): array
-    {
-        $hits = [];
-        if (preg_match_all('/\(new\s+\\\\?(?:ElanRegistry\\\\Car\\\\)?VerificationSettings\((?:[^()]|\([^()]*\))*\)\)->batchSize\(/', $code, $direct) > 0) {
-            array_push($hits, ...$direct[0]);
-        }
-        preg_match_all('/(\$\w+)\s*=\s*new\s+\\\\?(?:ElanRegistry\\\\Car\\\\)?VerificationSettings\(/', $code, $assigned);
-        foreach (array_unique($assigned[1]) as $variable) {
-            if (preg_match_all('/' . preg_quote($variable, '/') . '->batchSize\(/', $code, $calls) > 0) {
-                array_push($hits, ...$calls[0]);
-            }
-        }
-
-        return $hits;
-    }
-
     private static function eligibleViewUsesEligibleFlags(string $code): bool
     {
         return preg_match(
@@ -92,11 +69,6 @@ final class VerificationTabSourceRegressionTest extends TestCase
         );
     }
 
-    public function testTabCallsNoBatchSizeOnVerificationSettings(): void
-    {
-        $this->assertSame([], self::settingsBatchSizeCalls($this->code()));
-    }
-
     public function testEligibleViewUsesEligibleFlagsNotTheQueueRow(): void
     {
         $this->assertTrue(
@@ -109,17 +81,9 @@ final class VerificationTabSourceRegressionTest extends TestCase
 
     public function testNegativeControlBatchSizeFromSettingsIsFound(): void
     {
-        $code = '$vsSettings = new VerificationSettings(dbi()); $vsBatchSize = $vsSettings->batchSize();';
+        $code = '$vsSettings = new VerificationSettings(dbi()); $vsBatchSize = $vsSettings->batchSizeOrNull() ?? 5;';
 
         $this->assertFalse(self::batchSizeComesFromStatus($code));
-        $this->assertSame(['$vsSettings->batchSize('], self::settingsBatchSizeCalls($code));
-    }
-
-    public function testNegativeControlInlineSettingsBatchSizeIsFound(): void
-    {
-        $code = '$vsBatchSize = (new \ElanRegistry\Car\VerificationSettings(dbi()))->batchSize();';
-
-        $this->assertCount(1, self::settingsBatchSizeCalls($code));
     }
 
     public function testNegativeControlQueueRowFlagsForEveryViewIsFound(): void

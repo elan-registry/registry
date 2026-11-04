@@ -6,6 +6,7 @@ use ElanRegistry\Car\EffectiveEmailFlags;
 use ElanRegistry\Car\VerificationTabStatus;
 use ElanRegistry\Cron\CronJobEnabledState;
 use ElanRegistry\Cron\SendVerificationBatchJob;
+use ElanRegistry\Exceptions\ExceptionLogSummary;
 use ElanRegistry\LogCategories;
 use ElanRegistry\Owner;
 
@@ -98,10 +99,9 @@ $vsStatus = VerificationTabStatus::read(dbi(), $currentUserId);
 // ---------------------------------------------------------------------------
 /** @var array<int, object> $vsEligible */
 $vsEligible       = [];
-// Null means the read threw or its query failed: the Batch size field then
-// shows "Unavailable" and no form (#2457). A missing row is not a failure, so
-// it gives the default of 5. VerificationTabStatus::read() logged the fault,
-// and allHealthy() counts it.
+// Null means the read threw, its query failed, or the settings row is missing:
+// the Batch size field then shows "Unavailable" and no form (#2457, #2572).
+// VerificationTabStatus::read() logged the fault, and allHealthy() counts it.
 $vsBatchSize      = $vsStatus->batchSize();
 $vsEligibleError  = null;
 $vsEligibleLoadError = 'The list of eligible cars could not be loaded. Check the system log for details.';
@@ -113,9 +113,8 @@ if ($vsIsEligibleView && $verificationSendSvc !== null && $vsBatchSize !== null)
     } catch (\Throwable $e) {
         $vsEligibleError = $vsEligibleLoadError;
         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
-            'Verification tab: could not load the eligible car preview [%s]: %s',
-            get_class($e),
-            $e->getMessage()
+            'Verification tab: could not load the eligible car preview: %s',
+            ExceptionLogSummary::of($e)
         ));
     }
 } elseif ($vsIsEligibleView) {
@@ -193,10 +192,9 @@ if ($vsIsEligibleView) {
     } catch (\Throwable $e) {
         $vsQueueError = 'The verification queue could not be loaded. Check the system log for details.';
         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
-            'Verification tab: could not load the %s queue [%s]: %s',
+            'Verification tab: could not load the %s queue: %s',
             $queueStatus,
-            get_class($e),
-            $e->getMessage()
+            ExceptionLogSummary::of($e)
         ));
     }
 }

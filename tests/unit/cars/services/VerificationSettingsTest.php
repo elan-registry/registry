@@ -147,15 +147,19 @@ final class VerificationSettingsTest extends TestCase
         $this->assertSame(LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, $mockLogEntries[0]['category']);
     }
 
-    /** A missing row is not a query failure: it is the fail-closed false, with a warning. */
-    public function testIsEnabledOrNullReturnsFalseWhenNoRow(): void
+    /**
+     * A missing row is unreadable, not "off". A caller that read false here
+     * would treat a broken schema as a deliberate switch-off (#2572).
+     */
+    public function testIsEnabledOrNullReturnsNullWhenNoRow(): void
     {
         global $mockLogEntries;
 
         $db = new VerificationSettingsFakeDatabase();
 
-        $this->assertFalse((new VerificationSettings($db))->isEnabledOrNull());
+        $this->assertNull((new VerificationSettings($db))->isEnabledOrNull());
         $this->assertCount(1, $mockLogEntries);
+        $this->assertSame(LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, $mockLogEntries[0]['category']);
         $this->assertStringContainsString('missing', $mockLogEntries[0]['message']);
     }
 
@@ -378,12 +382,12 @@ final class VerificationSettingsTest extends TestCase
     }
 
     // =========================================================================
-    // batchSize() — read-side clamp to [1, 25] (#2363)
+    // batchSizeOrNull() — read-side clamp to [1, 25] (#2363)
     // =========================================================================
 
     /**
      * A direct database write can store a value that setBatchSize() would
-     * never write. batchSize() must still return a value in [1, 25] and
+     * never write. batchSizeOrNull() must still return a value in [1, 25] and
      * log one warning that names the stored value.
      *
      * @return array<string, array{int, int}> [stored, expected return]
@@ -397,13 +401,13 @@ final class VerificationSettingsTest extends TestCase
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('outOfRangeStoredBatchSizeProvider')]
-    public function testBatchSizeClampsOutOfRangeStoredValueAndLogsOneWarning(int $stored, int $expected): void
+    public function testBatchSizeOrNullClampsOutOfRangeStoredValueAndLogsOneWarning(int $stored, int $expected): void
     {
         global $mockLogEntries;
 
         $db = new VerificationSettingsFakeDatabase(firstRowValue: (object) ['batch_size' => $stored]);
 
-        $this->assertSame($expected, (new VerificationSettings($db))->batchSize());
+        $this->assertSame($expected, (new VerificationSettings($db))->batchSizeOrNull());
 
         $warnings = array_values(array_filter(
             $mockLogEntries,
@@ -413,29 +417,14 @@ final class VerificationSettingsTest extends TestCase
         $this->assertStringContainsString((string) $stored, $warnings[0]['message']);
     }
 
-    public function testBatchSizeReturnsInRangeStoredValueWithoutWarning(): void
+    public function testBatchSizeOrNullReturnsInRangeStoredValueWithoutWarning(): void
     {
         global $mockLogEntries;
 
         $db = new VerificationSettingsFakeDatabase(firstRowValue: (object) ['batch_size' => 10]);
 
-        $this->assertSame(10, (new VerificationSettings($db))->batchSize());
+        $this->assertSame(10, (new VerificationSettings($db))->batchSizeOrNull());
         $this->assertSame([], $mockLogEntries, 'An in-range stored batch size must log nothing');
-    }
-
-    /** The callers that need a number (the send job, the admin handlers) keep the default 5. */
-    public function testBatchSizeReturnsDefaultOnQueryError(): void
-    {
-        $db = new VerificationSettingsFakeDatabase(queryErrors: true);
-
-        $this->assertSame(5, (new VerificationSettings($db))->batchSize());
-    }
-
-    public function testBatchSizeReturnsDefaultWhenNoRow(): void
-    {
-        $db = new VerificationSettingsFakeDatabase();
-
-        $this->assertSame(5, (new VerificationSettings($db))->batchSize());
     }
 
     /**
@@ -454,23 +443,20 @@ final class VerificationSettingsTest extends TestCase
         $this->assertStringContainsString('batch_size', $mockLogEntries[0]['message']);
     }
 
-    /** A missing row is not a query failure: it is the default 5, with a warning. */
-    public function testBatchSizeOrNullReturnsDefaultWhenNoRow(): void
+    /**
+     * A missing row is unreadable, not the default 5. The send job must not
+     * send with a batch size that nobody configured (#2572).
+     */
+    public function testBatchSizeOrNullReturnsNullWhenNoRow(): void
     {
         global $mockLogEntries;
 
         $db = new VerificationSettingsFakeDatabase();
 
-        $this->assertSame(5, (new VerificationSettings($db))->batchSizeOrNull());
+        $this->assertNull((new VerificationSettings($db))->batchSizeOrNull());
         $this->assertCount(1, $mockLogEntries);
+        $this->assertSame(LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, $mockLogEntries[0]['category']);
         $this->assertStringContainsString('missing', $mockLogEntries[0]['message']);
-    }
-
-    public function testBatchSizeOrNullClampsStoredValue(): void
-    {
-        $db = new VerificationSettingsFakeDatabase(firstRowValue: (object) ['batch_size' => 255]);
-
-        $this->assertSame(25, (new VerificationSettings($db))->batchSizeOrNull());
     }
 
     // =========================================================================
@@ -512,7 +498,7 @@ final class VerificationSettingsTest extends TestCase
 
     /**
      * The clamped value — not the submitted one — must round-trip through
-     * batchSize(), proving the write actually persisted the effective value
+     * batchSizeOrNull(), proving the write actually persisted the effective value
      * rather than merely returning true.
      */
     #[\PHPUnit\Framework\Attributes\DataProvider('setBatchSizeClampingProvider')]
@@ -528,8 +514,8 @@ final class VerificationSettingsTest extends TestCase
         $this->assertTrue($settings->setBatchSize($submitted));
         $this->assertSame(
             $expectedClamped,
-            $settings->batchSize(),
-            'batchSize() must read back the clamped value that was actually written'
+            $settings->batchSizeOrNull(),
+            'batchSizeOrNull() must read back the clamped value that was actually written'
         );
     }
 
@@ -992,6 +978,156 @@ final class VerificationSettingsTest extends TestCase
         $db = new VerificationSettingsFakeDatabase(cronRequestQueryErrors: true);
 
         $this->assertNull((new VerificationSettings($db))->lastCronRequestAt());
+    }
+
+    // =========================================================================
+    // cronStateOrNull() — one read for readiness and time; null when unreadable (#2572)
+    // =========================================================================
+
+    public function testCronStateOrNullReturnsReadyAndTimestampForRecentRow(): void
+    {
+        $fiveMinutesAgo = (new DateTimeImmutable('-5 minutes'))->format('Y-m-d H:i:s');
+        $db = new VerificationSettingsFakeDatabase(cronRequestRowValue: (object) ['last_cron_request_at' => $fiveMinutesAgo]);
+
+        $state = (new VerificationSettings($db))->cronStateOrNull();
+
+        $this->assertNotNull($state);
+        $this->assertTrue($state['ready']);
+        $this->assertInstanceOf(DateTimeImmutable::class, $state['lastRequestAt']);
+        $this->assertSame($fiveMinutesAgo, $state['lastRequestAt']->format('Y-m-d H:i:s'));
+    }
+
+    /**
+     * Same boundary as cronReady(): exactly 20:00 is stalled, 19:59 is ready.
+     * The timestamp still comes back, so the tab can show how old it is.
+     */
+    public function testCronStateOrNullReturnsNotReadyWhenOlderThanTwentyMinutes(): void
+    {
+        $twentyMinutesAgo = (new DateTimeImmutable('-20 minutes'))->format('Y-m-d H:i:s');
+        $db = new VerificationSettingsFakeDatabase(cronRequestRowValue: (object) ['last_cron_request_at' => $twentyMinutesAgo]);
+
+        $state = (new VerificationSettings($db))->cronStateOrNull();
+
+        $this->assertNotNull($state);
+        $this->assertFalse($state['ready']);
+        $this->assertSame($twentyMinutesAgo, $state['lastRequestAt']?->format('Y-m-d H:i:s'));
+    }
+
+    public function testCronStateOrNullReturnsReadyWithinTwentyMinutes(): void
+    {
+        $recent = (new DateTimeImmutable('-19 minutes -59 seconds'))->format('Y-m-d H:i:s');
+        $db = new VerificationSettingsFakeDatabase(cronRequestRowValue: (object) ['last_cron_request_at' => $recent]);
+
+        $state = (new VerificationSettings($db))->cronStateOrNull();
+
+        $this->assertNotNull($state);
+        $this->assertTrue($state['ready']);
+    }
+
+    /** A NULL column in a present row is "cron never ran", which is a known state and not a fault. */
+    public function testCronStateOrNullReturnsNeverRanWhenColumnIsNull(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(cronRequestRowValue: (object) ['last_cron_request_at' => null]);
+
+        $this->assertSame(
+            ['ready' => false, 'lastRequestAt' => null],
+            (new VerificationSettings($db))->cronStateOrNull()
+        );
+        $this->assertSame([], $mockLogEntries, 'Never ran is not a fault and must log nothing');
+    }
+
+    /** An empty string in a present row is also "cron never ran", not a corrupt value. */
+    public function testCronStateOrNullReturnsNeverRanWhenColumnIsEmptyString(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(cronRequestRowValue: (object) ['last_cron_request_at' => '']);
+
+        $this->assertSame(
+            ['ready' => false, 'lastRequestAt' => null],
+            (new VerificationSettings($db))->cronStateOrNull()
+        );
+        $this->assertSame([], $mockLogEntries, 'Never ran is not a fault and must log nothing');
+    }
+
+    public function testCronStateOrNullReturnsNullOnQueryErrorAndLogsOnce(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(cronRequestQueryErrors: true);
+
+        $this->assertNull((new VerificationSettings($db))->cronStateOrNull());
+        $this->assertCount(1, $mockLogEntries, 'A failed read must log exactly one line');
+        $this->assertSame(LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, $mockLogEntries[0]['category']);
+    }
+
+    /** No row means the value is unreadable. It must not read as "never ran". */
+    public function testCronStateOrNullReturnsNullWhenNoRowAndLogsOnce(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase();
+
+        $this->assertNull((new VerificationSettings($db))->cronStateOrNull());
+        $this->assertCount(1, $mockLogEntries);
+        $this->assertSame(LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, $mockLogEntries[0]['category']);
+        $this->assertStringContainsString('missing', $mockLogEntries[0]['message']);
+    }
+
+    /**
+     * lastCronRequestAt() reports a corrupt value as "never ran". This read
+     * cannot, because corruption is not proof that cron never ran.
+     *
+     * @return array<string, array{mixed}>
+     */
+    public static function wrongTypedCronValueProvider(): array
+    {
+        return [
+            'zero date'  => ['0000-00-00 00:00:00'],
+            'unparseable' => ['not-a-real-date'],
+            'array'      => [['2026-09-01']],
+            'object'     => [new stdClass()],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('wrongTypedCronValueProvider')]
+    public function testCronStateOrNullReturnsNullOnceForWrongTypedValue(mixed $stored): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(cronRequestRowValue: (object) ['last_cron_request_at' => $stored]);
+
+        $this->assertNull((new VerificationSettings($db))->cronStateOrNull());
+
+        $this->assertCount(1, $mockLogEntries, 'A wrong-typed value must log exactly one line');
+        $this->assertSame(LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, $mockLogEntries[0]['category']);
+        $this->assertStringContainsString('Unparseable', $mockLogEntries[0]['message']);
+    }
+
+    /** The tab needs readiness and time from the same read, so they cannot disagree. */
+    public function testCronStateOrNullIssuesOneQuery(): void
+    {
+        $db = new VerificationSettingsFakeDatabase(
+            cronRequestRowValue: (object) ['last_cron_request_at' => (new DateTimeImmutable('-1 minute'))->format('Y-m-d H:i:s')]
+        );
+
+        (new VerificationSettings($db))->cronStateOrNull();
+
+        $this->assertSame(1, $db->queryCount());
+    }
+
+    /** These two reads stay silent so that each admin page does not log on a DB fault. */
+    public function testLastCronRequestAtAndCronReadyLogNothingWhenNoRow(): void
+    {
+        global $mockLogEntries;
+
+        $settings = new VerificationSettings(new VerificationSettingsFakeDatabase());
+
+        $this->assertNull($settings->lastCronRequestAt());
+        $this->assertFalse($settings->cronReady());
+        $this->assertSame([], $mockLogEntries);
     }
 
     // =========================================================================

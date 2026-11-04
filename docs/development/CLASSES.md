@@ -1891,8 +1891,8 @@ other probes.
   a cron job probe failure under `LOG_CATEGORY_CRON_JOB_FAILURE`
 - `probeFailed(): bool` - True when the VerificationSettings probe threw
 - `batchSize(): ?int` - The configured batch size, or `null` when the probe
-  threw or the query failed. The Batch size field then shows "Unavailable"
-  and no form (#2457)
+  threw, the query failed, or the settings row is missing. The Batch size
+  field then shows "Unavailable" and no form (#2457, #2572)
 - `brevoReady(): bool` - True when Brevo is ready to send tagged mail: the
   settings probe did not fail and it gave no not-ready reason
 - `rows(): array` - Give the panel rows in render order. Each row is an associative
@@ -1908,15 +1908,16 @@ other probes.
 - `featureSwitch(bool $canToggle): array` - Give the feature switch state for the
   panel. Returns `['checked' => bool, 'disabled' => bool, 'disabledReason' =>
   string, 'unavailable' => bool]`. When the settings probe threw before it
-  read the switch state, or the switch query failed, the state is unknown.
+  read the switch state, the switch query failed, or the settings row is
+  missing, the state is unknown.
   The method then returns
   `unavailable` as `true`, `checked` as `false`, `disabled` as `true`, and a
   reason for every viewer. The panel then shows a red "Unavailable" badge and
   no switch. When the probe read the switch state and a later read threw, the
   method returns the real `checked` value. An admin can then turn the switch
   off, but not on, because the Brevo status is not known. The cron row shows
-  a red "Unavailable" badge, not "Stalled", only when the probe threw before
-  it read the cron state.
+  a red "Unavailable" badge, not "Stalled", when the probe threw before it
+  read the cron state, or when `cronStateOrNull()` returns `null`.
 - `autoSendState(): CronJobEnabledState` - The automatic send job's enabled state
 - `autoSendLastRunAt(): ?DateTimeImmutable` - When the automatic send job last
   claimed a run, or `null` if never
@@ -1999,19 +2000,28 @@ dependency exists between the two.
 - **Asymmetric gate**: `setEnabled(true)` throws `VerificationConfigException`
   when `brevoReady()` is false; `setEnabled(false)` never throws, for any
   reason — an admin must always be able to disable verification mid-incident
-- Every probe fails closed and logs rather than throwing, so a database or
-  filesystem hiccup hides the feature instead of breaking the page
+- No probe throws, so a database or filesystem fault does not break the
+  page. The plain reads return a closed default. `lastCronRequestAt()` and
+  `cronReady()` do not log a failed read. The `*OrNull()` reads log and
+  return `null`, so the caller can show "Unavailable"
 - Performs no permission checks itself — callers must run `hasPerm()` before
   calling `setEnabled()`
+
+**Unreadable state**: A `*OrNull()` read returns `null` when it cannot read
+the value. The value is unreadable when the query fails or the `id = 1` row
+is missing. Each `*OrNull()` read logs one `VerificationConfigWarning` line
+in that case. The plain reads keep their defaults: `isEnabled()` returns
+`false`. The batch size has no plain read. Code that acts on the value must
+use the `*OrNull()` read. A default must not look like a real setting.
 
 **Methods**:
 
 - `isEnabled(): bool` - Whether verification is currently switched on;
   `false` on a failed query or a missing row
 - `isEnabledOrNull(): ?bool` - Like `isEnabled()`, but `null` when the
-  settings query failed (UserSpice `DB::query()` reports it through
-  `error()` and does not throw). A missing row still gives `false`. The
-  admin Verification tab uses it to show "Unavailable" (#2457)
+  switch is unreadable. The admin Verification tab uses it to show
+  "Unavailable" (#2457), not "off". The send job does not send on `null`
+  (#2572)
 - `setEnabled(bool $enabled, int $actingUserId = 0): bool` - Turn verification on or off
 - `brevoReady(): bool` - True only if `brevoNotReadyReason()` returns `null`:
   the plugin table is readable, the API key is saved, `plugins.ini.php` has
@@ -2025,7 +2035,21 @@ dependency exists between the two.
   20 minutes today)
 - `lastCronRequestAt(): ?DateTimeImmutable` - Timestamp of the most recent
   cron transport hit, read from `er_verification_settings.last_cron_request_at`
-  (#1974; previously scanned the `logs` table)
+  (#1974; previously scanned the `logs` table). Returns `null` for both
+  "never ran" and "unreadable". Use `cronStateOrNull()` to tell them apart
+- `cronStateOrNull(): ?array{ready: bool, lastRequestAt: ?DateTimeImmutable}` -
+  Cron readiness and the last cron request time, from one read. Returns
+  `null` when the cron state is unreadable. The admin Verification tab uses
+  it (#2572). It has three outcomes:
+  - Row present, column `NULL` or empty: cron has never run. Returns
+    `['ready' => false, 'lastRequestAt' => null]`. Logs nothing.
+  - Failed query or missing `id = 1` row: returns `null`. Logs one
+    `VerificationConfigWarning` line.
+  - Zero-date, unparseable, or non-scalar value: returns `null`. Logs one
+    `VerificationConfigWarning` line. A corrupt value is not proof that cron
+    never ran, so this case does not return "never ran".
+
+  `ready` uses the same staleness rule as `cronReady()`.
 - `recordCronRequest(): bool` - Record that the cron transport hit this
   environment; called by `users/cron/cron.php` on every non-denied hit,
   writing `er_verification_settings.last_cron_request_at`; never throws (logs
@@ -2048,14 +2072,14 @@ dependency exists between the two.
   counter must not render alike. The admin Verification tab shows a
   `text-bg-danger` "Unavailable" badge for the `null` case
   (`app/admin/includes/tab-verification.php`, #2085)
-- `batchSize(): int` - Configured verification-email batch size
-  (`er_verification_settings.batch_size`); fails closed to `5` on any read
-  problem (#1884). Clamps a stored value outside `[1, 25]` to that range and
-  logs a `VERIFICATION_CONFIG_WARNING` with the stored value (#2363)
-- `batchSizeOrNull(): ?int` - Like `batchSize()`, but `null` when the
-  settings query failed. A missing row still gives `5`. The admin
-  Verification tab uses it, so its Batch size form never shows, and a Save
-  never writes, a guessed value (#2457)
+- `batchSizeOrNull(): ?int` - Configured verification-email batch size
+  (`er_verification_settings.batch_size`), or `null` when the batch size is
+  unreadable: a failed query or a missing row. Clamps a stored value outside
+  `[1, 25]` to that range and logs a `VERIFICATION_CONFIG_WARNING` with the
+  stored value (#2363). The admin Verification tab uses it, so its Batch size
+  form never shows, and a Save never writes, a guessed value (#2457). The
+  send job and the admin send do not send on `null` (#2572). There is no read
+  with a default
 - `setBatchSize(int $size, int $actingUserId = 0): bool` - Set the batch
   size, clamped to `[1, 25]` regardless of the submitted value; never throws
   (logs and returns `false` on a DB error or unconfirmed write) (#1885)
@@ -2071,7 +2095,7 @@ dependency exists between the two.
 - Brevo webhook receiver (`app/api/webhooks/brevo.php`) — the
   `brevoNotReadyReason()` gate (it does not read the switch), and
   `incrementUnmatchedRecipientCounter()` (#1887)
-- `SendVerificationBatchJob::refusesWhileSwitchOff()` — the `isEnabled()` gate,
+- `SendVerificationBatchJob::refusesWhileSwitchOff()` — the `isEnabledOrNull() === false` gate,
   checked by `AbstractCronJob::run()` and `runNow()` before the job-level
   `enabled` flag. It is the only cron job that reads the switch (#2358). The
   reconciliation and suppression-sync jobs, and their `runNowWithSummary()`
@@ -2679,7 +2703,7 @@ a job-owned enabled flag independent of UserSpice's own `crons.active`.
   admin-triggered immediate execution, retaining crash isolation only
 - **Verification feature switch (opt-in)**: `refusesWhileSwitchOff()` returns
   `false` by default, so a job runs with the switch off. A job that sends
-  email overrides it to return `!$settings->isEnabled()`. `run()` checks it
+  email overrides it to return `$settings->isEnabledOrNull() === false`. `run()` checks it
   before the enabled read and the guard claim, so a refused run does not stamp
   `last_run_at`. `runNow()` checks it first (#2358)
 
@@ -3110,15 +3134,17 @@ handler already calls, so the two paths can never drift apart.
 **Key Features**:
 
 - **The only job that the verification switch stops**: it overrides
-  `refusesWhileSwitchOff()` to return `!$this->settings->isEnabled()` (#2358).
-  With the switch off, `run()` and `runNow()` send nothing, and `run()` leaves
+  `refusesWhileSwitchOff()` to return `true` only when
+  `isEnabledOrNull()` returns `false` (#2358, #2572). With the switch off,
+  `run()` and `runNow()` send nothing, and `run()` leaves
   `er_cron_job_runs.last_run_at` unchanged. The first `run()` after the switch
-  goes on claims the run and sends
+  goes on claims the run and sends. An unreadable switch (`null`) does not
+  refuse. `execute()` then fails the run, as described below
 - **Bounded work per invocation**: one page of at most
-  `VerificationSettings::batchSize()` cars (clamped to `[1, 25]`) per claimed
-  run, never a loop until the eligible set empties — both for cron's
+  `VerificationSettings::batchSizeOrNull()` cars (clamped to `[1, 25]`) per
+  claimed run, never a loop until the eligible set empties — both for cron's
   in-process dispatch model and to enforce the deliberate slow send-volume
-  ramp
+  ramp. An unreadable batch size (`null`) sends nothing and fails the run
 - **Ships paused everywhere**: the seed migration sets
   `er_cron_job_runs.enabled = 0` in every environment (test and production
   alike), since no `APP_ENV`-style environment-detection convention exists
@@ -3166,19 +3192,33 @@ public function __construct(
 - `guardIntervalHours(): int` — Returns `20`
 - `healthcheckSlug(): string` — Protected. Returns `'send-verification-batch'`.
   Narrows the parent's `?string` return type, because this job always pings
-- `refusesWhileSwitchOff(): bool` — Protected. Returns `true` while the
-  verification switch is off. `AbstractCronJob::run()` and `runNow()` call it
-  before any other step
-- `execute(): void` — Read the configured batch size, ask
-  `CarVerificationSendService::findEligible()` for that many candidates,
-  hand ids to `VerificationBatchSender::processBatch()`, persist outcome
-  counts, log a routine completion line under `LOG_CATEGORY_CAR_VERIFICATION`.
-  If the eligible-car query fails, it logs, calls `markRunFailed()` and
-  returns, so `run()` pings `/fail`. After the batch, it calls
-  `markRunFailed()` when no send succeeded and at least one send failed (a
-  full send outage), or when any send is `unrecorded`. Each of these two
-  cases also logs one `LOG_CATEGORY_CRON_JOB_FAILURE` line with counts only.
-  A partial send failure pings success on purpose (#2480)
+- `refusesWhileSwitchOff(): bool` — Protected. Returns `true` only when
+  `isEnabledOrNull()` reads the switch as off. An unreadable switch returns
+  `false`. `AbstractCronJob::run()` and `runNow()` call it before any other
+  step. A refusal pings nothing
+- `execute(): void` — Runs one batch in this order:
+  1. Read `isEnabledOrNull()`. On `null`, log one
+     `LOG_CATEGORY_CRON_JOB_FAILURE` line, call `markRunFailed()`, and return.
+     Nothing is sent. On `false` (the gate's read failed, or an admin switched
+     off after the gate), log one `LOG_CATEGORY_CRON_JOB_SKIPPED` line and
+     return. Nothing is sent, the run pings success, and the claim stays
+     taken, so the next send can wait up to the guard interval.
+  2. Read `batchSizeOrNull()`. On `null`, log one
+     `LOG_CATEGORY_CRON_JOB_FAILURE` line, call `markRunFailed()`, and return.
+     Nothing is sent. The job has no default batch size.
+  3. Ask `CarVerificationSendService::findEligible()` for that many
+     candidates. If the query fails, log it, call `markRunFailed()`, and
+     return.
+  4. Hand the ids to `VerificationBatchSender::processBatch()`, persist the
+     outcome counts, and log a routine completion line under
+     `LOG_CATEGORY_CAR_VERIFICATION`.
+  5. Call `markRunFailed()` when no send succeeded and at least one send
+     failed (a full send outage), or when any send is `unrecorded`. Each of
+     these two cases also logs one `LOG_CATEGORY_CRON_JOB_FAILURE` line with
+     counts only.
+
+  A partial send failure pings success on purpose (#2480). `run()` pings
+  `/fail` when any `markRunFailed()` call ran. `runNow()` pings nothing.
 
 **Private Methods**:
 

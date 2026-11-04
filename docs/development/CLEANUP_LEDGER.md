@@ -55,12 +55,19 @@ after an item is written.
 
 ### `app/admin/includes/tab-verification.php`
 
+- [ ] The summary, chip, activity and cron-state catches (~L173, ~L228, ~L247, ~L744) still log `get_class($e)` and `$e->getMessage()`. Log `ExceptionLogSummary::of($e)`, as the eligible-preview and queue catches do (found in #2572 review)
+- [ ] The Automatic Sending card shows only "Status unavailable" for an `UNREADABLE` or `MISSING` job state, and its "Next eligible" row says "the job status could not be read" for `MISSING` too. Show the same detail lines as the status panel rows, from one shared source next to `CronJobRunsReader::badgeFor()` (found in #2572 review)
 - [ ] `EffectiveEmailFlags::fromQueueRow()` runs inside the render loop, after `<tbody>` opens. A throw stops the page mid-table with no admin message and no `logger()` line. Build the flags with the queue rows and catch `\InvalidArgumentException` in the queue fault domain (found in /flow:finish-milestone v2.31.0)
+
+### `app/admin/includes/verification-status-panel.php`
+
+- [ ] The `UNREADABLE` and `MISSING` job-row details tell an editor to check the system log or run `composer migrate:status`, but an editor cannot act on either. Show that advice to admins only, as the incident steps do (found in #2572 review)
+- [ ] The job-row details show command and table names (`composer migrate:status`, `er_cron_job_runs`) as plain text. Render them in `<code>`, as the incident steps do (found in #2572 review)
 
 ### `app/admin/index.php`
 
-- [ ] `verification_send_batch` logs a rejected scalar `car_ids` value with `var_export()` and no length limit or control-character strip, so an admin can put CR/LF into the log line. Cut the value to a fixed length and remove `[\x00-\x1F\x7F]` before the log call (found in #2457)
-- [ ] `verification_send_batch` logs every rejected scalar as `non-positive car id`, but `filterCarIds()` also rejects non-canonical values (`'03'`, `'1.5'`, `'+3'`). Say `invalid car id` (found in /flow:finish-milestone v2.31.0)
+- [ ] The `verification_send_batch` log strip removes `[\x00-\x1F\x7F]` byte by byte, so C1 controls (NEL U+0085) and U+2028/U+2029 stay in the logged `car_ids` value. Use `/[\p{Cc}\x{2028}\x{2029}]/u`, with the byte regex as the fallback for invalid UTF-8 (found in #2572 review)
+- [ ] The admin readiness banner (~L106) reads `isEnabled()`, so an unreadable switch hides the banner, and its catch logs `$e->getMessage()`. Read `isEnabledOrNull()` and show an unreadable state, and log `ExceptionLogSummary::of($e)` (found in #2572 review)
 
 ### `app/admin/scripts/maintenance/21-Fix-Page-Permissions.php` + `app/admin/scripts/maintenance/26-Reconcile-Owner-Fields.php` + `app/api/webhooks/brevo.php` + `usersc/classes/Car/CarAdministrationService.php` + `usersc/classes/Car/CarVerificationSendService.php` + `usersc/includes/custom_functions.php` + `usersc/plugins/hooker/hooks/user_form_hook.php` (logger guards)
 
@@ -158,6 +165,10 @@ after an item is written.
 
 - [ ] `testVisitorWhoIsNotLoggedInIsRefusedAndGetsNoReport` checks only that no report shows. A crash passes too. Assert exit code 0 and HTTP 302, as the editor test does (found in #2358 review)
 
+### `tests/integration/IntegrationTestCase.php` (test coverage)
+
+- [ ] `invokeEndpoint()` takes no GET parameters, so it renders only the default admin tab. A test cannot assert the Verification tab "Batch results" area after a manual send. Add a GET-params argument (found in #2572 review)
+
 ### `tests/integration/IntegrationTestCase.php` + `tests/integration/RetentionPurgeJobIntegrationTest.php` + `tests/integration/database/DeletedUserAddressesBacklogRuleTest.php`
 
 - [ ] The `er_deleted_user_addresses` table-exists query is copied three times (`deleteDeletedUserAddressRows()` and the two setUps). Add one protected helper in `IntegrationTestCase` and call it from all three (found in /finish-milestone v2.30.10)
@@ -245,10 +256,6 @@ after an item is written.
 
 - [ ] `runWasMarkedFailed()` reads the private `AbstractCronJob::$runFailed` through reflection. When the job gets a healthcheck slug (#2586), assert the `/fail` ping through an injected pinger and delete the helper (found in /flow:finish-milestone v2.31.0)
 
-### `tests/unit/cron/VerificationSwitchGateSourceTest.php`
-
-- [ ] The source check that the webhook does not read the switch (~L101) repeats behavior tests (`BrevoWebhookEndpointTest` ~L351, `BrevoEventPathParityIntegrationTest` ~L556, ~L605, ~L621). Delete it. Keep the convention scans at ~L63 and ~L110 (found in /finish-milestone v2.30.8)
-
 ### `tests/unit/regression/Issue2360SendPolicySourceRegressionTest.php`
 
 - [ ] The source-position checks at ~L317, ~L322 and ~L353 repeat behavior tests (`SendOwnerEmailSendPolicyTest` ~L246, ~L334, `AdminContactSendPolicyTest`). Delete them, and keep the tests of the checker helper (found in /finish-milestone v2.30.8)
@@ -317,7 +324,7 @@ after an item is written.
 
 ### `usersc/classes/Car/VerificationTabStatus.php`
 
-- [ ] Five status probes in `read()`, and the eligible-preview and queue catches in `app/admin/includes/tab-verification.php`, log `$e->getMessage()`. Log `ExceptionLogSummary::of($e)` as the batch-size probe does (found in /flow:finish-milestone v2.31.0)
+- [ ] The `MISSING` job-row detail (~L656) is long, and its next step ("Run composer migrate:status.") names no migration. Shorten it and name the migration that seeds the job row (found in #2572 review)
 
 ### `usersc/classes/CarView.php`
 

@@ -27,9 +27,12 @@ use ElanRegistry\LogCategories;
  * does not stop the other probes. A failed settings probe shows "Not ready"
  * on the Brevo row. The feature switch, the cron row, the unmatched row and
  * the Batch size field show "Unavailable" only when the probe did not read
- * their value. A failed settings query also counts as "not read" for the
- * switch and the batch size, because UserSpice `DB::query()` reports it
- * through `error()` and does not throw.
+ * their value. For the switch, the batch size and the cron state, the probe
+ * uses the VerificationSettings `*OrNull()` reads. They return null for a
+ * failed settings query and for a missing settings row, and the tab counts
+ * that null as "not read". UserSpice `DB::query()` reports a failed query
+ * through `error()` and does not throw, so the plain read
+ * `VerificationSettings::isEnabled()` cannot see a failed query.
  * {@see self::allHealthy()} lists which probe failures make the tab
  * unhealthy. An unreadable value is never shown as a green zero, because a
  * zero tells an admin to stop looking.
@@ -57,11 +60,12 @@ final readonly class VerificationTabStatus
      * @param bool                   $probeFailed         True when the VerificationSettings probe threw
      * @param bool|null              $enabled             The site-wide verification switch, or null when the
      *                                                    settings probe threw before it read the switch or
-     *                                                    the switch query failed
+     *                                                    the switch was unreadable
      * @param string|null            $brevoNotReadyReason Admin-facing reason Brevo is not ready, or null when ready
      *                                                    or when the probe threw before it read the reason
      * @param bool|null              $cronReady           True when cron ran recently, or null when the
      *                                                    settings probe threw before it read the cron state
+     *                                                    or the cron state was unreadable
      * @param DateTimeImmutable|null $lastCronAt          When cron was last seen, or null if never
      * @param int|null               $unmatchedCount      Unmatched-recipient counter, or null when unreadable
      * @param array{state: CronJobEnabledState, lastRunAt: ?DateTimeImmutable, lastFailureAt: ?DateTimeImmutable} $reconciliation
@@ -75,7 +79,7 @@ final readonly class VerificationTabStatus
      * @param array{count: int|null, recent: list<array{loggedAt: string, message: string}>}|null $failureLog
      *        CronJobFailureLogReader::recentFailures() result, or null when the probe threw
      * @param int|null               $batchSize           Configured batch size, or null when the batch size
-     *                                                    probe threw or its query failed
+     *                                                    probe threw or the batch size was unreadable
      */
     public function __construct(
         private bool $probeFailed,
@@ -115,23 +119,26 @@ final readonly class VerificationTabStatus
 
         try {
             $settings       = new VerificationSettings($db);
-            // Null when the query failed: the switch then shows "Unavailable",
-            // not a guessed "off".
+            // Null when the switch is unreadable: the switch then shows
+            // "Unavailable", not a guessed "off".
             $enabled        = $settings->isEnabledOrNull();
             $brevoReason    = $settings->brevoNotReadyReason();
-            $cronReady      = $settings->cronReady();
-            $lastCronAt     = $settings->lastCronRequestAt();
+            // Null when the cron state is unreadable: the cron row then shows
+            // "Unavailable", not "no cron request has ever been logged".
+            $cronState      = $settings->cronStateOrNull();
+            $cronReady      = $cronState['ready'] ?? null;
+            $lastCronAt     = $cronState['lastRequestAt'] ?? null;
             // Null means the counter could not be read. The method has
             // already logged why under VerificationConfigWarning.
             $unmatchedCount = $settings->unmatchedRecipientCount();
         } catch (\Throwable $e) {
             $probeFailed = true;
             logger($userId, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING,
-                sprintf('Verification tab status probe failed [%s]: %s', get_class($e), $e->getMessage()));
+                sprintf('Verification tab status probe failed: %s', ExceptionLogSummary::of($e)));
         }
 
         // Its own fault domain, so a throw in the probe above does not hide a
-        // batch size that can be read. Null when the query failed: the Batch
+        // batch size that can be read. Null when it is unreadable: the Batch
         // size field then shows "Unavailable", and no Save form can write a
         // guessed value over the real setting (#2457).
         $batchSize = null;
@@ -150,7 +157,7 @@ final readonly class VerificationTabStatus
             $reconciliation = $runsReader->status(BrevoEventReconciliationJob::JOB_NAME);
         } catch (\Throwable $e) {
             logger($userId, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE,
-                sprintf('Reconciliation status probe failed [%s]: %s', get_class($e), $e->getMessage()));
+                sprintf('Reconciliation status probe failed: %s', ExceptionLogSummary::of($e)));
         }
 
         $suppressionSync = self::STATUS_UNREADABLE;
@@ -158,7 +165,7 @@ final readonly class VerificationTabStatus
             $suppressionSync = $runsReader->status(BrevoSuppressionSyncJob::JOB_NAME);
         } catch (\Throwable $e) {
             logger($userId, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE,
-                sprintf('Suppression sync status probe failed [%s]: %s', get_class($e), $e->getMessage()));
+                sprintf('Suppression sync status probe failed: %s', ExceptionLogSummary::of($e)));
         }
 
         $autoSend        = self::STATUS_UNREADABLE;
@@ -168,8 +175,8 @@ final readonly class VerificationTabStatus
             $autoSendOutcome = $runsReader->lastOutcomeCounts(SendVerificationBatchJob::JOB_NAME);
         } catch (\Throwable $e) {
             logger($userId, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE,
-                sprintf('Automatic send status or outcome counts probe failed [%s]: %s',
-                    get_class($e), $e->getMessage()));
+                sprintf('Automatic send status or outcome counts probe failed: %s',
+                    ExceptionLogSummary::of($e)));
         }
 
         $failureLog = null;
@@ -177,7 +184,7 @@ final readonly class VerificationTabStatus
             $failureLog = (new CronJobFailureLogReader($db))->recentFailures();
         } catch (\Throwable $e) {
             logger($userId, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE,
-                sprintf('Cron failure log summary probe failed [%s]: %s', get_class($e), $e->getMessage()));
+                sprintf('Cron failure log summary probe failed: %s', ExceptionLogSummary::of($e)));
         }
 
         return new self(
@@ -290,9 +297,10 @@ final readonly class VerificationTabStatus
      * blocked, so an admin can always stop verification in an incident.
      *
      * The switch is `unavailable` for every viewer only when the settings
-     * probe threw before it read the switch state, or the switch query
-     * failed. An unchecked switch would be a guess. When the probe read the switch state and a later read threw,
-     * the switch shows the real state, and an admin can still turn it off.
+     * probe threw before it read the switch state, the switch query failed,
+     * or the settings row is missing. An unchecked switch would be a guess.
+     * When the probe read the switch state and a later read threw, the
+     * switch shows the real state, and an admin can still turn it off.
      * Turning on stays blocked, because the Brevo status is not known.
      *
      * @param bool $canToggle True when the viewer is an admin
@@ -572,8 +580,9 @@ final readonly class VerificationTabStatus
      */
     private function cronRow(): array
     {
-        // The probe threw before it read the cron state, so "Stalled" would be
-        // a guess. A cron state that was read before a later throw is real.
+        // The probe threw before it read the cron state, or the state was
+        // unreadable, so "Stalled" would be a guess. A cron state that was
+        // read before a later throw is real.
         if ($this->cronReady === null) {
             return self::row('cron', 'Cron running', 'Unavailable', 'badge text-bg-danger',
                 'fa-exclamation-circle',
@@ -630,18 +639,28 @@ final readonly class VerificationTabStatus
      */
     private function jobRow(string $key, string $label, array $status): array
     {
-        $badge = CronJobRunsReader::badgeFor($status['state'], $status['lastRunAt'], $status['lastFailureAt']);
         $lastRunAt = $status['lastRunAt'];
+        $badge = CronJobRunsReader::badgeFor($status['state'], $lastRunAt, $status['lastFailureAt']);
 
-        return self::row(
-            $key,
-            $label,
-            $badge['text'],
-            $badge['badgeClass'],
-            $badge['icon'],
-            $lastRunAt !== null ? 'last ran ' . $lastRunAt->format(self::TIME_FORMAT) : '',
-            $lastRunAt !== null ? 'fa-clock' : ''
-        );
+        // The badge text is shared with the auto-send card, so the reason for
+        // an unreadable state goes in the detail only.
+        [$detail, $detailIcon] = match ($status['state']) {
+            CronJobEnabledState::UNREADABLE => [
+                'The job state could not be read, so the job may not run. Check the system log for'
+                    . ' CronJobFailure entries.',
+                '',
+            ],
+            CronJobEnabledState::MISSING => [
+                'The job has no row in er_cron_job_runs, so cron does not run it. Run composer migrate:status.'
+                    . ' If its seed migration is applied, the row was deleted and must be inserted again.',
+                '',
+            ],
+            default => $lastRunAt !== null
+                ? ['last ran ' . $lastRunAt->format(self::TIME_FORMAT), 'fa-clock']
+                : ['', ''],
+        };
+
+        return self::row($key, $label, $badge['text'], $badge['badgeClass'], $badge['icon'], $detail, $detailIcon);
     }
 
     /**

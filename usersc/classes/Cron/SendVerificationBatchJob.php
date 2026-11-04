@@ -36,8 +36,9 @@ use ElanRegistry\LogCategories;
  * byte-for-byte the same send, differing only in what triggers them.
  *
  * BOUNDED WORK PER INVOCATION. One page of at most
- * {@see VerificationSettings::batchSize()} cars (clamped to [1, 25] on write
- * and on read) per claimed run, never a loop until the eligible set empties.
+ * {@see VerificationSettings::batchSizeOrNull()} cars (clamped to [1, 25] on
+ * write and on read) per claimed run, never a loop until the eligible set
+ * empties. An unreadable batch size sends nothing and fails the run.
  * cron.php dispatches jobs in-process with no subprocess boundary (see
  * {@see AbstractCronJob}), so an unbounded walk over the ~1,500-car eligible
  * backlog would hold the whole cron hit open — and, more importantly, would
@@ -46,8 +47,9 @@ use ElanRegistry\LogCategories;
  * reach is simply picked up by the next claim, oldest-verified first.
  *
  * This is the only cron job that honours the site-wide verification switch:
- * {@see self::refusesWhileSwitchOff()} reads {@see VerificationSettings::isEnabled()}.
- * {@see AbstractCronJob::run()} applies that gate before the job-owned
+ * {@see self::refusesWhileSwitchOff()} reads {@see VerificationSettings::isEnabledOrNull()}
+ * and refuses only on a switch read as off. An unreadable switch passes the
+ * gate, and `execute()` fails the run. {@see AbstractCronJob::run()} applies that gate before the job-owned
  * `er_cron_job_runs.enabled` pause flag, the `CronJobGuard` claim, the
  * `set_time_limit()` backstop, and top-level crash isolation. None of that is
  * repeated here — this class implements only the three abstract methods, the
@@ -135,11 +137,17 @@ final class SendVerificationBatchJob extends AbstractCronJob
      * This job sends email, so the switch must stop it. The check runs before
      * the claim, so the first run after the switch goes on is due.
      *
-     * @return bool True while the switch is off
+     * An unreadable switch (null) does not refuse. A refusal sends no ping,
+     * so the operator would get no alert. When the gate lets the run through,
+     * `execute()` can fail the run and ping `/fail` once per guard interval.
+     * If `execute()` then reads the switch as off, it sends nothing and logs
+     * a `CronJobSkipped` line.
+     *
+     * @return bool True only while the switch is read as off
      */
     protected function refusesWhileSwitchOff(): bool
     {
-        return !$this->settings->isEnabled();
+        return $this->settings->isEnabledOrNull() === false;
     }
 
     /**
@@ -160,13 +168,42 @@ final class SendVerificationBatchJob extends AbstractCronJob
      * {@see VerificationBatchSender}, record what came back.
      *
      * The run pings `/fail` (via {@see AbstractCronJob::markRunFailed()}) when
-     * the eligible query fails, when every attempted send fails, or when any
-     * send is unrecorded. An empty eligible set and a partial failure ping
-     * success.
+     * the switch or the batch size is unreadable, when the eligible query
+     * fails, when every attempted send fails, or when any send is unrecorded.
+     * An empty eligible set and a partial failure ping success.
+     *
+     * A switch read as off here (the gate's read failed, or an admin switched
+     * off after the gate) sends nothing, logs one `CronJobSkipped` line, and
+     * pings success. The claim stays taken, so the next send can wait up to
+     * the guard interval. The outcome counts keep the previous run's values.
      */
     protected function execute(): void
     {
-        $batchSize = $this->settings->batchSize();
+        // The gate let an unreadable switch through, so that this run can
+        // fail its ping. A send with an unknown switch state is not safe.
+        $enabled = $this->settings->isEnabledOrNull();
+        if ($enabled === null) {
+            $this->failUnreadable('verification switch state');
+            return;
+        }
+        // An admin switched off after the gate, or the gate's read failed and
+        // this read says off. Either way the admin's choice is off, so send
+        // nothing and do not fail the run. The claim stays taken, so log the
+        // run: without a line, a stamped run with nothing sent is untraceable.
+        if ($enabled === false) {
+            logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_SKIPPED, sprintf(
+                "Cron job '%s': switch read as off after the gate — nothing sent this run.",
+                self::JOB_NAME
+            ));
+            return;
+        }
+
+        // No default size: a guessed batch size is not the admin's setting.
+        $batchSize = $this->settings->batchSizeOrNull();
+        if ($batchSize === null) {
+            $this->failUnreadable('batch size');
+            return;
+        }
 
         try {
             $eligible = $this->sendSvc->findEligible($batchSize, 0);
@@ -364,5 +401,20 @@ final class SendVerificationBatchJob extends AbstractCronJob
                 self::JOB_NAME
             ));
         }
+    }
+
+    /**
+     * Log an unreadable setting and fail the ping, so the operator sees a
+     * fault, not a quiet night with nothing sent.
+     */
+    private function failUnreadable(string $setting): void
+    {
+        logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
+            "Cron job '%s': %s unreadable — nothing sent this run."
+            . ' Check the system log for VerificationConfigWarning entries.',
+            self::JOB_NAME,
+            $setting
+        ));
+        $this->markRunFailed();
     }
 }

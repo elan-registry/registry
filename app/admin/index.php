@@ -560,8 +560,6 @@ if (ElanInput::existsPost()) {
                         break;
                     }
 
-                    $sendBatchJustRan = true;
-
                     // \Input::get() sanitizes arrays recursively (see
                     // users/classes/Input.php::sanitize()), the same way the
                     // "merge" case above relies on for its `cars` field. Nested
@@ -570,15 +568,28 @@ if (ElanInput::existsPost()) {
                     $submittedIds = (array) ElanInput::get('car_ids', []);
 
                     // SERVER-SIDE CAP. The GET-time preview only ever renders
-                    // batchSize() cars, but nothing stops a hand-crafted POST
+                    // batch-size cars, but nothing stops a hand-crafted POST
                     // carrying hundreds of ids — and every one of them would
                     // become a blocking synchronous Brevo call inside this one
-                    // request. batchSize() is the configured ceiling on a
+                    // request. The batch size is the configured ceiling on a
                     // batch, so it is enforced here too rather than trusted
                     // from the form. VerificationSettings is constructed
-                    // locally (matching tab-verification.php) and fails closed
-                    // to 5 on any read problem.
-                    $vsSendBatchSize = (new VerificationSettings(dbi()))->batchSize();
+                    // locally (matching tab-verification.php). An unreadable
+                    // batch size stops the send: a default size is not the
+                    // admin's setting.
+                    $vsSendBatchSize = (new VerificationSettings(dbi()))->batchSizeOrNull();
+
+                    if ($vsSendBatchSize === null) {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
+                            'Verification send: manual send blocked — batch size unreadable; nothing sent.');
+                        $errors[] = 'The batch size could not be read, so no email was sent. '
+                            . 'Check the system log for VerificationConfigWarning entries.';
+                        break;
+                    }
+
+                    // Set after the batch size check, so a send that stops
+                    // there shows its error and no batch results.
+                    $sendBatchJustRan = true;
 
                     $vsCap = VerificationBatchSender::capToBatchSize($submittedIds, $vsSendBatchSize);
                     $submittedIds = $vsCap['ids'];
@@ -600,8 +611,11 @@ if (ElanInput::existsPost()) {
 
                     foreach ($vsFiltered['rejected'] as $rejectedId) {
                         // Only a scalar is exported. A non-scalar value is logged by its type alone.
+                        // The value comes from the form, so it is cut to a fixed length and its
+                        // control characters are removed: a CR/LF must not forge a log line.
                         $rejectedLog = is_scalar($rejectedId)
-                            ? 'Verification send: non-positive car id in car_ids[]: ' . var_export($rejectedId, true)
+                            ? 'Verification send: invalid car id in car_ids[]: '
+                                . mb_substr((string) preg_replace('/[\x00-\x1F\x7F]/', '', var_export($rejectedId, true)), 0, 64)
                             : 'Verification send: non-scalar car id in car_ids[]: ' . get_debug_type($rejectedId);
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $rejectedLog);
                         $sendReportSkipped[] = [
@@ -786,8 +800,8 @@ if (ElanInput::existsPost()) {
 
                     // Read back rather than echoing the submitted value: what
                     // was stored may have been clamped, and the admin needs to
-                    // see the effective setting. batchSize() would show the
-                    // default 5 as fact after a failed read, so use the null form.
+                    // see the effective setting. A failed read must not show a
+                    // guessed value as fact.
                     $savedBatchSize = $verificationSettings->batchSizeOrNull();
                     if ($savedBatchSize === null) {
                         $errors[] = 'The batch size was saved, but the new value could not be read back. '

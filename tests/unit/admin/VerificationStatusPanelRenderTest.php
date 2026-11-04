@@ -264,7 +264,11 @@ final class VerificationStatusPanelRenderTest extends TestCase
         $badge = $xp->query('//span[@id="verificationSwitchUnavailable"]')?->item(0);
         $this->assertInstanceOf(DOMElement::class, $badge);
         $this->assertStringContainsString('text-bg-danger', $badge->getAttribute('class'));
-        $this->assertSame('Unavailable', trim($badge->textContent));
+        // The prefix gives a screen reader the name of the thing that is unavailable.
+        $hidden = $xp->query('.//span[contains(concat(" ", normalize-space(@class), " "), " visually-hidden ")]', $badge)?->item(0);
+        $this->assertInstanceOf(DOMElement::class, $hidden);
+        $this->assertSame('Feature switch:', trim($hidden->textContent));
+        $this->assertSame('Feature switch: Unavailable', preg_replace('/\s+/', ' ', trim($badge->textContent)));
         $this->assertStringContainsString(
             'The switch state could not be read. Check the system log for VerificationConfigWarning entries.',
             (string) $xp->query('//small[@id="verificationToggleHelp"]')?->item(0)?->textContent
@@ -297,7 +301,8 @@ final class VerificationStatusPanelRenderTest extends TestCase
         return [
             'healthy, admin'                        => [[], true, 1],
             'healthy, editor'                       => [[], false, 0],
-            'Brevo not ready, switch off, admin'    => [['brevoReason' => 'x', 'enabled' => false], true, 0],
+            'Brevo not ready, switch off, admin'    => [['brevoReason' => 'x', 'enabled' => false], true, 1],
+            'Brevo not ready, switch off, editor'   => [['brevoReason' => 'x', 'enabled' => false], false, 0],
             'Brevo not ready, switch on, admin'     => [['brevoReason' => 'x'], true, 1],
             'switch not read, admin'                => [$unread, true, 1],
             'switch not read, editor'               => [$unread, false, 0],
@@ -311,14 +316,14 @@ final class VerificationStatusPanelRenderTest extends TestCase
     }
 
     /**
-     * The incident steps are the only manual stop procedure. An admin sees
-     * them when the switch has no reason to show, or when a probe failed.
+     * The incident steps are the only manual stop procedure. Only an admin
+     * sees them, because an editor cannot change the token or the job rows.
      *
      * @param array<string, mixed> $overrides
      */
     #[DataProvider('incidentStepsProvider')]
     #[Group('regression')]
-    public function test_panel_incidentSteps_showOnlyToAnAdminWhoMayNeedThem(
+    public function test_panel_incidentSteps_showToEveryAdminAndToNoEditor(
         array $overrides,
         bool $canToggle,
         int $expected
@@ -338,7 +343,30 @@ final class VerificationStatusPanelRenderTest extends TestCase
         $summary = (string) $xp->query('//details/summary')?->item(0)?->textContent;
         $this->assertStringContainsString('Needs attention', $summary);
         $this->assertStringNotContainsString('All healthy', $summary);
-        $this->assertSame('Status unavailable', self::rowText($xp, 'reconciliation'));
+        $this->assertStringStartsWith('Status unavailable', self::rowText($xp, 'reconciliation'));
+    }
+
+    /** The detail says why the state is unavailable and what to do (#2573). */
+    #[Group('regression')]
+    public function test_panel_unreadableAndMissingJobStates_renderTheirReasonInTheRow(): void
+    {
+        $xp = self::dom(self::renderHtml(self::build([
+            'reconciliation' => self::job(CronJobEnabledState::UNREADABLE, null),
+        ])));
+        $this->assertSame(
+            'Status unavailable The job state could not be read, so the job may not run. Check the system log for CronJobFailure entries.',
+            self::rowText($xp, 'reconciliation')
+        );
+
+        $xp = self::dom(self::renderHtml(self::build([
+            'reconciliation' => self::job(CronJobEnabledState::MISSING, null),
+        ])));
+        $this->assertSame(
+            'Status unavailable The job has no row in er_cron_job_runs, so cron does not run it.'
+                . ' Run composer migrate:status. If its seed migration is applied, the row was deleted'
+                . ' and must be inserted again.',
+            self::rowText($xp, 'reconciliation')
+        );
     }
 
     #[Group('regression')]
