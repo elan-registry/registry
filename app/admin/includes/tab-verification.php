@@ -187,17 +187,20 @@ try {
 $vsQueueRows  = [];
 /** @var array<int, EffectiveEmailFlags> $vsQueueFlags Keyed like $vsQueueRows */
 $vsQueueFlags = [];
+/** @var array<int, bool> $vsQueueMalformed Keyed like $vsQueueRows */
+$vsQueueMalformed = [];
 $vsQueueError = null;
 $vsQueueLoadError = 'The verification queue could not be loaded. Check the system log for details.';
 
 if ($vsIsNextQueueView) {
     // A Next Queue row comes from findVerificationEligible() (`cars.*`) and
-    // has no profile columns: the eligibility query already excludes an
-    // owner with no profile or with a flag.
+    // has no profile or queue columns: the eligibility query already
+    // excludes an owner with no profile, a flag, or a malformed address (#2594).
     $vsQueueRows  = $vsEligible;
     $vsQueueError = $vsEligibleError;
     foreach ($vsQueueRows as $vsQueueRowKey => $vsQueueRow) {
-        $vsQueueFlags[$vsQueueRowKey] = EffectiveEmailFlags::eligible();
+        $vsQueueFlags[$vsQueueRowKey]     = EffectiveEmailFlags::eligible();
+        $vsQueueMalformed[$vsQueueRowKey] = false;
     }
 } else {
     try {
@@ -207,20 +210,30 @@ if ($vsIsNextQueueView) {
         // (the `_active` columns, #2356).
         foreach ($vsQueueRows as $vsQueueRowKey => $vsQueueRow) {
             $vsQueueFlags[$vsQueueRowKey] = EffectiveEmailFlags::fromQueueRow($vsQueueRow);
+            // A missing column would cast to 0 and show a malformed address
+            // as well-formed, so it fails here like a missing flag column.
+            if (!property_exists($vsQueueRow, 'email_address_malformed')) {
+                throw new \InvalidArgumentException(
+                    "Verification tab: a queue row has no 'email_address_malformed' column."
+                );
+            }
+            $vsQueueMalformed[$vsQueueRowKey] = (int) $vsQueueRow->email_address_malformed === 1;
         }
     } catch (\InvalidArgumentException $e) {
-        $vsQueueRows  = [];
-        $vsQueueFlags = [];
-        $vsQueueError = $vsQueueLoadError;
+        $vsQueueRows      = [];
+        $vsQueueFlags     = [];
+        $vsQueueMalformed = [];
+        $vsQueueError     = $vsQueueLoadError;
         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
             'Verification tab: a %s queue row has no email flag columns: %s',
             $queueStatus,
             ExceptionLogSummary::of($e)
         ));
     } catch (\Throwable $e) {
-        $vsQueueRows  = [];
-        $vsQueueFlags = [];
-        $vsQueueError = $vsQueueLoadError;
+        $vsQueueRows      = [];
+        $vsQueueFlags     = [];
+        $vsQueueMalformed = [];
+        $vsQueueError     = $vsQueueLoadError;
         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
             'Verification tab: could not load the %s queue: %s',
             $queueStatus,
@@ -301,9 +314,9 @@ $vsStatusLabels = [
     'invalid_email' => 'Invalid email',
 ];
 
-// Pill counts. Next Queue has no summary count: it is the first batch of
-// Eligible, so its count is the smaller of the two, and no count when either
-// one could not be read.
+// Pill counts. Next Queue has no summary key: its count is
+// min(eligible, batch size). If the summary or the batch size could not be
+// read, the Next Queue pill shows no count.
 $vsPillCounts = $vsSummary ?? [];
 if ($vsSummary !== null && $vsBatchSize !== null) {
     $vsPillCounts['next_queue'] = min($vsSummary['eligible'], $vsBatchSize);
@@ -808,13 +821,8 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                         $queueDays = $queueSentAt !== false ? (int) $queueSentAt->diff($vsNow)->days : null;
 
                         // Built with the rows, before <tbody> (see the queue fault domain above).
-                        $queueFlags = $vsQueueFlags[$queueRowKey];
-
-                        // A Next Queue row comes from findVerificationEligible()
-                        // (`cars.*`) and has no queue columns. The eligibility query
-                        // excludes a malformed address, so a Next Queue row is never malformed (#2594).
-                        $queueAddressMalformed = !$vsIsNextQueueView
-                            && (int) $queueCar->email_address_malformed === 1;
+                        $queueFlags            = $vsQueueFlags[$queueRowKey];
+                        $queueAddressMalformed = $vsQueueMalformed[$queueRowKey];
 
                         $queueChip = VerificationTabStatus::chip(
                             $vsChipEvents[$queueCarId] ?? null,

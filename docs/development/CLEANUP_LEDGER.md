@@ -156,10 +156,6 @@ after an item is written.
 - [ ] The class has its own `php -r` subprocess copy of the endpoint runner. Use `IntegrationTestCase::invokeEndpoint()` and delete the copy. `invokeEndpoint()` needs GET/HTML or session-flash support first (found in #2165)
 - [ ] The runner reads a missing `___EXIT:` marker as exit code 0 (`array_pad(..., '0')`, ~L161), and it ignores a failed `$loggedInUser->find()` (~L142), so an unknown user runs logged out. The class docblock (~L15) names `VerificationToggleEndpointBehaviorTest` as the model runner, but that class now uses `invokeEndpoint()`. The migration item above fixes all three. (found in #2165)
 
-### `tests/integration/AdminVerificationTabRenderTest.php` (test coverage)
-
-- [ ] `testNextQueueRowsAreTheFirstRowsOfEligible` (~L814) makes three cars with the same `last_verified` in id order, so its prefix check cannot catch a wrong sort order, and `testNextQueueRendersThePreviewAndASendFormForNextQueue` checks `$sent[0]` with one car. Give the helper cars distinct `last_verified` values in reverse id order (found in #2599)
-
 ### `tests/integration/CarEditOwnerColumnRefreshTest.php`
 
 - [ ] `testOwnerSelfEditSetsOwnerLastUpdatedButAdminEditDoesNot` only checks that the new `owner_last_updated` is later than a date two years ago, and does not count `cars_hist` rows. Bound it with `assertEqualsWithDelta(time(), ..., 60)` and assert one new history row (found while working on #1929)
@@ -254,6 +250,10 @@ after an item is written.
 ### `tests/unit/cron/BrevoSuppressionSyncJobTest.php` (test quality)
 
 - [ ] `runWasMarkedFailed()` reads the private `AbstractCronJob::$runFailed` through reflection. When the job gets a healthcheck slug (#2586), assert the `/fail` ping through an injected pinger and delete the helper (found in /flow:finish-milestone v2.31.0)
+
+### `tests/unit/cron/SendVerificationBatchJobTest.php` (test coverage)
+
+- [ ] `testEligibleCarIdsPassThroughUnchangedToProcessBatch` (~L255) uses `assertContains`, so a reordered batch passes, and no test checks that `VerificationBatchSender::processBatch()` sends in the submitted order. Assert the exact id order in both (found in #2599)
 
 ### `tests/unit/regression/Issue2360SendPolicySourceRegressionTest.php`
 

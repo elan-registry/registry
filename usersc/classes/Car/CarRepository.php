@@ -119,6 +119,15 @@ class CarRepository
     ];
 
     /**
+     * SQL ORDER BY clause for the verification send order.
+     *
+     * The Eligible view and findVerificationEligible() share it, so the list
+     * on screen and the rows that a batch reads have one order. The id
+     * tiebreak keeps the order stable for cars with the same date.
+     */
+    private const VERIFICATION_SEND_ORDER_SQL = 'ORDER BY cars.last_verified ASC, cars.id ASC';
+
+    /**
      * SQL that normalizes a column the way
      * {@see EmailAddress::normalize()} does: strip
      * leading and trailing white space, then lower case. Wrap a column name
@@ -1759,17 +1768,6 @@ class CarRepository
                      OR cars.verification_attempts_since < NOW() - INTERVAL 1 YEAR
                      OR cars.verification_attempts < 2)";
     }
-
-    /**
-     * The send order
-     *
-     * The Eligible view uses this order. The Next Queue preview and the cron
-     * job read rows in this order through findEligible(), and a manual batch
-     * posts them in this order. Thus the rows on screen are the rows that a
-     * batch sends. The id tiebreak keeps the order stable for cars with the
-     * same date.
-     */
-    private const VERIFICATION_SEND_ORDER_SQL = 'ORDER BY cars.last_verified ASC, cars.id ASC';
 
     /**
      * The profile join that the dashboard queries add after `FROM cars`

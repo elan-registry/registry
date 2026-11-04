@@ -999,7 +999,7 @@ to provide a focused, testable data access layer wrapping the `cars`,
   (`null` for all time). The result has no `all` key (#2599).
   `invalid_email` counts the unsold cars of a live owner (not `noowner`) who
   have no `profiles` row, or whose address is not NULL, not empty, and not
-  well formed (#2594). A car counts once, in the same query pass. This key
+  well formed (#2594). A car with both problems counts once. This key
   can overlap the other keys, so a car can count in `invalid_email` and also
   in another key, for example `pending` or `blocked`. `bounced` and
   `blocked` count cars whose owner's flag applies to the owner's current address
@@ -1018,7 +1018,8 @@ to provide a focused, testable data access layer wrapping the `cars`,
   `invalid_email` lists the cars with no `profiles` row or a malformed
   address. `next_queue` throws `CarValidationException`. The message points to
   `findEligible()`, which is the only source of the Next Queue rows, so one
-  query selects the rows that the send form posts. Each row carries the owner's state from `profiles`: `has_profile`,
+  query selects the rows that the send form posts.
+  The rows that this method returns carry the owner's state from `profiles`: `has_profile`,
   `email_opted_out`, `email_blocked_active`, `email_blocked_cause` and `email_bounced_active`. The
   `_active` columns are 1 only while the flag applies to the owner's current address
   (`emailFlagActiveSql()`). The row also carries `email_address_malformed` (0 or 1).

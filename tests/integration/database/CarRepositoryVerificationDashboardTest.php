@@ -858,28 +858,41 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
         return array_values(array_filter($ids, static fn (int $id): bool => in_array($id, $keep, true)));
     }
 
+    /**
+     * The id order of the seeded cars differs from the send order on purpose.
+     * The two dated cars get the lowest ids, and the later date gets the lowest
+     * id of all. The never-verified cars get higher ids. With ORDER BY id alone,
+     * the result would be [later, earlier, ...NULL cars], so the test fails when
+     * the query drops last_verified from the order. Expected send order: the
+     * NULL cars by id, then the dated cars by date (earlier first).
+     */
     #[Group('fast')]
     public function testEligibleQueueAndBatchShareSendOrderWithIdTiebreak(): void
     {
+        // Dated more than a year ago, so both are still eligible. They sort
+        // after every NULL (never verified) car, and the older date sorts first.
+        $laterDatedId = $this->createTestCar($this->userId, array_merge(
+            $this->eligibleFields('dash-order-dated-later@example.com'),
+            ['last_verified' => date('Y-m-d H:i:s', strtotime('-2 years'))]
+        ));
+        $earlierDatedId = $this->createTestCar($this->userId, array_merge(
+            $this->eligibleFields('dash-order-dated-earlier@example.com'),
+            ['last_verified' => date('Y-m-d H:i:s', strtotime('-3 years'))]
+        ));
         $nullIds = [];
         // 25 cars, so the batch size of 25 below is full even on an empty test database.
         for ($i = 0; $i < 25; $i++) {
             $nullIds[] = $this->createTestCar($this->userId, $this->eligibleFields("dash-order-null-{$i}@example.com"));
         }
-        // Dated more than a year ago, so it is still eligible. It sorts after
-        // every NULL (never verified) car.
-        $datedId = $this->createTestCar($this->userId, array_merge(
-            $this->eligibleFields('dash-order-dated@example.com'),
-            ['last_verified' => date('Y-m-d H:i:s', strtotime('-2 years'))]
-        ));
+        $expectedOrder = [...$nullIds, $earlierDatedId, $laterDatedId];
 
         $total = $this->repo->countVerificationSummary(null)['eligible'];
         $eligibleIds = $this->queueIds($this->repo->findVerificationQueue('eligible', null, $total + 100));
 
         $this->assertSame(
-            [...$nullIds, $datedId],
-            $this->only($eligibleIds, [...$nullIds, $datedId]),
-            'Never-verified cars come first, by id; the dated car comes last'
+            $expectedOrder,
+            $this->only($eligibleIds, $expectedOrder),
+            'Never-verified cars come first, by id; the dated cars follow, oldest date first'
         );
 
         // Adjacent pairs of the full list are non-decreasing in (NULL first, last_verified, id).

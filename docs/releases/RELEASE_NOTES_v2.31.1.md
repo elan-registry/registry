@@ -14,7 +14,7 @@ A failed read no longer shows as a default value or a success.
   An unreadable batch size also hides the batch size Save form.
 - If the switch or batch size cannot be read, auto-send sends nothing. A manual send with an unreadable batch size shows an error.
 - An unreadable or missing job state row now says what failed and which next step to take.
-- The Eligible and Next Queue views list cars in send order. Each queue row links to its car and owner.
+- The All pill is gone. Eligible (default) and Next Queue use send order. Rows link car and owner.
 
 ## Issues Resolved
 

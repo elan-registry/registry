@@ -217,9 +217,15 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
      * @param string|null $status Raw value of `?status=`, or null for none
      * @param int|null $userId User who makes the request, or null for the test admin
      * @param array<string, string> $extraQuery More query values, such as `show`
+     * @param list<array<string, mixed>>|null $stubQueueRows When set, the request includes the tab file
+     *        directly with a repository whose findVerificationQueue() returns these rows as objects
      */
-    private function getVerificationTab(?string $status, ?int $userId = null, array $extraQuery = []): DOMXPath
-    {
+    private function getVerificationTab(
+        ?string $status,
+        ?int $userId = null,
+        array $extraQuery = [],
+        ?array $stubQueueRows = null
+    ): DOMXPath {
         $projectRoot = dirname(__DIR__, 2);
         $adminDir = getenv('VERIFICATION_TAB_RENDER_ADMIN_DIR') ?: $projectRoot . '/app/admin';
         $page = $adminDir . '/index.php';
@@ -238,6 +244,17 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
         }
         $query += $extraQuery;
 
+        if ($stubQueueRows === null) {
+            $tail = 'require ' . var_export($page, true) . ';';
+        } else {
+            // app/admin/index.php builds its own repository, so a stub needs the tab file itself.
+            $tail = 'class StubQueueRepository extends \\ElanRegistry\\Car\\CarRepository { '
+                . 'public function findVerificationQueue(string $status, ?int $windowDays, int $limit): array { '
+                . 'return array_map(static fn (array $r): object => (object) $r, ' . var_export($stubQueueRows, true) . '); } } '
+                . '$verificationRepo = new StubQueueRepository(dbi()); $queueStatus = "pending"; '
+                . 'require ' . var_export($adminDir . '/includes/tab-verification.php', true) . ';';
+        }
+
         $script = sprintf(
             'require %s; ' .
             '\Dotenv\Dotenv::createMutable(%s, ".env.test.local")->load(); ' .
@@ -251,7 +268,7 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
             '$prop = $reflection->getProperty("_isLoggedIn"); $prop->setValue($loggedInUser, true); ' .
             'global $user; $user = $loggedInUser; $GLOBALS["user"] = $loggedInUser; ' .
             '$_GET = %s; $_REQUEST = $_GET; ' .
-            'require %s;',
+            '%s',
             var_export($projectRoot . '/vendor/autoload.php', true),
             var_export($projectRoot, true),
             var_export($projectRoot, true),
@@ -259,7 +276,7 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
             var_export($projectRoot . '/users/init.php', true),
             $userId ?? $this->adminId,
             var_export($query, true),
-            var_export($page, true)
+            $tail
         );
 
         $raw = (string) shell_exec('php -r ' . escapeshellarg($script) . ' 2>&1; echo "___EXIT:$?"');
@@ -724,18 +741,22 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
     }
 
     /**
-     * Create an eligible car with last_verified 1988-01-01
+     * Create an eligible car with a fixed last_verified (default 1988-01-01)
      *
      * The send order puts NULL first, so the date alone does not put the car
      * first. A setup assertion fails the test when an eligible car that this
-     * helper did not create has last_verified NULL or on or before that date.
-     * Thus the cars from this helper sort ahead of all other eligible cars,
-     * and among themselves by car id.
+     * helper did not create has last_verified NULL or on or before the date of
+     * this call. Thus the cars from this helper sort ahead of all other
+     * eligible cars. Among themselves they sort by date, then by car id. The
+     * setup check of the call with the latest date covers all helper cars, in
+     * any call order.
      */
-    private function createFirstInLineEligibleCar(int $ownerId, string $label): int
-    {
+    private function createFirstInLineEligibleCar(
+        int $ownerId,
+        string $label,
+        string $lastVerified = '1988-01-01 00:00:00'
+    ): int {
         $stale = date('Y-m-d H:i:s', strtotime('-3 years'));
-        $lastVerified = '1988-01-01 00:00:00';
 
         $carId = $this->createTestCar($ownerId, [
             'email'              => $label . '-' . uniqid() . '@example.com',
@@ -787,6 +808,22 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
         }
     }
 
+    public function testSendBatchNowLinkOpensTheNextQueueView(): void
+    {
+        $this->seedNotHealthy();
+
+        $xpath = $this->getVerificationTab(null);
+        $links = $xpath->query('//a[contains(normalize-space(.), "Send Batch Now")]');
+
+        $this->assertSame(1, $links->length, 'The admin sees one Send Batch Now link');
+        $link = $links->item(0);
+        $this->assertInstanceOf(\DOMElement::class, $link);
+        $href = $link->getAttribute('href');
+        // Only Next Queue has the send form, so the link must open that view.
+        $this->assertStringContainsString('status=next_queue', $href);
+        $this->assertStringEndsWith('#verificationQueue', $href);
+    }
+
     public function testNextQueueRendersThePreviewAndASendFormForNextQueue(): void
     {
         $this->seedNotHealthy();
@@ -811,13 +848,20 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
         $this->assertSame($carId, $sent[0], 'The car with the oldest last_verified is first');
     }
 
+    /**
+     * The dates run in reverse id order: the highest id has the oldest date.
+     * With ORDER BY id alone, Eligible would list [c1, c2, c3], so the test
+     * fails when the query drops last_verified from the order. Expected send
+     * order: [c3, c2, c1], and Next Queue (batch size 2) is [c3, c2].
+     */
     public function testNextQueueRowsAreTheFirstRowsOfEligible(): void
     {
         $this->seedNotHealthy();
         $ownerId = $this->createTestUser([], true);
-        for ($i = 0; $i < 3; $i++) {
-            $this->createFirstInLineEligibleCar($ownerId, "same-order-{$i}");
-        }
+        // The setup check of the call with the latest date covers all three cars, in any call order.
+        $c1 = $this->createFirstInLineEligibleCar($ownerId, 'same-order-1', '1988-03-01 00:00:00');
+        $c2 = $this->createFirstInLineEligibleCar($ownerId, 'same-order-2', '1988-02-01 00:00:00');
+        $c3 = $this->createFirstInLineEligibleCar($ownerId, 'same-order-3', '1988-01-01 00:00:00');
         // Batch size 2, below the 3 cars: Next Queue is a strict prefix of Eligible.
         $this->db->query('UPDATE er_verification_settings SET batch_size = 2 WHERE id = 1');
         $this->assertFalse($this->db->error(), 'Test setup: batch_size 2: ' . $this->db->errorString());
@@ -831,11 +875,60 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
         };
 
         $eligible = $ids($this->getVerificationTab('eligible'));
-        $nextQueue = $ids($this->getVerificationTab('next_queue'));
+        $nextQueueTab = $this->getVerificationTab('next_queue');
+        $nextQueue = $ids($nextQueueTab);
+        $sent = [];
+        foreach ($nextQueueTab->query('//form[.//input[@name="command"][@value="verification_send_batch"]]//input[@name="car_ids[]"]') as $input) {
+            $this->assertInstanceOf(DOMElement::class, $input);
+            $sent[] = (int) $input->getAttribute('value');
+        }
 
-        $this->assertCount(2, $nextQueue, 'Next Queue shows one batch of 2');
-        $this->assertGreaterThanOrEqual(3, count($eligible));
-        $this->assertSame(array_slice($eligible, 0, count($nextQueue)), $nextQueue, 'Next Queue shows the first rows of Eligible');
+        $this->assertSame([$c3, $c2, $c1], array_slice($eligible, 0, 3), 'Eligible lists the oldest last_verified first');
+        $this->assertSame([$c3, $c2], $nextQueue, 'Next Queue shows the first batch of 2 rows of Eligible');
+        $this->assertSame([$c3, $c2], $sent, 'The Next Queue send form posts the same ids, in the same order');
+    }
+
+    /** @return array<string, array{0: string}> The column that the queue row lacks */
+    public static function queueRowMissingColumnProvider(): array
+    {
+        return [
+            'no email_address_malformed' => ['email_address_malformed'],
+            'no has_profile'             => ['has_profile'],
+        ];
+    }
+
+    /**
+     * A queue row that lacks a column is a fault of the queue, not an empty
+     * queue and not a page error: the tab shows the alert, renders no rows,
+     * and writes one log line.
+     */
+    #[DataProvider('queueRowMissingColumnProvider')]
+    public function testQueueRowWithAMissingColumnShowsTheAlertRendersNoRowsAndLogsOnce(string $missingColumn): void
+    {
+        $this->seedNotHealthy();
+        $row = [
+            'id'                      => 987654,
+            'has_profile'             => 1,
+            'email_opted_out'         => 0,
+            'email_blocked_active'    => 0,
+            'email_blocked_cause'     => null,
+            'email_bounced_active'    => 0,
+            'email_address_malformed' => 0,
+        ];
+        unset($row[$missingColumn]);
+        $countSql = 'SELECT COUNT(*) AS n FROM logs WHERE user_id = ? AND logtype = ? AND lognote LIKE ?';
+        $countParams = [$this->adminId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, '%has no email flag columns%'];
+        $this->assertSame(0, (int) $this->db->query($countSql, $countParams)->first()->n, 'Test setup: no such log row yet');
+
+        $xpath = $this->getVerificationTab('pending', null, [], [$row]);
+
+        $this->assertSame(
+            1,
+            $xpath->query('//*[contains(@class, "alert-danger")][contains(normalize-space(.), "The verification queue could not be loaded. Check the system log for details.")]')->length,
+            'The tab shows the queue fault alert'
+        );
+        $this->assertSame(0, $xpath->query('//*[@id="verificationQueue"]//table/tbody/tr')->length, 'No queue row renders');
+        $this->assertSame(1, (int) $this->db->query($countSql, $countParams)->first()->n, 'One log line for the fault');
     }
 
     public function testNextQueuePillCountIsTheSmallerOfEligibleAndTheBatchSize(): void

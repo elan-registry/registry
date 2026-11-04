@@ -334,8 +334,8 @@ Sold, Bounced, Blocked and Opted out. The first four count cars. Bounced,
 Blocked and Opted out count owners, and each has an "owners" sub-label. An
 owner with several cars counts once on a card (#2361). The nine pills come
 from `CarRepository::QUEUE_STATUSES`. They include Next Queue and Invalid
-email, which have no card. Each pill shows its car count. There is no "All"
-pill and no "Suppressed" card or pill. `docs/development/EMAIL_SYSTEM.md` owns the full
+email, which have no card. Each pill shows its car count. There is no "Suppressed"
+card or pill. `docs/development/EMAIL_SYSTEM.md` owns the full
 dashboard layout and the status chip rules.
 
 ### Alerts
