@@ -939,7 +939,7 @@ patterns.
 **The site-wide verification switch** (`VerificationSettings::isEnabled()`,
 `er_verification_settings.enabled`): a job opts in. `AbstractCronJob` has the
 method `refusesWhileSwitchOff(): bool`, which returns `false` by default. A job
-that sends email overrides it to return `!$settings->isEnabled()`. Only
+that sends email overrides it to return `$settings->isEnabledOrNull() === false`. Only
 `SendVerificationBatchJob` does this. `run()` checks the method before the
 job-owned `enabled` flag and before the claim, so a refused run does not
 change `er_cron_job_runs.last_run_at`. `runNow()` checks it first. The
@@ -958,8 +958,10 @@ list.
    Do not override `run()` or `runNow()` — both are `final`.
    **Note**: Your job runs with the site-wide verification switch off. If the
    job sends email, override `refusesWhileSwitchOff()` to return
-   `!$settings->isEnabled()`, so that the switch stops it. A job that reads
-   from Brevo or prunes data must not override it.
+   `$settings->isEnabledOrNull() === false`, so that the switch stops it. A
+   `null` read (unreadable switch) does not refuse, so `execute()` must read
+   the switch again and fail the run on `null`. A job that reads from Brevo
+   or prunes data must not override it.
 2. Add the job name to `CronJobGuard::ALLOWED_JOB_NAMES` (manually maintained
    allowlist).
 3. Create a migration seeding a row in `er_cron_job_runs` for your job, with

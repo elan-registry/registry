@@ -60,6 +60,9 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
     /** Stored batch_size, as found; null until setUp reads it. */
     private ?int $originalBatchSize = null;
 
+    /** @var array<string, mixed>|null The whole id = 1 row, saved by a test that deletes it */
+    private ?array $deletedSettingsRow = null;
+
     /** @var array<string, mixed>|null The send_verification_batch row of er_cron_job_runs, as found */
     private ?array $originalAutoSendRow = null;
 
@@ -73,6 +76,7 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
         $this->shiftedLogIds = [];
         $this->originalSettings = null;
         $this->originalAutoSendRow = null;
+        $this->deletedSettingsRow = null;
 
         // securePage() treats `users.permissions = 0` as a banned account.
         $this->adminId = $this->createTestUser(['permissions' => 1]);
@@ -100,6 +104,24 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
             putenv($var);
         }
         if ($this->databaseConnected) {
+            // First, so the UPDATE blocks below find the row again.
+            if ($this->deletedSettingsRow !== null) {
+                $columns = array_keys($this->deletedSettingsRow);
+                $this->db->query(
+                    'INSERT INTO er_verification_settings (' . implode(', ', $columns) . ') VALUES ('
+                        . implode(', ', array_fill(0, count($columns), '?')) . ')',
+                    array_values($this->deletedSettingsRow)
+                );
+                if ($this->db->error()) {
+                    // An assert here would hide the real test failure.
+                    fwrite(STDERR, 'tearDown: settings row restore failed: ' . $this->db->errorString() . "\n");
+                }
+                $this->db->query(
+                    "DELETE FROM logs WHERE user_id = 0 AND logtype = 'VerificationConfigWarning'"
+                    . " AND lognote LIKE 'er_verification_settings%'"
+                    . " AND logdate >= NOW() - INTERVAL 10 MINUTE"
+                );
+            }
             if ($this->originalSettings !== null) {
                 $this->db->query(
                     'UPDATE er_verification_settings
@@ -450,6 +472,49 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
                 0
             ),
             'One render must log exactly one batch_size warning'
+        );
+    }
+
+    /**
+     * #2572: with no id = 1 row, the tab must not present the code default as
+     * the admin's setting. A Save form would let the admin store a number
+     * that was never read, and "no cron request logged" would blame the cron.
+     */
+    public function testMissingSettingsRowShowsBatchSizeUnavailableAndNoSaveForm(): void
+    {
+        $row = $this->db->query('SELECT * FROM er_verification_settings WHERE id = 1')->first();
+        $this->assertIsObject($row, 'Test setup: the id = 1 row exists before the delete');
+        $this->deletedSettingsRow = (array) $row;
+
+        $this->db->query('DELETE FROM er_verification_settings WHERE id = 1');
+        $this->assertFalse($this->db->error(), 'Test setup: delete row: ' . $this->db->errorString());
+        $gone = $this->db->query('SELECT id FROM er_verification_settings WHERE id = 1');
+        $this->assertSame(0, $gone->count(), 'Test setup: the row is gone');
+
+        $xpath = $this->getVerificationTab(null);
+
+        $this->assertSame(0, $xpath->query('//*[@id="verificationBatchSize"]')->length, 'No batch size input');
+        $batchSizeField = $xpath->query('//dt[normalize-space()="Batch size"]/following-sibling::dd[1]')->item(0);
+        $this->assertInstanceOf(DOMElement::class, $batchSizeField, 'The Batch size row renders');
+        $this->assertSame(
+            'Unavailable The batch size could not be read. Check the system log for VerificationConfigWarning entries.',
+            trim((string) preg_replace('/\s+/', ' ', $batchSizeField->textContent)),
+            'The Batch size field shows Unavailable and names the log to check'
+        );
+        $this->assertSame(
+            0,
+            $xpath->query('//input[@name="command"][@value="verification_set_batch_size"]')->length,
+            'No batch size Save form'
+        );
+        $this->assertSame(
+            1,
+            $xpath->query('//*[@id="verificationSwitchUnavailable"]')->length,
+            'The switch shows as unavailable'
+        );
+        $this->assertStringNotContainsString(
+            'no cron request has ever been logged',
+            strtolower((string) $xpath->query('//body')->item(0)->textContent),
+            'A missing row is not the same as a cron that never ran'
         );
     }
 

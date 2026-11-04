@@ -325,7 +325,8 @@ returns `false`. The send batch overrides it. See
 ### Stop Event Writes in an Incident
 
 Turning the switch off does not stop the webhook, the reconciliation job or
-the suppression import. To stop all event writes, do these three steps:
+the suppression import. To stop all event writes, do these three steps.
+The Verification tab shows them to every admin. An editor never sees them.
 
 1. Set `BREVO_WEBHOOK_TOKEN` to an empty value. The webhook then refuses
    every call with 401, and Brevo retries the call later.
@@ -394,6 +395,13 @@ The `VerificationSettings` class gates the entire verification system via a sing
   `cron_ip` allowlist denies never reaches this column at all, so there is
   no "exclude denied rows" filtering to do (unlike the `logs`-table scan
   this replaced — see #1974).
+- `cronStateOrNull(): ?array{ready: bool, lastRequestAt: ?DateTimeImmutable}` —
+  returns the cron readiness and the last request time from one read, or
+  `null` when the cron state is unreadable. The admin Verification tab uses
+  it (#2572). A failed query or a missing `id = 1` row returns `null` and
+  logs one `VerificationConfigWarning` line. A `NULL` or empty column returns
+  `['ready' => false, 'lastRequestAt' => null]`, which means cron has never
+  run. A corrupt value returns `null`, not "never ran".
 - `recordCronRequest(): bool` — writes `er_verification_settings.last_cron_request_at = NOW()`;
   called by `users/cron/cron.php` on every non-denied hit. Replaces the
   unconditional `CronRequest` log line removed by #1974 (144 rows/day/environment
@@ -421,6 +429,11 @@ always reflect current state.
 - The 20-minute window is 2× the standard documented cron transport interval (10 minutes)
 - If cron has never hit this environment (`last_cron_request_at` is `NULL`), `cronReady()` returns false
 - If the most recent hit is older than 20 minutes, `cronReady()` returns false
+- If the cron state is unreadable (a failed query, a missing `id = 1` row, or
+  a corrupt value), the admin Verification tab shows a `text-bg-danger`
+  "Unavailable" badge. It does not show "Stalled", and it does not show
+  "no cron request has ever been logged". That text appears only when the
+  row exists and `last_cron_request_at` is empty.
 - A hit denied by the `cron_ip` allowlist never writes `last_cron_request_at`
   at all — it proves only that the transport reached the server, not that it
   was recognized and ran jobs
@@ -477,7 +490,9 @@ The System Status panel shows 7 rows in this order:
    be read." plus a hint to check the system log for
    `VerificationConfigWarning`. The row does not show "Stalled" in this case,
    because the cron state is unknown. If the probe read the cron state and a
-   later read threw, the row shows the real state.
+   later read threw, the row shows the real state. The row also shows
+   "Unavailable" when `cronStateOrNull()` returns `null` (a failed query, a
+   missing row, or a corrupt value).
 3. **Webhook receiver** — badge `text-bg-success` ("Live"). Static row,
    always healthy. Records delivery events from all registry mail in real
    time; the nightly reconciliation job catches anything the webhook missed.
@@ -489,11 +504,17 @@ The System Status panel shows 7 rows in this order:
 5. **Last reconciliation run** — shows the badge from `CronJobRunsReader`
    for the job's state, its last run time, and whether the most recent run
    failed. The job backfills
-   missed events and prunes old event records.
+   missed events and prunes old event records. An unreadable job state
+   shows "The job state could not be read, so the job may not run. Check
+   the system log for CronJobFailure entries." A missing job row shows "The
+   job has no row in er_cron_job_runs, so cron does not run it. Run composer
+   migrate:status. If its seed migration is applied, the row was deleted and
+   must be inserted again."
 6. **Last suppression sync run** — shows the badge from `CronJobRunsReader`
    for the job's state, its last run time, and whether the most recent run
    failed. The job imports
-   suppressed contacts from Brevo.
+   suppressed contacts from Brevo. The unreadable and missing job states
+   show the same detail text as the reconciliation row.
 7. **Cron job failures** — shows a count. Badge `text-bg-success` if 0.
    Badge `text-bg-danger` if above 0. Badge `text-bg-danger` ("Unavailable")
    if the read failed. Shows the
@@ -504,9 +525,11 @@ The System Status panel shows 7 rows in this order:
 **Toggle Control:**
 
 - Located on the Verification System tab
-- If the settings probe threw before it read the switch state, or the switch
-  query failed, the state is unknown. The panel shows a `text-bg-danger` "Unavailable" badge
-  (`#verificationSwitchUnavailable`) and the reason "The switch state could
+- If the settings probe threw before it read the switch state, the switch
+  query failed, or the settings row is missing, the state is unknown. The
+  panel shows a `text-bg-danger` "Unavailable" badge
+  (`#verificationSwitchUnavailable`), with a visually hidden "Feature switch:"
+  prefix for screen readers, and the reason "The switch state could
   not be read." The panel does not render `#verificationEnabledSwitch`. This
   applies to every viewer, admin and editor. An admin also sees the incident
   steps.
@@ -565,10 +588,13 @@ parts appear in this order, from top to bottom:
    send time is the first cron heartbeat after that time. **Send Batch Now**
    is a link to the Eligible queue view. It does not send. The send happens
    only when the admin presses **Send batch** in that view.
-   If the batch size read throws or its query fails, the Batch size row
-   shows a `text-bg-danger` "Unavailable" badge and no Save form for every
-   viewer. The form would post a placeholder value over the real setting. A
-   missing row does not fail: the row shows the default of 5.
+   If the batch size is unreadable (a failed query or a missing `id = 1`
+   row), the Batch size row shows a `text-bg-danger` "Unavailable" badge and
+   no Save form for every viewer. The form would post a placeholder value
+   over the real setting. A missing row no longer shows the default of 5.
+   The job does not send while the batch size or the switch is unreadable.
+   It logs the reason under `CronJobFailure` and pings `/fail` from `run()`.
+   See [Preview & Send Flow](#preview--send-flow) for the admin send.
 4. **Verification Queue.** One table with eight filter pills and the Window
    and Show controls. See [Verification Queue](#verification-queue).
 5. **Recent Activity.** The latest 20 `cars_hist` rows with operation
@@ -817,14 +843,19 @@ cars. The server independently rejects any of the four commands posted for a
 
 **GET request (no side effects):** The Eligible view of the Verification
 Queue (`?tab=verification&status=eligible`) renders a table of eligible cars,
-up to the configured batch size (`VerificationSettings::batchSize()`, default
-5), under the heading "Send Verification Emails". Car data shown: ID, chassis,
+up to the configured batch size (`VerificationSettings::batchSizeOrNull()`),
+under the heading "Send Verification Emails". If the batch size is unreadable,
+the preview lists no cars and shows an error instead. Car data shown: ID, chassis,
 owner name, sent date, days, status chip, and the row action. Every dynamic
 value is HTML-escaped at render time.
 
 **POST `verification_send_batch` action:** Sends verification emails to one batch of cars.
 CSRF token validated first (`Token::check()`); missing/invalid token includes the
-standard UserSpice token-error page and no writes occur. For each submitted car ID:
+standard UserSpice token-error page and no writes occur. The handler then reads
+`batchSizeOrNull()`. On `null`, it adds an error that names the
+`VerificationConfigWarning` log, sends no email, and shows the error on the
+page with no batch results.
+The admin send does not read the switch. Then, for each submitted car ID:
 
 1. Look up the car row (`findById()`)
 2. Re-evaluate eligibility via `VerificationEligibility::skipReason()` — a car

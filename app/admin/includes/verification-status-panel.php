@@ -85,7 +85,7 @@ $vsPanelEsc   = static fn (string $value): string => htmlspecialchars($value, EN
         <span class="badge text-bg-danger" id="verificationSwitchUnavailable"
               aria-describedby="verificationToggleHelp">
             <i class="fas fa-exclamation-circle"></i>
-            Unavailable
+            <span class="visually-hidden">Feature switch: </span>Unavailable
         </span>
         <?php } else { ?>
         <div class="form-check form-switch">
@@ -116,12 +116,10 @@ $vsPanelEsc   = static fn (string $value): string => htmlspecialchars($value, EN
         <?php } ?>
 
         <?php // The switch does not stop event writes, so these manual steps are the only way.
-        // They show when the switch has no reason to show, which is never true
-        // for an editor. A failed probe or an unread switch also shows them to
-        // an admin, because the panel cannot tell the real state, and a fault
-        // is when they matter.
-        if ($vsSwitch['disabledReason'] === ''
-            || ($vsCanToggle && ($vsStatus->probeFailed() || $vsSwitch['unavailable']))) { ?>
+        // Admins only: an editor cannot change the token or the job rows. An
+        // admin needs the steps most when the switch is disabled, for example
+        // when Brevo is not ready.
+        if ($vsCanToggle) { ?>
             <small class="form-text text-muted d-block mt-2"
                    id="verificationIncidentSteps">
                 <i class="fas fa-exclamation-triangle"></i>

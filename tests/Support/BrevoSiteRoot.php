@@ -93,13 +93,15 @@ final class BrevoSiteRoot
      *
      * VerificationSettings is final, so a test cannot double it. The fake
      * database gives the plg_sendinblue key row, and this root gives the files.
+     * The row also holds `enabled` and `batch_size`, so a job test that reads
+     * these settings through it still gets a readable batch size.
      *
      * @return VerificationSettings Settings that report Brevo ready
      */
     public function readySettings(): VerificationSettings
     {
         return new VerificationSettings(new VerificationSettingsFakeDatabase(
-            firstRowValue: (object) ['key' => 'test-api-key'],
+            firstRowValue: (object) ['key' => 'test-api-key', 'enabled' => 1, 'batch_size' => 5],
         ));
     }
 

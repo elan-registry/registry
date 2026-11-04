@@ -32,10 +32,14 @@ final class AdminVerificationSendBatchCapTest extends IntegrationTestCase
     private ?int $originalBatchSize = null;
     private ?int $originalCronEnabled = null;
 
+    /** @var array<string, mixed>|null The whole id = 1 row, saved by a test that deletes it */
+    private ?array $deletedSettingsRow = null;
+
     protected function setUp(): void
     {
         parent::setUp();
         $this->requireDatabase();
+        $this->deletedSettingsRow = null;
 
         // securePage() treats `users.permissions = 0` as a banned account.
         $this->adminId = $this->createTestUser(['permissions' => 1]);
@@ -64,6 +68,25 @@ final class AdminVerificationSendBatchCapTest extends IntegrationTestCase
     protected function tearDown(): void
     {
         if ($this->databaseConnected) {
+            // First, so the UPDATE below finds the row again.
+            if ($this->deletedSettingsRow !== null) {
+                $columns = array_keys($this->deletedSettingsRow);
+                $this->db->query(
+                    'INSERT INTO er_verification_settings (' . implode(', ', $columns) . ') VALUES ('
+                        . implode(', ', array_fill(0, count($columns), '?')) . ')',
+                    array_values($this->deletedSettingsRow)
+                );
+                if ($this->db->error()) {
+                    // An assert here would hide the real test failure.
+                    fwrite(STDERR, 'tearDown: settings row restore failed: ' . $this->db->errorString() . "\n");
+                }
+                // The read logs as user 0, which the user_id delete below misses.
+                $this->db->query(
+                    "DELETE FROM logs WHERE user_id = 0 AND logtype = 'VerificationConfigWarning'"
+                    . " AND lognote LIKE 'er_verification_settings%'"
+                    . " AND logdate >= NOW() - INTERVAL 10 MINUTE"
+                );
+            }
             if ($this->originalBatchSize !== null) {
                 $this->db->query('UPDATE er_verification_settings SET batch_size = ? WHERE id = 1', [$this->originalBatchSize]);
             }
@@ -116,7 +139,7 @@ final class AdminVerificationSendBatchCapTest extends IntegrationTestCase
         // The cut runs before the id filter, so only two ids reach it.
         $invalidRows = $this->countMatchingLogs(
             LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
-            'Verification send: non-positive car id in car_ids[]%',
+            'Verification send: invalid car id in car_ids[]%',
             $this->adminId
         );
         $this->assertSame(2, $invalidRows, 'Only the first two ids reach the id filter');
@@ -151,7 +174,7 @@ final class AdminVerificationSendBatchCapTest extends IntegrationTestCase
 
         $nonPositiveRows = $this->countMatchingLogs(
             LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
-            'Verification send: non-positive car id in car_ids[]%',
+            'Verification send: invalid car id in car_ids[]%',
             $this->adminId
         );
         $this->assertSame(1, $nonPositiveRows, 'The scalar 0 keeps its non-positive row');
@@ -198,5 +221,88 @@ final class AdminVerificationSendBatchCapTest extends IntegrationTestCase
             'Verification send: batch complete — 0 sent, 0 unrecorded, 2 skipped, 0 failed',
             $this->adminId
         ), 'The rejected 0 and the missing car are each one skipped row');
+    }
+
+    /**
+     * #2572: a batch size that cannot be read stops the send. The id '0' would
+     * write an "invalid car id" row if the handler went on with a default size.
+     */
+    public function testUnreadableBatchSizeSendsNothingAndTheAdminMessageNamesTheConfigWarningLog(): void
+    {
+        $row = $this->db->query('SELECT * FROM er_verification_settings WHERE id = 1')->first();
+        $this->assertIsObject($row, 'Test setup: the id = 1 row exists before the delete');
+        $this->deletedSettingsRow = (array) $row;
+        $this->db->query('DELETE FROM er_verification_settings WHERE id = 1');
+        $this->assertFalse($this->db->error(), 'Test setup: delete row: ' . $this->db->errorString());
+        $this->assertSame(0, $this->db->query('SELECT id FROM er_verification_settings WHERE id = 1')->count(), 'Test setup: the row is gone');
+
+        $result = $this->postSendBatch(['0']);
+
+        $this->assertSame(0, $result['exitCode'], 'The page must run to the end: ' . substr($result['raw'], 0, 500));
+        $this->assertStringContainsString(
+            'The batch size could not be read, so no email was sent. Check the system log for VerificationConfigWarning entries.',
+            $result['raw'],
+            'The admin message names the log to check'
+        );
+        $this->assertSame(
+            0,
+            $this->countMatchingLogs(LogCategories::LOG_CATEGORY_CAR_VERIFICATION, 'Verification send: invalid car id%', $this->adminId),
+            'The handler stopped before it filtered the ids'
+        );
+        $this->assertSame(
+            0,
+            $this->countMatchingLogs(LogCategories::LOG_CATEGORY_CAR_VERIFICATION, 'Verification send: batch complete%', $this->adminId),
+            'The handler did not run the send loop'
+        );
+        $this->assertSame(
+            1,
+            $this->countMatchingLogs(
+                LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
+                'Verification send: manual send blocked — batch size unreadable%',
+                $this->adminId
+            ),
+            'The blocked send writes one CarVerification row for the admin'
+        );
+        $this->assertGreaterThanOrEqual(
+            1,
+            $this->countMatchingLogs(
+                LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING,
+                'er_verification_settings%',
+                0
+            ),
+            'The failed read wrote a VerificationConfigWarning line'
+        );
+    }
+
+    /**
+     * A rejected id comes from the form. A CR or LF in it must not forge a
+     * log line, and a long value must not fill the log.
+     */
+    public function testRejectedCarIdLogStripsControlCharactersAndIsCut(): void
+    {
+        $prefix = 'Verification send: invalid car id in car_ids[]: ';
+
+        $result = $this->postSendBatch(["1\r\nFAKE", str_repeat('9a', 100)]);
+
+        $this->assertSame(0, $result['exitCode'], 'The page must run to the end: ' . substr($result['raw'], 0, 500));
+
+        $rows = $this->db->query(
+            'SELECT lognote FROM logs WHERE logtype = ? AND user_id = ? AND lognote LIKE ?',
+            [LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $this->adminId, 'Verification send: invalid car id%']
+        )->results();
+        $this->assertFalse($this->db->error(), 'Log read: ' . $this->db->errorString());
+        $this->assertCount(2, $rows, 'Each rejected scalar writes one row');
+
+        foreach ($rows as $row) {
+            $note = (string) $row->lognote;
+            $this->assertStringStartsWith($prefix, $note);
+            $this->assertDoesNotMatchRegularExpression('/[\x00-\x1F\x7F]/', $note, 'No control character reaches the log');
+            $this->assertLessThanOrEqual(64, mb_strlen(substr($note, strlen($prefix))), 'The logged value is cut to 64 characters');
+        }
+        $this->assertContains(
+            $prefix . "'1FAKE'",
+            array_map(static fn (object $row): string => (string) $row->lognote, $rows),
+            'The strip removes only the control characters'
+        );
     }
 }
