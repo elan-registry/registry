@@ -3,7 +3,7 @@
 **Release Date:** November 3, 2026
 **Type:** Patch Release - Verification Tab Shows the Real Queue
 
-The Verification tab shows the cars in the order the batch sends them, with a link to each car and owner.
+The Verification tab shows the eligible cars in the order the batch sends them, with a link to each car and owner.
 A failed read no longer shows as a default value or a success.
 
 ## Admin-Facing Changes
@@ -14,6 +14,7 @@ A failed read no longer shows as a default value or a success.
   An unreadable batch size also hides the batch size Save form.
 - If the switch or batch size cannot be read, auto-send sends nothing. A manual send with an unreadable batch size shows an error.
 - An unreadable or missing job state row now says what failed and which next step to take.
+- The Eligible and Next Queue views list cars in send order. Each queue row links to its car and owner.
 
 ## Issues Resolved
 
@@ -21,6 +22,6 @@ A failed read no longer shows as a default value or a success.
 - [#2572](https://github.com/elan-registry/registry/issues/2572) — The Save form no longer overwrites the batch size with 5 when the settings read fails.
 - [#2587](https://github.com/elan-registry/registry/issues/2587) — The auto-send job sends no emails when the batch-size read fails.
 - [#2573](https://github.com/elan-registry/registry/issues/2573) — The status panel gives a reason and a next step for an unreadable or missing job state.
-- WIP: [#2599](https://github.com/elan-registry/registry/issues/2599) — Queue pills show the send order, with car and owner links.
+- [#2599](https://github.com/elan-registry/registry/issues/2599) — Eligible and Next Queue list cars in send order. Queue rows link to the car and owner.
 - WIP: [#2458](https://github.com/elan-registry/registry/issues/2458) — Verification tab labels, chip text, and accessibility follow-ups.
 - WIP: [#2496](https://github.com/elan-registry/registry/issues/2496) — Recent Activity shows as a sortable table with a car link.

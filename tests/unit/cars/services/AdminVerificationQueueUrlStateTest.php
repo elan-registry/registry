@@ -115,22 +115,40 @@ final class AdminVerificationQueueUrlStateTest extends TestCase
         $this->assertSame($status, $result['status']);
     }
 
-    public function testQueueStatusFallsBackToAllForAnInvalidValue(): void
+    public function testQueueStatusFallsBackToEligibleForAnInvalidValue(): void
     {
         $_GET['status'] = 'not-a-real-status';
 
         $result = $this->runQueueUrlStateBlock();
 
-        $this->assertSame('all', $result['status']);
+        $this->assertSame('eligible', $result['status']);
     }
 
-    public function testQueueStatusFallsBackToAllWhenAbsent(): void
+    public function testQueueStatusFallsBackToEligibleForTheRemovedAllValue(): void
+    {
+        $_GET['status'] = 'all';
+
+        $result = $this->runQueueUrlStateBlock();
+
+        $this->assertSame('eligible', $result['status']);
+    }
+
+    public function testQueueStatusKeepsNextQueue(): void
+    {
+        $_GET['status'] = 'next_queue';
+
+        $result = $this->runQueueUrlStateBlock();
+
+        $this->assertSame('next_queue', $result['status']);
+    }
+
+    public function testQueueStatusDefaultsToEligibleWhenAbsent(): void
     {
         unset($_GET['status']);
 
         $result = $this->runQueueUrlStateBlock();
 
-        $this->assertSame('all', $result['status']);
+        $this->assertSame('eligible', $result['status']);
     }
 
     // --- $queueWindowDays -----------------------------------------------------

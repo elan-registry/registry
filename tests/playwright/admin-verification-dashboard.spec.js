@@ -37,9 +37,9 @@
 //     `delivered` timestamp. Its chassis carries a `<script>` marker, used
 //     for the escaping assertion — this closes DOCUMENTED GAP #3 in
 //     admin-verification-send-tool.spec.js, which could not guarantee its
-//     own seeded eligible car a place in the batch-size-capped preview on
-//     this local dataset; the Pending/All queue views used here have no such
-//     cap (see findVerificationQueue()'s $limit, set generously below).
+//     own seeded eligible car a place in the batch-size-capped Next Queue
+//     view on this local dataset; the Pending queue view used here has no
+//     such cap (see findVerificationQueue()'s $limit, set generously below).
 //   - one VERIFIED car (one `VERIFIED` cars_hist row)
 //   - one SOLD car (one `VERIFIED SOLD` cars_hist row)
 //
@@ -88,17 +88,29 @@ const SUMMARY_CARDS = [
     { key: 'opted_out', label: 'Opted out', countKey: 'opted_out_owners', ownerCount: true },
 ];
 
-// The eight queue pills, in page order (CarRepository::QUEUE_STATUSES).
+// The nine queue pills, in page order (CarRepository::QUEUE_STATUSES, #2599).
+// Next Queue has no summary key: its count is min(eligible, batch size).
 const QUEUE_PILLS = [
-    { status: 'all', label: 'All' },
     { status: 'eligible', label: 'Eligible' },
+    { status: 'next_queue', label: 'Next Queue' },
     { status: 'pending', label: 'Pending' },
     { status: 'bounced', label: 'Bounced' },
     { status: 'blocked', label: 'Blocked' },
     { status: 'opted_out', label: 'Opted out' },
     { status: 'verified', label: 'Verified' },
     { status: 'sold', label: 'Sold' },
+    { status: 'invalid_email', label: 'Invalid email' },
 ];
+
+// The configured batch size, as the Next Queue view prints it. The setting
+// has no other read path in the browser.
+async function readBatchSize(page) {
+    await page.goto(`${TAB_URL}&status=next_queue`, { waitUntil: 'networkidle' });
+    const text = await page.locator('#verificationQueue').textContent();
+    const match = text.match(/configured batch size \((\d+)\)/);
+    expect(match, 'the Next Queue view prints the configured batch size').not.toBeNull();
+    return Number(match[1]);
+}
 
 function readDbSummary(windowDays) {
     return JSON.parse(
@@ -110,8 +122,9 @@ function readDbSummary(windowDays) {
 const USER_ID_CELL = 3;
 const STATUS_CELL = 6;
 
+// The car id cell holds the car link (#2599), so the id text is the link text.
 function queueRow(page, carId) {
-    return page.locator('#verificationQueue table tbody tr', { has: page.locator(`td:first-child:text-is("${carId}")`) });
+    return page.locator('#verificationQueue table tbody tr', { has: page.locator(`td:first-child a:text-is("${carId}")`) });
 }
 
 async function numberOf(locator) {
@@ -124,6 +137,7 @@ async function numberOf(locator) {
 // twice in the pill.
 async function expectSummaryCardsAndPills(page) {
     const db = readDbSummary(30);
+    const batchSize = await readBatchSize(page);
     await page.goto(TAB_URL, { waitUntil: 'networkidle' });
 
     const cards = page.locator('#verificationSummaryCards [data-summary]');
@@ -142,13 +156,19 @@ async function expectSummaryCardsAndPills(page) {
 
     const pills = page.locator('a.filter-pill');
     await expect(pills).toHaveCount(QUEUE_PILLS.length);
-    await expect(pills).toHaveCount(8);
+    await expect(pills).toHaveCount(9);
     for (const [index, pill] of QUEUE_PILLS.entries()) {
         const link = pills.nth(index);
         await expect(link, `pill #${index + 1}`).toHaveAttribute('data-status', pill.status);
         await expect(link).toContainText(pill.label);
-        await expect(link.locator('span.ms-1'), `count of pill "${pill.status}"`).toHaveText(`(${db[pill.status].toLocaleString('en-US')})`);
+        // Next Queue is the first batch of Eligible, so min(eligible, batch size).
+        const expectedCount = pill.status === 'next_queue' ? Math.min(db.eligible, batchSize) : db[pill.status];
+        expect(Number.isInteger(expectedCount), `expected count of pill "${pill.status}"`).toBe(true);
+        await expect(link.locator('span.ms-1'), `count of pill "${pill.status}"`).toHaveText(`(${expectedCount.toLocaleString('en-US')})`);
     }
+    // The seeded no-profile and malformed-address cars are in Invalid email.
+    expect(db.invalid_email, 'invalid_email counts the two seeded cars').toBeGreaterThanOrEqual(2);
+    expect(db, 'the summary has no "all" key').not.toHaveProperty('all');
 
     // Fixture: the bounced owner has two cars. Owners count once on the
     // card, cars count twice in the pill, so the pill leads the card by at
@@ -408,13 +428,13 @@ test.describe('Admin Verification Dashboard', () => {
     // card and twice in the pill. Every number is compared with an independent
     // read of CarRepository::countVerificationSummary() through a standalone
     // PHP script, not derived from the page.
-    test('seven summary cards and eight pills render with owner counts on the owner cards', async ({ page }) => {
+    test('seven summary cards and nine pills render with owner counts on the owner cards', async ({ page }) => {
         await expectSummaryCardsAndPills(page);
     });
 
     // --- Pill + URL round trip ---------------------------------------------
 
-    // AC: clicking each of the 8 pills updates ?status= and the visible rows.
+    // AC: clicking each of the 9 pills updates ?status= and the visible rows.
     for (const { status } of QUEUE_PILLS) {
         test(`"${status}" pill updates ?status= and marks itself active`, async ({ page }) => {
             await page.goto('app/admin/index.php?tab=verification', { waitUntil: 'networkidle' });
@@ -431,15 +451,15 @@ test.describe('Admin Verification Dashboard', () => {
         });
     }
 
-    // AC: an unknown status= value shows the "all" view, and the page never
+    // AC: an unknown status= value shows the Eligible view, and the page never
     // prints it. app/admin/index.php's allow-list check replaces it with
-    // 'all', so the value reaches no SQL, no pill link, no hidden field.
-    test('an unknown ?status= shows the "all" view and is not printed', async ({ page }) => {
+    // 'eligible', so the value reaches no SQL, no pill link, no hidden field.
+    test('an unknown ?status= shows the Eligible view and is not printed', async ({ page }) => {
         const marker = 'not-a-real-status';
 
-        await page.goto(`${TAB_URL}&status=all&show=100`, { waitUntil: 'networkidle' });
-        const allIds = await page.locator('#verificationQueue table tbody tr td:first-child').allInnerTexts();
-        expect(allIds.length, 'the "all" view has rows').toBeGreaterThan(0);
+        await page.goto(`${TAB_URL}&status=eligible&show=100`, { waitUntil: 'networkidle' });
+        const eligibleIds = await page.locator('#verificationQueue table tbody tr td:first-child').allInnerTexts();
+        expect(eligibleIds.length, 'the Eligible view has rows').toBeGreaterThan(0);
 
         const response = await page.goto(`${TAB_URL}&status=${marker}&show=100`, { waitUntil: 'networkidle' });
         expect(response.status()).toBe(200);
@@ -450,11 +470,30 @@ test.describe('Admin Verification Dashboard', () => {
         expect(bodyHtml.length, 'the page has a body').toBeGreaterThan(0);
         expect(bodyHtml, 'the unknown value is not in the page body').not.toContain(marker);
 
-        await expect(page.locator('a.filter-pill[data-status="all"]')).toHaveClass(/active/);
+        await expect(page.locator('a.filter-pill[data-status="eligible"]')).toHaveClass(/active/);
         await expect(page.locator('a.filter-pill.active')).toHaveCount(1);
-        await expect(page.locator('#verificationQueueControls input[name="status"]')).toHaveValue('all');
+        await expect(page.locator('#verificationQueueControls input[name="status"]')).toHaveValue('eligible');
         const unknownIds = await page.locator('#verificationQueue table tbody tr td:first-child').allInnerTexts();
-        expect(unknownIds, 'same rows as the "all" view').toEqual(allIds);
+        expect(unknownIds, 'same rows as the Eligible view').toEqual(eligibleIds);
+    });
+
+    // AC (#2599): an old ?status=all link causes no error and opens Eligible.
+    test('an old ?status=all link returns 200 and opens the Eligible view', async ({ page }) => {
+        const response = await page.goto(`${TAB_URL}&status=all`, { waitUntil: 'networkidle' });
+        expect(response.status()).toBe(200);
+        expect(await page.locator('body').textContent()).not.toContain('Fatal error');
+        await expect(page.locator('a.filter-pill[data-status="eligible"]')).toHaveClass(/active/);
+        await expect(page.locator('a.filter-pill.active')).toHaveCount(1);
+        await expect(page.locator('a.filter-pill[data-status="all"]')).toHaveCount(0);
+        // Eligible shows no send form.
+        await expect(page.locator('input[name="command"][value="verification_send_batch"]')).toHaveCount(0);
+    });
+
+    // The default view (no ?status=) is Eligible.
+    test('the default view is Eligible', async ({ page }) => {
+        await page.goto(TAB_URL, { waitUntil: 'networkidle' });
+        await expect(page.locator('a.filter-pill[data-status="eligible"]')).toHaveClass(/active/);
+        await expect(page.locator('a.filter-pill.active')).toHaveCount(1);
     });
 
     // The same, with markup in the value: it is not printed in any form.
@@ -467,7 +506,7 @@ test.describe('Admin Verification Dashboard', () => {
         const source = (await response.text()).split(/<body/i)[1] ?? '';
         expect(source.length, 'the page has a body').toBeGreaterThan(0);
         expect(source).not.toContain('zz9');
-        await expect(page.locator('a.filter-pill[data-status="all"]')).toHaveClass(/active/);
+        await expect(page.locator('a.filter-pill[data-status="eligible"]')).toHaveClass(/active/);
     });
 
     // AC (#2361): the Blocked and Opted out pills list only their own owners'
@@ -475,6 +514,71 @@ test.describe('Admin Verification Dashboard', () => {
     test('?status=blocked and ?status=opted_out list only their own cars', async ({ page }) => {
         await expectBlockedAndOptedOutFilters(page);
     });
+
+    // --- Next Queue, Invalid email, links (#2599) ---------------------------
+
+    // AC: Next Queue lists min(eligible, batch size) rows, which are the first
+    // rows of Eligible, and its form carries them as car_ids[].
+    test('Next Queue rows are the first rows of Eligible, min(eligible, batch size) of them', async ({ page }) => {
+        const db = readDbSummary(30);
+        const batchSize = await readBatchSize(page);
+
+        const nextIds = await page.locator('#verificationQueue table tbody tr td:first-child').allInnerTexts();
+        expect(nextIds.length, 'Next Queue has rows').toBeGreaterThan(0);
+        expect(nextIds.length).toBe(Math.min(db.eligible, batchSize));
+
+        await page.goto(`${TAB_URL}&status=eligible&show=100`, { waitUntil: 'networkidle' });
+        const eligibleIds = await page.locator('#verificationQueue table tbody tr td:first-child').allInnerTexts();
+        expect(eligibleIds.slice(0, nextIds.length).map((t) => t.trim())).toEqual(nextIds.map((t) => t.trim()));
+    });
+
+    // AC: Invalid email lists the malformed-address car and the no-profile
+    // car, and the list size agrees with the pill count.
+    test('Invalid email lists the malformed-address and no-profile cars and matches its count', async ({ page }) => {
+        const db = readDbSummary(30);
+        await page.goto(`${TAB_URL}&status=invalid_email&show=100`, { waitUntil: 'networkidle' });
+        await expect(page.locator('a.filter-pill[data-status="invalid_email"]')).toHaveClass(/active/);
+
+        await expect(queueRow(page, badAddressCarId)).toBeVisible();
+        await expect(queueRow(page, noProfileCarId)).toBeVisible();
+        // Seeded cars are clean rows of a view that overlaps the others. A
+        // car that is neither malformed nor profile-less is not listed.
+        await expect(queueRow(page, pendingCarId)).toHaveCount(0);
+
+        const rows = await page.locator('#verificationQueue table tbody tr').count();
+        if (db.invalid_email <= 100) {
+            expect(rows, 'rows equal the Invalid email pill count').toBe(db.invalid_email);
+        } else {
+            expect(rows, 'more Invalid email cars than the Show cap: the view shows 100 rows').toBe(100);
+        }
+    });
+
+    // AC: in each view the car and the owner link to their pages in a new tab.
+    for (const status of ['eligible', 'next_queue', 'invalid_email']) {
+        test(`first row of "${status}" links the car and the owner in a new tab`, async ({ page }) => {
+            await page.goto(`${TAB_URL}&status=${status}&show=100`, { waitUntil: 'networkidle' });
+
+            const row = page.locator('#verificationQueue table tbody tr').first();
+            await expect(row).toBeVisible();
+
+            const carLink = row.locator('td').nth(0).locator('a');
+            await expect(carLink).toHaveCount(1);
+            const carId = (await carLink.textContent()).trim();
+            expect(carId).toMatch(/^\d+$/);
+            await expect(carLink).toHaveAttribute('href', new RegExp(`app/owner/cars/details\\.php\\?car_id=${carId}$`));
+            await expect(carLink).toHaveAttribute('target', '_blank');
+            await expect(carLink).toHaveAttribute('rel', 'noopener');
+
+            const ownerLink = row.locator('td').nth(2).locator('a');
+            await expect(ownerLink).toHaveCount(1);
+            const userIdLink = row.locator('td').nth(USER_ID_CELL).locator('a');
+            const userId = (await userIdLink.textContent()).trim();
+            expect(userId).toMatch(/^\d+$/);
+            await expect(ownerLink).toHaveAttribute('href', new RegExp(`app/admin/index\\.php\\?tab=owner-mgmt&owner_id=${userId}$`));
+            await expect(ownerLink).toHaveAttribute('target', '_blank');
+            await expect(ownerLink).toHaveAttribute('rel', 'noopener');
+        });
+    }
 
     // --- Window / Show controls ---------------------------------------------
 
@@ -503,10 +607,11 @@ test.describe('Admin Verification Dashboard', () => {
 
     // AC: the Show control changes the displayed row count and updates the URL.
     test('the Show control changes the row cap and updates ?show=', async ({ page }) => {
-        await page.goto('app/admin/index.php?tab=verification&status=all&show=10', { waitUntil: 'networkidle' });
+        const db = readDbSummary(30);
+        await page.goto('app/admin/index.php?tab=verification&status=eligible&show=10', { waitUntil: 'networkidle' });
 
         const rowsAtTen = await page.locator('#verificationQueue table tbody tr').count();
-        expect(rowsAtTen, 'this suite seeds >10 non-eligible rows across its own fixtures alone').toBeLessThanOrEqual(10);
+        expect(rowsAtTen, 'the Show control caps the Eligible view at 10 rows').toBe(Math.min(10, db.eligible));
 
         await page.locator('#verificationQueueShow').selectOption('100');
         await page.locator('#verificationQueueControls button[type="submit"]').click();
@@ -516,7 +621,7 @@ test.describe('Admin Verification Dashboard', () => {
         await expect(page.locator('#verificationQueueShow')).toHaveValue('100');
 
         const rowsAtHundred = await page.locator('#verificationQueue table tbody tr').count();
-        expect(rowsAtHundred).toBeGreaterThanOrEqual(rowsAtTen);
+        expect(rowsAtHundred, 'the Show control caps the Eligible view at 100 rows').toBe(Math.min(100, db.eligible));
     });
 
     // AC: an invalid window=/show= value falls back to default, no PHP error.
@@ -558,16 +663,14 @@ test.describe('Admin Verification Dashboard', () => {
 
     // AC (one-action-per-row, the three non-disabled branches): Bounced ->
     // Clear Bounced, Blocked -> Clear Block, Opted out -> Clear Opt-out, an ordinary Pending
-    // row -> Mark Bounced (enabled). Each case loads its own pill rather
-    // than the "All" view: "All" orders by cars.id ASC
-    // (findVerificationQueue()) and this local dataset has ~1500
-    // pre-existing low-id eligible/pending rows, so a freshly-seeded
-    // high-id row cannot rank into "All"'s LIMIT-100 window — the same
-    // environment limitation admin-verification-send-tool.spec.js
-    // documents for the Eligible preview. The Bounced/Suppressed/Pending
-    // pills themselves have no such flooding (confirmed empirically: single
-    // digits of rows each on this dataset), so each seeded car is looked up
-    // under its own matching pill instead.
+    // row -> Mark Bounced (enabled). Each case loads its own pill. This
+    // local dataset has ~1500 pre-existing eligible/pending rows, so a
+    // freshly-seeded row may not rank into a large view's LIMIT-100 window
+    // — the same environment limitation admin-verification-send-tool.spec.js
+    // documents for the Next Queue view. The Bounced/Blocked/Opted out/Pending
+    // pills have no such flooding (confirmed empirically: single digits of
+    // rows each on this dataset), so each seeded car is looked up under its
+    // own matching pill.
     test('Bounced, Blocked, Opted out and ordinary Pending rows each show exactly one matching action button', async ({ page }) => {
         const cases = [
             { id: bouncedCarId, status: 'bounced', label: 'Clear Bounced' },
@@ -646,7 +749,7 @@ test.describe('Admin Verification Dashboard', () => {
     // the dashboard is not using the precedence-aware repository method, or
     // using it incorrectly.
     //
-    // Looked up under status=pending (not "all") for the same row-flooding
+    // Looked up under status=pending for the same row-flooding
     // reason as the one-action-per-row test above: this car is not
     // email_bounced=1 (its Bounced chip comes from the Status-chip
     // precedence method, not the car's own flag), so it is a member of the
@@ -711,11 +814,11 @@ test.describe('Admin Verification Dashboard', () => {
     // was escaped into a text node, not inserted as HTML. This closes
     // DOCUMENTED GAP #3 in admin-verification-send-tool.spec.js, which
     // could not exercise its own `<script>`-chassis fixture because its
-    // seeded row could not rank into the Eligible preview's batch-size-
+    // seeded row could not rank into the Next Queue view's batch-size-
     // capped window on this local dataset; the Pending pill used here has
     // no such cap.
     //
-    // Looked up under status=pending (not "all") for the same row-flooding
+    // Looked up under status=pending for the same row-flooding
     // reason noted on the precedence test above.
     test('a chassis containing a <script> tag renders escaped in the queue table', async ({ page }) => {
         await page.goto('app/admin/index.php?tab=verification&status=pending&show=100', { waitUntil: 'networkidle' });
@@ -842,7 +945,7 @@ test.describe('Admin Verification Dashboard editor read-only contract', () => {
         await login(page, process.env.E2E_DEV_EDITOR_USERNAME, process.env.E2E_DEV_EDITOR_PASSWORD);
     });
 
-    test('an editor sees seven summary cards and eight pills with owner counts', async ({ page }) => {
+    test('an editor sees seven summary cards and nine pills with owner counts', async ({ page }) => {
         await expectSummaryCardsAndPills(page);
     });
 
@@ -859,7 +962,7 @@ test.describe('Admin Verification Dashboard editor read-only contract', () => {
     });
 
     test('an editor session sees every mutating verification control read-only, not interactive', async ({ page }) => {
-        await page.goto('app/admin/index.php?tab=verification&status=all&show=100', { waitUntil: 'networkidle' });
+        await page.goto('app/admin/index.php?tab=verification&status=eligible&show=100', { waitUntil: 'networkidle' });
 
         // Feature Switch checkbox: present but disabled.
         await expect(page.locator('#verificationEnabledSwitch')).toBeDisabled();

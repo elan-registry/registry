@@ -943,10 +943,12 @@ to provide a focused, testable data access layer wrapping the `cars`,
   window. `freshnessCutoff()` and the Verified badge tooltip
   (`CarBadges::verifiedTooltip()`) use it. `freshnessSql()` writes the same
   window as `INTERVAL 1 YEAR`; a unit test pins the two together.
-- `QUEUE_STATUSES` - Public constant, `['all', 'eligible', 'pending',
-  'bounced', 'blocked', 'opted_out', 'verified', 'sold']`. The statuses
-  `findVerificationQueue()` accepts. Public so the admin dashboard can check
-  a `?status=` URL value against the same list (#1896).
+- `QUEUE_STATUSES` - Public constant, `['eligible', 'next_queue',
+  'pending', 'bounced', 'blocked', 'opted_out', 'verified', 'sold',
+  'invalid_email']`. The pills render in this order. The list is the
+  allow-list for the `?status=` URL value, so the admin dashboard can check
+  a value against it (#1896, #2599). `findVerificationQueue()` accepts every
+  entry except `next_queue`.
 - `findVerificationStateByOwner(int $ownerId): array` - Per-car verification state for
   every car a user owns (`id`, `model`, `series`, `variant`, `year`, `email`,
   `owner_last_updated`, `last_verified`), ordered `model, year`. The rows hold car columns only. For
@@ -981,9 +983,12 @@ to provide a focused, testable data access layer wrapping the `cars`,
   `^[^@[:space:]]+@[^@[:space:]]+[.][^@[:space:]]+$`. It is a shape check, not full RFC validation.
   Brevo rejects a malformed address with HTTP 400. A failed send does not increment
   `verification_attempts`, so the car would return in every batch.
+  The order is `cars.last_verified ASC` (NULL first), then `cars.id ASC`
+  (#2599). The id tiebreak makes the order the same on every query. The send
+  and the Eligible view use this order.
 - `countVerificationSummary(?int $windowDays): array` - Count cars in each
-  verification dashboard state: `all`, `eligible`, `pending`, `bounced`,
-  `blocked`, `opted_out`, `verified`, `sold`, and count owners for the three
+  verification dashboard state: `eligible`, `pending`, `bounced`,
+  `blocked`, `opted_out`, `verified`, `sold`, `invalid_email`, and count owners for the three
   owner cards: `bounced_owners`, `blocked_owners`, `opted_out_owners`. Backs
   the admin dashboard's summary cards and filter-pill counts (#1896, #2361).
   The pills show the car counts. The Bounced, Blocked and Opted out cards show
@@ -991,13 +996,12 @@ to provide a focused, testable data access layer wrapping the `cars`,
   cars counts once. `eligible`, `pending`, `bounced`, `blocked` and
   `opted_out` are current state; `verified` and `sold` count distinct
   existing cars with a matching `cars_hist` row in the `$windowDays` window
-  (`null` for all time). `all` counts distinct cars that are eligible,
-  pending, bounced, blocked or opted out — it excludes verified and sold, since
-  those are history, not a queue state. One owner can have more than one flag,
-  so `all` can be less than the sum of the pills. `all` also counts the unsold cars of a live owner
-  (not `noowner`) who has no `profiles` row, so the queue shows them as "No profile". The same applies to the unsold cars of a live owner
-  (not `noowner`) whose address is not NULL, not empty, and not well formed
-  (#2594). The queue shows them as "Invalid email". `bounced` and
+  (`null` for all time). The result has no `all` key (#2599).
+  `invalid_email` counts the unsold cars of a live owner (not `noowner`) who
+  have no `profiles` row, or whose address is not NULL, not empty, and not
+  well formed (#2594). A car counts once, in the same query pass. This key
+  can overlap the other keys, so a car can count in `invalid_email` and also
+  in another key, for example `pending` or `blocked`. `bounced` and
   `blocked` count cars whose owner's flag applies to the owner's current address
   (`emailFlagActiveSql()`). `opted_out` counts cars whose owner has `email_opted_out = 1`; an
   opt-out is not tied to an address. `pending` leaves out the bounced, blocked and opted-out cars. Throws
@@ -1005,18 +1009,22 @@ to provide a focused, testable data access layer wrapping the `cars`,
   `CarDatabaseException` on a query failure.
 - `findVerificationQueue(string $status, ?int $windowDays, int $limit): array` -
   List the cars for one verification queue filter pill. `$status` must be
-  one of `QUEUE_STATUSES`; each status uses the same definition as its count
+  one of `QUEUE_STATUSES` except `next_queue`; each status uses the same definition as its count
   in `countVerificationSummary()`. `$windowDays` applies only to `verified`
   and `sold`. Row order depends on status: `pending` is longest-waiting
-  first, `eligible` is oldest-verified first, `verified`/`sold` is most
-  recent history row first, and `all`/`bounced`/`blocked`/`opted_out` is car id
-  ascending. Each row carries the owner's state from `profiles`: `has_profile`,
+  first, `eligible` is send order (`last_verified ASC`, NULL first, then
+  `cars.id ASC`), `verified`/`sold` is most recent history row first, and
+  `bounced`/`blocked`/`opted_out`/`invalid_email` is car id ascending.
+  `invalid_email` lists the cars with no `profiles` row or a malformed
+  address. `next_queue` throws `CarValidationException`. The message points to
+  `findEligible()`, which is the only source of the Next Queue rows, so one
+  query selects the rows that the send form posts. Each row carries the owner's state from `profiles`: `has_profile`,
   `email_opted_out`, `email_blocked_active`, `email_blocked_cause` and `email_bounced_active`. The
   `_active` columns are 1 only while the flag applies to the owner's current address
   (`emailFlagActiveSql()`). The row also carries `email_address_malformed` (0 or 1).
   It is 1 for an unsold car of a live owner who is not `noowner`, when the
   owner's address is not NULL, not empty, and not well formed (#2594). Throws
-  `CarValidationException` for an unknown `$status` or an invalid `$windowDays`, and
+  `CarValidationException` for an unknown `$status`, for `next_queue`, or an invalid `$windowDays`, and
   `CarDatabaseException` on a query failure.
 - `findRecentVerificationActivity(?int $windowDays, int $limit = 20): array` -
   List the most recent `VERIFIED` and `VERIFIED SOLD` `cars_hist` rows,
@@ -1638,9 +1646,10 @@ returns it.
   `email_blocked_active`, `email_bounced_active`, `email_opted_out`,
   `email_blocked_cause`). It throws `\InvalidArgumentException` when a column
   is missing. The addresses and dates are null.
-- `EffectiveEmailFlags::eligible()` is the state of an Eligible preview row:
-  a profile and no flag. The eligibility query excludes every other owner,
-  so its rows have no profile columns.
+- `EffectiveEmailFlags::eligible()` is the state of a Next Queue row: a
+  profile and no flag. The eligibility query excludes every other owner, so
+  its rows have no profile columns. The Eligible view rows come from
+  `findVerificationQueue()` and use `fromQueueRow()`.
 
 **Used By**: `EmailNoticeBuilder`, `SendPolicy`, `VerificationTabStatus::chip()`, `app/admin/includes/tab-verification.php`, `CarVerificationSendService::sendOne()`,
 `BrevoSuppressionSyncJob`, `user_form_hook.php`, `usersc/user_settings.php`,
@@ -1940,7 +1949,7 @@ other probes.
   `SendPolicy` and `EmailNoticeBuilder` read, so `blocked` and `bounced` are
   true only when the flag applies to the owner's current address. The tab
   builds it with `EffectiveEmailFlags::fromQueueRow()`, or
-  `EffectiveEmailFlags::eligible()` in the Eligible view. Order: no profile, invalid email,
+  `EffectiveEmailFlags::eligible()` in the Next Queue view. Order: no profile, invalid email,
   blocked, bounced, opted out. The blocked, bounced and opted out steps match
   `SendPolicy::verificationReason()` (#2461). `$addressMalformed` is the queue row's
   `email_address_malformed`. The invalid email step gives kind

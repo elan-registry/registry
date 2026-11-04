@@ -130,9 +130,8 @@ final readonly class EffectiveEmailFlags
      * or dates, so those fields are null.
      *
      * A missing column is an error, not "no flag". Otherwise a query that
-     * drops or misspells a column shows a blocked owner as eligible. An
-     * Eligible preview row has no profile columns. Use {@see self::eligible()}
-     * for it.
+     * drops or misspells a column shows a blocked owner as eligible. A Next
+     * Queue row has no profile columns. Use {@see self::eligible()} for it.
      *
      * @param object $row One row of the Verification-tab queue
      * @throws \InvalidArgumentException If the row has no column of {@see self::QUEUE_ROW_COLUMNS}
@@ -165,7 +164,7 @@ final readonly class EffectiveEmailFlags
     }
 
     /**
-     * The state of an owner in the Eligible queue: a profile and no flag
+     * The state of an owner in the Next Queue view: a profile and no flag
      *
      * The eligibility query selects only owners with a `profiles` row and no
      * flag that applies, so its rows have no profile columns.

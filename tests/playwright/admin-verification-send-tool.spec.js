@@ -74,11 +74,11 @@ test.describe('Admin Verification Send Tool', () => {
         expect(response.status()).toBe(200);
         expect(await page.locator('body').textContent()).not.toContain('Fatal error');
 
-        // The batch-send section lives in the Eligible pill view, not the
-        // default (All) view this GET lands on. Click the pill, the way a
+        // The batch-send section lives in the Next Queue pill view, not the
+        // default (Eligible) view this GET lands on. Click the pill, the way a
         // real admin reaches it, rather than hand-building the URL — this
         // also proves the pill itself works.
-        await page.locator('a.filter-pill[data-status="eligible"]').click();
+        await page.locator('a.filter-pill[data-status="next_queue"]').click();
         await page.waitForLoadState('networkidle');
 
         const queueCard = page.locator('#verificationQueue');
@@ -92,10 +92,10 @@ test.describe('Admin Verification Send Tool', () => {
     // AC5/AC6 wiring only — the row's single contextual action button
     // (Clear Block / Clear Opt-out / Clear Bounced / Mark Bounced, chosen by the
     // car's own state). Uses the first rendered row (see file header). The
-    // Send section lives in the Eligible pill view, not the default view
+    // Send section lives in the Next Queue pill view, not the default view
     // (see the test above), so this requests it directly.
     test('owner-action button is wired to its sibling form via form=', async ({ page }) => {
-        await page.goto('app/admin/index.php?tab=verification&status=eligible', { waitUntil: 'networkidle' });
+        await page.goto('app/admin/index.php?tab=verification&status=next_queue', { waitUntil: 'networkidle' });
 
         const card = page.locator('#verificationQueue');
 
@@ -125,7 +125,7 @@ test.describe('Admin Verification Send Tool', () => {
     });
 
     test('batch send form carries a non-empty CSRF token and at least one car_ids[] entry', async ({ page }) => {
-        await page.goto('app/admin/index.php?tab=verification&status=eligible', { waitUntil: 'networkidle' });
+        await page.goto('app/admin/index.php?tab=verification&status=next_queue', { waitUntil: 'networkidle' });
 
         const card = page.locator('#verificationQueue');
 
@@ -161,8 +161,28 @@ test.describe('Admin Verification Send Tool', () => {
         await expect(page.locator('.alert-success', { hasText: 'marked as bounced' })).toHaveCount(0);
     });
 
-    test('bounced and suppressed cars are excluded from the eligible preview', async ({ page }) => {
-        await page.goto('app/admin/index.php?tab=verification&status=eligible', { waitUntil: 'networkidle' });
+    // AC (#2599): the cars that the Next Queue form sends are the first cars of
+    // the Eligible view, in the same order. Compared with each other, not with
+    // fixed positions, because the local DB has about 1,500 eligible cars.
+    test('Next Queue car_ids[] equal the first ids of the Eligible view', async ({ page }) => {
+        await page.goto('app/admin/index.php?tab=verification&status=next_queue', { waitUntil: 'networkidle' });
+        const batchForm = page.locator('#verificationQueue form', {
+            has: page.locator('input[name="command"][value="verification_send_batch"]'),
+        });
+        await expect(batchForm).toBeAttached();
+        const sentIds = await batchForm.locator('input[name="car_ids[]"]').evaluateAll((inputs) => inputs.map((el) => el.value));
+        expect(sentIds.length, 'Next Queue form carries car ids').toBeGreaterThan(0);
+
+        await page.goto('app/admin/index.php?tab=verification&status=eligible&show=100', { waitUntil: 'networkidle' });
+        // The Eligible view has no send form, so it cannot send.
+        await expect(page.locator('input[name="command"][value="verification_send_batch"]')).toHaveCount(0);
+        const eligibleIds = (await page.locator('#verificationQueue table tbody tr td:first-child').allInnerTexts()).map((t) => t.trim());
+        expect(eligibleIds.length).toBeGreaterThanOrEqual(sentIds.length);
+        expect(eligibleIds.slice(0, sentIds.length)).toEqual(sentIds);
+    });
+
+    test('bounced and suppressed cars are excluded from the Next Queue preview', async ({ page }) => {
+        await page.goto('app/admin/index.php?tab=verification&status=next_queue', { waitUntil: 'networkidle' });
 
         const card = page.locator('#verificationQueue');
 
@@ -331,10 +351,10 @@ test.describe('Admin Verification Automatic Sending panel', () => {
         });
 
         await test.step('submit the batch form and assert it was refused', async () => {
-            // The batch form lives in the Eligible pill view, not the
-            // default (All) view ensurePaused()/readPanelState() leave the
+            // The batch form lives in the Next Queue pill view, not the
+            // default (Eligible) view ensurePaused()/readPanelState() leave the
             // page on.
-            await page.goto('app/admin/index.php?tab=verification&status=eligible', { waitUntil: 'networkidle' });
+            await page.goto('app/admin/index.php?tab=verification&status=next_queue', { waitUntil: 'networkidle' });
 
             const sendCard = page.locator('#verificationQueue');
             const batchForm = sendCard.locator('form', {
@@ -382,7 +402,7 @@ test.describe('Admin Verification Clear Block and Clear Opt-out', () => {
     test.describe.configure({ mode: 'serial' });
 
     const queueRow = (page, carId) => page.locator('#verificationQueue table tbody tr', {
-        has: page.locator(`td:first-child:text-is("${carId}")`),
+        has: page.locator(`td:first-child a:text-is("${carId}")`),
     });
 
     const gotoPill = async (page, status) => {

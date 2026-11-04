@@ -586,8 +586,8 @@ parts appear in this order, from top to bottom:
    line shows `last_run_at` plus `SendVerificationBatchJob::GUARD_INTERVAL_HOURS`
    (20 hours). The line shows the earliest time the job can run. The real
    send time is the first cron heartbeat after that time. **Send Batch Now**
-   is a link to the Eligible queue view. It does not send. The send happens
-   only when the admin presses **Send batch** in that view.
+   is a link to the Next Queue view (`status=next_queue`). It does not send.
+   The send happens only when the admin presses **Send batch** in that view.
    If the batch size is unreadable (a failed query or a missing `id = 1`
    row), the Batch size row shows a `text-bg-danger` "Unavailable" badge and
    no Save form for every viewer. The form would post a placeholder value
@@ -595,7 +595,7 @@ parts appear in this order, from top to bottom:
    The job does not send while the batch size or the switch is unreadable.
    It logs the reason under `CronJobFailure` and pings `/fail` from `run()`.
    See [Preview & Send Flow](#preview--send-flow) for the admin send.
-4. **Verification Queue.** One table with eight filter pills and the Window
+4. **Verification Queue.** One table with nine filter pills and the Window
    and Show controls. See [Verification Queue](#verification-queue).
 5. **Recent Activity.** The latest 20 `cars_hist` rows with operation
    `VERIFIED` or `VERIFIED SOLD`, newest first
@@ -615,20 +615,26 @@ error or "unavailable" and the other parts still render.
 
 The queue replaces the earlier separate tables. One table shows all views.
 
-**Filter pills:** `All`, `Eligible`, `Pending`, `Bounced`, `Blocked`,
-`Opted out`, `Verified`, `Sold`. Each pill is a plain GET link and shows its
-count. The allowed values are in `CarRepository::QUEUE_STATUSES`. An unknown
-`?status=` value shows all rows.
+**Filter pills, in this order:** `Eligible`, `Next Queue`, `Pending`,
+`Bounced`, `Blocked`, `Opted out`, `Verified`, `Sold`, `Invalid email`.
+Each pill is a plain GET link and shows its count. The allowed values are in
+`CarRepository::QUEUE_STATUSES`. The default view is Eligible. An unknown
+`?status=` value, for example the removed `all`, shows Eligible.
 
-**What `All` counts.** `All` is the distinct count of cars that are
-Eligible, Pending, Bounced, Blocked, or Opted out. It also counts the unsold
-cars of a live owner (not `noowner`) who has no `profiles` row, so the admin
-can see them as "No profile". The same applies to the unsold cars of a live
-owner (not `noowner`) whose address is not NULL, not empty, and not well
-formed. The admin sees them as "Invalid email" (#2594). It excludes Verified
-and Sold: those two are
-history, not a current queue state. Multiple status flags on one owner may
-apply to the same car, so `All` can be less than the sum of the pills.
+**Send order.** The batch sends cars by `last_verified ASC` (NULL first), then
+`cars.id ASC`. The id tiebreak makes the order the same on every query.
+Eligible lists eligible cars in this order, up to the Show limit. Next Queue
+shows the first rows of Eligible, up to the batch size. A batch sends the same
+cars that Next Queue shows.
+
+**Next Queue count.** The pill shows `min(eligible, batch size)`. It shows no
+count when the batch size or the summary cannot be read.
+
+**What `Invalid email` counts.** `Invalid email` counts the unsold cars of a
+live owner (not `noowner`) who have no `profiles` row, or whose address is
+not NULL, not empty, and not well formed (#2594, #2599). A car counts once.
+This pill can overlap the other pills. A car in `Invalid email` can also be
+in another pill, for example Pending or Blocked. The view has no summary card.
 
 **Where the pills read their state.** The owner's `profiles` row is the
 system of record (#2101). Bounced counts cars whose owner has
@@ -639,6 +645,10 @@ Opted out counts cars whose owner has `email_opted_out = 1`. An owner with no
 The rule lives once, in `CarRepository::countVerificationSummary()`.
 
 **Table columns:** Car, Chassis, Owner, User ID, Sent, Days, Status, Actions.
+The Car cell links to the car details page (`app/owner/cars/details.php?car_id=N`).
+The Owner cell links to the Owner Management tab
+(`app/admin/index.php?tab=owner-mgmt&owner_id=N`). A row with no owner user
+shows the owner name as plain text. Both links open in a new tab.
 The User ID links to the user's admin page (`users/admin.php?view=user&id=N`)
 in a new tab. A row with no owner shows a dash.
 
@@ -649,7 +659,7 @@ never reaches SQL.
 
 | Parameter | Allowed values | Default |
 | --- | --- | --- |
-| `status` | `all`, `eligible`, `pending`, `bounced`, `blocked`, `opted_out`, `verified`, `sold` | `all` |
+| `status` | `eligible`, `next_queue`, `pending`, `bounced`, `blocked`, `opted_out`, `verified`, `sold`, `invalid_email` | `eligible` |
 | `window` | `7`, `30`, `90`, `365` (days), `0` (all time) | `30` |
 | `show` | `10`, `25`, `50`, `100` (rows) | `25` |
 
@@ -660,8 +670,9 @@ Rules for the controls:
 
 - **Window** applies to the Verified and Sold views and their summary cards
   only. The other views show the current state.
-- **Show** limits the number of rows. It does not apply to the Eligible
-  view. That view shows one batch (see [Preview & Send Flow](#preview--send-flow)).
+- **Show** limits the number of rows. Show applies to every view except Next
+  Queue, which previews one batch (see
+  [Preview & Send Flow](#preview--send-flow)).
 - The Pending view lists the longest-waiting car first.
 - The Verified and Sold views count each car one time. The pill count and
   the list length match **only when the pill count is at or below the
@@ -831,7 +842,7 @@ The handlers and their owner-level effects are described in
 [Mark Bounced / Clear Bounced / Clear Block / Clear Opt-out](#mark-bounced--clear-bounced--clear-block--clear-opt-out-owner-level-actions).
 
 Each button submits a sibling form through the `form=` attribute, because the
-Eligible view wraps its table in the batch form and nested forms are not
+Next Queue view wraps its table in the batch form and nested forms are not
 valid HTML. Editors see a dash in the Actions column (read-only). A row
 whose owner could not be loaded, has no `profiles` row, or is the `noowner`
 system account (the GDPR-erasure reassignment target), also shows a dash: the
@@ -841,8 +852,8 @@ cars. The server independently rejects any of the four commands posted for a
 
 ### Preview & Send Flow
 
-**GET request (no side effects):** The Eligible view of the Verification
-Queue (`?tab=verification&status=eligible`) renders a table of eligible cars,
+**GET request (no side effects):** The Next Queue view of the Verification
+Queue (`?tab=verification&status=next_queue`) renders a table of eligible cars,
 up to the configured batch size (`VerificationSettings::batchSizeOrNull()`),
 under the heading "Send Verification Emails". If the batch size is unreadable,
 the preview lists no cars and shows an error instead. Car data shown: ID, chassis,

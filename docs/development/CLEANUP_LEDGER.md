@@ -57,7 +57,6 @@ after an item is written.
 
 - [ ] The summary, chip, activity and cron-state catches (~L173, ~L228, ~L247, ~L744) still log `get_class($e)` and `$e->getMessage()`. Log `ExceptionLogSummary::of($e)`, as the eligible-preview and queue catches do (found in #2572 review)
 - [ ] The Automatic Sending card shows only "Status unavailable" for an `UNREADABLE` or `MISSING` job state, and its "Next eligible" row says "the job status could not be read" for `MISSING` too. Show the same detail lines as the status panel rows, from one shared source next to `CronJobRunsReader::badgeFor()` (found in #2572 review)
-- [ ] `EffectiveEmailFlags::fromQueueRow()` runs inside the render loop, after `<tbody>` opens. A throw stops the page mid-table with no admin message and no `logger()` line. Build the flags with the queue rows and catch `\InvalidArgumentException` in the queue fault domain (found in /flow:finish-milestone v2.31.0)
 
 ### `app/admin/includes/verification-status-panel.php`
 
@@ -157,6 +156,10 @@ after an item is written.
 - [ ] The class has its own `php -r` subprocess copy of the endpoint runner. Use `IntegrationTestCase::invokeEndpoint()` and delete the copy. `invokeEndpoint()` needs GET/HTML or session-flash support first (found in #2165)
 - [ ] The runner reads a missing `___EXIT:` marker as exit code 0 (`array_pad(..., '0')`, ~L161), and it ignores a failed `$loggedInUser->find()` (~L142), so an unknown user runs logged out. The class docblock (~L15) names `VerificationToggleEndpointBehaviorTest` as the model runner, but that class now uses `invokeEndpoint()`. The migration item above fixes all three. (found in #2165)
 
+### `tests/integration/AdminVerificationTabRenderTest.php` (test coverage)
+
+- [ ] `testNextQueueRowsAreTheFirstRowsOfEligible` (~L814) makes three cars with the same `last_verified` in id order, so its prefix check cannot catch a wrong sort order, and `testNextQueueRendersThePreviewAndASendFormForNextQueue` checks `$sent[0]` with one car. Give the helper cars distinct `last_verified` values in reverse id order (found in #2599)
+
 ### `tests/integration/CarEditOwnerColumnRefreshTest.php`
 
 - [ ] `testOwnerSelfEditSetsOwnerLastUpdatedButAdminEditDoesNot` only checks that the new `owner_last_updated` is later than a date two years ago, and does not count `cars_hist` rows. Bound it with `assertEqualsWithDelta(time(), ..., 60)` and assert one new history row (found while working on #1929)
@@ -200,10 +203,6 @@ after an item is written.
 ### `tests/integration/cars/services/CarRepositoryProfileFlagReadersTest.php`
 
 - [ ] `testRepositorySqlHasNoMaxOverTheProfileFlagColumns` (~L151) and `testCarDetailsPageLoadsTheOwnerProfileStateForTheCard` (~L392) read source text with `file_get_contents()`. Replace them with behavior tests (found in #2330)
-
-### `tests/integration/cars/services/CarRepositoryProfileFlagReadersTest.php` (test coverage)
-
-- [ ] Only the `all` status checks the queue columns. Loop over `CarRepository::QUEUE_STATUSES` except `eligible` and call `EffectiveEmailFlags::fromQueueRow()` on each row (found in /flow:finish-milestone v2.31.0)
 
 ### `tests/integration/database/AddCronJobRunsLastFailureAtMigrationTest.php`
 
@@ -268,10 +267,6 @@ after an item is written.
 ### `tests/unit/regression/JoinFailureReportUsesDedicatedRateLimitBucketRegressionTest.php`
 
 - [ ] Rename `testExactlyOneConfigEntryExistsPerAction`. It asserts presence, not uniqueness (from #2169)
-
-### `tests/unit/regression/VerificationTabSourceRegressionTest.php` (test quality)
-
-- [ ] `batchSizeComesFromStatus()` matches the first assignment only. Assert exactly one assignment to `$vsBatchSize`, with a negative control (found in /flow:finish-milestone v2.31.0)
 
 ### `tests/unit/security/AdminAjaxGuardTest.php`
 

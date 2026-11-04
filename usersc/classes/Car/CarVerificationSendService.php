@@ -18,7 +18,7 @@ use ElanRegistry\Owner;
  * apart: the manual admin tool (app/admin/index.php?tab=verification, #1884)
  * and the automated cron job that follows it (#1885). A second, hand-rolled copy
  * of the eligibility rule or the send sequence in either caller would mean
- * the cron and the admin preview could disagree about which cars are due —
+ * the cron and the admin Next Queue preview could disagree about which cars are due —
  * the exact failure this class exists to prevent.
  *
  * That shared-ownership requirement constrains the public API: every public
@@ -84,12 +84,13 @@ final class CarVerificationSendService
      * A straight delegation to {@see CarRepository::findVerificationEligible()},
      * intentionally adding nothing. This method exists so that callers depend
      * on this service rather than reaching into the repository themselves,
-     * keeping one definition of "eligible" shared between the admin preview
-     * page and #1885's cron job.
+     * keeping one definition of "eligible" shared between the admin Next
+     * Queue preview and #1885's cron job. The rows come in the send order of
+     * findVerificationEligible() (`last_verified` ASC, then car id ASC).
      *
      * @param int $limit Maximum rows to return (values below 1 return no rows)
      * @param int $offset Rows to skip (negative values are treated as 0)
-     * @return array<object> Eligible car rows (empty if none)
+     * @return array<object> Eligible car rows in send order (empty if none)
      * @throws \ElanRegistry\Exceptions\CarDatabaseException If the query fails
      */
     public function findEligible(int $limit, int $offset = 0): array

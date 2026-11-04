@@ -31,11 +31,11 @@ use PHPUnit\Framework\Attributes\Group;
  *   - bounced: the owner's profiles.email_bounced = 1.
  *   - blocked: the owner's profiles.email_blocked = 1, for the owner's current address.
  *   - opted_out: the owner's profiles.email_opted_out = 1, whatever the address.
- *   - no profile: a live owner with no profiles row. Never eligible, but in `all`.
+ *   - invalid_email: a live owner with no profiles row, or a malformed address.
+ *     Never eligible, and listed under Invalid email.
  *   - verified / sold: distinct cars with a cars_hist VERIFIED / VERIFIED SOLD
  *     row in the window, counted by car, not by history row.
- *   - all: eligible OR pending OR bounced OR blocked OR opted out (verified/sold are
- *     history, not queue state, so they are excluded from `all`).
+ *   - next_queue has no queue list here: its rows come from findVerificationEligible().
  */
 #[Group('integration')]
 final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
@@ -413,7 +413,7 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
     }
 
     #[Group('fast')]
-    public function testOwnerBlockedAndOptedOutIsListedOnceInEachPillAndInAll(): void
+    public function testOwnerBlockedAndOptedOutIsListedOnceInEachPill(): void
     {
         $ownerId = $this->createOwner('blocked');
         $this->setOwnerOptedOut($ownerId);
@@ -421,11 +421,9 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
 
         $blocked = array_count_values($this->queueIds($this->repo->findVerificationQueue('blocked', null, 1000)));
         $optedOut = array_count_values($this->queueIds($this->repo->findVerificationQueue('opted_out', null, 1000)));
-        $all = array_count_values($this->queueIds($this->repo->findVerificationQueue('all', null, 1000)));
 
         $this->assertSame(1, $blocked[$carId] ?? 0, 'The car is listed once under Blocked');
         $this->assertSame(1, $optedOut[$carId] ?? 0, 'The car is listed once under Opted out');
-        $this->assertSame(1, $all[$carId] ?? 0, 'The car is listed once under all, not once per flag');
 
         // Control: with both flags cleared the car leaves both queues.
         $this->clearOwnerEmailFlags($ownerId);
@@ -546,7 +544,7 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
     // --- no profile ----------------------------------------------------------------
 
     #[Group('fast')]
-    public function testCarOfOwnerWithNoProfileIsNotEligibleButIsInAllQueueAndCount(): void
+    public function testCarOfOwnerWithNoProfileIsNotEligibleButIsInInvalidEmailQueueAndCount(): void
     {
         $noProfileOwnerId = $this->createTestUser();
         $noProfileCarId = $this->createTestCar(
@@ -556,33 +554,34 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
         $withProfileCarId = $this->createTestCar($this->userId, $this->eligibleFields('dash-has-profile@example.com'));
 
         $eligibleIds = $this->queueIds($this->repo->findVerificationQueue('eligible', null, 1000));
-        $allIds = $this->queueIds($this->repo->findVerificationQueue('all', null, 1000));
+        $allIds = $this->queueIds($this->repo->findVerificationQueue('invalid_email', null, 100000));
 
         $this->assertContains($withProfileCarId, $eligibleIds, 'Control: the car with a profile is eligible');
+        $this->assertNotContains($withProfileCarId, $allIds, 'Control: the car with a profile is not Invalid email');
         $this->assertNotContains($noProfileCarId, $eligibleIds, 'A car whose owner has no profile is never eligible');
-        $this->assertContains($noProfileCarId, $allIds, 'The no-profile car must be visible under all');
+        $this->assertContains($noProfileCarId, $allIds, 'The no-profile car must be visible under Invalid email');
 
         $queueRow = null;
-        foreach ($this->repo->findVerificationQueue('all', null, 1000) as $row) {
+        foreach ($this->repo->findVerificationQueue('invalid_email', null, 100000) as $row) {
             if ((int) $row->id === $noProfileCarId) {
                 $queueRow = $row;
             }
         }
-        $this->assertNotNull($queueRow, 'The all queue must return a row for the no-profile car');
+        $this->assertNotNull($queueRow, 'The Invalid email queue must return a row for the no-profile car');
         $this->assertSame(0, (int) $queueRow->has_profile, 'The row must show that there is no profile');
 
-        $before = $this->repo->countVerificationSummary(null)['all'];
+        $before = $this->repo->countVerificationSummary(null)['invalid_email'];
         $this->db->query('DELETE FROM cars WHERE id = ?', [$noProfileCarId]);
-        $after = $this->repo->countVerificationSummary(null)['all'];
-        $this->assertSame($before - 1, $after, 'The all count includes the no-profile car');
+        $after = $this->repo->countVerificationSummary(null)['invalid_email'];
+        $this->assertSame($before - 1, $after, 'The Invalid email count includes the no-profile car');
     }
 
     // --- malformed owner address (#2594) --------------------------------------------
 
-    /** The all-queue row of a car, or null when the car is not listed. */
+    /** The Invalid email row of a car, or null when the car is not listed. */
     private function allQueueRow(int $carId): ?object
     {
-        foreach ($this->repo->findVerificationQueue('all', null, 100000) as $row) {
+        foreach ($this->repo->findVerificationQueue('invalid_email', null, 100000) as $row) {
             if ((int) $row->id === $carId) {
                 return $row;
             }
@@ -591,7 +590,7 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
     }
 
     #[Group('fast')]
-    public function testMalformedOwnerAddressCarIsInAllQueueAndCountButNotEligible(): void
+    public function testMalformedOwnerAddressCarIsInInvalidEmailQueueAndCountButNotEligible(): void
     {
         $before = $this->repo->countVerificationSummary(null);
 
@@ -602,21 +601,19 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
         $after = $this->repo->countVerificationSummary(null);
 
         $badRow = $this->allQueueRow($badCarId);
-        $this->assertNotNull($badRow, 'The malformed-address car must be listed under all');
+        $this->assertNotNull($badRow, 'The malformed-address car must be listed under Invalid email');
         $this->assertSame(1, (int) $badRow->email_address_malformed, 'The row must be marked as malformed');
 
-        $goodRow = $this->allQueueRow($goodCarId);
-        $this->assertNotNull($goodRow, 'Control: the well-formed car is listed under all');
-        $this->assertSame(0, (int) $goodRow->email_address_malformed, 'A well-formed address is not marked');
+        $this->assertNull($this->allQueueRow($goodCarId), 'Control: the well-formed car is not listed under Invalid email');
 
         $this->assertNotContains(
             $badCarId,
             $this->queueIds($this->repo->findVerificationQueue('eligible', null, 100000)),
             'A malformed-address car is not eligible'
         );
-        // Two cars added; only the well-formed one is eligible, both are in all.
+        // Two cars added; only the well-formed one is eligible, only the malformed one is Invalid email.
         $this->assertSame($before['eligible'] + 1, $after['eligible'], 'Only the well-formed car is counted eligible');
-        $this->assertSame($before['all'] + 2, $after['all'], 'The all count includes the malformed car');
+        $this->assertSame($before['invalid_email'] + 1, $after['invalid_email'], 'The Invalid email count includes the malformed car');
     }
 
     /**
@@ -654,10 +651,14 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
         $carId = $this->createTestCar($ownerId, $fields);
 
         // $before counts with the car present. The count must not change when the car is deleted.
-        $before = $this->repo->countVerificationSummary(null)['all'];
-        $this->assertNull($this->allQueueRow($carId), 'This car must not be listed under all');
+        $before = $this->repo->countVerificationSummary(null)['invalid_email'];
+        $this->assertNull($this->allQueueRow($carId), 'This car must not be listed under Invalid email');
         $this->db->query('DELETE FROM cars WHERE id = ?', [$carId]);
-        $this->assertSame($before, $this->repo->countVerificationSummary(null)['all'], 'The all count ignores this car');
+        $this->assertSame(
+            $before,
+            $this->repo->countVerificationSummary(null)['invalid_email'],
+            'The Invalid email count ignores this car'
+        );
     }
 
     // --- verified / sold: distinct cars, not raw cars_hist rows ------------------
@@ -747,15 +748,13 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
         );
     }
 
-    // --- all: eligible + pending + bounced + blocked + opted out, NOT verified/sold ------
+    // --- invalid_email: no profile or malformed address, NOT verified/sold -------------
 
     #[Group('fast')]
-    public function testAllPillExcludesACarThatIsOnlyVerifiedNotInAnyQueueState(): void
+    public function testInvalidEmailQueueExcludesACarThatIsOnlyVerified(): void
     {
-        // A car with ONLY a VERIFIED history row and otherwise fresh (just
-        // verified, so not stale/eligible), not bounced, blocked or opted out, and
-        // no live pending link — must be in neither findVerificationQueue('all')
-        // nor the `all` count, because verified/sold are history, not queue state.
+        // A fresh, just-verified car with a clean owner: no profile problem, no
+        // malformed address. It must be in no queue state.
         $carId = $this->createTestCar($this->userId, [
             'email'              => 'dash-all-excl-verified@example.com',
             'last_verified'      => date('Y-m-d H:i:s', strtotime('-1 hour')),
@@ -767,75 +766,156 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
         ]);
         $this->insertHistRow($carId, 'VERIFIED', date('Y-m-d H:i:s', strtotime('-1 hour')));
 
-        $allIds = $this->queueIds($this->repo->findVerificationQueue('all', null, 1000));
-
         $this->assertNotContains(
             $carId,
-            $allIds,
-            'A car that is only Verified (fresh, not bounced/blocked/opted out, no live pending link) must not '
-            . 'appear under the all pill — Verified/Sold are history, not a queue state'
+            $this->queueIds($this->repo->findVerificationQueue('invalid_email', null, 100000)),
+            'A Verified car with a well-formed address and a profile is not Invalid email'
         );
     }
 
     #[Group('fast')]
-    public function testAllPillCountEqualsUnionOfEligiblePendingBouncedBlockedOptedOutQueueIds(): void
+    public function testInvalidEmailQueueIsUnionOfNoProfileAndMalformedAndMatchesTheCount(): void
     {
-        $ttlDays = CarVerificationEmailComposer::LINK_TTL_DAYS;
+        $beforeCount = $this->repo->countVerificationSummary(null)['invalid_email'];
+        $beforeIds = $this->queueIds($this->repo->findVerificationQueue('invalid_email', null, 100000));
 
-        $eligibleCarId = $this->createTestCar($this->userId, $this->eligibleFields('dash-all-eligible@example.com'));
-        $pendingCarId = $this->createTestCar($this->userId, array_merge(
-            $this->eligibleFields('dash-all-pending@example.com'),
-            [
-                'vericode'         => 'hash-all-pending',
-                'vericode_sent_at' => date('Y-m-d H:i:s', strtotime('-1 day')),
-            ]
+        // No profile row, well-formed address.
+        $noProfileCarId = $this->createTestCar(
+            $this->createTestUser(['email' => 'dash-ie-noprofile@example.com']),
+            $this->eligibleFields('dash-ie-noprofile@example.com')
+        );
+        // Profile row, malformed address.
+        $malformedCarId = $this->createTestCar(
+            $this->createTestUser(['email' => 'None'], true),
+            $this->eligibleFields('dash-ie-malformed@example.com')
+        );
+        // Both: no profile row and a malformed address. Counts once.
+        $bothCarId = $this->createTestCar(
+            $this->createTestUser(['email' => 'None']),
+            $this->eligibleFields('dash-ie-both@example.com')
+        );
+        // Control: profile and well-formed address.
+        $cleanCarId = $this->createTestCar($this->userId, $this->eligibleFields('dash-ie-clean@example.com'));
+
+        $afterIds = $this->queueIds($this->repo->findVerificationQueue('invalid_email', null, 100000));
+        $added = array_values(array_diff($afterIds, $beforeIds));
+        sort($added);
+        $expected = [$noProfileCarId, $malformedCarId, $bothCarId];
+        sort($expected);
+
+        $this->assertNotEmpty($added, 'Test setup: the seeded cars must reach the Invalid email list');
+        $this->assertSame($expected, $added, 'Exactly the three invalid cars are added, not the clean control');
+        $this->assertSame(
+            1,
+            array_count_values($afterIds)[$bothCarId] ?? 0,
+            'A car with both conditions is listed once'
+        );
+        $this->assertNotContains($cleanCarId, $afterIds);
+
+        $afterCount = $this->repo->countVerificationSummary(null)['invalid_email'];
+        $this->assertSame($beforeCount + 3, $afterCount, 'The count adds the both-case once');
+        $this->assertSame(count($afterIds), $afterCount, 'The Invalid email count equals the list size');
+    }
+
+    #[Group('fast')]
+    public function testSummaryHasNoAllKeyAndEachPillCountEqualsItsListSize(): void
+    {
+        // Seed one car per state so each count is non-trivial.
+        $this->createTestCar($this->userId, $this->eligibleFields('dash-sum-eligible@example.com'));
+        $this->createTestCar($this->userId, array_merge(
+            $this->eligibleFields('dash-sum-pending@example.com'),
+            ['vericode' => 'hash-sum-pending', 'vericode_sent_at' => date('Y-m-d H:i:s', strtotime('-1 day'))]
         ));
-        $bouncedCarId = $this->createTestCar(
-            $this->createOwner('bounced'),
-            $this->eligibleFields('dash-all-bounced@example.com')
-        );
-        $blockedCarId = $this->createTestCar(
-            $this->createOwner('blocked'),
-            $this->eligibleFields('dash-all-blocked@example.com')
-        );
-        $optedOutCarId = $this->createTestCar(
-            $this->createOwner('opted_out'),
-            $this->eligibleFields('dash-all-opted-out@example.com')
-        );
+        $this->createTestCar($this->createOwner('bounced'), $this->eligibleFields('dash-sum-bounced@example.com'));
+        $this->createTestCar($this->createOwner('blocked'), $this->eligibleFields('dash-sum-blocked@example.com'));
+        $this->createTestCar($this->createOwner('opted_out'), $this->eligibleFields('dash-sum-opted@example.com'));
+        $this->createTestCar($this->createTestUser(['email' => 'None'], true), $this->eligibleFields('dash-sum-bad@example.com'));
 
-        $union = array_unique(array_merge(
-            $this->queueIds($this->repo->findVerificationQueue('eligible', null, 1000)),
-            $this->queueIds($this->repo->findVerificationQueue('pending', null, 1000)),
-            $this->queueIds($this->repo->findVerificationQueue('bounced', null, 1000)),
-            $this->queueIds($this->repo->findVerificationQueue('blocked', null, 1000)),
-            $this->queueIds($this->repo->findVerificationQueue('opted_out', null, 1000))
+        $summary = $this->repo->countVerificationSummary(null);
+        $this->assertArrayNotHasKey('all', $summary);
+
+        $checked = 0;
+        foreach (CarRepository::QUEUE_STATUSES as $status) {
+            if ($status === 'next_queue') {
+                continue;
+            }
+            $rows = $this->repo->findVerificationQueue($status, null, 100000);
+            $this->assertSame($summary[$status], count($rows), "The {$status} count equals the {$status} list size");
+            $checked++;
+        }
+        $this->assertSame(count(CarRepository::QUEUE_STATUSES) - 1, $checked);
+    }
+
+    // --- send order (#2599) ---------------------------------------------------------
+
+    /**
+     * @param list<int> $ids
+     * @param list<int> $keep
+     * @return list<int> $ids filtered to $keep, order preserved
+     */
+    private function only(array $ids, array $keep): array
+    {
+        return array_values(array_filter($ids, static fn (int $id): bool => in_array($id, $keep, true)));
+    }
+
+    #[Group('fast')]
+    public function testEligibleQueueAndBatchShareSendOrderWithIdTiebreak(): void
+    {
+        $nullIds = [];
+        // 25 cars, so the batch size of 25 below is full even on an empty test database.
+        for ($i = 0; $i < 25; $i++) {
+            $nullIds[] = $this->createTestCar($this->userId, $this->eligibleFields("dash-order-null-{$i}@example.com"));
+        }
+        // Dated more than a year ago, so it is still eligible. It sorts after
+        // every NULL (never verified) car.
+        $datedId = $this->createTestCar($this->userId, array_merge(
+            $this->eligibleFields('dash-order-dated@example.com'),
+            ['last_verified' => date('Y-m-d H:i:s', strtotime('-2 years'))]
         ));
 
-        $allIds = $this->queueIds($this->repo->findVerificationQueue('all', null, 1000));
+        $total = $this->repo->countVerificationSummary(null)['eligible'];
+        $eligibleIds = $this->queueIds($this->repo->findVerificationQueue('eligible', null, $total + 100));
 
-        foreach ([$eligibleCarId, $pendingCarId, $bouncedCarId, $blockedCarId, $optedOutCarId] as $expectedCarId) {
-            $this->assertContains($expectedCarId, $allIds, "Car {$expectedCarId} must appear under the all pill");
+        $this->assertSame(
+            [...$nullIds, $datedId],
+            $this->only($eligibleIds, [...$nullIds, $datedId]),
+            'Never-verified cars come first, by id; the dated car comes last'
+        );
+
+        // Adjacent pairs of the full list are non-decreasing in (NULL first, last_verified, id).
+        $rows = $this->repo->findVerificationQueue('eligible', null, $total + 100);
+        $this->assertGreaterThan(1, count($rows));
+        for ($i = 1; $i < count($rows); $i++) {
+            $a = $rows[$i - 1];
+            $b = $rows[$i];
+            $keyA = [$a->last_verified === null ? 0 : 1, (string) $a->last_verified, (int) $a->id];
+            $keyB = [$b->last_verified === null ? 0 : 1, (string) $b->last_verified, (int) $b->id];
+            $this->assertLessThanOrEqual(0, $keyA <=> $keyB, "Row {$i} is out of send order");
         }
 
-        sort($union);
-        sort($allIds);
+        // The batch query returns the first N rows of the Eligible list.
+        foreach ([1, 5, 25] as $n) {
+            $batch = $this->queueIds($this->repo->findVerificationEligible($n, 0));
+            $this->assertCount($n, $batch);
+            $this->assertSame(array_slice($eligibleIds, 0, $n), $batch, "Batch of {$n} is the first {$n} Eligible rows");
+        }
         $this->assertSame(
-            $union,
-            $allIds,
-            'findVerificationQueue(\'all\', ...) must return exactly the union of the eligible, pending, '
-            . 'bounced, blocked and opted out queue lists — no more, no fewer'
+            array_slice($eligibleIds, 3, 3),
+            $this->queueIds($this->repo->findVerificationEligible(3, 3)),
+            'OFFSET 3 skips the first three Eligible rows'
         );
+    }
 
-        $allCount = $this->repo->countVerificationSummary(null)['all'];
-        $this->assertSame(
-            count($union),
-            $allCount,
-            'countVerificationSummary()[\'all\'] must equal the size of that same union'
-        );
+    #[Group('fast')]
+    public function testEligibleQueueHonoursShowLimit(): void
+    {
+        for ($i = 0; $i < 3; $i++) {
+            $this->createTestCar($this->userId, $this->eligibleFields("dash-limit-{$i}@example.com"));
+        }
 
-        // Silence an unused-variable warning for a constant used only in this
-        // test's doc-adjacent setup (kept for clarity of the 1-day pending fixture).
-        $this->assertGreaterThan(0, $ttlDays);
+        $this->assertCount(2, $this->repo->findVerificationQueue('eligible', null, 2));
+        $this->assertCount(1, $this->repo->findVerificationQueue('eligible', null, 1));
+        $this->assertSame([], $this->repo->findVerificationQueue('eligible', null, 0));
     }
 
     // --- findRecentVerificationActivity() ----------------------------------------

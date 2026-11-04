@@ -15,11 +15,13 @@ use ElanRegistry\Car\CarRepository;
  * number.
  *
  * Usage: php read-verification-summary.php <windowDays|0>
- * Prints: {"all": n, "eligible": n, "pending": n, "bounced": n,
- *          "blocked": n, "opted_out": n, "verified": n, "sold": n,
+ * Prints: {"eligible": n, "pending": n, "bounced": n, "blocked": n,
+ *          "opted_out": n, "verified": n, "sold": n, "invalid_email": n,
  *          "bounced_owners": n, "blocked_owners": n, "opted_out_owners": n}
- * The first eight keys count cars (the pills). The `*_owners` keys count
- * distinct owners (the Bounced, Blocked and Opted out cards).
+ * The first eight keys count cars (the pills; there is no `all` key, and Next
+ * Queue has no key because its count is min(eligible, batch size)). The
+ * `*_owners` keys count distinct owners (the Bounced, Blocked and Opted out
+ * cards).
  */
 
 $projectRoot = dirname(__DIR__, 4);
