@@ -18,6 +18,8 @@ A failed read no longer shows as a default value or a success.
 - Verification cards name their unit, and the Bounced, Blocked and Opted out pills say "cars". Blocked shows a readable cause.
 - The Email on file tooltips say which mail stops and which still sends. Help buttons are easier to tap.
 - Recent Activity is a sortable table, newest first, with links to the car, owner, and user.
+- A new Email Delivery tab (admins only) shows each sent mail and its delivery outcome from Brevo webhook events.
+- If the verification switch cannot be read, the admin page banner now says so. It no longer hides.
 
 ## Issues Resolved
 
@@ -28,3 +30,4 @@ A failed read no longer shows as a default value or a success.
 - [#2599](https://github.com/elan-registry/registry/issues/2599) — Eligible and Next Queue list cars in send order. Queue rows link to the car and owner.
 - [#2458](https://github.com/elan-registry/registry/issues/2458) — Verification tab labels, chip text, tooltips, and accessibility follow-ups.
 - [#2496](https://github.com/elan-registry/registry/issues/2496) — Recent Activity shows as a sortable table with car, owner, and user links.
+- [#2102](https://github.com/elan-registry/registry/issues/2102) — Admins can see which mail Brevo delivered, bounced, or held with no outcome.

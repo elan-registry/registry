@@ -45,9 +45,20 @@ after an item is written.
 - [ ] `transfer-request.php` logs a send-policy skip of the owner notice as `EMAIL_ERROR`, but `policyAllows()` already logged it. Drop the endpoint line or log it under `CAR_TRANSFER` (found in /flow:finish-milestone v2.31.0)
 - [ ] `process-transfer-approve.php` (~L131 and ~L147) wraps `$db->rollBack()` in `catch (\Throwable $rollbackEx)`. Remove the guard (see ERROR_HANDLING.md, no guards) (found in /flow:finish-milestone v2.31.0)
 
+### `app/admin/includes/tab-account_cleanup.php` `app/admin/includes/tab-car_mgmt.php` `app/admin/includes/tab-email_delivery.php` `app/admin/includes/tab-manage_cars.php` `app/admin/includes/tab-owner_mgmt.php` `app/admin/includes/tab-verification.php` (direct request)
+
+- [ ] A direct HTTP request to a tab include runs it with no `init.php`, and with `display_errors` on it prints a fatal error with the server path (for example "Call to undefined function currentUserId()"). No data is read. Stop direct requests for all tab files: a deny rule for `app/admin/includes/` or a guard at the top of each file (found in #2102 review)
+
 ### `app/admin/includes/tab-car_mgmt.php`
 
 - [ ] Narrow 2 × `catch (Exception $e)` (~L29, 53) to the typed exceptions from `Car` and `CarTransferRepository` (from #1637)
+
+### `app/admin/includes/tab-email_delivery.php` `usersc/classes/Email/DeliveryLogRepository.php`
+
+- [ ] The tab logs `ExceptionLogSummary::of($e)` only, and the repository puts the failed step ("table check", "tags column check", "window load") and the driver error only in the message, which it must not log. The log line cannot tell which query failed or why. Carry the step and the SQLSTATE (`errorInfo()[0]`) outside the message and log them (found in #2102 review)
+- [ ] The pager prints one link for each page. Show a window (first, current ±2, last) when the page count grows past about 10 (found in #2102 review)
+- [ ] The owner, car and plugin links open a new tab with no screen-reader cue. Fix with the shared helper from the `tab-verification.php` `vsNewTabLink()` item (found in #2102 review)
+- [ ] With an ignored recipient address, the `invalid-feedback d-block` hint grows the Recipient column, and `row g-2 align-items-end` then aligns the other filter controls to the hint, not the input. Use `align-items-start`, or move the hint to its own `col-12`. Also add `aria-invalid="true"` next to `is-invalid` (found in #2102 review)
 
 ### `app/admin/includes/tab-verification.php`
 
@@ -57,10 +68,6 @@ after an item is written.
 ### `app/admin/includes/verification-batch-size-field.php`
 
 - [ ] The decorative icons at ~L28, ~L46 and ~L51 have no `aria-hidden="true"`. The Verification tab around them has it since #2496 (found in #2496 review)
-
-### `app/admin/index.php`
-
-- [ ] The admin readiness banner (~L106) reads `isEnabled()`, so an unreadable switch hides the banner, and its catch logs `$e->getMessage()`. Read `isEnabledOrNull()` and show an unreadable state, and log `ExceptionLogSummary::of($e)` (found in #2572 review)
 
 ### `app/admin/scripts/maintenance/21-Fix-Page-Permissions.php` + `app/admin/scripts/maintenance/26-Reconcile-Owner-Fields.php` + `app/api/webhooks/brevo.php` + `usersc/classes/Car/CarAdministrationService.php` + `usersc/classes/Car/CarVerificationSendService.php` + `usersc/includes/custom_functions.php` + `usersc/plugins/hooker/hooks/user_form_hook.php` (logger guards)
 
@@ -147,6 +154,10 @@ after an item is written.
 - [ ] The class has its own `php -r` subprocess copy of the endpoint runner. Use `IntegrationTestCase::invokeEndpoint()` and delete the copy. `invokeEndpoint()` needs GET/HTML or session-flash support first (found in #2165)
 - [ ] The runner reads a missing `___EXIT:` marker as exit code 0 (`array_pad(..., '0')`, ~L161), and it ignores a failed `$loggedInUser->find()` (~L142), so an unknown user runs logged out. The class docblock (~L15) names `VerificationToggleEndpointBehaviorTest` as the model runner, but that class now uses `invokeEndpoint()`. The migration item above fixes all three. (found in #2165)
 
+### `tests/integration/AdminEmailDeliveryTabAuthTest.php`
+
+- [ ] The class copies `AdminDeliverabilityActionsAuthTest`: its own `grantPermission()` and permission-row cleanup (use `IntegrationTestCase::grantTestPermission()`), and its own `php -r` page runner (move to `invokeEndpoint()` with that class's item) (found in #2102 review)
+
 ### `tests/integration/CarEditOwnerColumnRefreshTest.php`
 
 - [ ] `testOwnerSelfEditSetsOwnerLastUpdatedButAdminEditDoesNot` only checks that the new `owner_last_updated` is later than a date two years ago, and does not count `cars_hist` rows. Bound it with `assertEqualsWithDelta(time(), ..., 60)` and assert one new history row (found while working on #1929)
@@ -202,6 +213,10 @@ after an item is written.
 ### `tests/playwright/local/fixtures/` + `tests/integration/database/EmailEventRekeyMigrationFixture.php`
 
 - [ ] Seven `seed-*.php` fixtures and the migration fixture each copy the `er_deleted_user_addresses` cleanup: a table-exists check, then a `DELETE ... IN (...)`. Three also copy the username-to-ID lookup. None checks `$db->error()` after the check or the delete, although the cleanup loop in the same files exits on an error. Add one shared helper (for example `Tests\Support\DeletedUserAddressCleanup::forUserIds($db, $ids)`) that checks `error()`, and call it from each fixture (found in #2419)
+
+### `tests/unit/admin/VerificationBannerReasonTest.php` (test quality)
+
+- [ ] The unreadable-banner check matches `app/admin/index.php` source with regexes, so a rename breaks it, and it does not check the outer `if ($verificationBannerSeverity !== null)` gate. Replace it with a render test when an `index.php` render harness exists (found in #2102 review)
 
 ### `tests/unit/cars/services/AdminVerificationQueueUrlStateTest.php` (test quality)
 
