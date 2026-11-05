@@ -3422,6 +3422,188 @@ are the strings that the log lines use.
 
 ---
 
+### DeliveryOutcome (enum)
+
+**Location**: `/usersc/classes/Email/DeliveryOutcome.php`
+
+**Namespace**: `ElanRegistry\Email`
+
+**Purpose**: The webhook outcome of one mail on the Email Delivery tab (#2102).
+The string value is the outcome filter value in the tab URL. `None` means that
+the mail has no outcome event.
+
+**Cases**: `Delivered`, `HardBounce`, `SoftBounce`, `Blocked`, `Unsubscribed`,
+`SpamComplaint`, `None`. The values are `delivered`, `hard_bounce`,
+`soft_bounce`, `blocked`, `unsubscribed`, `spam_complaint` and `none`.
+
+**Methods**:
+
+- `public static fromEvent(string $event): ?self` - Maps an `er_email_events.event`
+  name to an outcome. Returns null for `sent` and for an unknown name.
+- `public function label(): string` - The display text, for example `Hard bounce`.
+
+**Used By**: `DeliveryLogReport`, the Email Delivery tab
+
+**See Also**: `DeliveryOutcomeResolver`, `DeliveryLogReport`
+
+---
+
+### DeliveryOutcomeResolver
+
+**Location**: `/usersc/classes/Email/DeliveryOutcomeResolver.php`
+
+**Namespace**: `ElanRegistry\Email`
+
+**Purpose**: Chooses the outcome event of one mail (#2102). It is pure: it uses
+no database and no clock. The caller groups rows by Brevo message ID, never by
+address. The chosen row has the latest `occurred_at`. A tie goes to the higher
+`event_id`. Rows with no outcome are ignored: `sent`, unknown names and the
+null row of a LEFT JOIN with no match.
+
+**Methods**:
+
+- `public function resolve(array $events): ?array` - Takes the event rows of one
+  mail. Each row needs `event_id`, `event` and `occurred_at` (`Y-m-d H:i:s`).
+  Returns the chosen row unchanged, or null when no row has an outcome.
+
+**Used By**: `DeliveryLogReport`
+
+**See Also**: `DeliveryOutcome`, `DeliveryLogRepository::loadWindow()`
+
+---
+
+### DeliveryLogEntry
+
+**Location**: `/usersc/classes/Email/DeliveryLogEntry.php`
+
+**Namespace**: `ElanRegistry\Email`
+
+**Purpose**: One mail row on the Email Delivery tab (#2102). A final readonly
+value object. The mail fields come from `plg_sendinblue_messages`. The outcome
+fields, the user ID and the car ID come from the chosen outcome event. A mail
+with no event has outcome `DeliveryOutcome::None` and null outcome fields. The
+retention purge empties the recipient, but only in rows older than the window
+that the tab reads. So the tab normally never sees an empty recipient.
+
+**Methods**:
+
+- `__construct(...)` - Promoted public readonly properties with the same names.
+  The signature, in order:
+
+```php
+__construct(
+    int $id,
+    string $messageId,
+    string $recipient,
+    ?string $tags,
+    DateTimeImmutable $acceptedAt,
+    DeliveryOutcome $outcome,
+    ?DateTimeImmutable $outcomeAt,
+    ?string $reason,
+    ?int $userId,
+    ?int $carId,
+)
+```
+
+**Used By**: `DeliveryLogReport`
+
+**See Also**: `DeliveryOutcome`, `DeliveryLogReport`
+
+---
+
+### DeliveryLogFilter
+
+**Location**: `/usersc/classes/Email/DeliveryLogFilter.php`
+
+**Namespace**: `ElanRegistry\Email`
+
+**Purpose**: The validated filters of the Email Delivery tab (#2102). A final
+readonly value object. Only `fromInput()` builds a filter, so each value is valid.
+An invalid input value gives its default. It never gives an error.
+
+**Constants**: `OUTCOME_ALL` (`all`), `OUTCOME_STALE` (`stale`), `HOURS_DEFAULT` (2),
+`HOURS_MIN` (1), `HOURS_MAX` (720).
+
+**Properties**: `?string $recipient`, `?string $tag`, `string $outcome`,
+`int $hours`, `int $page`.
+
+**Methods**:
+
+- `public static fromInput(mixed $email, mixed $tag, mixed $outcome, mixed $hours, mixed $page): self` -
+  Builds the filter from raw request values.
+- `public static allowedOutcomes(): array` - Returns `all`, each `DeliveryOutcome`
+  value, and `stale`.
+
+The constructor is private. Do not call `new DeliveryLogFilter()`.
+
+**Used By**: `DeliveryLogReport`, the Email Delivery tab
+
+**See Also**: `DeliveryOutcome`
+
+---
+
+### DeliveryLogRepository
+
+**Location**: `/usersc/classes/Email/DeliveryLogRepository.php`
+
+**Namespace**: `ElanRegistry\Email`
+
+**Purpose**: The read-only SQL of the Email Delivery tab (#2102). It reads
+`plg_sendinblue_messages` and `er_email_events`. It never writes, and it never
+calls Brevo. A failed query throws `AdminOperationException`.
+
+**Methods**:
+
+- `__construct(DatabaseInterface $db)` - The database connection.
+- `public function tablesReady(): bool` - True when `plg_sendinblue_messages`
+  exists. It is absent when the sendinblue plugin is not installed.
+- `public function hasTagsColumn(): bool` - True when the `tags` column exists.
+  An old plugin table lacks it. Then the tab hides the tag filter.
+- `public function loadWindow(DateTimeImmutable $cutoff, ?string $recipient, ?string $tag): array` -
+  Returns one row per mail and event, for mail accepted at or after `$cutoff`.
+  A mail with no event gives one row with null event fields. The cutoff is in
+  PHP time, because the plugin writes `accepted_at` with `date()`. The `$tag`
+  filter is ignored when the `tags` column is absent.
+
+**Used By**: The Email Delivery tab (`app/admin/includes/tab-email_delivery.php`)
+
+**See Also**: `DeliveryOutcomeResolver`, `DeliveryLogReport`, `RETENTION_SENDINBLUE_MESSAGES_DAYS`
+
+---
+
+### DeliveryLogReport
+
+**Location**: `/usersc/classes/Email/DeliveryLogReport.php`
+
+**Namespace**: `ElanRegistry\Email`
+
+**Purpose**: Builds one page of the Email Delivery tab (#2102). It groups the
+rows of `loadWindow()` by message ID, chooses each outcome, applies the outcome
+filter, counts outcomes over the filtered set and sorts newest first by
+`acceptedAt`, then `id`. It cuts one page of 50. It is pure: the caller gives
+the current time.
+
+**Constants**: `PER_PAGE` (50).
+
+**Properties**: `array $entries` (list of `DeliveryLogEntry`), `array $counts`
+(count per outcome value, every case present), `int $total`, `int $page`,
+`int $pageCount`.
+
+**Methods**:
+
+- `public static build(array $rows, DeliveryLogFilter $filter, DateTimeImmutable $now): self` -
+  The `stale` filter keeps a mail with outcome `None` that was accepted before
+  `$now` minus the filter's hours. A page past the last page gives the last page.
+  An empty set gives a page count of 1.
+
+The constructor is private. Use `build()`.
+
+**Used By**: The Email Delivery tab (`app/admin/includes/tab-email_delivery.php`)
+
+**See Also**: `DeliveryLogEntry`, `DeliveryOutcomeResolver`, `DeliveryLogRepository`
+
+---
+
 ### BrevoEventReconciliationClient
 
 **Location**: `/usersc/classes/Cron/BrevoEventReconciliationClient.php`

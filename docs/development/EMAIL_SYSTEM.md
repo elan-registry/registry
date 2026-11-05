@@ -548,12 +548,19 @@ The System Status panel shows 7 rows in this order:
 
 **Dashboard Banner:**
 
-A conditional banner appears below pending-migrations alerts when `isEnabled() && (!brevoReady() || !cronReady())`. Severity:
+A conditional banner appears below pending-migrations alerts when `isEnabledOrNull() === true && (!brevoReady() || !cronReady())`. Severity:
 
 - `alert-danger` if `!brevoReady()`
 - `alert-warning` if `brevoReady()` is true but `!cronReady()`
 
 The banner states which prerequisite failed and links to the Verification System tab for details.
+
+The banner also has an unreadable state. It appears when
+`VerificationSettings::isEnabledOrNull()` returns null, or when the readiness
+check throws. An unreadable switch is not "off", so the banner does not hide.
+The banner is `alert-danger` with this text: "**The verification switch or its
+readiness could not be read.** The verification status is unknown. Check the
+system log for details." The Verification System nav badge also shows.
 
 ## Admin Verification Email Send Tool (#1884)
 
@@ -1821,6 +1828,103 @@ A row that is not older than 90 days does not change.
   `/fail` and writes one `CronJobFailure` line.
 - **Log.** The job writes one line for each rule under the category
   `RetentionPurge`. A line holds the rule name and counts, never an address.
+
+### Admin Email Delivery Tab (#2102)
+
+The Email Delivery tab on the Registry Management page shows whether mail
+arrived. It lists every kind of mail.
+
+**Data sources.** The tab reads two tables. It never writes to them.
+
+- `plg_sendinblue_messages` provides the mail rows. It holds the mail that the
+  sendinblue plugin accepted.
+- `er_email_events` provides the Brevo webhook events. Each event attaches to
+  one mail by `brevo_message_id`. The join compares IDs as `utf8mb4_bin`, because
+  Brevo message IDs are case-sensitive. `sent` events are not joined.
+- Events never attach by address. A match uses the message ID only.
+
+**Outcome map.** The event name sets the outcome. The map is
+`ElanRegistry\Email\DeliveryOutcome`.
+
+| Event name | Outcome | Label |
+| --- | --- | --- |
+| `delivered` | `Delivered` | Delivered |
+| `hard_bounce`, `invalid`, `invalid_email` | `HardBounce` | Hard bounce |
+| `soft_bounce` | `SoftBounce` | Soft bounce |
+| `blocked` | `Blocked` | Blocked |
+| `unsubscribed` | `Unsubscribed` | Unsubscribed |
+| `spam` | `SpamComplaint` | Spam complaint |
+| No event | `None` | No outcome |
+
+Event names that the map does not list, such as `sent`, are not an outcome.
+The hard-bounce names follow `EmailEventApplier::HARD_BOUNCE_EVENTS`.
+`blocked` is in that list, but it keeps the `Blocked` outcome.
+
+**Chosen outcome.** A mail can have several events. The tab uses the event with
+the latest `occurred_at`. If two events share a time, the tab uses the event with
+the higher `er_email_events.id`.
+
+- A soft bounce followed by a delivery shows `Delivered`.
+- A delivery followed by a bounce shows the bounce.
+
+**Filters.** Each filter is a URL parameter on `tab=email-delivery`. The filters
+combine.
+
+- `email`: the whole recipient address. The column collation makes the match
+  case-insensitive. An invalid address gives no recipient filter. The input
+  keeps the invalid address and marks it as not valid.
+- `tag`: one tag from the plugin's comma-separated `tags` value. The plugin
+  trims each stored tag and folds its commas to spaces (`sendinblueStoredTags()`).
+  The tab folds a comma in the input to a space the same way. The tab does not
+  decode HTML entities. It reads the value with `ElanRegistry\Input::raw()`,
+  which does not encode it. The plugin's `delivery_logs.php` decodes only
+  because it reads `Input::get()`, which encodes.
+- `outcome`: `all` (default), one outcome from the map, or `stale`. `stale`
+  shows "No outcome after N hours". It lists mail with outcome `None` that Brevo
+  accepted more than N hours ago. `None` means that the mail has no outcome event
+  of any kind. A mail whose only event is `unsubscribed` or `spam` has that
+  outcome, so it is not stale.
+- `hours`: an integer from 1 to 720. The default is 2. The value applies to
+  `stale` only.
+- `page`: an integer of 1 or more.
+
+An invalid value gives its default. It never gives an error.
+
+**Count line.** The counts cover all filtered mail, on every page, not only the
+50 rows on the current page.
+
+**Paging.** Each page shows 50 mail. A page number past the last page shows the
+last page.
+
+**Limits.**
+
+- The tab shows only mail accepted inside the retention window. The window is
+  the constant `RETENTION_SENDINBLUE_MESSAGES_DAYS` in `usersc/includes/config.php`,
+  which is 90 days. Older mail does not appear, even when a webhook event names it.
+- The webhook drops an event that matches no single user. Brevo may deliver a
+  mail that still shows No outcome.
+- The plugin table has no index that leads with `accepted_at`, so the window
+  query scans `plg_sendinblue_messages`. A recipient filter can use the
+  `recipient_accepted` index. The plugin owns this table, so the Registry does
+  not add an index to it.
+- Owner and car links come only from the chosen event row. A mail with no event
+  has no owner or car link. A `user_id` or `car_id` that is not a positive
+  integer (for example 0, for an address that no single user holds) also
+  gives no link.
+- An old plugin table has no `tags` column. The tab then hides the tag filter.
+
+**Admin only.** Only admins see the tab.
+
+- The tab key is not in `$validTabs` for a non-admin. A request with
+  `tab=email-delivery` opens the default tab.
+- The tab include checks `hasPerm([2])` again.
+
+**No Refresh and no Brevo call.** The tab has no Refresh action. It makes no
+Brevo API call. It reads database rows that already exist.
+
+For a manual check of one mail, open `usersc/plugins/sendinblue/delivery_logs.php`.
+Only master accounts can open it. The plugin directory is outside Git (see
+[Overview](#overview)), so this path is not a link.
 
 ### Address-Match Rule (#2356)
 
