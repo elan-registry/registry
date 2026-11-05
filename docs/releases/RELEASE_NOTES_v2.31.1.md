@@ -15,6 +15,7 @@ A failed read no longer shows as a default value or a success.
 - If the switch or batch size cannot be read, auto-send sends nothing. A manual send with an unreadable batch size shows an error.
 - An unreadable or missing job state row now says what failed and which next step to take.
 - The All pill is gone. Eligible (default) and Next Queue use send order. Rows link car and owner.
+- Verification cards name their unit, and the Bounced, Blocked and Opted out pills say "cars". Blocked shows a readable cause.
 
 ## Issues Resolved
 
@@ -23,5 +24,5 @@ A failed read no longer shows as a default value or a success.
 - [#2587](https://github.com/elan-registry/registry/issues/2587) — The auto-send job sends no emails when the batch-size read fails.
 - [#2573](https://github.com/elan-registry/registry/issues/2573) — The status panel gives a reason and a next step for an unreadable or missing job state.
 - [#2599](https://github.com/elan-registry/registry/issues/2599) — Eligible and Next Queue list cars in send order. Queue rows link to the car and owner.
-- WIP: [#2458](https://github.com/elan-registry/registry/issues/2458) — Verification tab labels, chip text, and accessibility follow-ups.
+- [#2458](https://github.com/elan-registry/registry/issues/2458) — Verification tab labels, chip text, tooltips, and accessibility follow-ups.
 - WIP: [#2496](https://github.com/elan-registry/registry/issues/2496) — Recent Activity shows as a sortable table with a car link.

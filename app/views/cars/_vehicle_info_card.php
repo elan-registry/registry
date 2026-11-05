@@ -74,7 +74,7 @@ $_showOwnershipSection = $purchaseDate || $soldDate || !$_isSold || $_showEmailR
  * @return string Button HTML with all values escaped
  */
 $_helpButton = static function (string $ariaLabel, string $tooltip): string {
-    return '<button type="button" class="btn btn-link p-0 align-baseline"'
+    return '<button type="button" class="btn btn-link p-0 align-baseline er-help-btn"'
         . ' data-bs-toggle="tooltip" data-bs-title="' . htmlspecialchars($tooltip, ENT_QUOTES, 'UTF-8') . '"'
         . ' aria-label="' . htmlspecialchars($ariaLabel, ENT_QUOTES, 'UTF-8') . '">'
         . '<i class="fas fa-circle-question" aria-hidden="true"></i></button>';
@@ -216,13 +216,13 @@ $_formatDate = static function (?string $value, string $format, string $context)
             </dt>
             <dd class="col-sm-8">
                 <?php if ($_emailOptedOut) { $_date = $_formatDate($ownerEmailState->optedOutAt, 'F j, Y', $_carLabel . ' owner email flag email_opted_out_at has'); ?>
-                <span class="me-3">Opted out<?= $_date !== '' ? ' ' . htmlspecialchars($_date, ENT_QUOTES, 'UTF-8') : '' ?> <?= $_helpButton('What Opted out means', 'The owner stopped all registry email except account email. The owner can lift the opt-out with Resume registry email in Account Settings, or an admin can lift it.') ?></span>
+                <span class="me-3">Opted out<?= $_date !== '' ? ' ' . htmlspecialchars($_date, ENT_QUOTES, 'UTF-8') : '' ?> <?= $_helpButton('What Opted out means', 'The owner stopped registry email. The registry does not send verification email, messages from other owners, messages from an admin, or transfer notices to this owner. Account email is still sent. The owner can lift the opt-out with Resume registry email in Account Settings, or an admin can lift it.') ?></span>
                 <?php } ?>
                 <?php if ($_emailBounced) { $_date = $_formatDate($ownerEmailState->bouncedAt, 'F j, Y', $_carLabel . ' owner email flag email_bounced_at has'); ?>
-                <span class="me-3">Bounced<?= $_date !== '' ? ' ' . htmlspecialchars($_date, ENT_QUOTES, 'UTF-8') : '' ?> <?= $_helpButton('What Bounced means', "Email to this owner's address bounced. The registry does not send verification email, messages from other owners, or messages from an admin to this owner. The owner can lift the bounce by confirming a different email address, or an admin can lift it.") ?></span>
+                <span class="me-3">Bounced<?= $_date !== '' ? ' ' . htmlspecialchars($_date, ENT_QUOTES, 'UTF-8') : '' ?> <?= $_helpButton('What Bounced means', "Email to this owner's address bounced. The registry does not send verification email, messages from other owners, messages from an admin, or transfer notices to this owner. Account email is still sent. The owner can lift the bounce by confirming a different email address, or an admin can lift it.") ?></span>
                 <?php } ?>
                 <?php if ($_emailBlocked) { $_date = $_formatDate($ownerEmailState->blockedAt, 'F j, Y', $_carLabel . ' owner email flag email_blocked_at has'); ?>
-                <span class="me-3">Blocked<?= $_date !== '' ? ' ' . htmlspecialchars($_date, ENT_QUOTES, 'UTF-8') : '' ?> <?= $_helpButton('What Blocked means', "This owner's address is blocked. The registry does not send verification email or messages from other owners to this owner. A message from an admin is still sent. The owner can lift the block by confirming a different email address, or an admin can lift it.") ?></span>
+                <span class="me-3">Blocked<?= $_date !== '' ? ' ' . htmlspecialchars($_date, ENT_QUOTES, 'UTF-8') : '' ?> <?= $_helpButton('What Blocked means', "This owner's address is blocked. The registry does not send verification email, messages from other owners, or transfer notices to this owner. A message from an admin is still sent, unless the owner is also Bounced or Opted out. Account email is still sent. The owner can lift the block by confirming a different email address, or an admin can lift it.") ?></span>
                 <?php } ?>
             </dd>
             <?php } ?>

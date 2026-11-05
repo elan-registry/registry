@@ -137,7 +137,8 @@ final class VerificationStatusPanelRenderTest extends TestCase
         $this->assertSame(1, $xp->query('//details[@id="verificationStatusPanel"]')?->length);
         $this->assertStringContainsString(
             'System Status & Feature Switch',
-            (string) $xp->query('//details/summary/h5')?->item(0)?->textContent
+            (string) $xp->query('//details/summary/span[contains(concat(" ", normalize-space(@class), " "), " h5 ")]')
+                ?->item(0)?->textContent
         );
         $this->assertSame(1, $xp->query('//input[@id="verificationEnabledSwitch"]')?->length);
     }
@@ -354,7 +355,8 @@ final class VerificationStatusPanelRenderTest extends TestCase
             'reconciliation' => self::job(CronJobEnabledState::UNREADABLE, null),
         ])));
         $this->assertSame(
-            'Status unavailable The job state could not be read, so the job may not run. Check the system log for CronJobFailure entries.',
+            'Status unavailable The job state could not be read, so the job may not run.'
+                . ' Check the system log for CronJobFailure entries.',
             self::rowText($xp, 'reconciliation')
         );
 
@@ -363,10 +365,75 @@ final class VerificationStatusPanelRenderTest extends TestCase
         ])));
         $this->assertSame(
             'Status unavailable The job has no row in er_cron_job_runs, so cron does not run it.'
-                . ' Run composer migrate:status. If its seed migration is applied, the row was deleted'
-                . ' and must be inserted again.',
+                . ' Run composer migrate:status. If 20260918133038_rename_reconciliation_job is applied,'
+                . ' insert the row again.',
             self::rowText($xp, 'reconciliation')
         );
+    }
+
+    /** The summary holds no heading: a heading inside a summary breaks its button role (#2458). */
+    public function test_panel_summaryHasNoHeading(): void
+    {
+        $xp = self::dom(self::renderHtml(self::build()));
+
+        $this->assertSame(0, $xp->query('//details/summary//*[self::h1 or self::h2 or self::h3 or self::h4 or self::h5 or self::h6]')?->length);
+    }
+
+    /** role=status is already a polite live region (#2458). */
+    public function test_panel_toggleFeedbackIsAStatusRegionWithNoAriaLive(): void
+    {
+        $feedback = self::dom(self::renderHtml(self::build()))
+            ->query('//*[@id="verificationToggleFeedback"]')?->item(0);
+
+        $this->assertInstanceOf(DOMElement::class, $feedback);
+        $this->assertSame('status', $feedback->getAttribute('role'));
+        $this->assertFalse($feedback->hasAttribute('aria-live'));
+    }
+
+    /**
+     * The fixture shows every icon branch: the summary, the row and detail
+     * icons, a failure entry, the switch help, and the admin incident steps.
+     */
+    public function test_panel_everyIconIsHiddenFromScreenReaders(): void
+    {
+        $status = self::build(['failureLog' => ['count' => 1, 'recent' => [
+            ['loggedAt' => '2026-10-19 02:00:00', 'message' => 'Job x failed'],
+        ]]]);
+
+        $icons = self::dom(self::renderHtml($status, true))
+            ->query('//i[contains(concat(" ", normalize-space(@class), " "), " fas ")]');
+
+        $this->assertNotFalse($icons);
+        $this->assertGreaterThan(5, $icons->length);
+        foreach ($icons as $icon) {
+            $this->assertInstanceOf(DOMElement::class, $icon);
+            $this->assertSame('true', $icon->getAttribute('aria-hidden'), $icon->getAttribute('class'));
+        }
+    }
+
+    /** The advice is the next step, and only an admin can take it (#2458). */
+    #[DataProvider('viewerProvider')]
+    #[Group('regression')]
+    public function test_panel_jobAdvice_showsWithCodeToAdminsOnly(bool $canToggle): void
+    {
+        $xp = self::dom(self::renderHtml(self::build([
+            'reconciliation' => self::job(CronJobEnabledState::MISSING, null),
+        ]), $canToggle));
+
+        $codes = $xp->query('//dd[@data-status-row="reconciliation"]//code');
+        $this->assertNotFalse($codes);
+        $text = self::rowText($xp, 'reconciliation');
+
+        if ($canToggle) {
+            $this->assertSame(2, $codes->length);
+            $this->assertSame('composer migrate:status', $codes->item(0)?->textContent);
+            $this->assertSame('20260918133038_rename_reconciliation_job', $codes->item(1)?->textContent);
+            $this->assertStringContainsString('insert the row again.', $text);
+        } else {
+            $this->assertSame(0, $codes->length);
+            $this->assertStringNotContainsString('migrate:status', $text);
+            $this->assertStringContainsString('so cron does not run it.', $text);
+        }
     }
 
     #[Group('regression')]

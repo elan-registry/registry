@@ -132,9 +132,11 @@ async function numberOf(locator) {
 }
 
 // Seven cards: car counts for Eligible/Pending/Verified/Sold, owner counts
-// for Bounced/Blocked/Opted out. The owner cards say "owners" and the pills
-// count cars, so the bounced owner with two cars counts once on the card and
-// twice in the pill.
+// for Bounced/Blocked/Opted out. Each card has one [data-unit] line: "cars" or
+// "owners". The Verified and Sold lines also name the Window ("cars · ...").
+// The pills count cars, and the Bounced/Blocked/Opted out pills say so
+// ("(n cars)"), so the bounced owner with two cars counts once on the card
+// and twice in the pill.
 async function expectSummaryCardsAndPills(page) {
     const db = readDbSummary(30);
     const batchSize = await readBatchSize(page);
@@ -150,8 +152,12 @@ async function expectSummaryCardsAndPills(page) {
         await expect(tile.locator('.er-stat-label').first()).toHaveText(card.label);
         expect(await numberOf(tile.locator('.er-stat-number')), `card "${card.key}"`).toBe(db[card.countKey]);
 
-        const ownersLabel = tile.locator('.er-stat-label', { hasText: /^owners$/ });
-        await expect(ownersLabel, `"owners" sub-label of card "${card.key}"`).toHaveCount(card.ownerCount ? 1 : 0);
+        // One locator on the expected data-unit value: no line, a second line
+        // or the wrong unit each fail the strict text assertion.
+        const unit = card.ownerCount ? 'owners' : 'cars';
+        const unitText = card.key === 'verified' || card.key === 'sold' ? /^cars · / : new RegExp(`^${unit}$`);
+        await expect(tile.locator(`[data-unit="${unit}"]`), `unit line of card "${card.key}"`).toHaveText(unitText);
+        await expect(tile.locator('[data-unit]'), `one unit line on card "${card.key}"`).toHaveCount(1);
     }
 
     const pills = page.locator('a.filter-pill');
@@ -164,7 +170,12 @@ async function expectSummaryCardsAndPills(page) {
         // Next Queue is the first batch of Eligible, so min(eligible, batch size).
         const expectedCount = pill.status === 'next_queue' ? Math.min(db.eligible, batchSize) : db[pill.status];
         expect(Number.isInteger(expectedCount), `expected count of pill "${pill.status}"`).toBe(true);
-        await expect(link.locator('span.ms-1'), `count of pill "${pill.status}"`).toHaveText(`(${expectedCount.toLocaleString('en-US')})`);
+        const countText = expectedCount.toLocaleString('en-US');
+        const ownerCountStatus = SUMMARY_CARDS.some((card) => card.key === pill.status && card.ownerCount);
+        const expectedText = ownerCountStatus
+            ? `(${countText} ${expectedCount === 1 ? 'car' : 'cars'})`
+            : `(${countText})`;
+        await expect(link.locator('span.ms-1'), `count of pill "${pill.status}"`).toHaveText(expectedText);
     }
     // The seeded no-profile and malformed-address cars are in Invalid email.
     expect(db.invalid_email, 'invalid_email counts the two seeded cars').toBeGreaterThanOrEqual(2);
@@ -193,6 +204,9 @@ async function expectBlockedAndOptedOutFilters(page) {
     const blockedChip = blockedRow.locator('td').nth(STATUS_CELL).locator('span.badge');
     await expect(blockedChip).toHaveAttribute('data-chip', 'blocked');
     await expect(blockedChip).toHaveText(/^\s*Blocked\s*$/);
+    // The seeded block has cause `blocklist`, so the chip names it.
+    await expect(blockedRow.locator('td').nth(STATUS_CELL).locator('small.text-muted'), 'reason of the Blocked chip')
+        .toHaveText('On Brevo blocklist');
     for (const other of [suppressedCarId, bouncedCarId, bouncedCarIdB, staleBlockedCarId, pendingCarId]) {
         await expect(queueRow(page, other), `car ${other} is not in the Blocked pill`).toHaveCount(0);
     }
@@ -424,7 +438,7 @@ test.describe('Admin Verification Dashboard', () => {
     //
     // AC (#2361): seven summary cards. Eligible, Pending, Verified and Sold
     // count cars. Bounced, Blocked and Opted out count owners ("owners"
-    // sub-label), so the fixture's two-car bounced owner counts once on the
+    // unit line), so the fixture's two-car bounced owner counts once on the
     // card and twice in the pill. Every number is compared with an independent
     // read of CarRepository::countVerificationSummary() through a standalone
     // PHP script, not derived from the page.

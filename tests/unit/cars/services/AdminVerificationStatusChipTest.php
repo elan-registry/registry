@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\EffectiveEmailFlags;
 use ElanRegistry\Car\EmailEventApplier;
 use ElanRegistry\Car\VerificationTabStatus;
@@ -50,14 +51,70 @@ final class AdminVerificationStatusChipTest extends TestCase
         return (object) ['event' => $eventName, 'occurred_at' => $occurredAt];
     }
 
-    public function testOwnerBlockedShowsBlockedWithStoredCause(): void
+    public function testOwnerBlockedShowsBlockedWithReadableCause(): void
     {
         $chip = VerificationTabStatus::chip(null, self::flags(blocked: true, blockedCause: 'spam'));
 
         $this->assertSame('blocked', $chip['kind']);
         $this->assertSame('Blocked', $chip['label']);
         $this->assertSame('text-bg-danger', $chip['class']);
-        $this->assertSame('spam', $chip['reason']);
+        $this->assertSame('Spam complaint', $chip['reason']);
+    }
+
+    /** @return array<string, array{?string, string}> */
+    public static function blockedCauseProvider(): array
+    {
+        return [
+            'spam'         => ['spam', 'Spam complaint'],
+            'unsubscribed' => ['unsubscribed', 'Unsubscribed in Brevo'],
+            'blocklist'    => ['blocklist', 'On Brevo blocklist'],
+            'null'         => [null, 'Cause unknown'],
+            'empty'        => ['', 'Cause unknown'],
+            // A new Brevo cause shows the stored value, so the chip never hides data.
+            'unknown key'  => ['future_cause', 'future_cause'],
+        ];
+    }
+
+    /** @issue 2458 */
+    #[DataProvider('blockedCauseProvider')]
+    public function testBlockedCauseShowsItsReadableLabel(?string $cause, string $expected): void
+    {
+        $chip = VerificationTabStatus::chip(null, self::flags(blocked: true, blockedCause: $cause));
+
+        $this->assertSame('blocked', $chip['kind']);
+        $this->assertSame($expected, $chip['reason']);
+    }
+
+    /**
+     * A cause that CarRepository accepts but the chip does not label would
+     * show its raw key, so a new cause needs a label in the same change.
+     */
+    public function testEveryStoredBlockedCauseHasAReadableLabel(): void
+    {
+        foreach (CarRepository::BLOCKED_CAUSES as $cause) {
+            $chip = VerificationTabStatus::chip(null, self::flags(blocked: true, blockedCause: $cause));
+
+            $this->assertNotSame($cause, $chip['reason'], "cause '{$cause}' has no readable label");
+        }
+    }
+
+    /** @return array<string, array{string}> */
+    public static function legacySentEventProvider(): array
+    {
+        return [
+            'request'  => ['request'],
+            'requests' => ['requests'],
+        ];
+    }
+
+    /** Legacy rows can store `request` or `requests` for a sent message (#2458). */
+    #[DataProvider('legacySentEventProvider')]
+    public function testLegacyRequestEventShowsSent(string $eventName): void
+    {
+        $chip = VerificationTabStatus::chip(self::event($eventName, '2026-09-01 10:00:00'), self::flags());
+
+        $this->assertSame('sent', $chip['kind']);
+        $this->assertSame('Sent', $chip['label']);
     }
 
     /**
@@ -70,15 +127,7 @@ final class AdminVerificationStatusChipTest extends TestCase
 
         $this->assertSame('blocked', $chip['kind']);
         $this->assertSame('Blocked', $chip['label']);
-        $this->assertSame('unsubscribed', $chip['reason']);
-    }
-
-    public function testBlockedWithNoKnownCauseShowsCauseUnknown(): void
-    {
-        $chip = VerificationTabStatus::chip(null, self::flags(blocked: true));
-
-        $this->assertSame('blocked', $chip['kind']);
-        $this->assertSame('cause unknown', $chip['reason']);
+        $this->assertSame('Unsubscribed in Brevo', $chip['reason']);
     }
 
     public function testOwnerOptedOutShowsOptedOut(): void
