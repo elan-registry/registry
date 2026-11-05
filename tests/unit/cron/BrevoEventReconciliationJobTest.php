@@ -411,6 +411,107 @@ final class BrevoEventReconciliationJobTest extends TestCase
         ];
     }
 
+    /** A plain no-user result has no plugin row: no write, counter rules as before. */
+    public function testNoUserWithoutAPluginRowWritesNoUnmatchedRow(): void
+    {
+        $this->matchFor = static fn (): EmailEventMatch => EmailEventMatch::noUser();
+
+        $this->makeJob([new FakeBrevoEvent(tag: 'car_verification')])->runNowWithSummary();
+
+        $this->assertSame([], $this->applier->unmatchedCalls);
+    }
+
+    /** #2611: the event is stored with no owner, and the counter rules stay as they were. */
+    public function testVerificationEventWithNoUserOnAPluginRowIsStoredAndStillCounted(): void
+    {
+        $this->matchFor = static fn (): EmailEventMatch => EmailEventMatch::noUserOnPluginRow();
+
+        $summary = $this->makeJob([
+            new FakeBrevoEvent(
+                email: 'Stranger@Example.com',
+                event: 'hardBounces',
+                messageId: 'm-orphan',
+                tag: 'car_verification',
+                reason: 'mailbox unavailable'
+            ),
+        ], db: $db)->runNowWithSummary();
+
+        $this->assertSame([], $this->applier->calls, 'No owner: apply() is not called');
+        $this->assertCount(1, $this->applier->unmatchedCalls);
+        $call = $this->applier->unmatchedCalls[0];
+        $this->assertTrue($call['match']->hasPluginRow());
+        $this->assertSame('stranger@example.com', $call['email']);
+        $this->assertSame('hard_bounce', $call['event']);
+        $this->assertSame('mailbox unavailable', $call['reason']);
+        $this->assertSame('m-orphan', $call['messageId']);
+        $this->assertSame(self::EVENT_DATE_LOCAL, $call['occurredAt']);
+        $this->assertSame(1, $summary->unmatchedCount);
+        $this->assertSame(0, $summary->skippedCount);
+        $this->assertSame(1, $db->unmatchedCounterIncrementCalls());
+    }
+
+    public function testNonVerificationEventWithNoUserOnAPluginRowIsStoredButNotCounted(): void
+    {
+        $this->matchFor = static fn (): EmailEventMatch => EmailEventMatch::noUserOnPluginRow();
+
+        $summary = $this->makeJob([new FakeBrevoEvent(tag: 'password_reset')], db: $db)->runNowWithSummary();
+
+        $this->assertCount(1, $this->applier->unmatchedCalls);
+        $this->assertSame(0, $summary->unmatchedCount);
+        $this->assertSame(0, $summary->skippedCount);
+        $this->assertSame(0, $db->unmatchedCounterIncrementCalls());
+    }
+
+    /** The write fails: skipped, no counter, the page goes on, and the log holds a hash only. */
+    public function testFailedUnmatchedWriteCountsSkippedNotUnmatchedAndDoesNotStopThePage(): void
+    {
+        $this->matchFor = static fn (): EmailEventMatch => EmailEventMatch::noUserOnPluginRow();
+        $this->applier->failOn('m2');
+
+        $summary = $this->makeJob([
+            new FakeBrevoEvent(email: 'a@example.com', messageId: 'm1'),
+            new FakeBrevoEvent(email: 'stranger@example.com', messageId: 'm2'),
+            new FakeBrevoEvent(email: 'c@example.com', messageId: 'm3'),
+        ], db: $db)->runNowWithSummary();
+
+        $this->assertSame(
+            ['m1', 'm2', 'm3'],
+            array_column($this->applier->unmatchedCalls, 'messageId'),
+            'A failed write must not stop later events in the page'
+        );
+        $this->assertSame(1, $summary->skippedCount);
+        $this->assertSame(2, $summary->unmatchedCount, 'The failed event is not counted as unmatched');
+        $this->assertSame(2, $db->unmatchedCounterIncrementCalls());
+        $log = $this->logsContaining('write FAILED for no owner');
+        $this->assertCount(1, $log);
+        $this->assertStringContainsString('skipped, will retry next cycle', $log[0]['message']);
+        $this->assertStringContainsString(CarDatabaseException::class . ' (code', $log[0]['message']);
+        $this->assertStringNotContainsString('@', $log[0]['message'], 'The log line must not hold an address');
+    }
+
+    /** A data fault fails on every run: skipped and logged as rejected, the page goes on. */
+    #[DataProvider('dataFaultProvider')]
+    public function testDataFaultInTheUnmatchedWriteSkipsOnlyThatEvent(\Throwable $fault): void
+    {
+        $this->matchFor = static fn (): EmailEventMatch => EmailEventMatch::noUserOnPluginRow();
+        $this->applier->failOn('m2', $fault);
+
+        $summary = $this->makeJob([
+            new FakeBrevoEvent(email: 'a@example.com', messageId: 'm1'),
+            new FakeBrevoEvent(email: 'b@example.com', messageId: 'm2'),
+            new FakeBrevoEvent(email: 'c@example.com', messageId: 'm3'),
+        ], db: $db)->runNowWithSummary();
+
+        $this->assertSame(['m1', 'm2', 'm3'], array_column($this->applier->unmatchedCalls, 'messageId'));
+        $this->assertSame(1, $summary->skippedCount);
+        $this->assertSame(2, $summary->unmatchedCount);
+        $this->assertSame(2, $db->unmatchedCounterIncrementCalls());
+        $log = $this->logsContaining('write REJECTED bad data for no owner');
+        $this->assertCount(1, $log);
+        $this->assertStringContainsString(get_class($fault) . ' (code', $log[0]['message']);
+        $this->assertStringNotContainsString('@', $log[0]['message'], 'The log line must not hold an address');
+    }
+
     // --- Address validation -------------------------------------------------
 
     #[DataProvider('invalidAddresses')]
@@ -771,6 +872,23 @@ final class BrevoEventReconciliationJobTest extends TestCase
         $this->assertNotEmpty($log, 'A non-string date must be logged, not silently coerced');
         $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, $log[0]['category']);
         $this->assertStringContainsString('(int,', $log[0]['message']);
+    }
+
+    /** #2611: the fallback line for an event with no owner names the hash, not "user 0". */
+    public function testMissingDateOnAnEventWithNoOwnerFallsBackToRunTimeAndLogsTheHashOnly(): void
+    {
+        $this->matchFor = static fn (): EmailEventMatch => EmailEventMatch::noUserOnPluginRow();
+
+        $summary = $this->makeJob([new FakeBrevoEvent(email: 'stranger@example.com', date: null)])
+            ->runNowWithSummary();
+
+        $this->assertSame(self::NOW, $this->applier->unmatchedCalls[0]['occurredAt']);
+        $this->assertSame(0, $summary->skippedCount);
+        $log = $this->logsContaining('no usable date');
+        $this->assertNotEmpty($log);
+        $this->assertStringContainsString('for no owner (hash ', $log[0]['message']);
+        $this->assertStringNotContainsString('stranger@example.com', $log[0]['message']);
+        $this->assertStringNotContainsString('@', $log[0]['message']);
     }
 
     public function testMissingDateFallsBackToRunTime(): void

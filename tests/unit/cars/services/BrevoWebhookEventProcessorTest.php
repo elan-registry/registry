@@ -354,8 +354,119 @@ final class BrevoWebhookEventProcessorTest extends TestCase
 
         $this->assertSame(ProcessingResult::NO_USER_MATCH, $result);
         $this->assertSame([], $this->applier->calls);
+        $this->assertSame([], $this->applier->unmatchedCalls, 'No plugin row: nothing is stored (#2611)');
         $this->assertCount(1, $this->logMessages());
         $this->assertStringContainsString(substr(hash('sha256', self::ADDRESS), 0, 8), $this->logMessages()[0]);
+        $this->assertStringNotContainsString('stored with no owner', $this->logMessages()[0]);
+        $this->assertNoLogHolds(self::ADDRESS);
+    }
+
+    public function testNoUserOnAPluginRowStoresTheEventWithNoOwnerAndLogsTheHashOnly(): void
+    {
+        $this->matcher->expects($this->once())->method('matchByMessageId')->willReturn(EmailEventMatch::noUserOnPluginRow());
+
+        $result = $this->processor->process($this->basePayload([
+            'event' => 'hard_bounce',
+            'email' => 'Owner@Example.com',
+            'reason' => 'mailbox full',
+            'ts_event' => 1_700_000_000,
+        ]));
+
+        $this->assertSame(ProcessingResult::NO_USER_MATCH, $result);
+        $this->assertSame([], $this->applier->calls, 'No owner: apply() is not called');
+        $this->assertCount(1, $this->applier->unmatchedCalls);
+        $call = $this->applier->unmatchedCalls[0];
+        $this->assertTrue($call['match']->hasPluginRow());
+        $this->assertSame(self::ADDRESS, strtolower($call['email']));
+        $this->assertSame('hard_bounce', $call['event']);
+        $this->assertSame('mailbox full', $call['reason']);
+        $this->assertSame('brevo-msg-1', $call['messageId']);
+        $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $call['occurredAt']);
+        $this->assertCount(1, $this->logMessages());
+        $this->assertStringContainsString('stored with no owner', $this->logMessages()[0]);
+        $this->assertStringContainsString(substr(hash('sha256', self::ADDRESS), 0, 8), $this->logMessages()[0]);
+        $this->assertNoLogHolds(self::ADDRESS);
+    }
+
+    public function testNoUserOnAPluginRowDuplicateLogsAlreadyStored(): void
+    {
+        $this->matcher->expects($this->once())->method('matchByMessageId')->willReturn(EmailEventMatch::noUserOnPluginRow());
+        $this->applier->willReturn(false);
+
+        $result = $this->processor->process($this->basePayload(['event' => 'hard_bounce', 'ts_event' => 1_700_000_000]));
+
+        $this->assertSame(ProcessingResult::NO_USER_MATCH, $result);
+        $this->assertCount(1, $this->applier->unmatchedCalls);
+        $this->assertCount(1, $this->logMessages());
+        $this->assertStringContainsString('; already stored with no owner', $this->logMessages()[0]);
+        $this->assertNoLogHolds(self::ADDRESS);
+    }
+
+    public function testNoUserOnAPluginRowDuplicateWithNoTimeLogsNoReceiptTimeNote(): void
+    {
+        // The duplicate wrote no row, so the stored occurred_at is not this receipt time.
+        $this->matcher->expects($this->once())->method('matchByMessageId')->willReturn(EmailEventMatch::noUserOnPluginRow());
+        $this->applier->willReturn(false);
+
+        $result = $this->processor->process($this->basePayload(['event' => 'hard_bounce']));
+
+        $this->assertSame(ProcessingResult::NO_USER_MATCH, $result);
+        $this->assertCount(1, $this->logMessages());
+        $this->assertStringContainsString('; already stored with no owner', $this->logMessages()[0]);
+        $this->assertStringNotContainsString('occurred_at is the receipt time', $this->logMessages()[0]);
+        $this->assertNoLogHolds(self::ADDRESS);
+    }
+
+    public function testNoUserOnAPluginRowWithNoTimeLogsTheReceiptTimeAndTheHashOnly(): void
+    {
+        $this->matcher->expects($this->once())->method('matchByMessageId')->willReturn(EmailEventMatch::noUserOnPluginRow());
+
+        $result = $this->processor->process($this->basePayload(['event' => 'hard_bounce']));
+
+        $this->assertSame(ProcessingResult::NO_USER_MATCH, $result);
+        $this->assertCount(1, $this->logMessages());
+        $message = $this->logMessages()[0];
+        $this->assertStringContainsString('; stored with no owner', $message);
+        $this->assertStringContainsString('no usable ts_event/ts (null); occurred_at is the receipt time', $message);
+        $this->assertStringContainsString(substr(hash('sha256', self::ADDRESS), 0, 8), $message);
+        $this->assertNoLogHolds(self::ADDRESS);
+    }
+
+    public function testRecordUnmatchedDatabaseFailureReturnsWriteFailureAndLogsNoAddress(): void
+    {
+        $this->matcher->expects($this->once())->method('matchByMessageId')->willReturn(EmailEventMatch::noUserOnPluginRow());
+        $this->applier->failOn('brevo-msg-1');
+
+        $result = $this->processor->process($this->basePayload(['event' => 'hard_bounce']));
+
+        $this->assertSame(ProcessingResult::WRITE_FAILURE, $result);
+        $this->assertCount(1, $this->applier->unmatchedCalls);
+        $this->assertCount(1, $this->logMessages());
+        $this->assertStringContainsString('the record step failed', $this->logMessages()[0]);
+        $this->assertStringNotContainsString('stored with no owner', $this->logMessages()[0]);
+        $this->assertNoLogHolds(self::ADDRESS);
+    }
+
+    /** @return array<string, array{\Throwable}> */
+    public static function unmatchedDataFaultProvider(): array
+    {
+        return [
+            'bad datetime' => [new CarValidationException('bad time for owner@example.com')],
+            'empty address or wrong match' => [new \InvalidArgumentException('bad match for owner@example.com')],
+        ];
+    }
+
+    #[DataProvider('unmatchedDataFaultProvider')]
+    public function testRecordUnmatchedDataFaultReturnsMalformedAndLogsNoAddress(\Throwable $fault): void
+    {
+        $this->matcher->expects($this->once())->method('matchByMessageId')->willReturn(EmailEventMatch::noUserOnPluginRow());
+        $this->applier->failOn('brevo-msg-1', $fault);
+
+        $result = $this->processor->process($this->basePayload(['event' => 'hard_bounce']));
+
+        $this->assertSame(ProcessingResult::MALFORMED, $result);
+        $this->assertCount(1, $this->logMessages());
+        $this->assertStringContainsString('the record step rejected event', $this->logMessages()[0]);
         $this->assertNoLogHolds(self::ADDRESS);
     }
 
@@ -616,6 +727,21 @@ final class BrevoWebhookEventProcessorTest extends TestCase
         $result = $this->processor->process($this->basePayload(['event' => 'hard_bounce', 'ts_event' => 1_700_000_000]));
 
         $this->assertSame(ProcessingResult::NO_USER_MATCH, $result);
+        $this->assertSame([['brevo-msg-1', 'hard_bounce', 1_700_000_000, '']], $GLOBALS['mockRecordEventCalls']);
+    }
+
+    #[RunInSeparateProcess]
+    public function testPluginFunctionIsCalledForAnEventStoredWithNoOwner(): void
+    {
+        require_once __DIR__ . '/fixtures/sendinblue-record-event.php';
+        $GLOBALS['mockRecordEventCalls'] = [];
+        $GLOBALS['mockRecordEventMode'] = 'ok';
+        $this->matcher->expects($this->once())->method('matchByMessageId')->willReturn(EmailEventMatch::noUserOnPluginRow());
+
+        $result = $this->processor->process($this->basePayload(['event' => 'hard_bounce', 'ts_event' => 1_700_000_000]));
+
+        $this->assertSame(ProcessingResult::NO_USER_MATCH, $result);
+        $this->assertCount(1, $this->applier->unmatchedCalls);
         $this->assertSame([['brevo-msg-1', 'hard_bounce', 1_700_000_000, '']], $GLOBALS['mockRecordEventCalls']);
     }
 

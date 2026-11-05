@@ -1441,11 +1441,29 @@ trailing spaces. Matching never uses `LIKE`, `FIND_IN_SET` or a substring.
   [Retention of plugin rows](#retention-of-plugin-rows)). So the event
   matches no user, and a verification-tagged event counts as unmatched.
 
-An event for our message with no matching user returns `NO_USER_MATCH`. The
-webhook returns 2xx and writes no row. It logs the first 8 hex characters of
-the SHA-256 of the normalized address, never the address. Only an event that
-carries the tag `car_verification` increments
+An event for our message with no single user (no user, or two or more users,
+hold the address) returns `NO_USER_MATCH`. The webhook returns 2xx. It logs the
+first 8 hex characters of the SHA-256 of the normalized address, never the
+address. Only an event that carries the tag `car_verification` increments
 `er_verification_settings.unmatched_recipient_count`.
+
+The matcher gives these results a second state. When the message ID has a
+`plg_sendinblue_messages` row, the result is `EmailEventMatch::noUserOnPluginRow()`
+(`hasPluginRow()` is true). The processor then stores one `er_email_events`
+row with `user_id` 0 and `car_id` NULL (#2611). It logs
+`event "%s" matched no single user (address hash %s); stored with no owner.`
+A resent event (same message ID and event) makes no second row. A second
+unmatched recipient of the same message with the same event also makes no row,
+because all these rows share `user_id` 0. A failed insert returns
+`WRITE_FAILURE` (5xx), so Brevo retries. The row changes no owner state and
+does not count in the Verification tab. The Email Delivery tab shows its
+outcome with no owner link. Without a plugin row (a `sent` row only), the
+processor stores no row.
+
+Account deletion does not remove a `user_id` 0 row that holds the deleted
+address. The prune removes a `user_id` 0 row after 24 months for a terminal
+event (hard bounce or suppression), and after 90 days for any other event.
+Deleting these rows at account deletion is tracked in #2614.
 
 #### Date Guards
 
@@ -1470,7 +1488,10 @@ column, so a dropped event leaves a trace.
 #### `sendinblueRecordEvent()`
 
 The sendinblue plugin may define `sendinblueRecordEvent()` (#2355). The webhook
-calls it after the apply step, and also for an event with no user. The call is:
+calls it after the apply step, and also for an event with no user. sendinblue
+1.8.0 has no `sendinblueRecordEvent()`, so on that version the step is a
+no-op. The plugin row does not get the event. The processor logs nothing for
+this (#2355). The call is:
 
 ```php
 sendinblueRecordEvent($messageId, $event, $occurredAtSeconds, $reason ?? '');
@@ -1514,7 +1535,7 @@ retry a 2xx.
 | Matched to one user, transaction committed | 2xx |
 | Not a delivery event (for example `opened`, `click`) | 2xx, logged (event name only) |
 | Message not sent by this environment | 2xx, no log |
-| Our message, no single user holds the address | 2xx, logged (address hash prefix only). A `car_verification`-tagged event increments `er_verification_settings.unmatched_recipient_count` |
+| Our message, no single user holds the address | 2xx, logged (address hash prefix only). When the message has a plugin row, one `user_id` 0 row is stored, and a failed insert gives 5xx. A `car_verification`-tagged event increments `er_verification_settings.unmatched_recipient_count` |
 | Brevo prerequisites not met | 2xx, logged |
 | Malformed or unparseable payload (including a top-level JSON list and a bad address) | 400, logged |
 | Stored data that cannot be parsed (for example a zero message time, or a profile flag value not 0 or 1). It fails the same way on every retry. The event row is rolled back, so the log line is the only record of the event | 400, logged (no message) |
@@ -1901,8 +1922,13 @@ last page.
 - The tab shows only mail accepted inside the retention window. The window is
   the constant `RETENTION_SENDINBLUE_MESSAGES_DAYS` in `usersc/includes/config.php`,
   which is 90 days. Older mail does not appear, even when a webhook event names it.
-- The webhook drops an event that matches no single user. Brevo may deliver a
-  mail that still shows No outcome.
+- An event for an address that no single user holds shows with an outcome and
+  no owner link (#2611). Only mail with a `plg_sendinblue_messages` row gets
+  such an event row. A mail with no event shows No outcome.
+- A mail can show No outcome although Brevo delivered it, when no event was
+  stored (for example, the event never arrived, or it arrived before #2611).
+- The tab joins events on the message ID only. It shows one outcome for each
+  message, not for each recipient.
 - The plugin table has no index that leads with `accepted_at`, so the window
   query scans `plg_sendinblue_messages`. A recipient filter can use the
   `recipient_accepted` index. The plugin owns this table, so the Registry does
@@ -2099,8 +2125,11 @@ verification switch off.
   treats an event date more than 5 minutes after the run time as missing, and
   uses the run time. It passes that run time to `apply()` as a fallback. The
   Clear Block compare then uses the message time (#2480).
-- **Unmatched events.** The job increments the unmatched recipient counter only
-  for a `car_verification`-tagged event of our mail with no single user.
+- **Unmatched events.** When the message has a plugin row, the job stores one
+  `user_id` 0 row through `EmailEventApplier::recordUnmatched()` (#2611). A
+  write failure counts in `skippedCount`, and the job continues. The job
+  increments the unmatched recipient counter only for a `car_verification`-tagged
+  event of our mail with no single user.
 - **Bad stored data.** A stored value that cannot be parsed (for example a
   zero message time) fails the same way on every run. The job counts the
   event in `skippedCount`, logs the `ExceptionLogSummary`, and continues with

@@ -2978,6 +2978,45 @@ class CarRepository
     }
 
     /**
+     * Record one Brevo delivery-status event for our mail that no single user holds
+     *
+     * The row has `user_id` 0 and `car_id` NULL (#2611). The admin Email
+     * Delivery tab then shows the outcome of the mail with no owner link.
+     * No `users` row has ID 0, so the row belongs to no owner. The upsert
+     * rule is in {@see upsertEmailEvent()}. A resent event makes no second
+     * row, because the unique key `(user_id, brevo_message_id, event)` has
+     * the same values.
+     *
+     * @param string $email Recipient email address from the Brevo event. Stored
+     *                      normalized ({@see EmailAddress::normalize()}).
+     * @param string $event Brevo event name (e.g. 'hard_bounce', 'delivered')
+     * @param string|null $reason Optional reason/detail text from the event
+     * @param string $messageId Brevo's message id for this send
+     * @param string $occurredAt Datetime string in AppConstants::DATETIME_FORMAT
+     * @return int See {@see upsertEmailEvent()}: 1 for a new row, 0 for a duplicate
+     * @throws CarDatabaseException If the query fails
+     */
+    public function insertUnmatchedEmailEvent(
+        string $email,
+        string $event,
+        ?string $reason,
+        string $messageId,
+        string $occurredAt
+    ): int {
+        return $this->upsertEmailEvent(
+            'SELECT 0, NULL, ?, ?, ?, ?, ?',
+            [],
+            [],
+            $email,
+            $event,
+            $reason,
+            $messageId,
+            $occurredAt,
+            'insertUnmatchedEmailEvent failed'
+        );
+    }
+
+    /**
      * Whether an owner has an er_email_events row for an address with one of the given events
      *
      * The suppression import calls it before it writes a row (#2502). The

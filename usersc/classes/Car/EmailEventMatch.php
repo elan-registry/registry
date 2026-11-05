@@ -10,12 +10,18 @@ use LogicException;
 /**
  * EmailEventMatch - The result of matching one Brevo delivery event to a user
  *
- * {@see EmailEventMatcher} returns one of three results:
+ * {@see EmailEventMatcher} returns one of four results:
  *
  * - {@see self::notOurs()}: this environment did not send the message. The
  *   caller writes no row and sets no flag.
  * - {@see self::noUser()}: the message is ours, but no single user holds the
- *   event address. The caller writes no row and sets no flag.
+ *   event address. The plugin has no row for the message, or the address
+ *   is empty after normalization. The caller writes no row and sets no flag.
+ * - {@see self::noUserOnPluginRow()}: the same, but the plugin has a row
+ *   for the message. The caller writes a row with no owner
+ *   ({@see EmailEventApplier::recordUnmatched()}) and sets no flag (#2611).
+ *   {@see self::isNoUser()} is true for this result and for
+ *   {@see self::noUser()}. Only {@see self::hasPluginRow()} tells them apart.
  * - {@see self::matched()}: the event belongs to one user. `carId` is the car
  *   of the verification `sent` row, or null when the plugin row gave the
  *   match. `messageTime` is when the message left this site. The date guards
@@ -29,6 +35,7 @@ final class EmailEventMatch
 {
     private const KIND_NOT_OURS = 'not_ours';
     private const KIND_NO_USER = 'no_user';
+    private const KIND_NO_USER_ON_PLUGIN_ROW = 'no_user_on_plugin_row';
     private const KIND_MATCHED = 'matched';
 
     private function __construct(
@@ -57,6 +64,16 @@ final class EmailEventMatch
     public static function noUser(): self
     {
         return new self(self::KIND_NO_USER);
+    }
+
+    /**
+     * Make the result for our message when the plugin has a row for it and no single user holds the event address
+     *
+     * @return self
+     */
+    public static function noUserOnPluginRow(): self
+    {
+        return new self(self::KIND_NO_USER_ON_PLUGIN_ROW);
     }
 
     /**
@@ -96,11 +113,27 @@ final class EmailEventMatch
     /**
      * Tell whether the message is ours but no single user holds the address
      *
+     * True for {@see self::noUser()} and {@see self::noUserOnPluginRow()}.
+     *
      * @return bool
      */
     public function isNoUser(): bool
     {
-        return $this->kind === self::KIND_NO_USER;
+        return $this->kind === self::KIND_NO_USER || $this->kind === self::KIND_NO_USER_ON_PLUGIN_ROW;
+    }
+
+    /**
+     * Tell whether no single user holds the address and the plugin has a row for the message
+     *
+     * The admin Email Delivery tab lists the plugin's message rows. A row
+     * with no owner shows only next to a plugin row, so only this result
+     * stores one.
+     *
+     * @return bool True only for {@see self::noUserOnPluginRow()}
+     */
+    public function hasPluginRow(): bool
+    {
+        return $this->kind === self::KIND_NO_USER_ON_PLUGIN_ROW;
     }
 
     /**

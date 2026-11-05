@@ -57,7 +57,7 @@ use ElanRegistry\LogCategories;
  *   | Matched to one user, transaction committed        | 200      |
  *   | Not a delivery event (for example opened, click)  | 200, logged (event name only) |
  *   | Message not sent by this environment              | 200, no log |
- *   | Our message, no single user holds the address     | 200, logged (address hash prefix only). A car_verification-tagged event increments the unmatched counter |
+ *   | Our message, no single user holds the address     | 200, logged (address hash prefix only). With a plugin row, one row with user_id 0 is stored (a write failure gives 5xx). A car_verification-tagged event increments the unmatched counter |
  *   | Brevo prerequisites not met                       | 200, logged |
  *   | Malformed payload (incl. list body, bad address)  | 400, logged |
  *   | Stored data that cannot be parsed (for example a zero message time) | 400, logged (no message) |
@@ -289,7 +289,7 @@ try {
                 400,
                 LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK,
                 'Brevo webhook: payload is malformed (not a JSON object, a missing required field, a bad address,'
-                . ' a message ID over 255 bytes, or a stored value that the match or apply step cannot parse).'
+                . ' a message ID over 255 bytes, or a stored value that the match, record or apply step cannot parse).'
             );
             // no break — respondAndExit() never returns
 

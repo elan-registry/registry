@@ -730,6 +730,12 @@ to provide a focused, testable data access layer wrapping the `cars`,
   fallback ID (`local:` and the SHA-256 of the new vericode). Returns MySQL's
   `rowCount()`: 1 for a new row, 0 for a duplicate or when no row is written
   (#1887, #2358, #2359)
+- `insertUnmatchedEmailEvent(string $email, string $event, ?string $reason, string $messageId, string $occurredAt): int` -
+  Record an event of our mail when no single user holds the address (#2611).
+  It writes `user_id` 0 and `car_id` NULL through `upsertEmailEvent()`, so the
+  unique key `(user_id, brevo_message_id, event)` stops a resent event.
+  Returns 1 for a new row and 0 for a duplicate. Throws `CarDatabaseException`
+  on a database error. `EmailEventApplier::recordUnmatched()` calls it
 - `insertOwnerEmailEvent(int $userId, string $email, string $event, ?string $reason, string $messageId, string $occurredAt, ?int $carId = null): int` -
   Record a webhook, reconciliation or suppression-import event for an owner
   (#2358). `$carId` is the car of the matched verification `sent` row (a step
@@ -2378,12 +2384,15 @@ public function __construct(private CarRepository $repo)
   1. Not ours (no `sent` row and no plugin row has the ID): `notOurs()`.
   2. Step (a): exactly one `sent` row with this ID has the event address.
      Result: that row's user and car, with the row's `occurred_at` as the
-     message time. Two such rows give `noUser()`.
+     message time. Two such rows give `noUserOnPluginRow()` when the plugin
+     row with this ID exists, and `noUser()` when it does not.
   3. Step (b): the plugin row with this ID has the event address as one whole
      `recipient_email`, and exactly one user holds the address. Result: that
      user, with no car and `accepted_at` as the message time. A row with more
      than one recipient matches nothing.
-  4. Step (c): `noUser()`.
+  4. Step (c): `noUserOnPluginRow()` when the plugin row exists (no user, or
+     two or more users, hold the address). Otherwise `noUser()`. An empty
+     normalized address gives `noUser()`.
 
   Throws `CarDatabaseException` if a query fails.
 - `matchUserByAddress(string $address): ?int` - For the suppression import.
@@ -2409,22 +2418,29 @@ public function __construct(private CarRepository $repo)
 **Namespace**: `ElanRegistry\Car`
 
 **Purpose**: `final` value object that `EmailEventMatcher` returns (#2359). It
-has three kinds of result.
+has four kinds of result.
 
 **Factories**:
 
 - `notOurs()` - This environment did not send the message. The caller writes
   no row and sets no flag.
-- `noUser()` - The message is ours, but no single user holds the event address.
-  The caller writes no row and sets no flag.
+- `noUser()` - The message is ours, but no single user holds the event address,
+  and the message has no plugin row (or the address is empty). The caller
+  writes no row and sets no flag.
+- `noUserOnPluginRow()` - The message is ours, the message ID has a
+  `plg_sendinblue_messages` row, and no single user holds the event address.
+  The caller sets no flag. It stores one row with `user_id` 0 through
+  `EmailEventApplier::recordUnmatched()` (#2611).
 - `matched(int $userId, ?int $carId, string $messageTime)` - The event belongs
   to one user. `$carId` is the car of the `sent` row, or null when the plugin
   row gave the match. `$messageTime` is when the message left this site. The
   date guards of `EmailEventApplier::apply()` compare against it. Throws
   `InvalidArgumentException` for an ID that is not more than 0, or an empty time.
 
-**Methods**: `isNotOurs()`, `isNoUser()`, `isMatched()`, `userId()`, `carId()`,
-`messageTime()`. The last three throw `LogicException` when the result is not
+**Methods**: `isNotOurs()`, `isNoUser()`, `hasPluginRow()`, `isMatched()`,
+`userId()`, `carId()`, `messageTime()`. `isNoUser()` is true for both no-user
+results. `hasPluginRow()` is true only for `noUserOnPluginRow()`. `userId()`,
+`carId()` and `messageTime()` throw `LogicException` when the result is not
 `matched`.
 
 **See Also**:
@@ -2458,7 +2474,10 @@ endpoint itself needs.
   event only (at most 32 characters). The webhook subscribes only to delivery
   events, so another name shows a Brevo change. There is no tag filter
 - Finds the user with `EmailEventMatcher::matchByMessageId()`. A message that
-  this environment did not send is `IGNORED`
+  this environment did not send is `IGNORED`. For `noUserOnPluginRow()`, it
+  calls `EmailEventApplier::recordUnmatched()` and returns `NO_USER_MATCH`.
+  A `CarDatabaseException` gives `WRITE_FAILURE`. A `CarValidationException`
+  or `InvalidArgumentException` gives `MALFORMED` (#2611)
 - A missing or invalid `ts_event`/`ts`, or one more than 5 minutes after
   receipt, falls back to the receipt time. The log line names the user ID only
 - Delegates the transaction, the guards and the flag rules to
@@ -2466,7 +2485,8 @@ endpoint itself needs.
   job (#1889)
 - Calls `sendinblueRecordEvent($messageId, $event, $occurredAtSeconds, $reason)`
   when the function exists. A `false` return or an exception is logged (no
-  message) and does not change the result
+  message) and does not change the result. sendinblue 1.8.0 has no such
+  function, so on that version the step is a silent no-op (#2355)
 - No log line holds an email address. No `catch` block calls `getMessage()`
 
 **Methods**:
@@ -2618,6 +2638,28 @@ public function apply(
   Throws `CarValidationException` for an invalid datetime (nothing is written).
   Throws `CarDatabaseException` when a read or write fails (all writes roll back).
 
+```php
+public function recordUnmatched(
+    EmailEventMatch $match,
+    string $address,
+    string $event,
+    ?string $reason,
+    string $messageId,
+    string $occurredAt
+): bool
+```
+
+- `recordUnmatched()` stores the event of a message that is ours when no single
+  user holds the address (#2611). It writes one row with `user_id` 0 and
+  `car_id` NULL through `CarRepository::insertUnmatchedEmailEvent()`. It
+  returns true for a new row and false for a duplicate. It sets no flag. It
+  cuts the reason with `REASON_MAX_CHARS`. It opens no transaction, because it
+  makes one insert. The webhook and the reconciliation job both call it.
+- Throws `InvalidArgumentException` when `$match` is not
+  `noUserOnPluginRow()`, or when the address is empty after normalizing.
+  Throws `CarValidationException` for an invalid datetime. Throws
+  `CarDatabaseException` when the insert fails.
+
 **Used By**:
 
 - `BrevoWebhookEventProcessor::process()`
@@ -2675,8 +2717,8 @@ endpoint maps each case 1:1 to an HTTP status (#1887).
 | --- | --- | --- |
 | `MATCHED_AND_RECORDED` | The event matched one user and the transaction committed | 2xx |
 | `IGNORED` | Not a delivery event (for example `opened`), or a message that this environment did not send | 2xx, no row, no log |
-| `NO_USER_MATCH` | The message is ours, but no single user holds the address | 2xx, logged. A verification-tagged event increments the unmatched counter |
-| `MALFORMED` | The payload is not a JSON object, misses a required field, or has a bad address or a message ID over 255 bytes. Or the match or apply step cannot parse a stored value (for example a zero message time) | 4xx, logged |
+| `NO_USER_MATCH` | The message is ours, but no single user holds the address | 2xx, logged. With a plugin row, one `user_id` 0 row is stored, and a failed insert gives `WRITE_FAILURE`. A verification-tagged event increments the unmatched counter |
+| `MALFORMED` | The payload is not a JSON object, misses a required field, or has a bad address or a message ID over 255 bytes. Or the match, record or apply step cannot parse a stored value (for example a zero message time) | 4xx, logged |
 | `WRITE_FAILURE` | A database read or write failed | 5xx. The only retryable case |
 
 Since #2359, `NO_TAG_MATCH` and `NO_CAR_MATCH` do not exist.
@@ -3737,6 +3779,9 @@ applies events of all registry mail (#2359). It passes the source
   set, adds " — Brevo is not set up here, no poll ran" to the summary log
   line, and `run()` pings success. `FAILED` polls nothing, sets `pollFailed`, and `run()` pings `/fail`.
   `READY` polls each type as before. The prune runs in all three cases
+- **Unmatched events**: for `noUserOnPluginRow()`, the job calls
+  `EmailEventApplier::recordUnmatched()` with the resolved event time. A write
+  failure counts as `skipped`, and the job continues (#2611)
 - **Unmatched counter**: `countUnmatched()` increments the unmatched recipient
   counter only for a verification-tagged event with no single user
 - **No address in logs**: lines name the user ID or the address hash prefix.

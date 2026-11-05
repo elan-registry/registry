@@ -126,7 +126,9 @@ $edTimeFormat = 'Y-m-d H:i';
         </p>
         <p class="small text-muted mb-3">
             This tab shows only the stored webhook events and does not ask Brevo.
-            The webhook drops events that match no single user, so Brevo may have delivered a mail that shows &ldquo;No outcome&rdquo;.
+            An event for an address that no single user holds shows with no owner link.
+            A mail can show No outcome although Brevo delivered it, when no event was stored
+            (for example, the event never arrived, or it arrived before v2.31.1).
         </p>
 
         <?php if ($edLoadError !== null) { ?>

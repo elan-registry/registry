@@ -51,6 +51,15 @@ class SpyEmailEventApplier extends EmailEventApplier
      */
     public array $calls = [];
 
+    /**
+     * One entry for each recordUnmatched() call. `email` is the address that
+     * the caller passed.
+     *
+     * @var list<array{match: EmailEventMatch, email: string, event: string, reason: ?string,
+     *                 messageId: string, occurredAt: string}>
+     */
+    public array $unmatchedCalls = [];
+
     /** apply() returns this as `eventRowWritten`. */
     private bool $returnValue = true;
 
@@ -160,6 +169,43 @@ class SpyEmailEventApplier extends EmailEventApplier
         }
 
         return new EmailEventApplyResult($this->returnValue, $this->flagApplied);
+    }
+
+    /**
+     * Record one recordUnmatched() call, and throw like apply() does
+     *
+     * The same failOn(), failOnUserId() and failWith() switches apply. A
+     * call has no owner, so `userId` is 0 and failOnUserId(0) makes it fail.
+     * Returns the value of willReturn()'s first argument.
+     */
+    public function recordUnmatched(
+        EmailEventMatch $match,
+        string $address,
+        string $event,
+        ?string $reason,
+        string $messageId,
+        string $occurredAt
+    ): bool {
+        $this->unmatchedCalls[] = [
+            'match'      => $match,
+            'email'      => $address,
+            'event'      => $event,
+            'reason'     => $reason,
+            'messageId'  => $messageId,
+            'occurredAt' => $occurredAt,
+        ];
+
+        if ($this->failWith !== null) {
+            throw $this->failWith;
+        }
+        if ($messageId === $this->failOnMessageId && $this->failOnException !== null) {
+            throw $this->failOnException;
+        }
+        if ($messageId === $this->failOnMessageId || in_array(0, $this->failOnUserIds, true)) {
+            throw new CarDatabaseException('simulated write failure');
+        }
+
+        return $this->returnValue;
     }
 
     /** @return list<string> The message-id of each recorded call, in order. */

@@ -174,6 +174,56 @@ final class CarRepositoryEmailEventOwnerWritesTest extends TestCase
         );
     }
 
+    // --- insertUnmatchedEmailEvent() (#2611) -----------------------------
+
+    public function testInsertUnmatchedEmailEventWritesOneRowForUserZeroWithNoCarAndNormalizesTheAddress(): void
+    {
+        $queries = [];
+        $repo = new CarRepository($this->makeRecordingDb($queries, count: 1));
+
+        $written = $repo->insertUnmatchedEmailEvent(
+            '  Stranger@Example.COM ',
+            'hard_bounce',
+            'mailbox full',
+            'msg-1',
+            '2026-01-01 00:00:00'
+        );
+
+        $this->assertSame(1, $written);
+        $this->assertCount(1, $queries);
+        $sql = $queries[0]['sql'];
+        $this->assertStringContainsString('SELECT 0, NULL, ?', $sql, 'The row has user_id 0 and car_id NULL as literals');
+        $this->assertStringNotContainsString('FROM users', $sql, 'No users row exists for ID 0');
+        $this->assertStringContainsString('ON DUPLICATE KEY UPDATE er_email_events.id = er_email_events.id', $sql);
+        $this->assertSame(
+            ['stranger@example.com', 'hard_bounce', 'mailbox full', 'msg-1', '2026-01-01 00:00:00'],
+            $queries[0]['params'],
+            'No user ID or car ID is bound'
+        );
+    }
+
+    public function testInsertUnmatchedEmailEventReturnsZeroForADuplicate(): void
+    {
+        $queries = [];
+        $repo = new CarRepository($this->makeRecordingDb($queries, count: 0));
+
+        $this->assertSame(
+            0,
+            $repo->insertUnmatchedEmailEvent('a@example.com', 'delivered', null, 'm1', '2026-01-01 00:00:00')
+        );
+    }
+
+    public function testInsertUnmatchedEmailEventThrowsCarDatabaseExceptionWhenTheQueryFails(): void
+    {
+        $queries = [];
+        $repo = new CarRepository($this->makeRecordingDb($queries, failOnQuery: 1));
+
+        $this->expectException(CarDatabaseException::class);
+        $this->expectExceptionMessage('insertUnmatchedEmailEvent failed event=delivered: Deadlock found');
+
+        $repo->insertUnmatchedEmailEvent('a@example.com', 'delivered', null, 'm1', '2026-01-01 00:00:00');
+    }
+
     // --- deleteEmailEventsForUser() / detachEmailEventsFromCar() ---------
 
     #[DataProvider('nonPositiveUserIdProvider')]

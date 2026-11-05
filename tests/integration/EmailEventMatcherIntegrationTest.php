@@ -278,6 +278,7 @@ final class EmailEventMatcherIntegrationTest extends IntegrationTestCase
         $match = $this->matcher->matchByMessageId($messageId, $email);
 
         $this->assertNoUser($match, 'A plugin row selected by address alone must not match');
+        $this->assertFalse($match->hasPluginRow(), 'The plugin row is for another message, so nothing is stored (#2611)');
     }
 
     // --- Step (c) --------------------------------------------------------
@@ -288,7 +289,10 @@ final class EmailEventMatcherIntegrationTest extends IntegrationTestCase
         $address = 'nobody-' . uniqid() . '@example.com';
         $this->seedPluginRow($messageId, $address, '2026-10-14 10:00:00');
 
-        $this->assertNoUser($this->matcher->matchByMessageId($messageId, $address), 'No user holds the address');
+        $match = $this->matcher->matchByMessageId($messageId, $address);
+
+        $this->assertNoUser($match, 'No user holds the address');
+        $this->assertTrue($match->hasPluginRow(), 'The plugin row makes the event storable with no owner (#2611)');
     }
 
     public function testAnAddressSharedByTwoUsersReturnsNoUserInStepB(): void
@@ -299,7 +303,10 @@ final class EmailEventMatcherIntegrationTest extends IntegrationTestCase
         $messageId = $this->uniqueId('shared');
         $this->seedPluginRow($messageId, $shared, '2026-10-14 10:00:00');
 
-        $this->assertNoUser($this->matcher->matchByMessageId($messageId, $shared), 'A shared address must set no flag');
+        $match = $this->matcher->matchByMessageId($messageId, $shared);
+
+        $this->assertNoUser($match, 'A shared address must set no flag');
+        $this->assertTrue($match->hasPluginRow());
     }
 
     public function testAPluginRowWithMoreThanOneRecipientMatchesNoUser(): void
@@ -309,7 +316,10 @@ final class EmailEventMatcherIntegrationTest extends IntegrationTestCase
         $messageId = $this->uniqueId('multi-rcpt');
         $this->seedPluginRow($messageId, $email . ', other-' . uniqid() . '@example.com', '2026-10-14 10:00:00');
 
-        $this->assertNoUser($this->matcher->matchByMessageId($messageId, $email), 'A multi-recipient row matches no user');
+        $match = $this->matcher->matchByMessageId($messageId, $email);
+
+        $this->assertNoUser($match, 'A multi-recipient row matches no user');
+        $this->assertTrue($match->hasPluginRow());
     }
 
     public function testASubstringOfThePluginRecipientDoesNotMatch(): void

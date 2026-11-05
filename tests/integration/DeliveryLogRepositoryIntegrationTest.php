@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
 
+use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Email\DeliveryLogFilter;
 use ElanRegistry\Email\DeliveryLogReport;
 use ElanRegistry\Email\DeliveryLogRepository;
@@ -224,6 +225,26 @@ final class DeliveryLogRepositoryIntegrationTest extends IntegrationTestCase
         $rows = $this->loadMine()[$this->id('sentonly')];
         $this->assertCount(1, $rows, 'The sent row is left out of the join');
         $this->assertNull($rows[0]['event_id']);
+    }
+
+    /** #2611: an event stored with no owner (user_id 0) gives the outcome of the mail, with no owner or car. */
+    public function testLoadWindowEventWithNoOwnerGivesTheOutcomeWithANullOwnerAndCar(): void
+    {
+        $this->seedScenario();
+        $messageId = $this->id('noowner');
+        $recipient = $this->recipient('r-noowner');
+        $this->seedMail($messageId, $recipient, '2026-11-02 08:20:00', 'verification');
+        $written = (new CarRepository($this->db))->insertUnmatchedEmailEvent($recipient, 'delivered', null, $messageId, '2026-11-02 08:21:00');
+        $this->assertSame(1, $written, 'Test setup: the row with no owner must be written');
+
+        $entry = $this->entriesFor()[$messageId] ?? null;
+
+        $this->assertNotNull($entry, 'The mail is in the window');
+        $this->assertSame(DeliveryOutcome::Delivered, $entry->outcome);
+        $this->assertSame('2026-11-02 08:21:00', $entry->outcomeAt?->format('Y-m-d H:i:s'));
+        $this->assertNull($entry->userId, 'user_id 0 is no owner');
+        $this->assertNull($entry->carId);
+        $this->assertSame($recipient, $entry->recipient);
     }
 
     public function testLoadWindowEventOfAnotherUserOnAnotherMessageDoesNotAttachByAddress(): void
