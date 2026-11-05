@@ -29,7 +29,7 @@ use ElanRegistry\Owner;
 
 // THE VERIFICATION SWITCH STOPS ONLY THE SEND BATCH. The stop for event writes
 // is in the Feature Switch help text in verification-status-panel.php (shown
-// only when the switch has no disabled reason) and in
+// to every admin, never to an editor) and in
 // docs/development/EMAIL_SYSTEM.md.
 
 // ---------------------------------------------------------------------------

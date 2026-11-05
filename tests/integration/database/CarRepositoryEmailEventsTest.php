@@ -552,10 +552,20 @@ final class CarRepositoryEmailEventsTest extends IntegrationTestCase
     public function testDeleteForUserWithAnInvalidIdIssuesNoDelete(): void
     {
         $this->repo->insertOwnerEmailEvent($this->userId, 'a@example.com', 'delivered', null, 'keep-1', '2026-01-01 10:00:00');
+        // A no-owner row has user_id 0 (#2611). With no guard, a delete for ID 0
+        // would remove every no-owner event that the Email Delivery tab shows.
+        $noOwnerMessageId = 'keep-no-owner-' . uniqid();
+        $this->repo->insertUnmatchedEmailEvent('stranger@example.com', 'delivered', null, $noOwnerMessageId, '2026-01-01 10:00:00');
 
-        $this->assertSame(0, $this->repo->deleteEmailEventsForUser(0));
-        $this->assertSame(0, $this->repo->deleteEmailEventsForUser(-1));
-        $this->assertSame(1, $this->eventCountForMessage('keep-1'));
+        try {
+            $this->assertSame(0, $this->repo->deleteEmailEventsForUser(0));
+            $this->assertSame(0, $this->repo->deleteEmailEventsForUser(-1));
+            $this->assertSame(1, $this->eventCountForMessage('keep-1'));
+            $this->assertSame(1, $this->eventCountForMessage($noOwnerMessageId), 'The no-owner row stays');
+        } finally {
+            // IntegrationTestCase::tearDown() deletes rows by tracked user, and user 0 is not one.
+            $this->db->query('DELETE FROM er_email_events WHERE brevo_message_id = ?', [$noOwnerMessageId]);
+        }
     }
 
     #[Group('fast')]

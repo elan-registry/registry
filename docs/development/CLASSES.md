@@ -3785,7 +3785,8 @@ applies events of all registry mail (#2359). It passes the source
   failure counts as `skipped`, and the job continues (#2611)
 - **Unmatched counter**: `countUnmatched()` increments the unmatched recipient
   counter only for a verification-tagged event with no single user
-- **No address in logs**: lines name the user ID or the address hash prefix.
+- **No address in logs**: lines name the user ID (`user <id>` or `owner <id>`)
+  or, for an event with no owner, the address hash prefix (`no owner (hash <hash>)`).
   `catch` blocks log the `ExceptionLogSummary` of the exception, not its message
 
 **Constructor**:
@@ -3848,14 +3849,22 @@ The `$now` parameter is injectable for testing; defaults to wall-clock time.
 - `applyEvent(object $event, string $apiEventType, string $eventName, array &$counts, array &$eventTypeCounts): void`
   — Apply one Brevo statistics-API event (field and address validation,
   `EmailEventMatcher::matchByMessageId()`, `EmailEventApplier::apply()`),
-  incrementing the passed-by-reference counters. Counts per event — see
+  incrementing the passed-by-reference counters. A `noUserOnPluginRow()`
+  match goes to `recordUnmatched()`. Counts per event — see
   `ReconciliationSummary`
 - `countUnmatched(mixed $rawTag, array &$counts): void` — Count an event of our
   mail that matched no single user, and increment the dashboard counter for a
   verification-tagged one
 - `pruneExpiredEvents(): void` — Call `CarRepository::deleteEmailEventsOlderThan()`
   with the two cutoffs
-- `resolveOccurredAt(mixed $rawDate, int $userId, string $eventName): array{occurredAt: string, usable: bool}` —
+- `recordUnmatched(EmailEventMatch $match, object $event, string $normalized, string $eventName, string $messageId, array &$counts): bool` —
+  Store an event of our mail that matched no single user, through
+  `EmailEventApplier::recordUnmatched()`. A failed write goes to
+  `skipWrite()`, and the method returns false (#2611)
+- `skipWrite(array &$counts, string $subject, string $eventName, \Throwable $e): void` —
+  Count a failed event write as `skipped` and log it. A database failure
+  line says the event is retried on the next run. A data fault line does not
+- `resolveOccurredAt(mixed $rawDate, string $subject, string $eventName): array{occurredAt: string, usable: bool}` —
   Parse Brevo's UTC date string into a PHP-default-timezone DATETIME string.
   On a parse failure or an out-of-range value, log and use the run time with
   `usable: false`. `applyEvent()` passes `!usable` as `occurredAtIsFallback`.

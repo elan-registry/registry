@@ -299,7 +299,7 @@ after an item is written.
 
 ### `usersc/classes/Car/VerificationEligibility.php`
 
-- [ ] The class docblock says the class encodes the same rules as `CarRepository::verificationEligibleFromSql()`. The #2594 address-shape rule is in the SQL only. Correct the docblock (from #2595)
+- [ ] The class docblock says the class encodes the same rules as the WHERE clause of `CarRepository::findVerificationEligible()` (built by `verificationEligibleFromSql()`). The #2594 address-shape rule is in the SQL only. Correct the docblock (from #2595)
 
 ### `usersc/classes/Car/VerificationTabStatus.php`
 

@@ -647,6 +647,8 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
      *
      * @param array<string, int> $counts
      * @param string $subject "owner <id>" or "no owner (hash <hash>)", never an address
+     * @param string $eventName The webhook name of the event type
+     * @param \Throwable $e The write failure, logged as its ExceptionLogSummary
      */
     private function skipWrite(array &$counts, string $subject, string $eventName, \Throwable $e): void
     {

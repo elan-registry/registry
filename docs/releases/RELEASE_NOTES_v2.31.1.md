@@ -12,11 +12,14 @@ The Verification tab shows the real send queue and reports unreadable settings. 
 ## Admin-Facing Changes
 
 - Verification tab times are correct from November to March, but some times recorded before this release stay 1 hour off. ([#2589](https://github.com/elan-registry/registry/issues/2589))
-- The Verification tab shows "Unavailable" for unreadable settings and explains a missing job state with a next step. ([#2573](https://github.com/elan-registry/registry/issues/2573))
+- Unreadable verification settings show as unavailable on the Verification tab and admin banner, and auto-send sends nothing.
+  ([#2572](https://github.com/elan-registry/registry/issues/2572),
+  [#2587](https://github.com/elan-registry/registry/issues/2587),
+  [#2573](https://github.com/elan-registry/registry/issues/2573))
 - Eligible and Next Queue show cars in send order with car and owner links, and the All pill is gone. ([#2599](https://github.com/elan-registry/registry/issues/2599))
 - Verification cards, chips, and tooltips use clearer labels and causes, and help buttons are easier to tap. ([#2458](https://github.com/elan-registry/registry/issues/2458))
 - Recent Activity is a sortable table, newest first, with links to the car, owner, and user. ([#2496](https://github.com/elan-registry/registry/issues/2496))
-- A new admin-only Email Delivery tab shows each sent mail and its outcome, and the banner reports an unreadable switch. ([#2102](https://github.com/elan-registry/registry/issues/2102))
+- A new admin-only Email Delivery tab shows each sent mail and its outcome. ([#2102](https://github.com/elan-registry/registry/issues/2102))
 - The Email Delivery tab shows outcomes for mail to addresses that no single owner holds. ([#2611](https://github.com/elan-registry/registry/issues/2611))
 
 ## Issues Resolved

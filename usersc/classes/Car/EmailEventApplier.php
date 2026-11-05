@@ -373,6 +373,9 @@ class EmailEventApplier
 
     /**
      * Scrub a reason to valid UTF-8 and cut it to the column width.
+     *
+     * @param string|null $reason The reason text from Brevo
+     * @return string|null The clipped reason, or null for no reason
      */
     private static function clipReason(?string $reason): ?string
     {
