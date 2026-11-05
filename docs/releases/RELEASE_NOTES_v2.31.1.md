@@ -6,6 +6,12 @@
 The Verification tab shows the eligible cars in the order the batch sends them, with a link to each car and owner.
 A failed read no longer shows as a default value or a success.
 
+## User-Facing Changes
+
+- A car save with a new photo upload no longer removes the car's older photos.
+- If the server cannot match an uploaded photo to its file name, the save stops and asks the owner to rename the file.
+  Before, the photo was lost and the save showed success.
+
 ## Admin-Facing Changes
 
 - From November to March, the Verification tab "cron last seen" and next-send times are no longer 1 hour off.
@@ -33,3 +39,4 @@ A failed read no longer shows as a default value or a success.
 - [#2496](https://github.com/elan-registry/registry/issues/2496) — Recent Activity shows as a sortable table with car, owner, and user links.
 - [#2102](https://github.com/elan-registry/registry/issues/2102) — Admins can see which mail Brevo delivered, bounced, or held with no outcome.
 - [#2611](https://github.com/elan-registry/registry/issues/2611) — Brevo events for mail that no single owner holds are stored and shown.
+- [#2609](https://github.com/elan-registry/registry/issues/2609) — A save with a new upload keeps older photos with legacy file names.

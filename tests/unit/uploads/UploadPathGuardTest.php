@@ -172,6 +172,56 @@ class UploadPathGuardTest extends TestCase
     }
 
     /**
+     * uploadImages() must build the final image order with
+     * CarImageProcessor::resolveUploadOrder() and log the names it drops. A
+     * return to an isValidFilename() filter would delete every legacy-named
+     * stored photo on a save with a new upload (#2609). The body is cut out
+     * of the file so that the other isValidFilename() callers in save.php do
+     * not hide a regression here.
+     */
+    public function testUploadImagesUsesResolveUploadOrderAndLogsDroppedNames(): void
+    {
+        $saveFile = dirname(__DIR__, 3) . '/app/api/cars/save.php';
+        $content = (string) file_get_contents($saveFile);
+
+        $start = strpos($content, 'function uploadImages(');
+        $this->assertNotFalse($start, 'save.php must define uploadImages()');
+        $end = strpos($content, "\n/**", $start);
+        $this->assertNotFalse($end, 'uploadImages() must be followed by another docblock');
+        $body = substr($content, $start, $end - $start);
+
+        // Without the stored names, every legacy photo drops again and the
+        // resolveUploadOrder() unit tests still pass.
+        $this->assertMatchesRegularExpression(
+            '/\$storedImage\s*=.*?->data\(\)->image.*?\$storedNames\s*=.*?'
+            . 'CarImageProcessor::resolveUploadOrder\(\s*\$requestedOrder\s*,\s*\$newNames\s*,\s*\$storedNames\s*\)/s',
+            $body,
+            'uploadImages() must read cars.image into $storedNames and pass it to resolveUploadOrder()'
+        );
+        // The regex above still matches if $storedNames is reset before the call.
+        $this->assertSame(
+            2,
+            preg_match_all('/\$storedNames\s*=/', $body),
+            'uploadImages() must assign $storedNames only as [] and from cars.image'
+        );
+        $this->assertMatchesRegularExpression(
+            "/array_diff\\(\\s*\\\$newNames\\s*,\\s*\\\$result\\['kept'\\]\\s*\\).*?\\\$errors\\[\\]\\s*=/s",
+            $body,
+            'uploadImages() must fail the save when an uploaded file is not in the kept order'
+        );
+        $this->assertMatchesRegularExpression(
+            "/\\['dropped'\\].*?logger\\(/s",
+            $body,
+            'uploadImages() must log the dropped names'
+        );
+        $this->assertStringNotContainsString(
+            'isValidFilename(',
+            $body,
+            'uploadImages() must not filter stored names with isValidFilename() (#2609)'
+        );
+    }
+
+    /**
      * save.php must be syntactically valid PHP so that it can be included
      * by the application without parse errors.
      */

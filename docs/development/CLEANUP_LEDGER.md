@@ -80,7 +80,8 @@ after an item is written.
 
 ### `app/api/cars/save.php`
 
-- [ ] The `updateImages` and `removeImages` auth checks (about lines 233 and 244) compare `$user->data()->id != ...->user_id` with loose `!=`. Use a strict `(int)` comparison, as `removeImage()` does (found while working on #1929)
+- [ ] The upload-loop `logger()` calls in `uploadImages()` (~L801, ~L818, ~L828) log the client `$name` and `Input::get('car_id')` with no length cap. Cap them as the dropped-names log does (found in #2609)
+- [ ] `uploadImages()` (~L814) `arrayReplaceValue()` replaces the first match. If a new upload has the same browser file name as a stored photo, the new photo takes the stored photo's place (it can become the primary photo). Send a unique placeholder from `car-edit.js`, or replace only a name that is not stored (found in #2609)
 
 ### `app/assets/js/location-picker.js`
 
