@@ -102,9 +102,9 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
 
     /**
      * Insert a minimal, valid cars_hist row with a given operation/timestamp
-     * for an existing car.
+     * for an existing car. $userId sets cars_hist.user_id when given.
      */
-    private function insertHistRow(int $carId, string $operation, string $timestamp): void
+    private function insertHistRow(int $carId, string $operation, string $timestamp, ?int $userId = null): void
     {
         $inserted = $this->db->insert('cars_hist', [
             'operation' => $operation,
@@ -115,6 +115,7 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
             'type'      => 'FHC',
             'chassis'   => 'VDHISTTEST',
             'timestamp' => $timestamp,
+            'user_id'   => $userId,
         ]);
         $this->assertTrue($inserted, 'Test setup: failed to seed cars_hist row: ' . $this->db->errorString());
     }
@@ -985,5 +986,24 @@ final class CarRepositoryVerificationDashboardTest extends IntegrationTestCase
 
         $this->assertNotContains($carId, $windowedCarIds, 'A 100-day-old row must not appear under a 7-day window');
         $this->assertContains($carId, $unwindowedCarIds, 'The same row must appear under an unbounded window');
+    }
+
+    #[Group('fast')]
+    public function testRecentActivityRowsIncludeTheHistoryUserId(): void
+    {
+        $carId = $this->createTestCar($this->userId, $this->eligibleFields('dash-activity-user@example.com'));
+        // A different owner on the history row proves the value comes from
+        // cars_hist, not from the car's current owner.
+        $historyOwnerId = $this->createOwner();
+        $this->assertNotSame($this->userId, $historyOwnerId, 'Test setup: owners must differ');
+        $this->insertHistRow($carId, 'VERIFIED', date('Y-m-d H:i:s', strtotime('-1 hour')), $historyOwnerId);
+
+        $rows = array_values(array_filter(
+            $this->repo->findRecentVerificationActivity(null, 1000),
+            static fn (object $row): bool => (int) $row->car_id === $carId
+        ));
+
+        $this->assertCount(1, $rows);
+        $this->assertSame($historyOwnerId, (int) $rows[0]->user_id);
     }
 }

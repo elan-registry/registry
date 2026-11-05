@@ -2195,12 +2195,14 @@ class CarRepository
      * Reads the `cars_hist` row only, so the year, chassis and owner name are
      * the values at the time of the event. A later merge or deletion of the
      * car does not remove the row from this list. Newest first, with `id`
-     * as the tiebreak for equal timestamps.
+     * as the tiebreak for equal timestamps. `user_id` is the owner at the
+     * time of the event, not the current owner of the car.
      *
      * @param int|null $windowDays Days back from now, or null for all time
      * @param int $limit Maximum rows to return (values below 1 return no rows)
      * @return array<object{id: int|string, car_id: int|string, operation: string, timestamp: string,
-     *         year: int|string|null, chassis: string, fname: ?string, lname: ?string}>
+     *         year: int|string|null, chassis: string, fname: ?string, lname: ?string,
+     *         user_id: int|string|null}>
      * @throws CarValidationException If $windowDays is zero or negative
      * @throws CarDatabaseException If the query fails
      */
@@ -2213,7 +2215,7 @@ class CarRepository
         [$window, $windowParams] = self::windowSql('h.timestamp', $windowDays);
 
         $result = $this->db->query(
-            "SELECT h.id, h.car_id, h.operation, h.timestamp, h.year, h.chassis, h.fname, h.lname
+            "SELECT h.id, h.car_id, h.operation, h.timestamp, h.year, h.chassis, h.fname, h.lname, h.user_id
                FROM cars_hist h
               WHERE h.operation IN (?, ?){$window}
               ORDER BY h.timestamp DESC, h.id DESC

@@ -35,10 +35,6 @@ after an item is written.
 
 ## Items
 
-### `app/admin/assets/js/tab-verification.js`
-
-- [ ] `showFeedback()` (~L24) builds the toggle-result icon with no `aria-hidden="true"`, inside the `role="status"` region of the status panel. Add it and run `npm run build` (found in #2458 review)
-
 ### `app/admin/includes/account-cleanup-helpers.php`
 
 - [ ] Replace 8 × `throw new RuntimeException` with a typed `AccountCleanupException extends ElanRegistryException`. Handle it in `app/api/admin/account-cleanup-data.php` with `ApiResponse` and `LogCategories` (from #1637)
@@ -55,9 +51,12 @@ after an item is written.
 
 ### `app/admin/includes/tab-verification.php`
 
-- [ ] About 25 decorative `<i class="fas ...">` icons outside the status panel have no `aria-hidden="true"` (for example the tab `h2` icon ~L329, the probe-failure alert icon ~L337 and the queue `h5` icon ~L543). Find them all with `grep -n 'fa-' app/admin/includes/tab-verification.php | grep -v aria-hidden`. The status panel icons have it (found in #2458 review)
-- [ ] The "could not load the summary counts", "could not load the queue status chips" and "could not load recent activity" log lines do not name the view: add the window days, the queue status and the car count, as the queue catch logs `$queueStatus` (found in #2458)
 - [ ] The Automatic Sending card shows only "Status unavailable" for an `UNREADABLE` or `MISSING` job state, and its "Next eligible" row says "the job status could not be read" for `MISSING` too. Show the same detail lines as the status panel rows, from one shared source next to `CronJobRunsReader::badgeFor()` (found in #2572 review)
+- [ ] `vsNewTabLink()` gives the queue and Recent Activity links no screen-reader cue that they open a new tab (WCAG G201), and neither table has an accessible name. Add `<span class="visually-hidden"> (opens in a new tab)</span>` in the helper, and a `visually-hidden` `<caption>` or `aria-labelledby` on each table (found in #2496 review)
+
+### `app/admin/includes/verification-batch-size-field.php`
+
+- [ ] The decorative icons at ~L28, ~L46 and ~L51 have no `aria-hidden="true"`. The Verification tab around them has it since #2496 (found in #2496 review)
 
 ### `app/admin/index.php`
 

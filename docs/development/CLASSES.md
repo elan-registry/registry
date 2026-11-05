@@ -1029,7 +1029,9 @@ to provide a focused, testable data access layer wrapping the `cars`,
   `CarDatabaseException` on a query failure.
 - `findRecentVerificationActivity(?int $windowDays, int $limit = 20): array` -
   List the most recent `VERIFIED` and `VERIFIED SOLD` `cars_hist` rows,
-  newest first. Backs the dashboard's Recent Activity panel (#1896). Reads
+  newest first. Each row also has `user_id`, the owner at the time of the
+  event, read from the same `cars_hist` row. Backs the dashboard's Recent
+  Activity panel (#1896). Reads
   `cars_hist` only, with no join to `cars` — a car merged or deleted after
   the event still appears, with the year/chassis/owner name values recorded
   at the time of the event. This is why Recent Activity can list a car that

@@ -1000,24 +1000,16 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
 
         $carLinks = $xpath->query('td[1]/a', $rows->item(0));
         $this->assertSame(1, $carLinks->length, 'One car link');
-        $carLink = $carLinks->item(0);
-        $this->assertInstanceOf(DOMElement::class, $carLink);
-        $this->assertSame('/app/owner/cars/details.php?car_id=' . $carId, $carLink->getAttribute('href'));
-        $this->assertSame('_blank', $carLink->getAttribute('target'));
-        $this->assertSame('noopener', $carLink->getAttribute('rel'));
+        $this->assertNewTabLink($carLinks->item(0), '/app/owner/cars/details.php?car_id=' . $carId);
 
         $ownerLinks = $xpath->query('td[3]/a', $rows->item(0));
         $this->assertSame(1, $ownerLinks->length, 'One owner link');
-        $ownerLink = $ownerLinks->item(0);
-        $this->assertInstanceOf(DOMElement::class, $ownerLink);
-        $this->assertSame('/app/admin/index.php?tab=owner-mgmt&owner_id=' . $ownerId, $ownerLink->getAttribute('href'));
-        $this->assertSame('_blank', $ownerLink->getAttribute('target'));
-        $this->assertSame('noopener', $ownerLink->getAttribute('rel'));
+        $this->assertNewTabLink($ownerLinks->item(0), '/app/admin/index.php?tab=owner-mgmt&owner_id=' . $ownerId);
 
-        // Unchanged: the User ID link.
-        $userLink = $xpath->query('td[4]/a', $rows->item(0))->item(0);
-        $this->assertInstanceOf(DOMElement::class, $userLink);
-        $this->assertSame('/users/admin.php?view=user&id=' . $ownerId, $userLink->getAttribute('href'));
+        $this->assertNewTabLink(
+            $xpath->query('td[4]/a', $rows->item(0))->item(0),
+            '/users/admin.php?view=user&id=' . $ownerId
+        );
     }
 
     public function testOwnerNameIsEscapedInTheOwnerLink(): void
@@ -1036,5 +1028,250 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
         $this->assertInstanceOf(DOMElement::class, $link);
         $this->assertSame(0, $xpath->query('a/b', $link)->length, 'The name is text, not markup');
         $this->assertStringContainsString($payload, $link->textContent, 'The raw characters show as text');
+    }
+
+    // --- Recent Activity table (#2496) ----------------------------------------
+
+    /** A `CarRepository::QUEUE_WINDOW_CHOICES` key, in days. Seeded rows are stamped inside it. */
+    private const ACTIVITY_WINDOW = '7';
+
+    /**
+     * Insert one VERIFIED or VERIFIED SOLD cars_hist row for a test car.
+     *
+     * The car's cars_hist rows are deleted with the car in tearDown.
+     *
+     * @param int|null $historyUserId user_id of the history row, which can differ from the car's owner
+     */
+    private function insertActivityRow(
+        int $carId,
+        string $operation,
+        string $timestamp,
+        ?int $historyUserId,
+        string $fname = '',
+        string $lname = ''
+    ): void {
+        $inserted = (new CarRepository($this->db))->insertHistory([
+            'operation' => $operation,
+            'car_id'    => $carId,
+            'model'     => 'Elan S4',
+            'series'    => 'S4',
+            'variant'   => 'SE',
+            'type'      => 'FHC',
+            'chassis'   => 'ACT' . substr(uniqid(), -8),
+            'user_id'   => $historyUserId,
+            'fname'     => $fname,
+            'lname'     => $lname,
+            'timestamp' => $timestamp,
+        ]);
+        $this->assertTrue($inserted, 'Setup: insert cars_hist row: ' . $this->db->errorString());
+    }
+
+    private function activityRow(DOMXPath $xpath, int $carId): DOMElement
+    {
+        $rows = $xpath->query(sprintf(
+            '//*[@id="verificationActivityTable"]/tbody/tr[normalize-space(td[3]) = "%d"]',
+            $carId
+        ));
+        $this->assertSame(1, $rows->length, "Car {$carId} has one Recent Activity row");
+        $row = $rows->item(0);
+        $this->assertInstanceOf(DOMElement::class, $row);
+
+        return $row;
+    }
+
+    private function assertNewTabLink(?DOMNode $link, string $expectedHref): void
+    {
+        $this->assertInstanceOf(DOMElement::class, $link);
+        $this->assertSame($expectedHref, $link->getAttribute('href'));
+        $this->assertSame('_blank', $link->getAttribute('target'));
+        $this->assertSame('noopener', $link->getAttribute('rel'));
+    }
+
+    private function datatablesScriptCount(DOMXPath $xpath): int
+    {
+        return $xpath->query('//script[contains(@src, "usersc/js/datatables.min.js")]')->length;
+    }
+
+    public function testRecentActivityRendersATableWithTheFiveColumns(): void
+    {
+        $this->seedNotHealthy();
+        $ownerId = $this->createTestUser(['fname' => 'Cols', 'lname' => 'Owner'], true);
+        $carId = $this->createTestCar($ownerId);
+        $this->insertActivityRow($carId, 'VERIFIED SOLD', $this->mysqlDatetime('NOW() - INTERVAL 1 HOUR'), $ownerId, 'Cols', 'Owner');
+
+        $xpath = $this->getVerificationTab('eligible', null, ['activity_window' => self::ACTIVITY_WINDOW]);
+
+        $tables = $xpath->query('//*[@id="verificationRecentActivity"]//div[contains(concat(" ", normalize-space(@class), " "), " table-responsive ")]/table[@id="verificationActivityTable"]');
+        $this->assertSame(1, $tables->length, 'One table, inside .table-responsive, inside the Recent Activity card');
+        $table = $tables->item(0);
+        $this->assertInstanceOf(DOMElement::class, $table);
+        $this->assertStringContainsString('table-sm', $table->getAttribute('class'));
+
+        $headers = [];
+        foreach ($xpath->query('thead/tr/th', $table) as $th) {
+            $headers[] = trim($th->textContent);
+        }
+        $this->assertSame(['Time', 'Operation', 'Car', 'Owner', 'User ID'], $headers);
+
+        $row = $this->activityRow($xpath, $carId);
+        $this->assertSame(5, $xpath->query('td', $row)->length, 'Five cells in a row');
+        $this->assertSame('VERIFIED SOLD', trim($xpath->query('td[2]', $row)->item(0)->textContent));
+        $this->assertSame('Cols Owner', trim($xpath->query('td[4]', $row)->item(0)->textContent));
+        $this->assertSame((string) $ownerId, trim($xpath->query('td[5]', $row)->item(0)->textContent));
+
+        $this->assertGreaterThan(0, $xpath->query('//link[contains(@href, "usersc/css/datatables.min.css")]')->length, 'DataTables CSS loads with the table');
+        $this->assertSame(1, $this->datatablesScriptCount($xpath), 'DataTables JS loads with the table');
+    }
+
+    public function testRecentActivityTimeCellHasTheSortableTimestamp(): void
+    {
+        $this->seedNotHealthy();
+        $ownerId = $this->createTestUser([], true);
+        $newerCarId = $this->createTestCar($ownerId);
+        $olderCarId = $this->createTestCar($ownerId);
+        $newer = $this->mysqlDatetime('NOW() - INTERVAL 1 HOUR');
+        $older = $this->mysqlDatetime('NOW() - INTERVAL 2 HOUR');
+        // The older row goes in last, so it has the higher id: id order alone would list it first.
+        $this->insertActivityRow($newerCarId, 'VERIFIED', $newer, $ownerId);
+        $this->insertActivityRow($olderCarId, 'VERIFIED', $older, $ownerId);
+
+        $xpath = $this->getVerificationTab('eligible', null, ['activity_window' => self::ACTIVITY_WINDOW]);
+
+        $newerCell = $this->activityRow($xpath, $newerCarId)->getElementsByTagName('td')->item(0);
+        $olderCell = $this->activityRow($xpath, $olderCarId)->getElementsByTagName('td')->item(0);
+        $this->assertInstanceOf(DOMElement::class, $newerCell);
+        $this->assertInstanceOf(DOMElement::class, $olderCell);
+        $this->assertSame($newer, $newerCell->getAttribute('data-order'), 'data-order holds the raw cars_hist timestamp');
+        $this->assertSame($older, $olderCell->getAttribute('data-order'));
+        $this->assertNotSame($newer, trim($newerCell->textContent), 'The shown text is the display format, not the raw value');
+
+        $order = [];
+        foreach ($xpath->query('//*[@id="verificationActivityTable"]/tbody/tr/td[3]') as $cell) {
+            $order[] = (int) trim($cell->textContent);
+        }
+        $newerPosition = array_search($newerCarId, $order, true);
+        $olderPosition = array_search($olderCarId, $order, true);
+        $this->assertIsInt($newerPosition, 'The newer row is listed');
+        $this->assertIsInt($olderPosition, 'The older row is listed');
+        $this->assertLessThan($olderPosition, $newerPosition, 'Newest row comes first in the HTML');
+    }
+
+    public function testRecentActivityRowLinksTheCarTheOwnerAndTheUserInANewTab(): void
+    {
+        $this->seedNotHealthy();
+        $ownerId = $this->createTestUser([], true);
+        $carId = $this->createTestCar($ownerId);
+        $this->insertActivityRow($carId, 'VERIFIED', $this->mysqlDatetime('NOW() - INTERVAL 1 HOUR'), $ownerId, 'Link', 'Owner');
+
+        $xpath = $this->getVerificationTab('eligible', null, ['activity_window' => self::ACTIVITY_WINDOW]);
+        $row = $this->activityRow($xpath, $carId);
+
+        $this->assertNewTabLink($xpath->query('td[3]/a', $row)->item(0), '/app/owner/cars/details.php?car_id=' . $carId);
+        $this->assertNewTabLink($xpath->query('td[4]/a', $row)->item(0), '/app/admin/index.php?tab=owner-mgmt&owner_id=' . $ownerId);
+        $this->assertNewTabLink($xpath->query('td[5]/a', $row)->item(0), '/users/admin.php?view=user&id=' . $ownerId);
+    }
+
+    public function testRecentActivityUsesTheHistoricalOwner(): void
+    {
+        $this->seedNotHealthy();
+        $currentOwnerId = $this->createTestUser(['fname' => 'Current', 'lname' => 'Keeper'], true);
+        $formerOwnerId = $this->createTestUser(['fname' => 'Former', 'lname' => 'Keeper'], true);
+        $carId = $this->createTestCar($currentOwnerId);
+        $this->insertActivityRow($carId, 'VERIFIED', $this->mysqlDatetime('NOW() - INTERVAL 1 HOUR'), $formerOwnerId, 'Former', 'Keeper');
+
+        $xpath = $this->getVerificationTab('eligible', null, ['activity_window' => self::ACTIVITY_WINDOW]);
+        $row = $this->activityRow($xpath, $carId);
+
+        $this->assertNewTabLink($xpath->query('td[4]/a', $row)->item(0), '/app/admin/index.php?tab=owner-mgmt&owner_id=' . $formerOwnerId);
+        $this->assertSame('Former Keeper', trim($xpath->query('td[4]', $row)->item(0)->textContent));
+        $this->assertNewTabLink($xpath->query('td[5]/a', $row)->item(0), '/users/admin.php?view=user&id=' . $formerOwnerId);
+        $this->assertSame(
+            0,
+            $xpath->query(sprintf('.//a[contains(@href, "id=%d")]', $currentOwnerId), $row)->length,
+            "The car's current owner is not linked"
+        );
+    }
+
+    /** @return array<string, array{0: int|null, 1: string, 2: string, 3: string}> */
+    public static function noOwnerProvider(): array
+    {
+        return [
+            'zero, no name'   => [0, '', '', "\u{2014}"],
+            'null, no name'   => [null, '', '', "\u{2014}"],
+            'zero, with name' => [0, 'Plain', 'Text', 'Plain Text'],
+        ];
+    }
+
+    #[DataProvider('noOwnerProvider')]
+    public function testRecentActivityRowWithNoOwnerShowsNoOwnerLink(?int $historyUserId, string $fname, string $lname, string $expectedOwner): void
+    {
+        $this->seedNotHealthy();
+        $ownerId = $this->createTestUser([], true);
+        $carId = $this->createTestCar($ownerId);
+        $this->insertActivityRow($carId, 'VERIFIED', $this->mysqlDatetime('NOW() - INTERVAL 1 HOUR'), $historyUserId, $fname, $lname);
+
+        $xpath = $this->getVerificationTab('eligible', null, ['activity_window' => self::ACTIVITY_WINDOW]);
+        $row = $this->activityRow($xpath, $carId);
+
+        $this->assertSame($expectedOwner, trim($xpath->query('td[4]', $row)->item(0)->textContent));
+        $this->assertSame(0, $xpath->query('td[4]//a', $row)->length, 'No owner link');
+        $this->assertSame("\u{2014}", trim($xpath->query('td[5]', $row)->item(0)->textContent));
+        $this->assertSame(0, $xpath->query('td[5]//a', $row)->length, 'No user link');
+        $this->assertSame(1, $xpath->query('td[3]/a', $row)->length, 'Control: the car link stays');
+    }
+
+    public function testRecentActivityOwnerWithNoNameShowsTheOwnerNumberAsTheLink(): void
+    {
+        $this->seedNotHealthy();
+        $ownerId = $this->createTestUser([], true);
+        $carId = $this->createTestCar($ownerId);
+        $this->insertActivityRow($carId, 'VERIFIED', $this->mysqlDatetime('NOW() - INTERVAL 1 HOUR'), $ownerId);
+
+        $xpath = $this->getVerificationTab('eligible', null, ['activity_window' => self::ACTIVITY_WINDOW]);
+        $link = $xpath->query('td[4]/a', $this->activityRow($xpath, $carId))->item(0);
+
+        $this->assertNewTabLink($link, '/app/admin/index.php?tab=owner-mgmt&owner_id=' . $ownerId);
+        $this->assertSame('owner #' . $ownerId, trim($link->textContent));
+    }
+
+    public function testRecentActivityOwnerNameIsEscaped(): void
+    {
+        $this->seedNotHealthy();
+        $payload = '<b>x</b>"&';
+        $ownerId = $this->createTestUser([], true);
+        $carId = $this->createTestCar($ownerId);
+        $this->insertActivityRow($carId, 'VERIFIED', $this->mysqlDatetime('NOW() - INTERVAL 1 HOUR'), $ownerId, $payload, 'Q');
+
+        $xpath = $this->getVerificationTab('eligible', null, ['activity_window' => self::ACTIVITY_WINDOW]);
+
+        $link = $xpath->query('td[4]/a', $this->activityRow($xpath, $carId))->item(0);
+        $this->assertInstanceOf(DOMElement::class, $link);
+        $this->assertSame(0, $xpath->query('b', $link)->length, 'The name is text, not markup');
+        $this->assertStringContainsString($payload, $link->textContent, 'The raw characters show as text');
+    }
+
+    public function testRecentActivityEmptyWindowShowsTheMessageAndNoTable(): void
+    {
+        $this->seedNotHealthy();
+        $inWindow = $this->db->query(
+            "SELECT COUNT(*) AS cnt FROM cars_hist
+              WHERE operation IN ('VERIFIED', 'VERIFIED SOLD') AND timestamp >= NOW() - INTERVAL ? DAY",
+            [(int) self::ACTIVITY_WINDOW]
+        )->first();
+        $this->assertIsObject($inWindow);
+        $this->assertSame(
+            0,
+            (int) $inWindow->cnt,
+            'Setup: no VERIFIED row in the last ' . self::ACTIVITY_WINDOW . ' days of this database'
+        );
+
+        $xpath = $this->getVerificationTab('eligible', null, ['activity_window' => self::ACTIVITY_WINDOW]);
+
+        $this->assertSame(0, $xpath->query('//*[@id="verificationActivityTable"]')->length, 'No table');
+        $card = $xpath->query('//*[@id="verificationRecentActivity"]')->item(0);
+        $this->assertInstanceOf(DOMElement::class, $card);
+        $this->assertStringContainsString('No verification activity in this window.', $card->textContent);
+        $this->assertSame(0, $this->datatablesScriptCount($xpath), 'DataTables JS stays off when there is no table');
+        $this->assertSame(0, $xpath->query('//link[contains(@href, "usersc/css/datatables.min.css")]')->length, 'DataTables CSS stays off');
     }
 }

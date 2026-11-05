@@ -23,6 +23,7 @@
 
         var icon = document.createElement('i');
         icon.className = 'fas me-2 ' + (variant === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle');
+        icon.setAttribute('aria-hidden', 'true');
         alert.appendChild(icon);
 
         var text = document.createElement('span');
@@ -132,5 +133,30 @@
         addHidden(pending.form, 'command', pending.command);
         addHidden(pending.form, 'owner_requested', '1');
         pending.form.submit();
+    });
+})();
+
+/**
+ * Verification System tab — Recent Activity sorting (#2496).
+ *
+ * The server renders the rows newest first, so the table reads correctly
+ * with no script. DataTables only adds column sorting; the Time cells sort
+ * on their raw timestamp (`data-order`), not the display format.
+ */
+(function () {
+    'use strict';
+
+    if (!document.getElementById('verificationActivityTable')) return;
+    if (typeof $ === 'undefined' || !$.fn.DataTable) {
+        // The rows still read newest first, but say why the headers do not sort.
+        console.warn('Recent Activity: DataTables did not load, so column sorting is off.');
+        return;
+    }
+
+    $('#verificationActivityTable').DataTable({
+        paging: false,
+        searching: false,
+        info: false,
+        order: [[0, 'desc']]
     });
 })();
