@@ -255,7 +255,7 @@ tables. `cars.user_id`'s own FK was dropped in
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | `int UNSIGNED` | PRIMARY KEY, AUTO_INCREMENT |
-| `user_id` | `int NOT NULL` | Owner the event applies to. Added by `20261013000000_key_er_email_events_by_user.php` (#2358). |
+| `user_id` | `int NOT NULL` | Owner the event applies to. Added by `20261013000000_key_er_email_events_by_user.php` (#2358). 0 means our mail that no single user holds the address for (no user, or two or more users). The row has `car_id` NULL and changes no owner state (#2611). Account deletion keeps these rows that hold the deleted address. The prune removes a `user_id` 0 row after 24 months for a terminal event, and after 90 days for any other event. Deleting these rows at account deletion is tracked in #2614. |
 | `car_id` | `int NULL` | Car of the row. A `sent` row has the car that it starts a send cycle for. A webhook or reconciliation row has the car of the matched verification `sent` row (step (a) of the matcher), or NULL when the match came from the plugin row (step (b)). A suppression-import row has `car_id` NULL. Rows written before the #2358 migration keep their `car_id` until the prune deletes them. A collapsed row can carry the `car_id` of another car of the owner. The chip still finds it by its message ID. A car delete also sets `car_id` to NULL. |
 | `email` | `varchar(155) NOT NULL` | Recipient address, stored normalized (trimmed, lower case) (INDEXED). The prune sets it to `''` on a car's latest `sent` row only when the row is older than 90 days. |
 | `event` | `varchar(32) NOT NULL` | Brevo event name (`hard_bounce`, `soft_bounce`, `blocked`, `invalid`, `spam`, `delivered`, `unique_opened`, …) or the local `sent` event |

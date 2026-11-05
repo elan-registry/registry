@@ -28,14 +28,16 @@ enum ProcessingResult
 
     /**
      * The message is ours, but no single user holds the address. Maps to 2xx,
-     * no row, logged. A verification-tagged event increments the unmatched counter.
+     * logged. When the plugin has a row for the message, the event is stored
+     * with no owner (`user_id` 0, #2611). Else no row. A verification-tagged
+     * event increments the unmatched counter.
      */
     case NO_USER_MATCH;
 
     /**
      * The payload is not a JSON object, misses a required field, or has a bad
-     * address or a message ID over 255 bytes. Or the match or apply step
-     * cannot parse a stored value (for example a zero message time). Maps to
+     * address or a message ID over 255 bytes. Or the match, record or apply
+     * step cannot parse a stored value (for example a zero message time). Maps to
      * 4xx, logged. A retry cannot succeed, so the status asks for none.
      */
     case MALFORMED;

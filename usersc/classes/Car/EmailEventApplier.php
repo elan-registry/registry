@@ -283,9 +283,7 @@ class EmailEventApplier
         }
         $messageTime = self::wallTime($match->messageTime(), 'message_time');
         $eventTime = self::wallTime($occurredAt, 'occurred_at');
-        if ($reason !== null) {
-            $reason = mb_substr(mb_scrub($reason, 'UTF-8'), 0, self::REASON_MAX_CHARS);
-        }
+        $reason = self::clipReason($reason);
 
         $this->repo->beginTransaction();
         try {
@@ -325,6 +323,60 @@ class EmailEventApplier
         }
 
         return $result;
+    }
+
+    /**
+     * Record one event of our mail that no single user holds, with no owner
+     *
+     * The webhook and the reconciliation job both call this, so both store
+     * the same row (#2611). The row has `user_id` 0 and `car_id` NULL
+     * ({@see CarRepository::insertUnmatchedEmailEvent()}). No owner exists,
+     * so no date guard and no flag step applies. One insert needs no
+     * transaction.
+     *
+     * @param EmailEventMatch $match A {@see EmailEventMatch::noUserOnPluginRow()} result
+     * @param string $address Recipient address from the event
+     * @param string $event Event name (for example `hard_bounce`)
+     * @param string|null $reason Reason text. Cut to 255 characters of valid UTF-8.
+     * @param string $messageId Brevo's message ID
+     * @param string $occurredAt Event time in AppConstants::DATETIME_FORMAT
+     * @return bool True when the call wrote a new row. False for a duplicate.
+     * @throws \InvalidArgumentException If the match is not a
+     *                                   noUserOnPluginRow() result, or the
+     *                                   address is empty after normalization
+     *                                   (nothing is written)
+     * @throws CarValidationException If `$occurredAt` is not a valid datetime (nothing is written)
+     * @throws CarDatabaseException If the write fails
+     */
+    public function recordUnmatched(
+        EmailEventMatch $match,
+        string $address,
+        string $event,
+        ?string $reason,
+        string $messageId,
+        string $occurredAt
+    ): bool {
+        if (!$match->hasPluginRow()) {
+            throw new \InvalidArgumentException(
+                'EmailEventApplier::recordUnmatched: the match must be a noUserOnPluginRow result'
+            );
+        }
+        $normalized = EmailAddress::normalize($address);
+        if ($normalized === '') {
+            throw new \InvalidArgumentException('EmailEventApplier::recordUnmatched: the address is empty');
+        }
+        $eventTime = self::wallTime($occurredAt, 'occurred_at');
+        $reason = self::clipReason($reason);
+
+        return $this->repo->insertUnmatchedEmailEvent($normalized, $event, $reason, $messageId, $eventTime) === 1;
+    }
+
+    /**
+     * Scrub a reason to valid UTF-8 and cut it to the column width.
+     */
+    private static function clipReason(?string $reason): ?string
+    {
+        return $reason === null ? null : mb_substr(mb_scrub($reason, 'UTF-8'), 0, self::REASON_MAX_CHARS);
     }
 
     /**

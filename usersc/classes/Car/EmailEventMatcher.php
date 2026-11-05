@@ -59,12 +59,17 @@ class EmailEventMatcher
      * - (a) Exactly one `sent` row with the ID has the event address.
      *   The result has that row's user and car, and the row's
      *   `occurred_at` as the message time. More than one such row (two
-     *   users) gives {@see EmailEventMatch::noUser()}.
+     *   users) gives the result of step (c).
      * - (b) The plugin row with the ID has the event address as its
      *   one whole `recipient_email` (a row with more than one recipient
      *   matches nothing), and exactly one user holds that address. The
      *   result has no car, and `accepted_at` as the message time.
-     * - (c) None of the above: {@see EmailEventMatch::noUser()}.
+     * - (c) None of the above: {@see EmailEventMatch::noUserOnPluginRow()}
+     *   when a plugin row has the ID, else {@see EmailEventMatch::noUser()}
+     *   (#2611).
+     *
+     * An event address that is empty after normalization gives
+     * {@see EmailEventMatch::noUser()} before step (a).
      *
      * @param string $messageId Message ID from the event
      * @param string $address Recipient address from the event
@@ -91,7 +96,7 @@ class EmailEventMatcher
             static fn (object $row): bool => EmailAddress::normalize((string) $row->email) === $normalized
         ));
         if (count($sameAddress) > 1) {
-            return EmailEventMatch::noUser();
+            return $pluginRow !== null ? EmailEventMatch::noUserOnPluginRow() : EmailEventMatch::noUser();
         }
         if (count($sameAddress) === 1) {
             $row = $sameAddress[0];
@@ -107,7 +112,7 @@ class EmailEventMatcher
             }
         }
 
-        return EmailEventMatch::noUser();
+        return $pluginRow !== null ? EmailEventMatch::noUserOnPluginRow() : EmailEventMatch::noUser();
     }
 
     /**
