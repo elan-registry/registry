@@ -28,8 +28,8 @@ use ElanRegistry\Owner;
  */
 
 // THE VERIFICATION SWITCH STOPS ONLY THE SEND BATCH. The stop for event writes
-// is in the Feature Switch help text in verification-status-panel.php (shown
-// to every admin, never to an editor) and in
+// is in the incident steps (#verificationIncidentSteps) in
+// verification-status-panel.php (shown to every admin, never to an editor) and in
 // docs/development/EMAIL_SYSTEM.md.
 
 // ---------------------------------------------------------------------------
