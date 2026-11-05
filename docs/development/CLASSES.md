@@ -1907,7 +1907,10 @@ other probes.
   settings probe did not fail and it gave no not-ready reason
 - `rows(): array` - Give the panel rows in render order. Each row is an associative
   array with `key`, `label`, `badgeText`, `badgeClass`, `icon`, `detail`,
-  `detailIcon`, and `recent` (list of recent failure entries)
+  `detailIcon`, `recent` (list of recent failure entries), and `advice`. A job
+  row with an `UNREADABLE` or `MISSING` state puts the cause in `detail` and
+  the next step in `advice`, a list of `{text, code}` segments. The panel
+  shows `advice` to admins only and puts each `code` in `<code>` (#2458)
 - `allHealthy(): bool` - True when the settings probe worked, the switch is on,
   Brevo is ready, cron runs, the unmatched count is 0, the cron failure
   count is 0, and the batch size was read. An unreadable counter, failure
@@ -1956,7 +1959,10 @@ other probes.
   `email_address_malformed`. The invalid email step gives kind
   `bad_address`, label "Invalid email", class `text-bg-warning`, and no reason (#2594).
   Otherwise the chip shows the car's latest email event. A hard-bounce event
-  still shows "Bounced" for an owner with no bounce flag. Returns
+  still shows "Bounced" for an owner with no bounce flag. The blocked step
+  gives a readable cause as `reason` ("Spam complaint", "Unsubscribed in
+  Brevo", "On Brevo blocklist", "Cause unknown"). A legacy `request` or
+  `requests` event gives the Sent chip (#2458). Returns
   `['kind' => string, 'label' => string, 'class' => string, 'reason' => string]`.
   `kind` is empty when there is no event to show
 

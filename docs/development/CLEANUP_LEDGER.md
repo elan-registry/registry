@@ -39,6 +39,10 @@ after an item is written.
 
 - [ ] No test checks that `milestone_checks` and `release_checks` name an executable script, and edits here do not trigger the hooks CI job (found in /flow:finish-milestone v2.31.0)
 
+### `app/admin/assets/js/tab-verification.js`
+
+- [ ] `showFeedback()` (~L24) builds the toggle-result icon with no `aria-hidden="true"`, inside the `role="status"` region of the status panel. Add it and run `npm run build` (found in #2458 review)
+
 ### `app/admin/includes/account-cleanup-helpers.php`
 
 - [ ] Replace 8 × `throw new RuntimeException` with a typed `AccountCleanupException extends ElanRegistryException`. Handle it in `app/api/admin/account-cleanup-data.php` with `ApiResponse` and `LogCategories` (from #1637)
@@ -55,13 +59,11 @@ after an item is written.
 
 ### `app/admin/includes/tab-verification.php`
 
-- [ ] The summary, chip, activity and cron-state catches (~L173, ~L228, ~L247, ~L744) still log `get_class($e)` and `$e->getMessage()`. Log `ExceptionLogSummary::of($e)`, as the eligible-preview and queue catches do (found in #2572 review)
+- [ ] About 25 decorative `<i class="fas ...">` icons outside the status panel have no `aria-hidden="true"` (for example the tab `h2` icon ~L329, the probe-failure alert icon ~L337 and the queue `h5` icon ~L543). Find them all with `grep -n 'fa-' app/admin/includes/tab-verification.php | grep -v aria-hidden`. The status panel icons have it (found in #2458 review)
+- [ ] The "could not load the summary counts", "could not load the queue status chips" and "could not load recent activity" log lines do not name the view: add the window days, the queue status and the car count, as the queue catch logs `$queueStatus` (found in #2458)
+- [ ] No source regression test stops `getMessage()` coming back into the four catches that now log `ExceptionLogSummary::of($e)` (the "could not load the summary counts", "could not load the queue status chips", "could not load recent activity" and "owner %d could not be loaded for the queue row" log lines). Add one to `tests/unit/regression/VerificationTabSourceRegressionTest.php`, in the style of `DeletionPrivacyRerunOutcomeSourceRegressionTest.php` (found in #2458 review)
+- [ ] No fixed test pins the singular "(1 car)" pill text. The Playwright pill check builds its expectation from live counts, so the singular branch runs only when a count is 1 (found in #2458 review)
 - [ ] The Automatic Sending card shows only "Status unavailable" for an `UNREADABLE` or `MISSING` job state, and its "Next eligible" row says "the job status could not be read" for `MISSING` too. Show the same detail lines as the status panel rows, from one shared source next to `CronJobRunsReader::badgeFor()` (found in #2572 review)
-
-### `app/admin/includes/verification-status-panel.php`
-
-- [ ] The `UNREADABLE` and `MISSING` job-row details tell an editor to check the system log or run `composer migrate:status`, but an editor cannot act on either. Show that advice to admins only, as the incident steps do (found in #2572 review)
-- [ ] The job-row details show command and table names (`composer migrate:status`, `er_cron_job_runs`) as plain text. Render them in `<code>`, as the incident steps do (found in #2572 review)
 
 ### `app/admin/index.php`
 
@@ -125,10 +127,7 @@ after an item is written.
 ### `docs/development/ERROR_HANDLING.md`
 
 - [ ] The exception table (~L127-157) lists `AdminVerificationException`, which has no file in `usersc/classes/Exceptions/`, and omits `VerificationConfigException`. Check the table against the directory and correct the count in the heading (found in /finish-milestone v2.30.10)
-
-### `docs/development/UI_STANDARDS.md`
-
-- [ ] No doc lists the shared car section partials in `app/views/cars/` and their caller variables (`$headingTag`, `$showOwnerId`, `$carId`). Add one short paragraph next to the `_vehicle_info_card.php` text (found in #2495)
+- [ ] The doc names only the last-resort fallback, and says "no guards around database calls". It does not name the page-section fault-domain catch (catch `\Throwable` around one repository read, log `ExceptionLogSummary::of($e)`, show the section as Unavailable) that `tab-verification.php` and `VerificationTabStatus::read()` use (#2364). Add one paragraph (found in #2458)
 
 ### `error/500.php`
 
@@ -319,7 +318,8 @@ after an item is written.
 
 ### `usersc/classes/Car/VerificationTabStatus.php`
 
-- [ ] The `MISSING` job-row detail (~L656) is long, and its next step ("Run composer migrate:status.") names no migration. Shorten it and name the migration that seeds the job row (found in #2572 review)
+- [ ] `blockedCauseLabel()` treats a whitespace-only `email_blocked_cause` as a cause and shows a blank-looking reason. Only manual SQL can write one. Trim before the empty check (found in #2458 review)
+- [ ] The `MISSING` job-row `detail` names `er_cron_job_runs` as plain text, so the panel cannot put it in `<code>`, as it does for the `advice` segments. Give `detail` the same `{text, code}` segments or move the name into `advice` (found in #2458 review)
 
 ### `usersc/classes/CarView.php`
 

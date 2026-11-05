@@ -168,9 +168,8 @@ try {
     $vsSummary = $vsRepo->countVerificationSummary($queueWindowDays);
 } catch (\Throwable $e) {
     logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
-        'Verification tab: could not load the summary counts [%s]: %s',
-        get_class($e),
-        $e->getMessage()
+        'Verification tab: could not load the summary counts: %s',
+        ExceptionLogSummary::of($e)
     ));
 }
 
@@ -266,9 +265,8 @@ if ($vsQueueCarIds !== []) {
         $vsChipUnreadable = false;
     } catch (\Throwable $e) {
         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
-            'Verification tab: could not load the queue status chips [%s]: %s',
-            get_class($e),
-            $e->getMessage()
+            'Verification tab: could not load the queue status chips: %s',
+            ExceptionLogSummary::of($e)
         ));
     }
 }
@@ -285,9 +283,8 @@ try {
 } catch (\Throwable $e) {
     $vsActivityError = 'Recent activity could not be loaded. Check the system log for details.';
     logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
-        'Verification tab: could not load recent activity [%s]: %s',
-        get_class($e),
-        $e->getMessage()
+        'Verification tab: could not load recent activity: %s',
+        ExceptionLogSummary::of($e)
     ));
 }
 
@@ -343,30 +340,40 @@ $vsNow = new \DateTimeImmutable();
     </div>
 <?php } ?>
 
-<!-- Summary cards. Verified and Sold count cars in the queue Window. Eligible and
-     Pending count cars now. Bounced, Blocked and Opted out count owners now, so an
-     owner with several cars counts once (#2361). -->
+<!-- Summary cards. Each card has one unit line (data-unit "cars" or "owners").
+     Verified and Sold count cars in the queue Window, so their unit line also names
+     the Window. Eligible and Pending count cars now. Bounced, Blocked and Opted out
+     count owners now, so an owner with several cars counts once (#2361). -->
+<?php
+$vsSummaryCards = [
+    'eligible'  => ['countKey' => 'eligible',         'unit' => 'cars',   'inWindow' => false],
+    'pending'   => ['countKey' => 'pending',          'unit' => 'cars',   'inWindow' => false],
+    'verified'  => ['countKey' => 'verified',         'unit' => 'cars',   'inWindow' => true],
+    'sold'      => ['countKey' => 'sold',             'unit' => 'cars',   'inWindow' => true],
+    'bounced'   => ['countKey' => 'bounced_owners',   'unit' => 'owners', 'inWindow' => false],
+    'blocked'   => ['countKey' => 'blocked_owners',   'unit' => 'owners', 'inWindow' => false],
+    'opted_out' => ['countKey' => 'opted_out_owners', 'unit' => 'owners', 'inWindow' => false],
+];
+// The pill of an owner-count status counts cars, so the pill says "cars"
+// and the card says "owners".
+$vsOwnerCountStatuses = array_keys(array_filter(
+    $vsSummaryCards,
+    static fn (array $card): bool => $card['unit'] === 'owners'
+));
+?>
 <div class="row g-3 mb-4" id="verificationSummaryCards">
-    <?php foreach ([
-        'eligible'  => 'eligible',
-        'pending'   => 'pending',
-        'verified'  => 'verified',
-        'sold'      => 'sold',
-        'bounced'   => 'bounced_owners',
-        'blocked'   => 'blocked_owners',
-        'opted_out' => 'opted_out_owners',
-    ] as $vsSummaryKey => $vsSummaryCountKey) { ?>
+    <?php foreach ($vsSummaryCards as $vsSummaryKey => $vsCard) {
+        $vsUnitText = $vsCard['inWindow']
+            ? $vsCard['unit'] . ' · ' . vsWindowLabel($queueWindowDays)
+            : $vsCard['unit'];
+    ?>
     <div class="col-6 col-md-3 col-xl">
         <div class="er-stat-tile h-100" data-summary="<?= vsEsc($vsSummaryKey) ?>">
             <div class="er-stat-number">
-                <?= $vsSummary !== null ? vsEsc(number_format($vsSummary[$vsSummaryCountKey])) : '&mdash;' ?>
+                <?= $vsSummary !== null ? vsEsc(number_format($vsSummary[$vsCard['countKey']])) : '&mdash;' ?>
             </div>
             <div class="er-stat-label"><?= vsEsc($vsStatusLabels[$vsSummaryKey]) ?></div>
-            <?php if ($vsSummaryKey === 'verified' || $vsSummaryKey === 'sold') { ?>
-            <div class="er-stat-label"><?= vsEsc(vsWindowLabel($queueWindowDays)) ?></div>
-            <?php } elseif ($vsSummaryKey !== $vsSummaryCountKey) { ?>
-            <div class="er-stat-label">owners</div>
-            <?php } ?>
+            <div class="er-stat-label" data-unit="<?= vsEsc($vsCard['unit']) ?>"><?= vsEsc($vsUnitText) ?></div>
         </div>
     </div>
     <?php } ?>
@@ -547,7 +554,14 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                <?= $vsPillActive ? 'aria-current="page"' : '' ?>>
                 <?= vsEsc($vsStatusLabels[$vsPillStatus]) ?>
                 <?php if (isset($vsPillCounts[$vsPillStatus])) { ?>
-                <span class="ms-1">(<?= vsEsc(number_format($vsPillCounts[$vsPillStatus])) ?>)</span>
+                <?php
+                $vsPillCount = $vsPillCounts[$vsPillStatus];
+                $vsPillCountText = number_format($vsPillCount);
+                if (in_array($vsPillStatus, $vsOwnerCountStatuses, true)) {
+                    $vsPillCountText .= $vsPillCount === 1 ? ' car' : ' cars';
+                }
+                ?>
+                <span class="ms-1">(<?= vsEsc($vsPillCountText) ?>)</span>
                 <?php } ?>
             </a>
             <?php } ?>
@@ -789,11 +803,10 @@ $autoSendCounts    = $vsStatus->autoSendCounts();
                             $vsOwnerName = trim(($vsOwnerRow->fname ?? '') . ' ' . ($vsOwnerRow->lname ?? ''));
                         } catch (\Throwable $e) {
                             logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, sprintf(
-                                'Verification tab: owner %d could not be loaded for the queue row of car %d [%s]: %s',
+                                'Verification tab: owner %d could not be loaded for the queue row of car %d: %s',
                                 (int) $queueCar->user_id,
                                 $queueCarId,
-                                get_class($e),
-                                $e->getMessage()
+                                ExceptionLogSummary::of($e)
                             ));
                             $vsOwnerName = trim(($queueCar->fname ?? '') . ' ' . ($queueCar->lname ?? ''));
                         }

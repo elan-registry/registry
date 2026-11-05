@@ -505,16 +505,20 @@ The System Status panel shows 7 rows in this order:
    for the job's state, its last run time, and whether the most recent run
    failed. The job backfills
    missed events and prunes old event records. An unreadable job state
-   shows "The job state could not be read, so the job may not run. Check
-   the system log for CronJobFailure entries." A missing job row shows "The
-   job has no row in er_cron_job_runs, so cron does not run it. Run composer
-   migrate:status. If its seed migration is applied, the row was deleted and
-   must be inserted again."
+   shows "The job state could not be read, so the job may not run." A
+   missing job row shows "The job has no row in er_cron_job_runs, so cron
+   does not run it." Every viewer sees that detail. An admin also sees the
+   next step, with each name in `<code>`: "Check the system log for
+   `CronJobFailure` entries." for an unreadable state, and "Run
+   `composer migrate:status`. If `20260918133038_rename_reconciliation_job`
+   is applied, insert the row again." for a missing row. An editor sees no
+   next step, because an editor cannot act on it (#2458).
 6. **Last suppression sync run** — shows the badge from `CronJobRunsReader`
    for the job's state, its last run time, and whether the most recent run
    failed. The job imports
    suppressed contacts from Brevo. The unreadable and missing job states
-   show the same detail text as the reconciliation row.
+   show the same detail and next step as the reconciliation row. The
+   missing-row step names `20260909170000_seed_brevo_suppression_sync_cron`.
 7. **Cron job failures** — shows a count. Badge `text-bg-success` if 0.
    Badge `text-bg-danger` if above 0. Badge `text-bg-danger` ("Unavailable")
    if the read failed. Shows the
@@ -759,14 +763,18 @@ checks run in this order, and the first match wins (`VerificationTabStatus::chip
    owner's email address is not valid. Fix the address on the owner's
    account." The check uses the same pattern as `findVerificationEligible()`
    in CLASSES.md (#2594).
-3. `email_blocked = 1`: "Blocked". The reason text is `email_blocked_cause`
-   (`spam`, `unsubscribed`, `blocklist`), or "cause unknown" when the cause
-   is NULL. The reason shows as small muted text under the badge.
+3. `email_blocked = 1`: "Blocked". The reason text is the readable form of
+   `email_blocked_cause`: `spam` gives "Spam complaint", `unsubscribed` gives
+   "Unsubscribed in Brevo", `blocklist` gives "On Brevo blocklist", and NULL
+   or an empty value gives "Cause unknown". A cause that has no label shows as stored (#2458).
+   The reason shows as small muted text under the badge.
 4. `email_bounced = 1`: "Bounced". The reason text is the reason of the
    latest event when that event is a hard bounce, else empty.
 5. `email_opted_out = 1`: "Opted out".
 6. Otherwise the chip shows the latest email event, as the rules above select it.
    A hard-bounce event shows "Bounced" also for an owner with no bounce flag.
+   A legacy `request` or `requests` row shows "Sent". The webhook and the
+   reconciliation job do not record these events now (#2458).
 
 The tab does not read suppression events or `cars_hist` to find the cause.
 The cause is the stored `email_blocked_cause`. Steps 3 and 4 count a flag only

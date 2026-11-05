@@ -316,10 +316,20 @@ keyboard focus.
 The `$_helpButton` helper is defined in
 [`app/views/cars/_vehicle_info_card.php`](../../app/views/cars/_vehicle_info_card.php).
 
+The car pages share five section partials in `app/views/cars/`:
+`_vehicle_info_card.php`, `_factory_data_card.php`, `_owner_info_card.php`,
+`_location_map_card.php` and `_photos_card.php`. Each one takes
+`$headingTag` (the card heading element, default `h3`). `_owner_info_card.php`
+also takes `$showOwnerId` (default `false`), and `_factory_data_card.php`
+takes `$carId` for its log lines. The file header of each partial lists the
+other variables it reads.
+
 **Requirements:**
 
 - A real `<button type="button">`, so the button takes keyboard focus and does not submit a form
-- Class `btn btn-link p-0 align-baseline`: a link-style button with no padding, aligned to the text baseline
+- Class `btn btn-link p-0 align-baseline er-help-btn`: a link-style button with no padding, aligned to the text baseline.
+  `er-help-btn` (`usersc/templates/customizer.css`) adds an invisible 44 × 44 px hit area,
+  so the button meets WCAG 2.5.5 and the text row keeps its height (#2458)
 - `data-bs-toggle="tooltip"` and `data-bs-title` for the Bootstrap tooltip
 - `aria-label` gives screen readers an accessible name
 - The icon is `<i class="fas fa-circle-question" aria-hidden="true"></i>`
@@ -331,10 +341,14 @@ The `$_helpButton` helper is defined in
 The admin Verification tab uses `.er-stat-tile` summary cards and a row of
 filter pills. Seven cards show, in this order: Eligible, Pending, Verified,
 Sold, Bounced, Blocked and Opted out. The first four count cars. Bounced,
-Blocked and Opted out count owners, and each has an "owners" sub-label. An
-owner with several cars counts once on a card (#2361). The nine pills come
+Blocked and Opted out count owners. An owner with several cars counts once on
+a card (#2361). Each card has one unit line (`data-unit`): "cars", "cars · " plus
+the Window label (for example "cars · Last 30 days") for Verified and Sold,
+or "owners" (#2458). The nine pills come
 from `CarRepository::QUEUE_STATUSES`. They include Next Queue and Invalid
-email, which have no card. Each pill shows its car count. There is no "Suppressed"
+email, which have no card. Each pill shows its car count. The Bounced, Blocked
+and Opted out pills say "(n cars)", or "(1 car)", so a pill and the owner card with the same
+name do not look like a disagreement. There is no "Suppressed"
 card or pill. `docs/development/EMAIL_SYSTEM.md` owns the full
 dashboard layout and the status chip rules.
 

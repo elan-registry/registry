@@ -186,7 +186,8 @@ final class VerificationTabStatusTest extends TestCase
     /**
      * @param array<string, mixed> $o
      * @return array{key: string, label: string, badgeText: string, badgeClass: string, icon: string,
-     *     detail: string, detailIcon: string, recent: list<array{loggedAt: string, message: string}>}
+     *     detail: string, detailIcon: string, recent: list<array{loggedAt: string, message: string}>,
+     *     advice: list<array{text: string, code: string}>}
      */
     private static function row(string $key, array $o = []): array
     {
@@ -217,7 +218,7 @@ final class VerificationTabStatusTest extends TestCase
         $this->assertNotEmpty($rows);
         foreach ($rows as $row) {
             $this->assertSame(
-                ['key', 'label', 'badgeText', 'badgeClass', 'icon', 'detail', 'detailIcon', 'recent'],
+                ['key', 'label', 'badgeText', 'badgeClass', 'icon', 'detail', 'detailIcon', 'recent', 'advice'],
                 array_keys($row)
             );
         }
@@ -495,32 +496,74 @@ final class VerificationTabStatusTest extends TestCase
         $this->assertSame($class, $row['badgeClass']);
     }
 
-    /** The badge text is shared with the auto-send card, so the reason lives in the detail (#2573). */
+    /**
+     * The badge text is shared with the auto-send card, so the reason lives in
+     * the detail (#2573). The next step is in the advice, for admins (#2458).
+     */
+    #[DataProvider('jobRowProvider')]
     #[Group('regression')]
-    public function test_jobRow_unreadable_hasDetailNamingCronJobFailureLog(): void
+    public function test_jobRow_unreadable_hasCauseDetailAndCronJobFailureAdvice(string $key, string $option): void
     {
-        $row = self::row('reconciliation', ['reconciliation' => self::job(CronJobEnabledState::UNREADABLE, null)]);
+        $row = self::row($key, [$option => self::job(CronJobEnabledState::UNREADABLE, null)]);
 
         $this->assertSame('Status unavailable', $row['badgeText']);
-        $this->assertSame(
-            'The job state could not be read, so the job may not run. Check the system log for CronJobFailure entries.',
-            $row['detail']
-        );
+        $this->assertSame('The job state could not be read, so the job may not run.', $row['detail']);
         $this->assertSame('', $row['detailIcon']);
+        $this->assertSame(
+            [
+                ['text' => 'Check the system log for ', 'code' => 'CronJobFailure'],
+                ['text' => ' entries.', 'code' => ''],
+            ],
+            $row['advice']
+        );
     }
 
-    #[Group('regression')]
-    public function test_jobRow_missing_hasDetailSayingRunMigrateStatus(): void
+    /** @return array<string, array{string, string, string}> */
+    public static function missingJobRowProvider(): array
     {
-        $row = self::row('suppression_sync', ['suppressionSync' => self::job(CronJobEnabledState::MISSING, null)]);
+        return [
+            // The seed migration 20260909134838 adds only the `crons` row. The
+            // er_cron_job_runs row has its current name from the rename migration.
+            'reconciliation'   => ['reconciliation', 'reconciliation', '20260918133038_rename_reconciliation_job'],
+            'suppression sync' => ['suppression_sync', 'suppressionSync', '20260909170000_seed_brevo_suppression_sync_cron'],
+        ];
+    }
+
+    #[DataProvider('missingJobRowProvider')]
+    #[Group('regression')]
+    public function test_jobRow_missing_hasShortDetailAndAdviceNamingTheJobsMigration(
+        string $key,
+        string $option,
+        string $migration
+    ): void {
+        $row = self::row($key, [$option => self::job(CronJobEnabledState::MISSING, null)]);
 
         $this->assertSame('Status unavailable', $row['badgeText']);
-        $this->assertSame(
-            'The job has no row in er_cron_job_runs, so cron does not run it. Run composer migrate:status.'
-                . ' If its seed migration is applied, the row was deleted and must be inserted again.',
-            $row['detail']
-        );
+        $this->assertSame('The job has no row in er_cron_job_runs, so cron does not run it.', $row['detail']);
         $this->assertSame('', $row['detailIcon']);
+        $this->assertSame(
+            [
+                ['text' => 'Run ', 'code' => 'composer migrate:status'],
+                ['text' => '. If ', 'code' => $migration],
+                ['text' => ' is applied, insert the row again.', 'code' => ''],
+            ],
+            $row['advice']
+        );
+        $this->assertFileExists(__DIR__ . '/../../../database/migrations/' . $migration . '.php');
+    }
+
+    /** Only job rows carry advice; a healthy job row has none. */
+    public function test_rows_onlyAnUnavailableJobRowHasAdvice(): void
+    {
+        $rows = self::makeStatus([
+            'reconciliation' => self::job(CronJobEnabledState::MISSING, null),
+            'cronReady'      => null,
+            'unmatched'      => null,
+        ])->rows();
+
+        foreach ($rows as $row) {
+            $this->assertSame($row['key'] === 'reconciliation', $row['advice'] !== [], "Row {$row['key']}");
+        }
     }
 
     /** One job's state must not leak into another job's row. */
@@ -950,7 +993,8 @@ final class VerificationTabStatusTest extends TestCase
 
     /**
      * @return array{key: string, label: string, badgeText: string, badgeClass: string, icon: string,
-     *     detail: string, detailIcon: string, recent: list<array{loggedAt: string, message: string}>}
+     *     detail: string, detailIcon: string, recent: list<array{loggedAt: string, message: string}>,
+     *     advice: list<array{text: string, code: string}>}
      */
     private static function rowByKey(VerificationTabStatus $status, string $key): array
     {

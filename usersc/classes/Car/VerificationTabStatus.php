@@ -44,6 +44,10 @@ use ElanRegistry\LogCategories;
  * @since v2.30.8
  * @see https://github.com/elan-registry/registry/issues/2330
  * @see https://github.com/elan-registry/registry/issues/2364
+ *
+ * @phpstan-type StatusRow array{key: string, label: string, badgeText: string, badgeClass: string,
+ *     icon: string, detail: string, detailIcon: string, recent: list<array{loggedAt: string, message: string}>,
+ *     advice: list<array{text: string, code: string}>}
  */
 final readonly class VerificationTabStatus
 {
@@ -54,6 +58,13 @@ final readonly class VerificationTabStatus
         'state'         => CronJobEnabledState::UNREADABLE,
         'lastRunAt'     => null,
         'lastFailureAt' => null,
+    ];
+
+    /** Readable text for each `profiles.email_blocked_cause` value */
+    private const BLOCKED_CAUSE_LABELS = [
+        CarRepository::BLOCKED_CAUSE_SPAM         => 'Spam complaint',
+        CarRepository::BLOCKED_CAUSE_UNSUBSCRIBED => 'Unsubscribed in Brevo',
+        CarRepository::BLOCKED_CAUSE_BLOCKLIST    => 'On Brevo blocklist',
     ];
 
     /**
@@ -236,10 +247,12 @@ final readonly class VerificationTabStatus
      *
      * `badgeClass` is the full class list of the badge span. `icon` and
      * `detailIcon` are Font Awesome names, or '' for none. `detail` and
-     * `recent` are plain text; the caller escapes them.
+     * `recent` are plain text; the caller escapes them. `advice` is the next
+     * step for an admin, as text segments; a non-empty `code` is a command,
+     * log category or migration name. Only an unreadable or missing job row
+     * has advice.
      *
-     * @return list<array{key: string, label: string, badgeText: string, badgeClass: string, icon: string,
-     *     detail: string, detailIcon: string, recent: list<array{loggedAt: string, message: string}>}>
+     * @return list<StatusRow>
      */
     public function rows(): array
     {
@@ -257,8 +270,10 @@ final readonly class VerificationTabStatus
                     . ' job below catches anything the webhook missed.'
             ),
             $this->unmatchedRow(),
-            $this->jobRow('reconciliation', 'Last reconciliation run', $this->reconciliation),
-            $this->jobRow('suppression_sync', 'Last suppression sync run', $this->suppressionSync),
+            $this->jobRow('reconciliation', 'Last reconciliation run', $this->reconciliation,
+                '20260918133038_rename_reconciliation_job'),
+            $this->jobRow('suppression_sync', 'Last suppression sync run', $this->suppressionSync,
+                '20260909170000_seed_brevo_suppression_sync_cron'),
             $this->cronFailuresRow(),
         ];
     }
@@ -487,7 +502,7 @@ final readonly class VerificationTabStatus
         }
         if ($flags->blocked) {
             return ['kind' => 'blocked', 'label' => 'Blocked', 'class' => 'text-bg-danger',
-                    'reason' => $flags->blockedCause ?? 'cause unknown'];
+                    'reason' => self::blockedCauseLabel($flags->blockedCause)];
         }
         $hardBounceEvent = $name !== null && in_array($name, EmailEventApplier::HARD_BOUNCE_EVENTS, true);
         $bouncedChip     = ['kind' => 'bounced', 'label' => 'Bounced', 'class' => 'text-bg-danger',
@@ -507,7 +522,10 @@ final readonly class VerificationTabStatus
         }
 
         return match ($name) {
-            'sent'         => ['kind' => 'sent', 'label' => 'Sent', 'class' => 'text-bg-secondary', 'reason' => ''],
+            // The webhook and reconciliation do not store `request` or
+            // `requests`. Legacy rows can still have them.
+            'sent', 'request', 'requests'
+                           => ['kind' => 'sent', 'label' => 'Sent', 'class' => 'text-bg-secondary', 'reason' => ''],
             // An open or a click proves the message arrived.
             'delivered', 'unique_opened', 'opened', 'click'
                            => ['kind' => 'delivered', 'label' => 'Delivered', 'class' => 'text-bg-success', 'reason' => ''],
@@ -518,6 +536,23 @@ final readonly class VerificationTabStatus
             default        => ['kind' => 'other', 'label' => ucfirst(str_replace('_', ' ', $name)),
                                'class' => 'text-bg-light', 'reason' => $reason],
         };
+    }
+
+    /**
+     * The readable text for a block cause
+     *
+     * An unknown cause (for example a new Brevo cause) is shown as the
+     * stored value, so the chip does not hide data.
+     */
+    private static function blockedCauseLabel(?string $cause): string
+    {
+        // EffectiveEmailFlags passes an empty column value through, and an
+        // empty reason would print no cause line at all.
+        if ($cause === null || $cause === '') {
+            return 'Cause unknown';
+        }
+
+        return self::BLOCKED_CAUSE_LABELS[$cause] ?? $cause;
     }
 
     /**
@@ -550,8 +585,7 @@ final readonly class VerificationTabStatus
     }
 
     /**
-     * @return array{key: string, label: string, badgeText: string, badgeClass: string, icon: string,
-     *     detail: string, detailIcon: string, recent: list<array{loggedAt: string, message: string}>}
+     * @return StatusRow
      */
     private function brevoRow(): array
     {
@@ -575,8 +609,7 @@ final readonly class VerificationTabStatus
     }
 
     /**
-     * @return array{key: string, label: string, badgeText: string, badgeClass: string, icon: string,
-     *     detail: string, detailIcon: string, recent: list<array{loggedAt: string, message: string}>}
+     * @return StatusRow
      */
     private function cronRow(): array
     {
@@ -604,8 +637,7 @@ final readonly class VerificationTabStatus
     }
 
     /**
-     * @return array{key: string, label: string, badgeText: string, badgeClass: string, icon: string,
-     *     detail: string, detailIcon: string, recent: list<array{loggedAt: string, message: string}>}
+     * @return StatusRow
      */
     private function unmatchedRow(): array
     {
@@ -634,38 +666,47 @@ final readonly class VerificationTabStatus
 
     /**
      * @param array{state: CronJobEnabledState, lastRunAt: ?DateTimeImmutable, lastFailureAt: ?DateTimeImmutable} $status
-     * @return array{key: string, label: string, badgeText: string, badgeClass: string, icon: string,
-     *     detail: string, detailIcon: string, recent: list<array{loggedAt: string, message: string}>}
+     * @param string $rowMigration The migration that gives the job its er_cron_job_runs row under the current
+     *                             job name, for the MISSING advice
+     * @return StatusRow
      */
-    private function jobRow(string $key, string $label, array $status): array
+    private function jobRow(string $key, string $label, array $status, string $rowMigration): array
     {
         $lastRunAt = $status['lastRunAt'];
         $badge = CronJobRunsReader::badgeFor($status['state'], $lastRunAt, $status['lastFailureAt']);
 
         // The badge text is shared with the auto-send card, so the reason for
-        // an unreadable state goes in the detail only.
-        [$detail, $detailIcon] = match ($status['state']) {
+        // an unreadable state goes in the detail only. The detail is for every
+        // viewer; the advice is for admins, because an editor cannot act on it.
+        [$detail, $detailIcon, $advice] = match ($status['state']) {
             CronJobEnabledState::UNREADABLE => [
-                'The job state could not be read, so the job may not run. Check the system log for'
-                    . ' CronJobFailure entries.',
+                'The job state could not be read, so the job may not run.',
                 '',
+                [
+                    ['text' => 'Check the system log for ', 'code' => 'CronJobFailure'],
+                    ['text' => ' entries.', 'code' => ''],
+                ],
             ],
             CronJobEnabledState::MISSING => [
-                'The job has no row in er_cron_job_runs, so cron does not run it. Run composer migrate:status.'
-                    . ' If its seed migration is applied, the row was deleted and must be inserted again.',
+                'The job has no row in er_cron_job_runs, so cron does not run it.',
                 '',
+                [
+                    ['text' => 'Run ', 'code' => 'composer migrate:status'],
+                    ['text' => '. If ', 'code' => $rowMigration],
+                    ['text' => ' is applied, insert the row again.', 'code' => ''],
+                ],
             ],
             default => $lastRunAt !== null
-                ? ['last ran ' . $lastRunAt->format(self::TIME_FORMAT), 'fa-clock']
-                : ['', ''],
+                ? ['last ran ' . $lastRunAt->format(self::TIME_FORMAT), 'fa-clock', []]
+                : ['', '', []],
         };
 
-        return self::row($key, $label, $badge['text'], $badge['badgeClass'], $badge['icon'], $detail, $detailIcon);
+        return self::row($key, $label, $badge['text'], $badge['badgeClass'], $badge['icon'], $detail, $detailIcon,
+            advice: $advice);
     }
 
     /**
-     * @return array{key: string, label: string, badgeText: string, badgeClass: string, icon: string,
-     *     detail: string, detailIcon: string, recent: list<array{loggedAt: string, message: string}>}
+     * @return StatusRow
      */
     private function cronFailuresRow(): array
     {
@@ -697,8 +738,8 @@ final readonly class VerificationTabStatus
 
     /**
      * @param list<array{loggedAt: string, message: string}> $recent
-     * @return array{key: string, label: string, badgeText: string, badgeClass: string, icon: string,
-     *     detail: string, detailIcon: string, recent: list<array{loggedAt: string, message: string}>}
+     * @param list<array{text: string, code: string}>       $advice Each segment's `code` follows its `text`
+     * @return StatusRow
      */
     private static function row(
         string $key,
@@ -708,7 +749,8 @@ final readonly class VerificationTabStatus
         string $icon,
         string $detail = '',
         string $detailIcon = '',
-        array $recent = []
+        array $recent = [],
+        array $advice = []
     ): array {
         return [
             'key'        => $key,
@@ -719,6 +761,7 @@ final readonly class VerificationTabStatus
             'detail'     => $detail,
             'detailIcon' => $detailIcon,
             'recent'     => $recent,
+            'advice'     => $advice,
         ];
     }
 }
