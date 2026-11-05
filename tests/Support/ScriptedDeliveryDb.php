@@ -63,6 +63,8 @@ class ScriptedDeliveryDb extends FakeDatabase
 
     public function results(bool $assoc = false): array
     {
-        return $this->rows;
+        // The real DB gives stdClass rows unless $assoc is set, so the tab
+        // tests run the repository's object-to-array cast.
+        return $assoc ? $this->rows : array_map(static fn(array $row): object => (object) $row, $this->rows);
     }
 }
