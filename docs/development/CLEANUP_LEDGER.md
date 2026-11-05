@@ -112,10 +112,6 @@ after an item is written.
 
 - [ ] The `down()` comment (~L84) says "MySQL refuses to DROP a column that a trigger body still references". MySQL 8 allows the drop; the next INSERT, UPDATE or DELETE on `cars` then fails with 1054. The restore-first order is still right. Correct the reason in the comment (found in #2167)
 
-### `docs/development/DATATABLES.md`
-
-- [ ] "Where DataTables is Used" does not list the Account Cleanup tab or the Verification tab Recent Activity table (client-side, no paging or search) (found in #2496 review)
-
 ### `docs/development/ERROR_HANDLING.md`
 
 - [ ] The exception table (~L127-157) lists `AdminVerificationException`, which has no file in `usersc/classes/Exceptions/`, and omits `VerificationConfigException`. Check the table against the directory and correct the count in the heading (found in /finish-milestone v2.30.10)

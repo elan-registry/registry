@@ -142,9 +142,9 @@ if (!function_exists('vsEsc')) {
 
 if (!function_exists('vsNewTabLink')) {
     /**
-     * Build a link that opens in a new tab, for the queue and activity rows
+     * Build a link that opens in a new tab
      *
-     * One builder keeps the two tables' car, owner and user links the same.
+     * One builder keeps every new-tab link on this tab the same (target and rel).
      *
      * @param string $href Unescaped URL
      * @param mixed $text Unescaped link text

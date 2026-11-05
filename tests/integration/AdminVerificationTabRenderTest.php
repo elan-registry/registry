@@ -1032,7 +1032,7 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
 
     // --- Recent Activity table (#2496) ----------------------------------------
 
-    /** Smallest `activity_window` choice, in days. Seeded rows are stamped inside it. */
+    /** A `CarRepository::QUEUE_WINDOW_CHOICES` key, in days. Seeded rows are stamped inside it. */
     private const ACTIVITY_WINDOW = '7';
 
     /**
@@ -1255,10 +1255,15 @@ final class AdminVerificationTabRenderTest extends IntegrationTestCase
         $this->seedNotHealthy();
         $inWindow = $this->db->query(
             "SELECT COUNT(*) AS cnt FROM cars_hist
-              WHERE operation IN ('VERIFIED', 'VERIFIED SOLD') AND timestamp >= NOW() - INTERVAL 7 DAY"
+              WHERE operation IN ('VERIFIED', 'VERIFIED SOLD') AND timestamp >= NOW() - INTERVAL ? DAY",
+            [(int) self::ACTIVITY_WINDOW]
         )->first();
         $this->assertIsObject($inWindow);
-        $this->assertSame(0, (int) $inWindow->cnt, 'Setup: no VERIFIED row in the last 7 days of this database');
+        $this->assertSame(
+            0,
+            (int) $inWindow->cnt,
+            'Setup: no VERIFIED row in the last ' . self::ACTIVITY_WINDOW . ' days of this database'
+        );
 
         $xpath = $this->getVerificationTab('eligible', null, ['activity_window' => self::ACTIVITY_WINDOW]);
 
