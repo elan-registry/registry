@@ -204,7 +204,8 @@ class CarImageProcessor
      * Extension list is derived from ALLOWED_EXTENSIONS plus 'jpeg' for legacy DB rows,
      * so adding a new extension to ALLOWED_EXTENSIONS automatically permits it here too.
      *
-     * Used by decodeAndProcessImages() and buildImageDetails() (reorder path).
+     * Used by decodeAndProcessImages(), buildImageDetails() (reorder path) and
+     * resolveUploadOrder() (stored names on the upload path).
      *
      * @param string $filename Filename to validate (directory components are
      *                         rejected because '/' is not in [\w\-.])
@@ -214,6 +215,37 @@ class CarImageProcessor
     {
         $exts = implode('|', array_merge(self::ALLOWED_EXTENSIONS, ['jpeg']));
         return (bool) preg_match('/^[\w\-.]+\.(' . $exts . ')\z/iD', $filename);
+    }
+
+    /**
+     * Decide which names in an upload save's requested order go into cars.image.
+     *
+     * The allowlist comes from server state, so a client cannot add a name the
+     * car never had. A name this request generated must match the secure format.
+     * A name already stored for the car needs only isSafeFilename(), so legacy
+     * names (timestamps, bare hashes, .jpeg) survive an upload save (#2609).
+     * Each other name, for example an upload name that did not get replaced, is
+     * dropped. Order is kept and duplicates are not removed.
+     *
+     * @param list<string> $requestedOrder Client order, with upload names already replaced
+     * @param list<string> $newNames       Names that this request generated
+     * @param list<string> $storedNames    Names in cars.image before this save
+     * @return array{kept: list<string>, dropped: list<string>}
+     */
+    public static function resolveUploadOrder(array $requestedOrder, array $newNames, array $storedNames): array
+    {
+        $kept    = [];
+        $dropped = [];
+        foreach ($requestedOrder as $name) {
+            if (in_array($name, $newNames, true) && self::isValidFilename($name)) {
+                $kept[] = $name;
+            } elseif (in_array($name, $storedNames, true) && self::isSafeFilename($name)) {
+                $kept[] = $name;
+            } else {
+                $dropped[] = $name;
+            }
+        }
+        return ['kept' => $kept, 'dropped' => $dropped];
     }
 
     /**

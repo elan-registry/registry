@@ -383,4 +383,29 @@ final class CarImageProcessorTest extends TestCase
         $isUnmoved = !$baseFound || !$baseMoved;
         $this->assertTrue($isUnmoved, 'Base file never found in glob() results — must be treated as unmoved');
     }
+
+    // ============================================================
+    // resolveUploadOrder tests
+    //
+    // Backs uploadImages() in app/api/cars/save.php (#2609): a save with a
+    // new upload used to drop every stored photo whose name was not the
+    // secure img_<32 hex> format, so legacy photos vanished.
+    // ============================================================
+
+    public function testResolveUploadOrderKeepsStoredLegacyNameAndDropsUnknownNames(): void
+    {
+        $legacy  = '20151114101545_img_2492.jpg';
+        $newName = 'img_0123456789abcdef0123456789abcdef.jpg';
+
+        $result = CarImageProcessor::resolveUploadOrder(
+            [$legacy, $newName, '../x.jpg', 'photo.jpg'],
+            [$newName],
+            [$legacy, '../x.jpg']
+        );
+
+        $this->assertSame(
+            ['kept' => [$legacy, $newName], 'dropped' => ['../x.jpg', 'photo.jpg']],
+            $result
+        );
+    }
 }

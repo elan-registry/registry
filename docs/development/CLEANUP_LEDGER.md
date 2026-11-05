@@ -80,7 +80,11 @@ after an item is written.
 
 ### `app/api/cars/save.php`
 
-- [ ] The `updateImages` and `removeImages` auth checks (about lines 233 and 244) compare `$user->data()->id != ...->user_id` with loose `!=`. Use a strict `(int)` comparison, as `removeImage()` does (found while working on #1929)
+- [ ] The upload-loop `logger()` calls in `uploadImages()` (~L815, ~L820, ~L830) log the client `$name` and `Input::get('car_id')` with no length cap. Cap them as the dropped-names log does (found in #2609)
+
+### `app/api/cars/save.php` + `usersc/classes/Car/CarAdministrationService.php` (decode copy)
+
+- [ ] `uploadImages()` (~L722) decodes `cars.image` inline, a copy of the private `CarAdministrationService::storedImageFilenames()` (~L660). `.claude/rules/car-images.md` says to decode with `CarImageProcessor`. Move the rule to one public static `CarImageProcessor` method, call it from both, and add a data-provider test (JSON, CSV, empty) (found in #2609)
 
 ### `app/assets/js/location-picker.js`
 

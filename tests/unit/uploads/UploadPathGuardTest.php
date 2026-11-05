@@ -172,6 +172,38 @@ class UploadPathGuardTest extends TestCase
     }
 
     /**
+     * uploadImages() must build the final image order with
+     * CarImageProcessor::resolveUploadOrder() and log the names it drops. A
+     * return to an isValidFilename() filter would delete every legacy-named
+     * stored photo on a save with a new upload (#2609). The body is cut out
+     * of the file so that the other isValidFilename() callers in save.php do
+     * not hide a regression here.
+     */
+    public function testUploadImagesUsesResolveUploadOrderAndLogsDroppedNames(): void
+    {
+        $saveFile = dirname(__DIR__, 3) . '/app/api/cars/save.php';
+        $content = (string) file_get_contents($saveFile);
+
+        $start = strpos($content, 'function uploadImages(');
+        $this->assertNotFalse($start, 'save.php must define uploadImages()');
+        $end = strpos($content, "\n/**", $start);
+        $this->assertNotFalse($end, 'uploadImages() must be followed by another docblock');
+        $body = substr($content, $start, $end - $start);
+
+        $this->assertStringContainsString('CarImageProcessor::resolveUploadOrder(', $body);
+        $this->assertMatchesRegularExpression(
+            "/\\['dropped'\\].*?logger\\(/s",
+            $body,
+            'uploadImages() must log the dropped names'
+        );
+        $this->assertStringNotContainsString(
+            'isValidFilename(',
+            $body,
+            'uploadImages() must not filter stored names with isValidFilename() (#2609)'
+        );
+    }
+
+    /**
      * save.php must be syntactically valid PHP so that it can be included
      * by the application without parse errors.
      */

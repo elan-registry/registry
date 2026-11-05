@@ -146,7 +146,7 @@ switch ($action) {
                 ->send();
         }
         $carForAuth = new Car($car_id);
-        if (!$carForAuth->data() || ($user->data()->id != $carForAuth->data()->user_id && !hasPerm([2, 3]))) {
+        if (!$carForAuth->data() || ((int) $user->data()->id !== (int) $carForAuth->data()->user_id && !hasPerm([2, 3]))) {
             ApiResponse::error('Unauthorized', 403)
                 ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'updateCar: unauthorized for car ' . $car_id)
                 ->send();
@@ -230,7 +230,7 @@ switch ($action) {
     case "fetchImages":
         $car_id = (int)Input::get('carID');
         $carForAuth = new Car($car_id);
-        if (!$carForAuth->data() || ($user->data()->id != $carForAuth->data()->user_id && !hasPerm([2, 3]))) {
+        if (!$carForAuth->data() || ((int) $user->data()->id !== (int) $carForAuth->data()->user_id && !hasPerm([2, 3]))) {
             ApiResponse::forbidden('Unauthorized')
                 ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'fetchImages: unauthorized for car ' . $car_id)
                 ->send();
@@ -241,7 +241,7 @@ switch ($action) {
     case "removeImages":
         $car_id = (int)Input::get('carID');
         $carForAuth = new Car($car_id);
-        if (!$carForAuth->data() || ($user->data()->id != $carForAuth->data()->user_id && !hasPerm([2, 3]))) {
+        if (!$carForAuth->data() || ((int) $user->data()->id !== (int) $carForAuth->data()->user_id && !hasPerm([2, 3]))) {
             ApiResponse::forbidden('Unauthorized')
                 ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'removeImages: unauthorized for car ' . $car_id)
                 ->send();
@@ -662,7 +662,7 @@ function buildImageDetails(array &$cardetails): void
     // Double-write pattern: this value is the FINAL write when no new files are
     // uploaded (uploadImages() returns early on the 'blob' sentinel). When files
     // ARE uploaded, uploadImages() unconditionally overwrites $cardetails['image']
-    // with its own isValidFilename()-filtered list before returning.
+    // with the list from CarImageProcessor::resolveUploadOrder() before returning.
     $safeOrder = [];
     $invalid   = [];
     foreach ($requestedOrder as $filename) {
@@ -704,6 +704,10 @@ function uploadImages(array &$cardetails, array &$errors): void
         }
         return;
     }
+    // Names already in cars.image for this car. A new car has none, so only
+    // the names that this request generates can stay.
+    $storedNames = [];
+
     // Secure path construction with validation
     if (empty($cardetails['id'])) {
         $filePath = $targetFilePath . 'temp' . '/';
@@ -714,6 +718,19 @@ function uploadImages(array &$cardetails, array &$errors): void
             throw new ImageProcessingException("Invalid car ID for file upload");
         }
         $filePath = $targetFilePath . $carId . '/';
+
+        // Same JSON-or-CSV rule as CarAdministrationService::storedImageFilenames(): old rows hold CSV.
+        $storedImage = (string) ((new Car($carId))->data()->image ?? '');
+        if ($storedImage !== '') {
+            $decoded = json_decode($storedImage, true);
+            if (!is_array($decoded)) {
+                $decoded = explode(',', $storedImage);
+            }
+            $storedNames = array_values(array_filter(
+                $decoded,
+                static fn(mixed $n): bool => is_string($n) && $n !== ''
+            ));
+        }
     }
 
     // Ensure the upload destination resolves inside the configured upload
@@ -736,6 +753,7 @@ function uploadImages(array &$cardetails, array &$errors): void
     }
 
     $requestedOrder = array_values(array_filter(explode(',', Input::raw('filenames') ?? '')));
+    $newNames       = [];
 
     //  $_FILES['file']['tmp_name'] is an array so have to use loop
     foreach ($_FILES['file']['tmp_name'] as $key => $value) {
@@ -792,6 +810,7 @@ function uploadImages(array &$cardetails, array &$errors): void
                         $errors[] = "Image resize: Failed";
                     }
                     arrayReplaceValue($requestedOrder, $name, $newFileName);
+                    $newNames[] = $newFileName;
                 } else {
                     $errors[] = "Photo failed to upload " . $name . " as " . $newFileName;
                     logger(
@@ -813,11 +832,20 @@ function uploadImages(array &$cardetails, array &$errors): void
             }
         }
     }
-    $requestedOrder = array_values(array_filter(
-        $requestedOrder,
-        static fn(string $f) => CarImageProcessor::isValidFilename($f)
-    ));
-    $cardetails['image'] = json_encode($requestedOrder);
+    $result = CarImageProcessor::resolveUploadOrder($requestedOrder, $newNames, $storedNames);
+    if (!empty($result['dropped'])) {
+        // The dropped names come from the client, so cap what goes into the log row.
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_FILE_ERROR,
+            'uploadImages: dropped ' . count($result['dropped'])
+            . ' filename(s) not generated by this request or stored for car '
+            . (int) ($cardetails['id'] ?? 0) . ': '
+            . htmlspecialchars(
+                mb_substr(implode(', ', array_slice($result['dropped'], 0, 20)), 0, 1000),
+                ENT_QUOTES,
+                'UTF-8'
+            ));
+    }
+    $cardetails['image'] = json_encode($result['kept']);
 }
 
 /**
@@ -871,8 +899,9 @@ function fetchImages(int $car_id): void
  *
  * Only called from the addCar path (after buildImageDetails() and
  * uploadImages() have both run), so every filename in $cardetails['image']
- * has already been through uploadImages()'s isValidFilename() filter (or, for
- * a no-upload addCar, cleared to an empty list) — the legacy-format-skip
+ * has already been through uploadImages()'s resolveUploadOrder() filter. A new
+ * car has no stored names, so only names that pass isValidFilename() stay (or,
+ * for a no-upload addCar, the list is cleared to empty) — the legacy-format-skip
  * branch inside the loop below is therefore not currently reachable, but is
  * kept as a defensive no-op skip. See the inline comment on that branch.
  *
