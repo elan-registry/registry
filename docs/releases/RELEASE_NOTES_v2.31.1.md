@@ -1,32 +1,23 @@
 # Elan Registry v2.31.1 Release Notes
 
 **Release Date:** November 3, 2026
-**Type:** Patch Release - Verification Tab Shows the Real Queue
+**Type:** Patch Release - Verification Tab Queue and Email Delivery Tab
 
-The Verification tab shows the eligible cars in the order the batch sends them, with a link to each car and owner.
-A failed read no longer shows as a default value or a success.
+The Verification tab shows the real send queue and reports unreadable settings. A new admin Email Delivery tab shows the outcome of each mail.
 
 ## User-Facing Changes
 
-- A car save with a new photo upload no longer removes the car's older photos.
-- If the server cannot match an uploaded photo to its file name, the save stops and asks the owner to rename the file.
-  Before, the photo was lost and the save showed success.
+- A save with a new photo upload keeps older photos and asks owners to rename unmatched files. ([#2609](https://github.com/elan-registry/registry/issues/2609))
 
 ## Admin-Facing Changes
 
-- From November to March, the Verification tab "cron last seen" and next-send times are no longer 1 hour off.
-- Some times recorded from November to March before this release, for example log entries, stay 1 hour off. They are not corrected.
-- If the switch, the batch size, or the cron state cannot be read, the Verification tab shows "Unavailable" for it.
-  An unreadable batch size also hides the batch size Save form.
-- If the switch or batch size cannot be read, auto-send sends nothing. A manual send with an unreadable batch size shows an error.
-- An unreadable or missing job state row now says what failed and which next step to take.
-- The All pill is gone. Eligible (default) and Next Queue use send order. Rows link car and owner.
-- Verification cards name their unit, and the Bounced, Blocked and Opted out pills say "cars". Blocked shows a readable cause.
-- The Email on file tooltips say which mail stops and which still sends. Help buttons are easier to tap.
-- Recent Activity is a sortable table, newest first, with links to the car, owner, and user.
-- A new Email Delivery tab (admins only) shows each sent mail and its delivery outcome from Brevo webhook events.
-- The Email Delivery tab now shows outcomes for mail to addresses that no single owner holds, such as feedback mail.
-- If the verification switch cannot be read, the admin page banner now says so. It no longer hides.
+- Verification tab times are correct from November to March, but some times recorded before this release stay 1 hour off. ([#2589](https://github.com/elan-registry/registry/issues/2589))
+- The Verification tab shows "Unavailable" for unreadable settings and explains a missing job state with a next step. ([#2573](https://github.com/elan-registry/registry/issues/2573))
+- Eligible and Next Queue show cars in send order with car and owner links, and the All pill is gone. ([#2599](https://github.com/elan-registry/registry/issues/2599))
+- Verification cards, chips, and tooltips use clearer labels and causes, and help buttons are easier to tap. ([#2458](https://github.com/elan-registry/registry/issues/2458))
+- Recent Activity is a sortable table, newest first, with links to the car, owner, and user. ([#2496](https://github.com/elan-registry/registry/issues/2496))
+- A new admin-only Email Delivery tab shows each sent mail and its outcome, and the banner reports an unreadable switch. ([#2102](https://github.com/elan-registry/registry/issues/2102))
+- The Email Delivery tab shows outcomes for mail to addresses that no single owner holds. ([#2611](https://github.com/elan-registry/registry/issues/2611))
 
 ## Issues Resolved
 
@@ -34,7 +25,7 @@ A failed read no longer shows as a default value or a success.
 - [#2572](https://github.com/elan-registry/registry/issues/2572) — The Save form no longer overwrites the batch size with 5 when the settings read fails.
 - [#2587](https://github.com/elan-registry/registry/issues/2587) — The auto-send job sends no emails when the batch-size read fails.
 - [#2573](https://github.com/elan-registry/registry/issues/2573) — The status panel gives a reason and a next step for an unreadable or missing job state.
-- [#2599](https://github.com/elan-registry/registry/issues/2599) — Eligible and Next Queue list cars in send order. Queue rows link to the car and owner.
+- [#2599](https://github.com/elan-registry/registry/issues/2599) — Eligible and Next Queue list cars in send order with links to the car and owner.
 - [#2458](https://github.com/elan-registry/registry/issues/2458) — Verification tab labels, chip text, tooltips, and accessibility follow-ups.
 - [#2496](https://github.com/elan-registry/registry/issues/2496) — Recent Activity shows as a sortable table with car, owner, and user links.
 - [#2102](https://github.com/elan-registry/registry/issues/2102) — Admins can see which mail Brevo delivered, bounced, or held with no outcome.
