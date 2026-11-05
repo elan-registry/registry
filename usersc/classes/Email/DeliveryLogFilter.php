@@ -48,11 +48,11 @@ final readonly class DeliveryLogFilter
      * Build a filter from raw request values.
      *
      * - `email`: kept only when it is a valid address.
-     * - `tag`: entity-decoded, with commas folded to spaces, then trimmed.
-     *   The plugin trims each stored tag and folds its commas
-     *   (`sendinblueStoredTags()`). The plugin's own delivery_logs.php page
-     *   decodes the search tag the same way, so both pages find the same
-     *   mail. Empty gives null.
+     * - `tag`: commas folded to spaces, then trimmed. The plugin trims each
+     *   stored tag and folds its commas (`sendinblueStoredTags()`). The value
+     *   is not entity-decoded: the caller passes `ElanInput::raw()`, which does
+     *   not encode, and the pager links send the tag back as it is. Empty
+     *   gives null.
      * - `outcome`: kept only when it is on {@see self::allowedOutcomes()}.
      * - `hours`: an integer 1 to 720, else 2.
      * - `page`: an integer 1 or more, else 1.
@@ -70,7 +70,7 @@ final readonly class DeliveryLogFilter
         $recipient = filter_var($recipient, FILTER_VALIDATE_EMAIL) !== false ? $recipient : null;
 
         $tagValue = is_string($tag)
-            ? trim(str_replace(',', ' ', html_entity_decode($tag, ENT_QUOTES, 'UTF-8')))
+            ? trim(str_replace(',', ' ', $tag))
             : '';
 
         $outcomeValue = is_string($outcome) && in_array($outcome, self::allowedOutcomes(), true)

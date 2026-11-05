@@ -95,8 +95,8 @@ final class DeliveryLogRepository
      * The cutoff is in PHP time, because the plugin writes `accepted_at` with
      * PHP's `date()`. The plugin table has no index that leads with
      * `accepted_at`, so the query scans the table. A recipient filter can use
-     * the `recipient_accepted` index. The plugin table is out of scope for
-     * this issue.
+     * the `recipient_accepted` index. The plugin owns this table, so the
+     * Registry does not add an index to it.
      *
      * @param DateTimeImmutable $cutoff    The oldest `accepted_at` to include
      * @param string|null       $recipient The whole recipient address, or null for any.
@@ -123,9 +123,9 @@ final class DeliveryLogRepository
 
         // er_email_events uses utf8mb4_unicode_ci. The plugin table takes the
         // database default, utf8mb4_0900_ai_ci. COLLATE prevents error 1267
-        // for this mix of collations. utf8mb4_bin
-        // also makes the match exact, as Brevo message IDs are case-sensitive.
-        // Only fixed SQL fragments are joined; every value is bound.
+        // for this mix of collations. utf8mb4_bin also makes the match exact,
+        // because Brevo message IDs are case-sensitive. Only fixed SQL
+        // fragments are joined. Every value is bound.
         $this->db->query(
             'SELECT m.id, m.message_id, m.recipient_email, '
             . ($hasTags ? 'm.tags' : 'NULL AS tags')
@@ -140,7 +140,13 @@ final class DeliveryLogRepository
         );
         $this->throwIfFailed('window load');
 
-        return array_values($this->db->results(true));
+        // results(true) builds arrays with a JSON round trip, and one value
+        // that is not valid UTF-8 makes it return no rows and no error. The
+        // object rows come straight from PDO.
+        return array_values(array_map(
+            static fn(array|object $row): array => (array) $row,
+            $this->db->results()
+        ));
     }
 
     /**

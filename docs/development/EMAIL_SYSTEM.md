@@ -1875,9 +1875,10 @@ combine.
   keeps the invalid address and marks it as not valid.
 - `tag`: one tag from the plugin's comma-separated `tags` value. The plugin
   trims each stored tag and folds its commas to spaces (`sendinblueStoredTags()`).
-  The tab folds a comma in the input to a space the same way. The tab also
-  decodes HTML entities in the input, because the plugin's own
-  `delivery_logs.php` page decodes the search tag the same way.
+  The tab folds a comma in the input to a space the same way. The tab does not
+  decode HTML entities. It reads the value with `ElanRegistry\Input::raw()`,
+  which does not encode it. The plugin's `delivery_logs.php` decodes only
+  because it reads `Input::get()`, which encodes.
 - `outcome`: `all` (default), one outcome from the map, or `stale`. `stale`
   shows "No outcome after N hours". It lists mail with outcome `None` that Brevo
   accepted more than N hours ago. `None` means that the mail has no outcome event
@@ -1889,8 +1890,8 @@ combine.
 
 An invalid value gives its default. It never gives an error.
 
-**Count line.** The counts cover the filtered mail. The count line matches the
-rows on the page.
+**Count line.** The counts cover all filtered mail, on every page, not only the
+50 rows on the current page.
 
 **Paging.** Each page shows 50 mail. A page number past the last page shows the
 last page.
@@ -1904,7 +1905,8 @@ last page.
   mail that still shows No outcome.
 - The plugin table has no index that leads with `accepted_at`, so the window
   query scans `plg_sendinblue_messages`. A recipient filter can use the
-  `recipient_accepted` index. The plugin table is out of scope for #2102.
+  `recipient_accepted` index. The plugin owns this table, so the Registry does
+  not add an index to it.
 - Owner and car links come only from the chosen event row. A mail with no event
   has no owner or car link. A `user_id` or `car_id` that is not a positive
   integer (for example 0, for an address that no single user holds) also

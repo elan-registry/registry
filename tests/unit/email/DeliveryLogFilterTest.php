@@ -58,8 +58,10 @@ final class DeliveryLogFilterTest extends TestCase
             'plain' => ['verification', 'verification'],
             'trimmed' => ['  verification  ', 'verification'],
             'commas folded to spaces' => ['a,b', 'a b'],
-            'entity decoded' => ['a&amp;b', 'a&b'],
-            'quote entity decoded' => ['it&#039;s', "it's"],
+            // raw() does not encode, so a decode here would change the tag on
+            // each pager round trip.
+            'entity text kept' => ['a&amp;b', 'a&amp;b'],
+            'ampersand kept' => ['a&b', 'a&b'],
             'only spaces' => ['   ', null],
             'only comma' => [',', null],
             'empty' => ['', null],

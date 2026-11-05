@@ -19,8 +19,8 @@ use ElanRegistry\LogCategories;
  *
  * Read only: it lists the mail in plg_sendinblue_messages with the outcome of
  * the stored webhook events. It writes nothing and does not call the Brevo API.
- * DeliveryLogReport holds the outcome, filter and paging rules; this file only
- * renders them.
+ * DeliveryLogFilter and DeliveryLogReport hold the filter, outcome and paging
+ * rules. This file only renders them.
  *
  * Included by app/admin/index.php, which has already run init.php and
  * securePage(), and set $currentUserId.

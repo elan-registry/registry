@@ -14,7 +14,7 @@ use DateTimeImmutable;
  * chooses each mail's outcome with {@see DeliveryOutcomeResolver}, applies the
  * outcome filter, counts each outcome, sorts newest first and cuts one page.
  *
- * The counts are over the filtered mail, so the count line matches the rows.
+ * The counts cover all filtered mail, on every page, not only the page rows.
  *
  * Pure: no database, and the caller gives the time.
  *
