@@ -9,6 +9,8 @@ A failed read no longer shows as a default value or a success.
 ## User-Facing Changes
 
 - A car save with a new photo upload no longer removes the car's older photos.
+- If the server cannot match an uploaded photo to its file name, the save stops and asks the owner to rename the file.
+  Before, the photo was lost and the save showed success.
 
 ## Admin-Facing Changes
 

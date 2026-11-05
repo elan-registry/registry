@@ -190,7 +190,25 @@ class UploadPathGuardTest extends TestCase
         $this->assertNotFalse($end, 'uploadImages() must be followed by another docblock');
         $body = substr($content, $start, $end - $start);
 
-        $this->assertStringContainsString('CarImageProcessor::resolveUploadOrder(', $body);
+        // Without the stored names, every legacy photo drops again and the
+        // resolveUploadOrder() unit tests still pass.
+        $this->assertMatchesRegularExpression(
+            '/\$storedImage\s*=.*?->data\(\)->image.*?\$storedNames\s*=.*?'
+            . 'CarImageProcessor::resolveUploadOrder\(\s*\$requestedOrder\s*,\s*\$newNames\s*,\s*\$storedNames\s*\)/s',
+            $body,
+            'uploadImages() must read cars.image into $storedNames and pass it to resolveUploadOrder()'
+        );
+        // The regex above still matches if $storedNames is reset before the call.
+        $this->assertSame(
+            2,
+            preg_match_all('/\$storedNames\s*=/', $body),
+            'uploadImages() must assign $storedNames only as [] and from cars.image'
+        );
+        $this->assertMatchesRegularExpression(
+            "/array_diff\\(\\s*\\\$newNames\\s*,\\s*\\\$result\\['kept'\\]\\s*\\).*?\\\$errors\\[\\]\\s*=/s",
+            $body,
+            'uploadImages() must fail the save when an uploaded file is not in the kept order'
+        );
         $this->assertMatchesRegularExpression(
             "/\\['dropped'\\].*?logger\\(/s",
             $body,

@@ -659,10 +659,12 @@ function buildImageDetails(array &$cardetails): void
     // (e.g. "my-photo.jpg") also pass this guard; uploadImages() replaces them
     // with secure server-side names before the final DB write.
     //
-    // Double-write pattern: this value is the FINAL write when no new files are
-    // uploaded (uploadImages() returns early on the 'blob' sentinel). When files
-    // ARE uploaded, uploadImages() unconditionally overwrites $cardetails['image']
-    // with the list from CarImageProcessor::resolveUploadOrder() before returning.
+    // Double-write pattern: on updateCar with no new files, this value is the
+    // FINAL write (uploadImages() returns early on the 'blob' sentinel). On
+    // addCar with no new files, uploadImages() clears it to an empty list. When
+    // files ARE uploaded, uploadImages() unconditionally overwrites
+    // $cardetails['image'] with the list from
+    // CarImageProcessor::resolveUploadOrder() before returning.
     $safeOrder = [];
     $invalid   = [];
     foreach ($requestedOrder as $filename) {
@@ -844,6 +846,18 @@ function uploadImages(array &$cardetails, array &$errors): void
                 ENT_QUOTES,
                 'UTF-8'
             ));
+    }
+    // A stored file with no entry in cars.image is a photo lost with no message.
+    // This occurs when the browser file name in 'filenames' does not match the
+    // $_FILES name: a comma breaks the explode(','), and PHP changes names that
+    // hold '"' or '\'. The error stops the save before the DB write.
+    $unplaced = array_values(array_diff($newNames, $result['kept']));
+    if ($unplaced !== []) {
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_FILE_ERROR,
+            'uploadImages: ' . count($unplaced)
+            . ' uploaded file(s) not in the requested order for car '
+            . (int) ($cardetails['id'] ?? 0) . ': ' . implode(', ', $unplaced));
+        $errors[] = 'Photo could not be added. Rename the file with plain characters (letters, numbers, - and _). Then upload it again.';
     }
     $cardetails['image'] = json_encode($result['kept']);
 }
