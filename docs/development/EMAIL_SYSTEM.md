@@ -356,7 +356,8 @@ The `VerificationSettings` class gates the entire verification system via a sing
 
 **Key Methods:**
 
-- `isEnabled(): bool` — reads the current switch state
+- `isEnabledOrNull(): ?bool` — reads the current switch state, or null when
+  the read fails or the row is missing (#2572). Every production caller uses it
 - `setEnabled(bool $enabled, int $actingUserId = 0): bool` — writes the
   switch; throws `VerificationConfigException` if attempting to enable while
   `brevoReady()` is false. `$actingUserId` attributes the change in the audit
@@ -568,7 +569,7 @@ system log for details." The Verification System nav badge also shows.
 **Implementation:** `app/admin/index.php` (POST command handling) + `app/admin/includes/tab-verification.php` (UI rendering)  
 **Access:** Admin only (`securePage()` + `hasPerm([2])`)  
 **Independent of Feature Switch:** This manual admin tool runs regardless of
-`VerificationSettings::isEnabled()`. A deliberate decision: the admin may want
+the switch (`VerificationSettings::isEnabledOrNull()`). A deliberate decision: the admin may want
 to send a one-off batch of reminders even while the automatic system is paused
 for operational reasons, or to test sending before enabling automation.
 
@@ -1890,6 +1891,11 @@ the higher `er_email_events.id`.
 
 **Filters.** Each filter is a URL parameter on `tab=email-delivery`. The filters
 combine.
+
+A recipient filter puts the address in the URL. So the address goes into the
+browser history, the server access log, and the Cloudflare request log. This is
+an accepted risk for v2.31.1: only an admin can open the tab, and a URL filter
+can be bookmarked.
 
 - `email`: the whole recipient address. The column collation makes the match
   case-insensitive. An invalid address gives no recipient filter. The input

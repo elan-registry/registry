@@ -301,6 +301,10 @@ after an item is written.
 
 - [ ] The class docblock says the class encodes the same rules as the WHERE clause of `CarRepository::findVerificationEligible()` (built by `verificationEligibleFromSql()`). The #2594 address-shape rule is in the SQL only. Correct the docblock (from #2595)
 
+### `usersc/classes/Car/VerificationSettings.php`
+
+- [ ] `isEnabled()` has no production caller after #2602. All callers use `isEnabledOrNull()`. Remove `isEnabled()` and its test in `VerificationSettingsTest` (found in /flow:finish-milestone v2.31.1)
+
 ### `usersc/classes/Car/VerificationTabStatus.php`
 
 - [ ] `blockedCauseLabel()` treats a whitespace-only `email_blocked_cause` as a cause and shows a blank-looking reason. Only manual SQL can write one. Trim before the empty check (found in #2458 review)
