@@ -602,9 +602,24 @@ parts appear in this order, from top to bottom:
 4. **Verification Queue.** One table with nine filter pills and the Window
    and Show controls. See [Verification Queue](#verification-queue).
 5. **Recent Activity.** The latest 20 `cars_hist` rows with operation
-   `VERIFIED` or `VERIFIED SOLD`, newest first
-   (`CarRepository::findRecentVerificationActivity()`). It has its own
-   Window control, in the `activity_window` URL parameter. This query reads
+   `VERIFIED` or `VERIFIED SOLD` (`CarRepository::findRecentVerificationActivity()`).
+   The panel is a sortable table. It uses the vendored DataTables library.
+   The newest row comes first by default. Click a column header to sort by
+   that column. The table has no paging and no search. It has these columns:
+
+   - **Time.** The time of the event.
+   - **Operation.** `VERIFIED` or `VERIFIED SOLD`.
+   - **Car.** The car. It links to `app/owner/cars/details.php?car_id=<id>`.
+   - **Owner.** The owner name. It links to the Owner Management tab,
+     `app/admin/index.php?tab=owner-mgmt&owner_id=<id>`.
+   - **User ID.** The owner's user id. It links to
+     `users/admin.php?view=user&id=<id>`.
+
+   The owner in the Owner and User ID columns is the owner at the time of the
+   event, from the history row. It is not the current owner. Each link opens in
+   a new tab, as the Verification Queue links do. When the window has no events,
+   the panel shows an empty-state message, not an empty table. The panel has its
+   own Window control, in the `activity_window` URL parameter. This query reads
    `cars_hist` only, with no join to `cars`, so it can list a row for a car
    that has since been deleted (there is no foreign key from `cars_hist` to
    `cars`; see [DATABASE.md](DATABASE.md#no-enforced-foreign-key-constraints)).

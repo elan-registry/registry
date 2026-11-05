@@ -850,21 +850,104 @@ test.describe('Admin Verification Dashboard', () => {
 
     // --- Recent activity -----------------------------------------------------
 
-    // AC: the Recent Activity list renders the seeded VERIFIED / VERIFIED SOLD
-    // cars_hist rows.
-    test('Recent Activity lists the seeded VERIFIED and VERIFIED SOLD rows', async ({ page }) => {
+    // AC (#2496): Recent Activity is a table, newest first, with DataTables
+    // sorting on top. DataTables 3 marks the sorted column header with
+    // aria-sort, which is the check for "DataTables is active".
+    const ACTIVITY_TABLE = '#verificationActivityTable';
+
+    const activityRow = (page, carId) => page
+        .locator(`${ACTIVITY_TABLE} tbody tr`)
+        .filter({ has: page.locator(`a[href$="details.php?car_id=${carId}"]`) });
+
+    // DataTables adds a sort hint to the accessible name ("Time Time: Activate
+    // to remove sorting"), so match the start of the name.
+    const activityHeader = (page, name) => page.locator(ACTIVITY_TABLE).getByRole('columnheader', { name: new RegExp(`^${name}\\b`) });
+
+    // Car ids in the Car column, in the order shown.
+    const activityCarIds = async (page) => {
+        const texts = await page.locator(`${ACTIVITY_TABLE} tbody tr td:nth-child(3)`).allInnerTexts();
+        expect(texts.length).toBeGreaterThan(1);
+        return texts.map((t) => Number(t.trim()));
+    };
+
+    // Raw cars_hist timestamps, in the order shown.
+    const activityTimestamps = async (page) => {
+        const stamps = await page.locator(`${ACTIVITY_TABLE} tbody tr td:nth-child(1)`).evaluateAll(
+            (cells) => cells.map((c) => c.getAttribute('data-order'))
+        );
+        expect(stamps.length).toBeGreaterThan(1);
+        return stamps;
+    };
+
+    test('Recent Activity shows the seeded VERIFIED and VERIFIED SOLD rows in a sortable table', async ({ page }) => {
         await page.goto('app/admin/index.php?tab=verification', { waitUntil: 'networkidle' });
 
-        const activityList = page.locator('#verificationRecentActivity ul.list-unstyled');
-        await expect(activityList).toBeVisible();
+        await expect(page.locator(ACTIVITY_TABLE)).toBeVisible();
 
-        const verifiedItem = activityList.locator('li', { hasText: `car ${verifiedCarId}` });
-        await expect(verifiedItem).toHaveCount(1);
-        await expect(verifiedItem).toContainText('VERIFIED');
+        const verifiedRow = activityRow(page, verifiedCarId);
+        await expect(verifiedRow).toHaveCount(1);
+        await expect(verifiedRow.locator('td').nth(1)).toHaveText('VERIFIED');
 
-        const soldItem = activityList.locator('li', { hasText: `car ${soldCarId}` });
-        await expect(soldItem).toHaveCount(1);
-        await expect(soldItem).toContainText('VERIFIED SOLD');
+        const soldRow = activityRow(page, soldCarId);
+        await expect(soldRow).toHaveCount(1);
+        await expect(soldRow.locator('td').nth(1)).toHaveText('VERIFIED SOLD');
+
+        // The fixture writes the owner name "Playwright Seed Owner" to the history row.
+        await expect(soldRow.locator('td').nth(3)).toContainText('Playwright Seed Owner');
+
+        // DataTables is active, with the initial sort on Time, newest first.
+        await expect(activityHeader(page, 'Time')).toHaveAttribute('aria-sort', 'descending');
+        const stamps = await activityTimestamps(page);
+        expect(stamps).toEqual([...stamps].sort().reverse());
+
+        // Paging, search and the info line are off.
+        await expect(page.locator(
+            '#verificationRecentActivity :is(.dt-search, .dt-paging, .dt-info)'
+        )).toHaveCount(0);
+    });
+
+    test('Recent Activity sorts on a header click and Time returns newest first', async ({ page }) => {
+        await page.goto('app/admin/index.php?tab=verification', { waitUntil: 'networkidle' });
+        await expect(activityHeader(page, 'Time')).toHaveAttribute('aria-sort', 'descending');
+
+        await activityHeader(page, 'Car').click();
+        await expect(activityHeader(page, 'Car')).toHaveAttribute('aria-sort', 'ascending');
+        await expect(activityHeader(page, 'Time')).not.toHaveAttribute('aria-sort', /.+/);
+        const ascending = await activityCarIds(page);
+        expect(ascending).toEqual([...ascending].sort((a, b) => a - b));
+
+        await activityHeader(page, 'Car').click();
+        await expect(activityHeader(page, 'Car')).toHaveAttribute('aria-sort', 'descending');
+        const descending = await activityCarIds(page);
+        expect(descending).toEqual([...descending].sort((a, b) => b - a));
+
+        // An unsorted column sorts ascending on the first click, descending on the second.
+        await activityHeader(page, 'Time').click();
+        await expect(activityHeader(page, 'Time')).toHaveAttribute('aria-sort', 'ascending');
+        const oldestFirst = await activityTimestamps(page);
+        expect(oldestFirst).toEqual([...oldestFirst].sort());
+
+        await activityHeader(page, 'Time').click();
+        await expect(activityHeader(page, 'Time')).toHaveAttribute('aria-sort', 'descending');
+        const stamps = await activityTimestamps(page);
+        expect(stamps).toEqual([...stamps].sort().reverse());
+    });
+
+    test('Recent Activity car link opens the car details page in a new tab', async ({ page }) => {
+        await page.goto('app/admin/index.php?tab=verification', { waitUntil: 'networkidle' });
+
+        const carLink = activityRow(page, soldCarId).locator('td').nth(2).getByRole('link');
+        await expect(carLink).toHaveCount(1);
+        await expect(carLink).toHaveAttribute('href', new RegExp(`/app/owner/cars/details\\.php\\?car_id=${soldCarId}$`));
+        await expect(carLink).toHaveAttribute('target', '_blank');
+        await expect(carLink).toHaveAttribute('rel', 'noopener');
+    });
+
+    test('Recent Activity table is responsive and compact', async ({ page }) => {
+        await page.goto('app/admin/index.php?tab=verification', { waitUntil: 'networkidle' });
+
+        await expect(page.locator(`#verificationRecentActivity .table-responsive ${ACTIVITY_TABLE}`)).toHaveCount(1);
+        await expect(page.locator(ACTIVITY_TABLE)).toHaveClass(/\btable-sm\b/);
     });
 
     // --- Status panel position ----------------------------------------------
