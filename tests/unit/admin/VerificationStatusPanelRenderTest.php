@@ -391,15 +391,27 @@ final class VerificationStatusPanelRenderTest extends TestCase
     }
 
     /**
-     * The fixture shows every icon branch: the summary, the row and detail
-     * icons, a failure entry, the switch help, and the admin incident steps.
+     * Together the fixtures render every icon branch: both health badges, the
+     * row and detail icons, a failure entry, the switch, the Unavailable
+     * switch, the disabled-reason help, and the admin incident steps.
+     *
+     * @return array<string, array{VerificationTabStatus}>
      */
-    public function test_panel_everyIconIsHiddenFromScreenReaders(): void
+    public static function iconBranchProvider(): array
     {
-        $status = self::build(['failureLog' => ['count' => 1, 'recent' => [
-            ['loggedAt' => '2026-10-19 02:00:00', 'message' => 'Job x failed'],
-        ]]]);
+        return [
+            'healthy'            => [self::build()],
+            'failure entry'      => [self::build(['failureLog' => ['count' => 1, 'recent' => [
+                ['loggedAt' => '2026-10-19 02:00:00', 'message' => 'Job x failed'],
+            ]]])],
+            'switch unavailable' => [self::build(['probeFailed' => true, 'enabled' => null, 'cronReady' => null])],
+            'disabled reason'    => [self::build(['enabled' => false, 'brevoReason' => 'Brevo is not ready'])],
+        ];
+    }
 
+    #[DataProvider('iconBranchProvider')]
+    public function test_panel_everyIconIsHiddenFromScreenReaders(VerificationTabStatus $status): void
+    {
         $icons = self::dom(self::renderHtml($status, true))
             ->query('//i[contains(concat(" ", normalize-space(@class), " "), " fas ")]');
 

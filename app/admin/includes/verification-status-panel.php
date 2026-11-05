@@ -27,6 +27,7 @@ $vsPanelEsc   = static fn (string $value): string => htmlspecialchars($value, EN
 ?>
 <details class="card registry-card mb-4" id="verificationStatusPanel"<?= $vsHealthy ? '' : ' open' ?>>
     <summary class="card-header card-header-er-l2">
+        <!-- A span, not a heading: some screen readers drop a heading inside <summary>. -->
         <span class="h5 d-inline mb-0 card-header-er-l2-text">
             <i class="fas fa-heartbeat" aria-hidden="true"></i> System Status &amp; Feature Switch
         </span>
@@ -87,6 +88,7 @@ $vsPanelEsc   = static fn (string $value): string => htmlspecialchars($value, EN
         <!-- Toggle control -->
         <h6 class="text-primary mb-3"><i class="fas fa-toggle-on" aria-hidden="true"></i> Feature Switch</h6>
 
+        <!-- role="status" is already a polite live region, so it needs no aria-live. -->
         <div id="verificationToggleFeedback" class="mb-2" role="status"></div>
 
         <?php if ($vsSwitch['unavailable']) { ?>

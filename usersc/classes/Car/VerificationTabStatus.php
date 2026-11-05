@@ -44,6 +44,10 @@ use ElanRegistry\LogCategories;
  * @since v2.30.8
  * @see https://github.com/elan-registry/registry/issues/2330
  * @see https://github.com/elan-registry/registry/issues/2364
+ *
+ * @phpstan-type StatusRow array{key: string, label: string, badgeText: string, badgeClass: string,
+ *     icon: string, detail: string, detailIcon: string, recent: list<array{loggedAt: string, message: string}>,
+ *     advice: list<array{text: string, code: string}>}
  */
 final readonly class VerificationTabStatus
 {
@@ -245,11 +249,10 @@ final readonly class VerificationTabStatus
      * `detailIcon` are Font Awesome names, or '' for none. `detail` and
      * `recent` are plain text; the caller escapes them. `advice` is the next
      * step for an admin, as text segments; a non-empty `code` is a command,
-     * log category or migration name. Only job rows have advice.
+     * log category or migration name. Only an unreadable or missing job row
+     * has advice.
      *
-     * @return list<array{key: string, label: string, badgeText: string, badgeClass: string, icon: string,
-     *     detail: string, detailIcon: string, recent: list<array{loggedAt: string, message: string}>,
-     *     advice: list<array{text: string, code: string}>}>
+     * @return list<StatusRow>
      */
     public function rows(): array
     {
@@ -582,9 +585,7 @@ final readonly class VerificationTabStatus
     }
 
     /**
-     * @return array{key: string, label: string, badgeText: string, badgeClass: string, icon: string,
-     *     detail: string, detailIcon: string, recent: list<array{loggedAt: string, message: string}>,
-     *     advice: list<array{text: string, code: string}>}
+     * @return StatusRow
      */
     private function brevoRow(): array
     {
@@ -608,9 +609,7 @@ final readonly class VerificationTabStatus
     }
 
     /**
-     * @return array{key: string, label: string, badgeText: string, badgeClass: string, icon: string,
-     *     detail: string, detailIcon: string, recent: list<array{loggedAt: string, message: string}>,
-     *     advice: list<array{text: string, code: string}>}
+     * @return StatusRow
      */
     private function cronRow(): array
     {
@@ -638,9 +637,7 @@ final readonly class VerificationTabStatus
     }
 
     /**
-     * @return array{key: string, label: string, badgeText: string, badgeClass: string, icon: string,
-     *     detail: string, detailIcon: string, recent: list<array{loggedAt: string, message: string}>,
-     *     advice: list<array{text: string, code: string}>}
+     * @return StatusRow
      */
     private function unmatchedRow(): array
     {
@@ -671,9 +668,7 @@ final readonly class VerificationTabStatus
      * @param array{state: CronJobEnabledState, lastRunAt: ?DateTimeImmutable, lastFailureAt: ?DateTimeImmutable} $status
      * @param string $rowMigration The migration that gives the job its er_cron_job_runs row under the current
      *                             job name, for the MISSING advice
-     * @return array{key: string, label: string, badgeText: string, badgeClass: string, icon: string,
-     *     detail: string, detailIcon: string, recent: list<array{loggedAt: string, message: string}>,
-     *     advice: list<array{text: string, code: string}>}
+     * @return StatusRow
      */
     private function jobRow(string $key, string $label, array $status, string $rowMigration): array
     {
@@ -707,13 +702,11 @@ final readonly class VerificationTabStatus
         };
 
         return self::row($key, $label, $badge['text'], $badge['badgeClass'], $badge['icon'], $detail, $detailIcon,
-            [], $advice);
+            advice: $advice);
     }
 
     /**
-     * @return array{key: string, label: string, badgeText: string, badgeClass: string, icon: string,
-     *     detail: string, detailIcon: string, recent: list<array{loggedAt: string, message: string}>,
-     *     advice: list<array{text: string, code: string}>}
+     * @return StatusRow
      */
     private function cronFailuresRow(): array
     {
@@ -746,9 +739,7 @@ final readonly class VerificationTabStatus
     /**
      * @param list<array{loggedAt: string, message: string}> $recent
      * @param list<array{text: string, code: string}>       $advice Each segment's `code` follows its `text`
-     * @return array{key: string, label: string, badgeText: string, badgeClass: string, icon: string,
-     *     detail: string, detailIcon: string, recent: list<array{loggedAt: string, message: string}>,
-     *     advice: list<array{text: string, code: string}>}
+     * @return StatusRow
      */
     private static function row(
         string $key,

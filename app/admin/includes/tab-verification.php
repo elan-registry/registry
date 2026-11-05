@@ -346,36 +346,34 @@ $vsNow = new \DateTimeImmutable();
      count owners now, so an owner with several cars counts once (#2361). -->
 <?php
 $vsSummaryCards = [
-    'eligible'  => 'eligible',
-    'pending'   => 'pending',
-    'verified'  => 'verified',
-    'sold'      => 'sold',
-    'bounced'   => 'bounced_owners',
-    'blocked'   => 'blocked_owners',
-    'opted_out' => 'opted_out_owners',
+    'eligible'  => ['countKey' => 'eligible',         'unit' => 'cars',   'inWindow' => false],
+    'pending'   => ['countKey' => 'pending',          'unit' => 'cars',   'inWindow' => false],
+    'verified'  => ['countKey' => 'verified',         'unit' => 'cars',   'inWindow' => true],
+    'sold'      => ['countKey' => 'sold',             'unit' => 'cars',   'inWindow' => true],
+    'bounced'   => ['countKey' => 'bounced_owners',   'unit' => 'owners', 'inWindow' => false],
+    'blocked'   => ['countKey' => 'blocked_owners',   'unit' => 'owners', 'inWindow' => false],
+    'opted_out' => ['countKey' => 'opted_out_owners', 'unit' => 'owners', 'inWindow' => false],
 ];
-// A card whose count key differs from its status counts owners. The pill of
-// the same status counts cars, so both name their unit.
+// The pill of an owner-count status counts cars, so the pill says "cars"
+// and the card says "owners".
 $vsOwnerCountStatuses = array_keys(array_filter(
     $vsSummaryCards,
-    static fn (string $countKey, string $status): bool => $countKey !== $status,
-    ARRAY_FILTER_USE_BOTH
+    static fn (array $card): bool => $card['unit'] === 'owners'
 ));
 ?>
 <div class="row g-3 mb-4" id="verificationSummaryCards">
-    <?php foreach ($vsSummaryCards as $vsSummaryKey => $vsSummaryCountKey) {
-        $vsUnit = in_array($vsSummaryKey, $vsOwnerCountStatuses, true) ? 'owners' : 'cars';
-        $vsUnitText = $vsSummaryKey === 'verified' || $vsSummaryKey === 'sold'
-            ? 'cars · ' . vsWindowLabel($queueWindowDays)
-            : $vsUnit;
+    <?php foreach ($vsSummaryCards as $vsSummaryKey => $vsCard) {
+        $vsUnitText = $vsCard['inWindow']
+            ? $vsCard['unit'] . ' · ' . vsWindowLabel($queueWindowDays)
+            : $vsCard['unit'];
     ?>
     <div class="col-6 col-md-3 col-xl">
         <div class="er-stat-tile h-100" data-summary="<?= vsEsc($vsSummaryKey) ?>">
             <div class="er-stat-number">
-                <?= $vsSummary !== null ? vsEsc(number_format($vsSummary[$vsSummaryCountKey])) : '&mdash;' ?>
+                <?= $vsSummary !== null ? vsEsc(number_format($vsSummary[$vsCard['countKey']])) : '&mdash;' ?>
             </div>
             <div class="er-stat-label"><?= vsEsc($vsStatusLabels[$vsSummaryKey]) ?></div>
-            <div class="er-stat-label" data-unit="<?= vsEsc($vsUnit) ?>"><?= vsEsc($vsUnitText) ?></div>
+            <div class="er-stat-label" data-unit="<?= vsEsc($vsCard['unit']) ?>"><?= vsEsc($vsUnitText) ?></div>
         </div>
     </div>
     <?php } ?>

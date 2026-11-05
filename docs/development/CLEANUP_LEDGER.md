@@ -60,7 +60,8 @@ after an item is written.
 ### `app/admin/includes/tab-verification.php`
 
 - [ ] About 25 decorative `<i class="fas ...">` icons outside the status panel have no `aria-hidden="true"` (for example the tab `h2` icon ~L329, the probe-failure alert icon ~L337 and the queue `h5` icon ~L543). Find them all with `grep -n 'fa-' app/admin/includes/tab-verification.php | grep -v aria-hidden`. The status panel icons have it (found in #2458 review)
-- [ ] No source regression test stops `getMessage()` coming back into the four catches that now log `ExceptionLogSummary::of($e)` (~L172, ~L269, ~L287, ~L808). Add one to `tests/unit/regression/VerificationTabSourceRegressionTest.php`, in the style of `DeletionPrivacyRerunOutcomeSourceRegressionTest.php` (found in #2458 review)
+- [ ] The "could not load the summary counts", "could not load the queue status chips" and "could not load recent activity" log lines do not name the view: add the window days, the queue status and the car count, as the queue catch logs `$queueStatus` (found in #2458)
+- [ ] No source regression test stops `getMessage()` coming back into the four catches that now log `ExceptionLogSummary::of($e)` (the "could not load the summary counts", "could not load the queue status chips", "could not load recent activity" and "owner %d could not be loaded for the queue row" log lines). Add one to `tests/unit/regression/VerificationTabSourceRegressionTest.php`, in the style of `DeletionPrivacyRerunOutcomeSourceRegressionTest.php` (found in #2458 review)
 - [ ] No fixed test pins the singular "(1 car)" pill text. The Playwright pill check builds its expectation from live counts, so the singular branch runs only when a count is 1 (found in #2458 review)
 - [ ] The Automatic Sending card shows only "Status unavailable" for an `UNREADABLE` or `MISSING` job state, and its "Next eligible" row says "the job status could not be read" for `MISSING` too. Show the same detail lines as the status panel rows, from one shared source next to `CronJobRunsReader::badgeFor()` (found in #2572 review)
 
@@ -126,6 +127,7 @@ after an item is written.
 ### `docs/development/ERROR_HANDLING.md`
 
 - [ ] The exception table (~L127-157) lists `AdminVerificationException`, which has no file in `usersc/classes/Exceptions/`, and omits `VerificationConfigException`. Check the table against the directory and correct the count in the heading (found in /finish-milestone v2.30.10)
+- [ ] The doc names only the last-resort fallback, and says "no guards around database calls". It does not name the page-section fault-domain catch (catch `\Throwable` around one repository read, log `ExceptionLogSummary::of($e)`, show the section as Unavailable) that `tab-verification.php` and `VerificationTabStatus::read()` use (#2364). Add one paragraph (found in #2458)
 
 ### `error/500.php`
 

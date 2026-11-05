@@ -16,6 +16,7 @@ A failed read no longer shows as a default value or a success.
 - An unreadable or missing job state row now says what failed and which next step to take.
 - The All pill is gone. Eligible (default) and Next Queue use send order. Rows link car and owner.
 - Verification cards name their unit, and the Bounced, Blocked and Opted out pills say "cars". Blocked shows a readable cause.
+- The Email on file tooltips say which mail stops and which still sends. Help buttons are easier to tap.
 
 ## Issues Resolved
 
