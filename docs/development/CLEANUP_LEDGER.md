@@ -303,7 +303,7 @@ after an item is written.
 
 ### `usersc/classes/Car/VerificationSettings.php`
 
-- [ ] `isEnabled()` has no production caller after #2602. All callers use `isEnabledOrNull()`. Remove `isEnabled()` and its test in `VerificationSettingsTest` (found in /flow:finish-milestone v2.31.1)
+- [ ] `isEnabled()` has no production caller after #2602. All callers use `isEnabledOrNull()`. Remove `isEnabled()`, its tests in `VerificationSettingsTest`, and the references to it in `CLASSES.md` (method list and the `VerificationTabStatus` entry), the `{@see isEnabled()}` in `VerificationSettings.php`, and the `VerificationTabStatus.php` class docblock (found in /flow:finish-milestone v2.31.1)
 
 ### `usersc/classes/Car/VerificationTabStatus.php`
 

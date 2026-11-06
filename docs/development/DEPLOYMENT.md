@@ -936,7 +936,7 @@ visibility that the job is disabled (not just silently not running). The
 and its shim `users/cron/brevo_event_reconciliation.php` for the required
 patterns.
 
-**The site-wide verification switch** (`VerificationSettings::isEnabled()`,
+**The site-wide verification switch** (`VerificationSettings::isEnabledOrNull()`,
 `er_verification_settings.enabled`): a job opts in. `AbstractCronJob` has the
 method `refusesWhileSwitchOff(): bool`, which returns `false` by default. A job
 that sends email overrides it to return `$settings->isEnabledOrNull() === false`. Only
