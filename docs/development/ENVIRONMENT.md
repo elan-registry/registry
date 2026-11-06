@@ -515,6 +515,9 @@ connection that skips that hook (the `mysql` CLI, raw-PDO scripts, test lock
 connections) uses the server zone, as on the server. See `DATABASE.md`,
 "Time zone".
 
+A running `db` container keeps its old command. After you pull this change,
+recreate it: `docker compose up -d --force-recreate db`.
+
 ### Brevo Plugin Local Setup
 
 Git does not track the sendinblue plugin. A fresh clone does not have it. Do

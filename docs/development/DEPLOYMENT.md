@@ -348,6 +348,19 @@ until the user asks for that deploy.
 
 ### Database Migrations
 
+**Before the first deploy that holds `SessionTimeZone`:** check that the
+MySQL time zone tables load on the target database. Run this as the app
+database user:
+
+```sql
+SELECT CONVERT_TZ('2027-01-15 18:00:00', 'UTC', 'America/Los_Angeles');
+-- expect 2027-01-15 10:00:00, not NULL
+```
+
+A NULL result means the zone tables are empty. Every request, cron run, and
+`composer migrate` then stops with `SessionTimeZoneException`. See
+`DATABASE.md`, "Time zone".
+
 After every deployment, run pending migrations:
 
 ```bash
