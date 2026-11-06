@@ -11,7 +11,7 @@ The Verification tab shows the real send queue and reports unreadable settings. 
 
 ## Admin-Facing Changes
 
-- Verification tab times are correct from November to March, but some times recorded before this release stay 1 hour off. ([#2589](https://github.com/elan-registry/registry/issues/2589))
+- Server-recorded times now match Pacific time all year. Some times recorded before this release stay 1 hour off. ([#2589](https://github.com/elan-registry/registry/issues/2589))
 - Unreadable verification settings show as unavailable on the Verification tab, and auto-send sends nothing.
   ([#2572](https://github.com/elan-registry/registry/issues/2572),
   [#2587](https://github.com/elan-registry/registry/issues/2587),
