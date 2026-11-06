@@ -88,6 +88,19 @@ final class EmailEventMatcherTest extends TestCase
         $match = $this->matcher->matchByMessageId(self::MESSAGE_ID, " \t ");
 
         $this->assertTrue($match->isNoUser());
+        $this->assertFalse($match->hasPluginRow());
+    }
+
+    /** An empty address is never stored (#2611), even when the plugin has a row. */
+    public function test_matchByMessageId_emptyAddressAndAPluginRow_returnsNoUserWithoutThePluginRowFlag(): void
+    {
+        $this->repo->method('findSentRowsByMessageId')->willReturn([]);
+        $this->repo->method('findSendinblueMessageById')->willReturn(self::pluginRow('bob@x.com'));
+
+        $match = $this->matcher->matchByMessageId(self::MESSAGE_ID, " \t ");
+
+        $this->assertTrue($match->isNoUser());
+        $this->assertFalse($match->hasPluginRow());
     }
 
     // --- Step (a) --------------------------------------------------------
@@ -139,6 +152,22 @@ final class EmailEventMatcherTest extends TestCase
         $match = $this->matcher->matchByMessageId(self::MESSAGE_ID, 'bob@x.com');
 
         $this->assertTrue($match->isNoUser());
+        $this->assertTrue($match->hasPluginRow(), 'A plugin row exists, so the event is stored with no owner');
+    }
+
+    /** The shared address is on two sent rows and no plugin row exists: nothing to store against. */
+    public function test_matchByMessageId_twoSentRowsWithTheSameAddressAndNoPluginRow_returnsNoUserWithoutThePluginRowFlag(): void
+    {
+        $this->repo->method('findSentRowsByMessageId')->willReturn([
+            self::sentRow(5, 9, 'bob@x.com'),
+            self::sentRow(6, 10, 'bob@x.com'),
+        ]);
+        $this->repo->method('findSendinblueMessageById')->willReturn(null);
+
+        $match = $this->matcher->matchByMessageId(self::MESSAGE_ID, 'bob@x.com');
+
+        $this->assertTrue($match->isNoUser());
+        $this->assertFalse($match->hasPluginRow());
     }
 
     // --- Fall-through from (a) to (b) -------------------------------------
@@ -167,6 +196,7 @@ final class EmailEventMatcherTest extends TestCase
         $match = $this->matcher->matchByMessageId(self::MESSAGE_ID, 'b@x.com');
 
         $this->assertTrue($match->isNoUser(), 'The sent row user must not get a flag for another address');
+        $this->assertFalse($match->hasPluginRow(), 'No plugin row: the event is not stored');
     }
 
     // --- Step (b) --------------------------------------------------------
@@ -204,15 +234,20 @@ final class EmailEventMatcherTest extends TestCase
         $match = $this->matcher->matchByMessageId(self::MESSAGE_ID, 'bob@x.com');
 
         $this->assertTrue($match->isNoUser());
+        $this->assertTrue($match->hasPluginRow());
     }
 
-    public function test_matchByMessageId_addressWithNoUser_returnsNoUser(): void
+    public function test_matchByMessageId_addressWithNoUser_returnsNoUserOnThePluginRow(): void
     {
         $this->repo->method('findSentRowsByMessageId')->willReturn([]);
         $this->repo->method('findSendinblueMessageById')->willReturn(self::pluginRow('bob@x.com'));
         $this->repo->method('findUserIdsByAddress')->willReturn([]);
 
-        $this->assertTrue($this->matcher->matchByMessageId(self::MESSAGE_ID, 'bob@x.com')->isNoUser());
+        $match = $this->matcher->matchByMessageId(self::MESSAGE_ID, 'bob@x.com');
+
+        $this->assertTrue($match->isNoUser());
+        $this->assertFalse($match->isMatched());
+        $this->assertTrue($match->hasPluginRow());
     }
 
     public function test_matchByMessageId_eventAddressIsASubstringOfThePluginRecipient_returnsNoUserWithoutAUserLookup(): void
@@ -250,15 +285,19 @@ final class EmailEventMatcherTest extends TestCase
         $match = $this->matcher->matchByMessageId(self::MESSAGE_ID, 'bob@x.com');
 
         $this->assertTrue($match->isNoUser());
+        $this->assertTrue($match->hasPluginRow());
     }
 
-    public function test_matchByMessageId_accentVariantOfThePluginRecipient_returnsNoUser(): void
+    public function test_matchByMessageId_accentVariantOfThePluginRecipient_returnsNoUserOnThePluginRow(): void
     {
         $this->repo->method('findSentRowsByMessageId')->willReturn([]);
         $this->repo->method('findSendinblueMessageById')->willReturn(self::pluginRow('bób@x.com'));
         $this->repo->expects($this->never())->method('findUserIdsByAddress');
 
-        $this->assertTrue($this->matcher->matchByMessageId(self::MESSAGE_ID, 'bob@x.com')->isNoUser());
+        $match = $this->matcher->matchByMessageId(self::MESSAGE_ID, 'bob@x.com');
+
+        $this->assertTrue($match->isNoUser());
+        $this->assertTrue($match->hasPluginRow());
     }
 
     public function test_matchByMessageId_asksForThePluginRowByTheEventMessageIdOnly(): void
@@ -336,6 +375,38 @@ final class EmailEventMatcherTest extends TestCase
     {
         $this->expectException(InvalidArgumentException::class);
         EmailEventMatch::matched($userId, $carId, $time);
+    }
+
+    public function test_noUserOnPluginRow_isNoUserAndNotMatchedAndNotOurs(): void
+    {
+        $match = EmailEventMatch::noUserOnPluginRow();
+
+        $this->assertTrue($match->isNoUser());
+        $this->assertTrue($match->hasPluginRow());
+        $this->assertFalse($match->isMatched());
+        $this->assertFalse($match->isNotOurs());
+    }
+
+    /** @return array<string, array{EmailEventMatch}> */
+    public static function resultsWithoutAPluginRowProvider(): array
+    {
+        return [
+            'matched' => [EmailEventMatch::matched(1, null, '2026-01-01 00:00:00')],
+            'not ours' => [EmailEventMatch::notOurs()],
+            'no user' => [EmailEventMatch::noUser()],
+        ];
+    }
+
+    #[DataProvider('resultsWithoutAPluginRowProvider')]
+    public function test_hasPluginRow_onAnyOtherResult_isFalse(EmailEventMatch $match): void
+    {
+        $this->assertFalse($match->hasPluginRow());
+    }
+
+    public function test_userId_onANoUserOnPluginRowResult_throws(): void
+    {
+        $this->expectException(LogicException::class);
+        EmailEventMatch::noUserOnPluginRow()->userId();
     }
 
     public function test_userId_onANotOursResult_throws(): void

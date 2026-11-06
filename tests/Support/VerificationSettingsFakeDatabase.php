@@ -30,6 +30,16 @@ class VerificationSettingsFakeDatabase extends FakeDatabase
     private bool $queryWasCalled = false;
     private bool $brevoTableWasQueried = false;
     private string $lastSql = '';
+    private int $queryCount = 0;
+
+    /** True once an `enabled` SELECT has run (the last query was one). */
+    private bool $enabledSelectWasIssued = false;
+
+    /** Number of `enabled` SELECTs so far. */
+    private int $enabledSelectCount = 0;
+
+    /** True once a `batch_size` SELECT has run (the last query was one). */
+    private bool $batchSizeSelectWasIssued = false;
 
     /** True once the post-UPDATE confirmation SELECT (`SELECT id FROM ...`) has run. */
     private bool $confirmSelectWasIssued = false;
@@ -101,6 +111,16 @@ class VerificationSettingsFakeDatabase extends FakeDatabase
      *                                   `incrementUnmatchedRecipientCounter()`'s UPDATE. Defaults to 1
      *                                   (the row matched and changed). Pass 0 to simulate the `id = 1`
      *                                   settings row being absent.
+     * @param bool $enabledQueryErrors When true, error() reports true only for the `SELECT enabled
+     *                                   FROM er_verification_settings ...` read. Other queries keep
+     *                                   their own flags, so a test can fail the switch read and
+     *                                   leave the batch size readable.
+     * @param bool $batchSizeQueryErrors When true, error() reports true only for the `SELECT
+     *                                   batch_size FROM er_verification_settings ...` read.
+     * @param bool $enabledQueryErrorsOnFirstCallOnly When true, error() reports true for the
+     *                                   first `SELECT enabled ...` read only. Later reads use
+     *                                   $firstRowValue, so a test can fail the cron gate's read
+     *                                   and let execute() read the switch.
      */
     public function __construct(
         private readonly array|object $firstRowValue = [],
@@ -117,6 +137,9 @@ class VerificationSettingsFakeDatabase extends FakeDatabase
         private readonly bool $unmatchedCounterQueryErrors = false,
         private readonly bool $unmatchedCounterUpdateErrors = false,
         private readonly int $unmatchedCounterUpdateCount = 1,
+        private readonly bool $enabledQueryErrors = false,
+        private readonly bool $batchSizeQueryErrors = false,
+        private readonly bool $enabledQueryErrorsOnFirstCallOnly = false,
     ) {
     }
 
@@ -163,6 +186,12 @@ class VerificationSettingsFakeDatabase extends FakeDatabase
     public function query(string $sql, array $params = []): self
     {
         $this->queryWasCalled = true;
+        $this->queryCount++;
+        $this->enabledSelectWasIssued = (bool) preg_match('/^\s*SELECT\s+enabled\s+FROM\s+er_verification_settings\b/i', $sql);
+        if ($this->enabledSelectWasIssued) {
+            $this->enabledSelectCount++;
+        }
+        $this->batchSizeSelectWasIssued = (bool) preg_match('/^\s*SELECT\s+batch_size\s+FROM\s+er_verification_settings\b/i', $sql);
         $this->lastSql = $sql;
         if (stripos($sql, 'plg_sendinblue') !== false) {
             $this->brevoTableWasQueried = true;
@@ -184,6 +213,15 @@ class VerificationSettingsFakeDatabase extends FakeDatabase
 
     public function error(): bool
     {
+        if ($this->enabledSelectWasIssued && $this->enabledQueryErrors) {
+            return true;
+        }
+        if ($this->enabledSelectWasIssued && $this->enabledQueryErrorsOnFirstCallOnly && $this->enabledSelectCount === 1) {
+            return true;
+        }
+        if ($this->batchSizeSelectWasIssued && $this->batchSizeQueryErrors) {
+            return true;
+        }
         if ($this->unmatchedCounterUpdateWasIssued) {
             return $this->unmatchedCounterUpdateErrors;
         }
@@ -234,6 +272,11 @@ class VerificationSettingsFakeDatabase extends FakeDatabase
 
     public function first(bool $assoc = false): array|object
     {
+        // UserSpice DB::query() sets no results on a failed query, so a test
+        // must not read a row that production never sees.
+        if ($this->error()) {
+            return [];
+        }
         if ($this->unmatchedCounterSelectWasIssued) {
             return $this->unmatchedCounterRowValue;
         }
@@ -244,6 +287,12 @@ class VerificationSettingsFakeDatabase extends FakeDatabase
             return $this->confirmSelectRowValue ?? (object) ['id' => 1];
         }
         return $this->firstRowValue;
+    }
+
+    /** Number of query() calls so far. */
+    public function queryCount(): int
+    {
+        return $this->queryCount;
     }
 
     public function wasQueried(): bool

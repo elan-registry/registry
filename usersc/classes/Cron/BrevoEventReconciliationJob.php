@@ -554,6 +554,11 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
         }
 
         if (!$match->isMatched()) {
+            if ($match->hasPluginRow()
+                && !$this->recordUnmatched($match, $event, $normalized, $eventName, $rawMessageId, $counts)
+            ) {
+                return;
+            }
             $this->countUnmatched($event->getTag(), $counts);
             return;
         }
@@ -562,7 +567,7 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
         $reason = $event->getReason();
         $reason = is_string($reason) && $reason !== '' ? $reason : null;
         ['occurredAt' => $occurredAt, 'usable' => $dateIsUsable]
-            = $this->resolveOccurredAt($event->getDate(), $userId, $eventName);
+            = $this->resolveOccurredAt($event->getDate(), "user {$userId}", $eventName);
 
         try {
             $this->applier->apply(
@@ -583,30 +588,79 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
             // idempotent writes — already covers the skipped event on the
             // next claim. Aborting instead would let one bad row starve
             // every event behind it in this page.
-            $counts['skipped']++;
-            logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
-                'Brevo event reconciliation: write FAILED for owner %d, event "%s" —'
-                . ' skipped, will retry next cycle: %s',
-                $userId,
-                $eventName,
-                ExceptionLogSummary::of($e)
-            ));
+            $this->skipWrite($counts, "owner {$userId}", $eventName, $e);
             return;
         } catch (CarValidationException | \InvalidArgumentException $e) {
             // A bad stored value (for example a zero message time) fails
             // the same way on every run, so the next run does not fix it.
-            $counts['skipped']++;
-            logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
-                'Brevo event reconciliation: write REJECTED bad data for owner %d, event "%s" — skipped: %s',
-                $userId,
-                $eventName,
-                ExceptionLogSummary::of($e)
-            ));
+            $this->skipWrite($counts, "owner {$userId}", $eventName, $e);
             return;
         }
 
         $counts['matched']++;
         $eventTypeCounts[$eventName] = ($eventTypeCounts[$eventName] ?? 0) + 1;
+    }
+
+    /**
+     * Store an event of our mail that matched no single user, with no owner (#2611).
+     *
+     * A failure counts as skipped and does not stop the page, as for a
+     * matched event. After a database failure, the next run tries the event
+     * again. A data fault fails the same way on every run.
+     *
+     * @param EmailEventMatch $match A {@see EmailEventMatch::noUserOnPluginRow()} result
+     * @param \Brevo\Client\Model\GetEmailEventReportEvents $event
+     * @param string $normalized The normalized recipient address
+     * @param string $eventName The webhook name of the event type
+     * @param string $messageId Brevo's message ID
+     * @param array<string, int> $counts
+     * @return bool False when the event was skipped
+     */
+    private function recordUnmatched(
+        EmailEventMatch $match,
+        object $event,
+        string $normalized,
+        string $eventName,
+        string $messageId,
+        array &$counts
+    ): bool {
+        $reason = $event->getReason();
+        $reason = is_string($reason) && $reason !== '' ? $reason : null;
+        $subject = 'no owner (hash ' . EmailEventMatcher::addressLogHash($normalized) . ')';
+        ['occurredAt' => $occurredAt] = $this->resolveOccurredAt($event->getDate(), $subject, $eventName);
+
+        try {
+            $this->applier->recordUnmatched($match, $normalized, $eventName, $reason, $messageId, $occurredAt);
+        } catch (CarDatabaseException | CarValidationException | \InvalidArgumentException $e) {
+            $this->skipWrite($counts, $subject, $eventName, $e);
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Count a failed event write as skipped and log it. The page goes on.
+     *
+     * A database failure may pass on the next run, so its line says the
+     * event is retried. A data fault fails the same way on every run.
+     *
+     * @param array<string, int> $counts
+     * @param string $subject "owner <id>" or "no owner (hash <hash>)", never an address
+     * @param string $eventName The webhook name of the event type
+     * @param \Throwable $e The write failure, logged as its ExceptionLogSummary
+     */
+    private function skipWrite(array &$counts, string $subject, string $eventName, \Throwable $e): void
+    {
+        $counts['skipped']++;
+        logger(0, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, sprintf(
+            $e instanceof CarDatabaseException
+                ? 'Brevo event reconciliation: write FAILED for %s, event "%s" — skipped, will retry next cycle: %s'
+                : 'Brevo event reconciliation: write REJECTED bad data for %s, event "%s" — skipped: %s',
+            $subject,
+            $eventName,
+            ExceptionLogSummary::of($e)
+        ));
     }
 
     /**
@@ -703,12 +757,12 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
      * cleared flag again. The applier compares the message time instead.
      *
      * @param mixed $rawDate The SDK's `date` field, untyped at the boundary
-     * @param int $userId The matched user, for the log line
+     * @param string $subject "user <id>" or "no owner (hash <hash>)" for the log line, never an address
      * @param string $eventName The webhook event name, for the log line
      * @return array{occurredAt: string, usable: bool} The time in
      *         AppConstants::DATETIME_FORMAT, and false when it is the run-time fallback
      */
-    private function resolveOccurredAt(mixed $rawDate, int $userId, string $eventName): array
+    private function resolveOccurredAt(mixed $rawDate, string $subject, string $eventName): array
     {
         if (is_string($rawDate) && $rawDate !== '') {
             try {
@@ -738,11 +792,11 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
         // identical condition, so both call paths' date problems land in one
         // searchable place.
         logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
-            'Brevo event reconciliation: event "%s" for user %d carried no usable date (%s, missing,'
+            'Brevo event reconciliation: event "%s" for %s carried no usable date (%s, missing,'
             . ' unparseable or more than %d seconds after the run time); occurred_at defaulted to'
             . ' run time — soft-bounce windowing may be skewed.',
             $eventName,
-            $userId,
+            $subject,
             get_debug_type($rawDate),
             self::MAX_FUTURE_SECONDS
         ));

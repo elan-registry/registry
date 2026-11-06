@@ -9,6 +9,7 @@ use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\PhpBuiltinServer;
+use Tests\Support\SendinblueMessagesTable;
 
 /**
  * Behavioral tests for app/api/webhooks/brevo.php (#1887, #2359).
@@ -18,8 +19,10 @@ use Tests\Support\PhpBuiltinServer;
  *
  * An event counts only when this environment sent its message (#2359), so a
  * test that expects a write first seeds a verification `sent` row with
- * seedSentRow(). The test schema has no `plg_sendinblue_messages` table, so
- * the matcher uses step (a) only.
+ * seedSentRow(). Such a message has no plugin row, so an event for another
+ * address matches no user and stores nothing. A test of the row with no
+ * owner (#2611) seeds a plugin row with seedPluginRow(), which makes the
+ * plugin table when the schema lacks it.
  */
 #[Group('integration')]
 final class BrevoWebhookEndpointTest extends IntegrationTestCase
@@ -30,6 +33,12 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
     private const TEST_TOKEN = 'test-brevo-webhook-token-987654321';
 
     private static ?PhpBuiltinServer $server = null;
+
+    /** True when this class made the plugin table, so it must drop it. */
+    private static bool $madePluginTable = false;
+
+    /** @var list<string> Plugin rows that this test wrote, for tearDown(). */
+    private array $pluginMessageIds = [];
     private static string $projectRoot = '';
 
     public static function setUpBeforeClass(): void
@@ -43,6 +52,10 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
     {
         self::$server?->stop();
         self::$server = null;
+        if (self::$madePluginTable) {
+            DB::getInstance()->query('DROP TABLE IF EXISTS plg_sendinblue_messages');
+            self::$madePluginTable = false;
+        }
 
         parent::tearDownAfterClass();
     }
@@ -62,6 +75,12 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
     protected function tearDown(): void
     {
         if ($this->databaseConnected) {
+            foreach ($this->pluginMessageIds as $messageId) {
+                $this->db->query('DELETE FROM plg_sendinblue_messages WHERE message_id = ?', [$messageId]);
+                // An event with no owner is stored with user_id 0 (#2611). The prune test needs an empty table.
+                $this->db->query('DELETE FROM er_email_events WHERE user_id = 0 AND brevo_message_id = ?', [$messageId]);
+            }
+            $this->pluginMessageIds = [];
             $this->cleanUpBrevoReadyFixture();
             $this->db->query('UPDATE er_verification_settings SET enabled = 0, unmatched_recipient_count = 0 WHERE id = 1');
 
@@ -299,6 +318,28 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
             date('Y-m-d H:i:s')
         );
         $this->assertSame(1, $written, 'Test setup: the sent row must be written');
+
+        return $messageId;
+    }
+
+    /**
+     * Seed the sendinblue plugin's row that makes a message ID ours when no `sent` row exists
+     *
+     * @return string The message ID
+     */
+    private function seedPluginRow(string $recipient, ?string $messageId = null): string
+    {
+        if (SendinblueMessagesTable::createIfMissing($this->db)) {
+            self::$madePluginTable = true;
+        }
+        $messageId ??= 'plg-msg-' . uniqid();
+        $this->db->query(
+            "INSERT INTO plg_sendinblue_messages (message_id, recipient_email, sender_email, kind, status, accepted_at)
+             VALUES (?, ?, 'registry@example.test', 'transactional', 'accepted', ?)",
+            [$messageId, $recipient, date('Y-m-d H:i:s')]
+        );
+        $this->assertFalse($this->db->error(), 'Test setup: plugin row: ' . $this->db->errorString());
+        $this->pluginMessageIds[] = $messageId;
 
         return $messageId;
     }
@@ -567,6 +608,102 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         $this->assertSame(200, $result['status']);
         $this->assertSame($before, $this->unmatchedCounter(), 'Only verification mail counts as unmatched');
         $this->assertSame([], $this->eventRowsForMessage($messageId));
+    }
+
+    // ------------------------------------------------------------------
+    // Events with no owner (#2611)
+    // ------------------------------------------------------------------
+
+    public function testNoUserEventOnAPluginRowStoresOneRowWithNoOwner(): void
+    {
+        $this->requireBrevoReady();
+
+        $address = 'Stranger-' . uniqid() . '@Example.com';
+        $messageId = $this->seedPluginRow($address);
+        $before = $this->unmatchedCounter();
+
+        $result = $this->postAuthorized($this->taggedPayload([
+            'email' => $address,
+            'message-id' => $messageId,
+            'event' => 'hard_bounce',
+            'reason' => 'mailbox unavailable',
+        ]));
+
+        $this->assertSame(200, $result['status']);
+        $rows = $this->eventRowsForMessage($messageId);
+        $this->assertCount(1, $rows, 'One row with no owner');
+        $this->assertSame(0, (int) $rows[0]->user_id);
+        $this->assertNull($rows[0]->car_id);
+        $this->assertSame(strtolower($address), $rows[0]->email);
+        $this->assertSame('hard_bounce', $rows[0]->event);
+        $this->assertSame('mailbox unavailable', $rows[0]->reason);
+        $this->assertSame($before + 1, $this->unmatchedCounter(), 'The unmatched counter rule is unchanged');
+    }
+
+    /** Brevo resends an event until it gets a 2xx. A resend must not make a second row (#2611). */
+    public function testResentNoUserEventMakesOneRow(): void
+    {
+        $this->requireBrevoReady();
+
+        $address = 'resend-' . uniqid() . '@example.com';
+        $messageId = $this->seedPluginRow($address);
+        $body = $this->taggedPayload(['email' => $address, 'message-id' => $messageId, 'event' => 'hard_bounce']);
+
+        $first = $this->postAuthorized($body);
+        $second = $this->postAuthorized($body);
+
+        $this->assertSame(200, $first['status']);
+        $this->assertSame(200, $second['status'], 'The resend gets a 2xx too');
+        $this->assertCount(1, $this->eventRowsForMessage($messageId), 'The unique key keeps one row');
+    }
+
+    /** The plugin table exists, but has no row for this message: nothing to show on the tab, so nothing is stored (#2611). */
+    public function testNoUserEventWithNoPluginRowStoresNothingWhileThePluginTableExists(): void
+    {
+        $this->requireBrevoReady();
+
+        // Make the table, with one row for another message, so that the lookup runs and finds none.
+        $this->seedPluginRow('unrelated-' . uniqid() . '@example.com');
+        $messageId = $this->seedOurMessageForAnotherAddress();
+
+        $result = $this->postAuthorized($this->taggedPayload(['message-id' => $messageId, 'event' => 'hard_bounce']));
+
+        $this->assertSame(200, $result['status']);
+        $this->assertSame([], $this->eventRowsForMessage($messageId));
+    }
+
+    /** A car with no owner and the noowner account store a row with no owner, never one under the noowner user ID. */
+    public function testEventForACarWithNoOwnerOrForTheNoownerAccountStoresARowWithUserIdZero(): void
+    {
+        $this->requireBrevoReady();
+
+        $orphanEmail = 'orphan-' . uniqid() . '@example.com';
+        $orphanCarId = $this->createTestCar($this->createTestUser(), ['email' => $orphanEmail]);
+        $this->db->query('UPDATE cars SET user_id = NULL WHERE id = ?', [$orphanCarId]);
+
+        $noOwnerRow = $this->db->query('SELECT id, email FROM users WHERE username = ?', ['noowner'])->first();
+        $this->assertIsObject($noOwnerRow, 'noowner system account missing. Run composer migrate (RegisterNoownerAccount).');
+        $noOwnerEmail = 'noowner-hook-' . uniqid() . '@example.com';
+        $this->db->query('UPDATE users SET email = ? WHERE id = ?', [$noOwnerEmail, $noOwnerRow->id]);
+
+        try {
+            foreach ([$orphanEmail, $noOwnerEmail] as $address) {
+                $messageId = $this->seedPluginRow($address);
+                $result = $this->postAuthorized($this->taggedPayload([
+                    'email' => $address,
+                    'event' => 'hard_bounce',
+                    'message-id' => $messageId,
+                ]));
+
+                $this->assertSame(200, $result['status']);
+                $rows = $this->eventRowsForMessage($messageId);
+                $this->assertCount(1, $rows, 'One row with no owner');
+                $this->assertSame(0, (int) $rows[0]->user_id, 'The noowner user ID must not own the row');
+                $this->assertSame($address, $rows[0]->email);
+            }
+        } finally {
+            $this->db->query('UPDATE users SET email = ? WHERE id = ?', [$noOwnerRow->email, $noOwnerRow->id]);
+        }
     }
 
     // ------------------------------------------------------------------

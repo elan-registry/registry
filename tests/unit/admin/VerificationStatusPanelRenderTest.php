@@ -137,7 +137,8 @@ final class VerificationStatusPanelRenderTest extends TestCase
         $this->assertSame(1, $xp->query('//details[@id="verificationStatusPanel"]')?->length);
         $this->assertStringContainsString(
             'System Status & Feature Switch',
-            (string) $xp->query('//details/summary/h5')?->item(0)?->textContent
+            (string) $xp->query('//details/summary/span[contains(concat(" ", normalize-space(@class), " "), " h5 ")]')
+                ?->item(0)?->textContent
         );
         $this->assertSame(1, $xp->query('//input[@id="verificationEnabledSwitch"]')?->length);
     }
@@ -264,7 +265,11 @@ final class VerificationStatusPanelRenderTest extends TestCase
         $badge = $xp->query('//span[@id="verificationSwitchUnavailable"]')?->item(0);
         $this->assertInstanceOf(DOMElement::class, $badge);
         $this->assertStringContainsString('text-bg-danger', $badge->getAttribute('class'));
-        $this->assertSame('Unavailable', trim($badge->textContent));
+        // The prefix gives a screen reader the name of the thing that is unavailable.
+        $hidden = $xp->query('.//span[contains(concat(" ", normalize-space(@class), " "), " visually-hidden ")]', $badge)?->item(0);
+        $this->assertInstanceOf(DOMElement::class, $hidden);
+        $this->assertSame('Feature switch:', trim($hidden->textContent));
+        $this->assertSame('Feature switch: Unavailable', preg_replace('/\s+/', ' ', trim($badge->textContent)));
         $this->assertStringContainsString(
             'The switch state could not be read. Check the system log for VerificationConfigWarning entries.',
             (string) $xp->query('//small[@id="verificationToggleHelp"]')?->item(0)?->textContent
@@ -297,7 +302,8 @@ final class VerificationStatusPanelRenderTest extends TestCase
         return [
             'healthy, admin'                        => [[], true, 1],
             'healthy, editor'                       => [[], false, 0],
-            'Brevo not ready, switch off, admin'    => [['brevoReason' => 'x', 'enabled' => false], true, 0],
+            'Brevo not ready, switch off, admin'    => [['brevoReason' => 'x', 'enabled' => false], true, 1],
+            'Brevo not ready, switch off, editor'   => [['brevoReason' => 'x', 'enabled' => false], false, 0],
             'Brevo not ready, switch on, admin'     => [['brevoReason' => 'x'], true, 1],
             'switch not read, admin'                => [$unread, true, 1],
             'switch not read, editor'               => [$unread, false, 0],
@@ -311,14 +317,14 @@ final class VerificationStatusPanelRenderTest extends TestCase
     }
 
     /**
-     * The incident steps are the only manual stop procedure. An admin sees
-     * them when the switch has no reason to show, or when a probe failed.
+     * The incident steps are the only manual stop procedure. Only an admin
+     * sees them, because an editor cannot change the token or the job rows.
      *
      * @param array<string, mixed> $overrides
      */
     #[DataProvider('incidentStepsProvider')]
     #[Group('regression')]
-    public function test_panel_incidentSteps_showOnlyToAnAdminWhoMayNeedThem(
+    public function test_panel_incidentSteps_showToEveryAdminAndToNoEditor(
         array $overrides,
         bool $canToggle,
         int $expected
@@ -338,7 +344,108 @@ final class VerificationStatusPanelRenderTest extends TestCase
         $summary = (string) $xp->query('//details/summary')?->item(0)?->textContent;
         $this->assertStringContainsString('Needs attention', $summary);
         $this->assertStringNotContainsString('All healthy', $summary);
-        $this->assertSame('Status unavailable', self::rowText($xp, 'reconciliation'));
+        $this->assertStringStartsWith('Status unavailable', self::rowText($xp, 'reconciliation'));
+    }
+
+    /** The detail says why the state is unavailable and what to do (#2573). */
+    #[Group('regression')]
+    public function test_panel_unreadableAndMissingJobStates_renderTheirReasonInTheRow(): void
+    {
+        $xp = self::dom(self::renderHtml(self::build([
+            'reconciliation' => self::job(CronJobEnabledState::UNREADABLE, null),
+        ])));
+        $this->assertSame(
+            'Status unavailable The job state could not be read, so the job may not run.'
+                . ' Check the system log for CronJobFailure entries.',
+            self::rowText($xp, 'reconciliation')
+        );
+
+        $xp = self::dom(self::renderHtml(self::build([
+            'reconciliation' => self::job(CronJobEnabledState::MISSING, null),
+        ])));
+        $this->assertSame(
+            'Status unavailable The job has no row in er_cron_job_runs, so cron does not run it.'
+                . ' Run composer migrate:status. If 20260918133038_rename_reconciliation_job is applied,'
+                . ' insert the row again.',
+            self::rowText($xp, 'reconciliation')
+        );
+    }
+
+    /** The summary holds no heading: a heading inside a summary breaks its button role (#2458). */
+    public function test_panel_summaryHasNoHeading(): void
+    {
+        $xp = self::dom(self::renderHtml(self::build()));
+
+        $this->assertSame(0, $xp->query('//details/summary//*[self::h1 or self::h2 or self::h3 or self::h4 or self::h5 or self::h6]')?->length);
+    }
+
+    /** role=status is already a polite live region (#2458). */
+    public function test_panel_toggleFeedbackIsAStatusRegionWithNoAriaLive(): void
+    {
+        $feedback = self::dom(self::renderHtml(self::build()))
+            ->query('//*[@id="verificationToggleFeedback"]')?->item(0);
+
+        $this->assertInstanceOf(DOMElement::class, $feedback);
+        $this->assertSame('status', $feedback->getAttribute('role'));
+        $this->assertFalse($feedback->hasAttribute('aria-live'));
+    }
+
+    /**
+     * Together the fixtures render every icon branch: both health badges, the
+     * row and detail icons, a failure entry, the switch, the Unavailable
+     * switch, the disabled-reason help, and the admin incident steps.
+     *
+     * @return array<string, array{VerificationTabStatus}>
+     */
+    public static function iconBranchProvider(): array
+    {
+        return [
+            'healthy'            => [self::build()],
+            'failure entry'      => [self::build(['failureLog' => ['count' => 1, 'recent' => [
+                ['loggedAt' => '2026-10-19 02:00:00', 'message' => 'Job x failed'],
+            ]]])],
+            'switch unavailable' => [self::build(['probeFailed' => true, 'enabled' => null, 'cronReady' => null])],
+            'disabled reason'    => [self::build(['enabled' => false, 'brevoReason' => 'Brevo is not ready'])],
+        ];
+    }
+
+    #[DataProvider('iconBranchProvider')]
+    public function test_panel_everyIconIsHiddenFromScreenReaders(VerificationTabStatus $status): void
+    {
+        $icons = self::dom(self::renderHtml($status, true))
+            ->query('//i[contains(concat(" ", normalize-space(@class), " "), " fas ")]');
+
+        $this->assertNotFalse($icons);
+        $this->assertGreaterThan(5, $icons->length);
+        foreach ($icons as $icon) {
+            $this->assertInstanceOf(DOMElement::class, $icon);
+            $this->assertSame('true', $icon->getAttribute('aria-hidden'), $icon->getAttribute('class'));
+        }
+    }
+
+    /** The advice is the next step, and only an admin can take it (#2458). */
+    #[DataProvider('viewerProvider')]
+    #[Group('regression')]
+    public function test_panel_jobAdvice_showsWithCodeToAdminsOnly(bool $canToggle): void
+    {
+        $xp = self::dom(self::renderHtml(self::build([
+            'reconciliation' => self::job(CronJobEnabledState::MISSING, null),
+        ]), $canToggle));
+
+        $codes = $xp->query('//dd[@data-status-row="reconciliation"]//code');
+        $this->assertNotFalse($codes);
+        $text = self::rowText($xp, 'reconciliation');
+
+        if ($canToggle) {
+            $this->assertSame(2, $codes->length);
+            $this->assertSame('composer migrate:status', $codes->item(0)?->textContent);
+            $this->assertSame('20260918133038_rename_reconciliation_job', $codes->item(1)?->textContent);
+            $this->assertStringContainsString('insert the row again.', $text);
+        } else {
+            $this->assertSame(0, $codes->length);
+            $this->assertStringNotContainsString('migrate:status', $text);
+            $this->assertStringContainsString('so cron does not run it.', $text);
+        }
     }
 
     #[Group('regression')]

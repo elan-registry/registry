@@ -49,6 +49,15 @@ final class CarRepositoryEmailEventPruneTest extends IntegrationTestCase
         $this->assertSame(0, $leftover, 'The prune is global. Another test left rows in er_email_events.');
     }
 
+    protected function tearDown(): void
+    {
+        if ($this->databaseConnected) {
+            // Rows with no owner (#2611) belong to no test user, so the base cleanup misses them.
+            $this->db->query("DELETE FROM er_email_events WHERE user_id = 0 AND brevo_message_id LIKE 'prune2611-%'");
+        }
+        parent::tearDown();
+    }
+
     private function insertEvent(
         ?int $carId,
         string $event,
@@ -330,6 +339,26 @@ final class CarRepositoryEmailEventPruneTest extends IntegrationTestCase
             $this->repo->countSoftBouncesSinceLastDelivered($this->userId, $email),
             'A soft bounce past 90 days goes with the delivered row. Four bounces would reach the threshold of 3.'
         );
+    }
+
+    /** #2611: a row with no owner (user_id 0) follows the same two cutoffs as an owner's row. */
+    public function testRowsWithNoOwnerAreDeletedAfterTheirCutoffAndKeptBeforeIt(): void
+    {
+        $rows = [
+            'prune2611-term-old'  => ['hard_bounce', $this->secondsFrom($this->terminalCutoff, -1)],
+            'prune2611-term-new'  => ['hard_bounce', $this->secondsFrom($this->terminalCutoff, 1)],
+            'prune2611-short-old' => ['delivered', $this->secondsFrom($this->shortCutoff, -1)],
+            'prune2611-short-new' => ['delivered', $this->secondsFrom($this->shortCutoff, 1)],
+        ];
+        foreach ($rows as $messageId => [$event, $occurredAt]) {
+            $this->assertSame(1, $this->repo->insertUnmatchedEmailEvent('stranger@example.com', $event, null, $messageId, $occurredAt));
+        }
+
+        $this->assertSame(2, $this->prune());
+        $this->assertFalse($this->exists('prune2611-term-old'), 'A terminal row with no owner older than 24 months must go');
+        $this->assertTrue($this->exists('prune2611-term-new'));
+        $this->assertFalse($this->exists('prune2611-short-old'), 'A short-lived row with no owner older than 90 days must go');
+        $this->assertTrue($this->exists('prune2611-short-new'));
     }
 
     public function testASecondRunChangesNoRow(): void

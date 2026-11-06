@@ -350,6 +350,7 @@ final class VehicleInfoCardTest extends TestCase
         $this->assertNotSame('', trim($button->getAttribute('aria-label')));
         $this->assertFalse($button->hasAttribute('aria-hidden'));
         $this->assertNotSame('-1', $button->getAttribute('tabindex'));
+        $this->assertSame('btn btn-link p-0 align-baseline er-help-btn', $button->getAttribute('class'));
         $this->assertSame(
             "The owner confirmed, added, or updated this car's record in the last 12 months.",
             $button->getAttribute('data-bs-title')
@@ -761,19 +762,22 @@ final class VehicleInfoCardTest extends TestCase
 
         $this->assertCount(4, array_unique([$optedOut, $bounced, $blocked, $label]));
         $this->assertSame(
-            'The owner stopped all registry email except account email. The owner can lift the opt-out with '
+            'The owner stopped registry email. The registry does not send verification email, messages from other owners, '
+            . 'messages from an admin, or transfer notices to this owner. Account email is still sent. The owner can lift the opt-out with '
             . 'Resume registry email in Account Settings, or an admin can lift it.',
             $optedOut
         );
         $this->assertSame(
             "Email to this owner's address bounced. The registry does not send verification email, messages from other owners, "
-            . 'or messages from an admin to this owner. The owner can lift the bounce by confirming a different email address, '
+            . 'messages from an admin, or transfer notices to this owner. Account email is still sent. '
+            . 'The owner can lift the bounce by confirming a different email address, '
             . 'or an admin can lift it.',
             $bounced
         );
         $this->assertSame(
-            "This owner's address is blocked. The registry does not send verification email or messages from other owners to this owner. "
-            . 'A message from an admin is still sent. The owner can lift the block by confirming a different email address, '
+            "This owner's address is blocked. The registry does not send verification email, messages from other owners, "
+            . 'or transfer notices to this owner. A message from an admin is still sent, unless the owner is also Bounced '
+            . 'or Opted out. Account email is still sent. The owner can lift the block by confirming a different email address, '
             . 'or an admin can lift it.',
             $blocked
         );

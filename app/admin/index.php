@@ -46,6 +46,7 @@ $validTabs = [
     'owner-mgmt' => 'Manage Owners',
     'account-cleanup' => 'Account Cleanup',
     'verification' => 'Verification System',
+    'email-delivery' => 'Email Delivery',
 ];
 
 $activeTab = isset($_GET['tab']) && is_string($_GET['tab']) && array_key_exists($_GET['tab'], $validTabs)
@@ -54,6 +55,20 @@ $pageTitle = 'Registry Management - ' . $validTabs[$activeTab];
 $pageDescription = 'Admin tools for managing car and owner relationships in the Lotus Elan Registry.';
 
 require_once '../../users/init.php';
+
+// securePage() also lets editors open this page, so remove the admin-only tab
+// for them. Then ?tab=email-delivery falls back to the default tab. The
+// permission check needs init.php, and prep.php renders the header with
+// $pageTitle, so the check sits between them. hasPerm() with no user ID reads
+// the logged-in user, and is false when no user is logged in.
+if (!hasPerm([2])) {
+    unset($validTabs['email-delivery']);
+    if (!array_key_exists($activeTab, $validTabs)) {
+        $activeTab = 'car-mgmt';
+        $pageTitle = 'Registry Management - ' . $validTabs[$activeTab];
+    }
+}
+
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
 // Security check
@@ -96,14 +111,22 @@ try {
     logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Migration banner check failed: ' . $e->getMessage());
 }
 
-// Verification readiness banner. Only surfaces when the feature switch is ON:
+// Verification readiness banner. Surfaces when the feature switch is ON:
 // a Brevo that is not ready means verification email has nowhere to go (danger),
-// a stalled cron only delays reminders (warning).
+// a stalled cron only delays reminders (warning). It also surfaces when the
+// switch or a readiness check cannot be read (danger): an unreadable switch is
+// not "off", so the banner must not hide.
 $verificationBannerSeverity = null; // null | 'warning' | 'danger'
+$verificationBannerUnreadable = false;
 $verificationBrevoNotReadyReason = null;
 try {
     $verificationSettings = new VerificationSettings(dbi());
-    if ($verificationSettings->isEnabled()) {
+    $verificationEnabled = $verificationSettings->isEnabledOrNull();
+    if ($verificationEnabled === null) {
+        // isEnabledOrNull() has already logged the fault.
+        $verificationBannerSeverity = 'danger';
+        $verificationBannerUnreadable = true;
+    } elseif ($verificationEnabled) {
         $verificationBrevoNotReadyReason = $verificationSettings->brevoNotReadyReason();
         if ($verificationBrevoNotReadyReason !== null) {
             $verificationBannerSeverity = 'danger';
@@ -112,9 +135,11 @@ try {
         }
     }
 } catch (\Throwable $e) {
-    // Non-critical banner — degrade silently but log so infrastructure problems are discoverable.
+    // The banner must not break the page, so show the unreadable state and log.
+    $verificationBannerSeverity = 'danger';
+    $verificationBannerUnreadable = true;
     logger(0, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING,
-        'Verification banner check failed: ' . $e->getMessage());
+        'Verification banner check failed: ' . ExceptionLogSummary::of($e));
 }
 
 // Abort immediately if no authenticated session exists.
@@ -257,7 +282,7 @@ if (!function_exists('verificationGetMappedChoice')) {
 
 $queueStatus = isset($_GET['status']) && is_string($_GET['status'])
     && in_array($_GET['status'], CarRepository::QUEUE_STATUSES, true)
-    ? $_GET['status'] : 'all';
+    ? $_GET['status'] : 'eligible';
 
 $queueWindowDays = verificationGetMappedChoice('window', CarRepository::QUEUE_WINDOW_CHOICES, 30);
 
@@ -505,13 +530,14 @@ if (ElanInput::existsPost()) {
                 // Verification batch send.
                 //
                 // NOTHING IS SENT ON A GET. The Verification System tab renders a
-                // read-only preview; email leaves the building only when an admin
-                // submits this command.
+                // read-only preview (the Next Queue view); email leaves the
+                // building only when an admin submits this command.
                 //
                 // RESIDUAL DOUBLE-SUBMISSION RISK, accepted.
-                // findVerificationEligible() orders by last_verified ASC and does
-                // not exclude a car merely because its vericode_sent_at is very
-                // recent, so re-POSTing the same batch within one request window
+                // findVerificationEligible() orders by last_verified ASC, then
+                // car id ASC (the send order), and does not exclude a car
+                // merely because its vericode_sent_at is very recent, so
+                // re-POSTing the same batch within one request window
                 // would pass the re-check below again and mail the same owners
                 // twice. Accepted under this tool's manual, single-operator,
                 // low-frequency trust model — the same acceptance made for
@@ -560,8 +586,6 @@ if (ElanInput::existsPost()) {
                         break;
                     }
 
-                    $sendBatchJustRan = true;
-
                     // \Input::get() sanitizes arrays recursively (see
                     // users/classes/Input.php::sanitize()), the same way the
                     // "merge" case above relies on for its `cars` field. Nested
@@ -570,15 +594,28 @@ if (ElanInput::existsPost()) {
                     $submittedIds = (array) ElanInput::get('car_ids', []);
 
                     // SERVER-SIDE CAP. The GET-time preview only ever renders
-                    // batchSize() cars, but nothing stops a hand-crafted POST
+                    // batch-size cars, but nothing stops a hand-crafted POST
                     // carrying hundreds of ids — and every one of them would
                     // become a blocking synchronous Brevo call inside this one
-                    // request. batchSize() is the configured ceiling on a
+                    // request. The batch size is the configured ceiling on a
                     // batch, so it is enforced here too rather than trusted
                     // from the form. VerificationSettings is constructed
-                    // locally (matching tab-verification.php) and fails closed
-                    // to 5 on any read problem.
-                    $vsSendBatchSize = (new VerificationSettings(dbi()))->batchSize();
+                    // locally (matching tab-verification.php). An unreadable
+                    // batch size stops the send: a default size is not the
+                    // admin's setting.
+                    $vsSendBatchSize = (new VerificationSettings(dbi()))->batchSizeOrNull();
+
+                    if ($vsSendBatchSize === null) {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
+                            'Verification send: manual send blocked — batch size unreadable; nothing sent.');
+                        $errors[] = 'The batch size could not be read, so no email was sent. '
+                            . 'Check the system log for VerificationConfigWarning entries.';
+                        break;
+                    }
+
+                    // Set after the batch size check, so a send that stops
+                    // there shows its error and no batch results.
+                    $sendBatchJustRan = true;
 
                     $vsCap = VerificationBatchSender::capToBatchSize($submittedIds, $vsSendBatchSize);
                     $submittedIds = $vsCap['ids'];
@@ -600,8 +637,11 @@ if (ElanInput::existsPost()) {
 
                     foreach ($vsFiltered['rejected'] as $rejectedId) {
                         // Only a scalar is exported. A non-scalar value is logged by its type alone.
+                        // The value comes from the form, so it is cut to a fixed length and its
+                        // control characters are removed: a CR/LF must not forge a log line.
                         $rejectedLog = is_scalar($rejectedId)
-                            ? 'Verification send: non-positive car id in car_ids[]: ' . var_export($rejectedId, true)
+                            ? 'Verification send: invalid car id in car_ids[]: '
+                                . mb_substr((string) preg_replace('/[\x00-\x1F\x7F]/', '', var_export($rejectedId, true)), 0, 64)
                             : 'Verification send: non-scalar car id in car_ids[]: ' . get_debug_type($rejectedId);
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $rejectedLog);
                         $sendReportSkipped[] = [
@@ -786,8 +826,8 @@ if (ElanInput::existsPost()) {
 
                     // Read back rather than echoing the submitted value: what
                     // was stored may have been clamped, and the admin needs to
-                    // see the effective setting. batchSize() would show the
-                    // default 5 as fact after a failed read, so use the null form.
+                    // see the effective setting. A failed read must not show a
+                    // guessed value as fact.
                     $savedBatchSize = $verificationSettings->batchSizeOrNull();
                     if ($savedBatchSize === null) {
                         $errors[] = 'The batch size was saved, but the new value could not be read back. '
@@ -1161,7 +1201,10 @@ if (ElanInput::existsPost()) {
             <div class="alert alert-<?= $verificationBannerSeverity ?> d-flex align-items-center mb-3" role="alert">
                 <i class="fas fa-<?= $verificationBannerSeverity === 'danger' ? 'exclamation-circle' : 'exclamation-triangle' ?> me-2"></i>
                 <span>
-                    <?php if ($verificationBannerSeverity === 'danger'): ?>
+                    <?php if ($verificationBannerUnreadable): ?>
+                        <strong>The verification switch or its readiness could not be read.</strong>
+                        The verification status is unknown. Check the system log for details.
+                    <?php elseif ($verificationBannerSeverity === 'danger'): ?>
                         <strong>Verification is enabled but Brevo is not ready.</strong>
                         Verification emails cannot be sent.
                         <?= htmlspecialchars((string) $verificationBrevoNotReadyReason, ENT_QUOTES, 'UTF-8') ?>
@@ -1237,6 +1280,16 @@ if (ElanInput::existsPost()) {
                                         <?php } ?>
                                     </a>
                                 </li>
+
+                                <?php if (isset($validTabs['email-delivery'])) { ?>
+                                <!-- Email Delivery Tab (admin only) -->
+                                <li class="nav-item">
+                                    <a class="nav-link <?= $activeTab === 'email-delivery' ? 'active' : '' ?>"
+                                       href="?tab=email-delivery" role="tab">
+                                        <i class="fas fa-envelope-open-text" aria-hidden="true"></i> Email Delivery
+                                    </a>
+                                </li>
+                                <?php } ?>
 
                             </ul>
                         </div>

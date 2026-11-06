@@ -220,7 +220,7 @@ final class SendVerificationBatchJobTest extends TestCase
 
     /**
      * makeSettings() builds a real VerificationSettings over a fake DB row, so
-     * the read-side clamp in batchSize() runs. A stored 255 must reach the
+     * the read-side clamp in batchSizeOrNull() runs. A stored 255 must reach the
      * query as 25 (#2363).
      */
     public function testExecuteClampsAnOutOfRangeStoredBatchSizeToTwentyFive(): void
@@ -1004,6 +1004,140 @@ final class SendVerificationBatchJobTest extends TestCase
 
         $this->assertSame([], $this->pingTransport->urls);
         $this->assertSame([], $GLOBALS['mockSentEmails']);
+    }
+
+    // --- Unreadable settings (#2572) -----------------------------------------
+
+    /**
+     * Settings whose switch is on, with one of the two reads failing the way
+     * UserSpice does it: error() is true and nothing throws.
+     */
+    private function makeSettingsWithFailingRead(bool $switchFails, bool $batchSizeFails): VerificationSettings
+    {
+        return new VerificationSettings(new VerificationSettingsFakeDatabase(
+            firstRowValue: (object) ['batch_size' => 5, 'enabled' => 1],
+            enabledQueryErrors: $switchFails,
+            batchSizeQueryErrors: $batchSizeFails,
+        ));
+    }
+
+    /**
+     * A repo that fails the test when the job asks for cars or reads one.
+     *
+     * @return CarRepository&\PHPUnit\Framework\MockObject\MockObject
+     */
+    private function makeRepoThatMustNotBeQueried(): CarRepository
+    {
+        $repo = $this->createMock(CarRepository::class);
+        $repo->expects($this->never())->method('findVerificationEligible');
+        $repo->expects($this->never())->method('findById');
+
+        return $repo;
+    }
+
+    public function testRunSendsNothingAndPingsFailWhenBatchSizeIsUnreadable(): void
+    {
+        $repo = $this->makeRepoThatMustNotBeQueried();
+        $sendSvc = $this->makeSendSvc($repo);
+
+        $this->makeJob(
+            $this->makeSettingsWithFailingRead(switchFails: false, batchSizeFails: true),
+            $sendSvc,
+            $this->makeSender($repo, $sendSvc),
+        )->run();
+
+        $this->assertSame([self::PING_URL . '/fail'], $this->pingTransport->urls);
+        $this->assertSame([], $GLOBALS['mockSentEmails']);
+        $log = $this->logsContaining('batch size unreadable');
+        $this->assertCount(1, $log);
+        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $log[0]['category']);
+    }
+
+    /**
+     * The gate passes an unreadable switch on purpose: a refusal pings
+     * nothing, so the fault would repeat in the log with no alert. The run
+     * claims and then fails its ping.
+     */
+    public function testRunSendsNothingAndPingsFailWhenSwitchIsUnreadable(): void
+    {
+        $repo = $this->makeRepoThatMustNotBeQueried();
+        $sendSvc = $this->makeSendSvc($repo);
+        $db = new AbstractCronJobFakeDatabase();
+
+        $this->makeJob(
+            $this->makeSettingsWithFailingRead(switchFails: true, batchSizeFails: false),
+            $sendSvc,
+            $this->makeSender($repo, $sendSvc),
+            $db,
+        )->run();
+
+        $claims = array_filter($db->sqlLog(), static fn (string $sql): bool => stripos($sql, 'last_run_at = NOW()') !== false);
+        $this->assertCount(1, $claims, 'The gate must let an unreadable switch through to the claim');
+        $this->assertSame([self::PING_URL . '/fail'], $this->pingTransport->urls);
+        $this->assertSame([], $GLOBALS['mockSentEmails']);
+        $log = $this->logsContaining('switch state unreadable');
+        $this->assertCount(1, $log);
+        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $log[0]['category']);
+    }
+
+    /** A switch read as off still refuses before the claim, with no ping and no failure line. */
+    public function testRunRefusesQuietlyWhenSwitchIsReadAsOff(): void
+    {
+        $repo = $this->makeRepoThatMustNotBeQueried();
+        $sendSvc = $this->makeSendSvc($repo);
+        $db = new AbstractCronJobFakeDatabase();
+
+        $this->makeJob($this->makeSettings(enabled: false), $sendSvc, $this->makeSender($repo, $sendSvc), $db)->run();
+
+        $this->assertSame([], $db->sqlLog());
+        $this->assertSame([], $this->pingTransport->urls);
+        $this->assertSame([], $this->logsContaining('unreadable'));
+    }
+
+    /**
+     * The gate's read fails, so the run claims. Then execute() reads the
+     * switch as off. The run must send nothing and must not fail its ping.
+     */
+    public function testRunSendsNothingAndDoesNotFailWhenGateReadFailsAndExecuteReadsOff(): void
+    {
+        $repo = $this->makeRepoThatMustNotBeQueried();
+        $sendSvc = $this->makeSendSvc($repo);
+        $db = new AbstractCronJobFakeDatabase();
+        $settings = new VerificationSettings(new VerificationSettingsFakeDatabase(
+            firstRowValue: (object) ['batch_size' => 5, 'enabled' => 0],
+            enabledQueryErrorsOnFirstCallOnly: true,
+        ));
+
+        $this->makeJob($settings, $sendSvc, $this->makeSender($repo, $sendSvc), $db)->run();
+
+        $claims = array_filter($db->sqlLog(), static fn (string $sql): bool => stripos($sql, 'last_run_at = NOW()') !== false);
+        $this->assertCount(1, $claims, 'The failed gate read must let the run through to the claim');
+        $this->assertSame([self::PING_URL], $this->pingTransport->urls);
+        $this->assertSame([], $GLOBALS['mockSentEmails']);
+        $this->assertSame([], $this->logsContaining('switch state unreadable'));
+        $this->assertSame([], array_values(array_filter(
+            $GLOBALS['mockLogEntries'] ?? [],
+            static fn (array $entry): bool => $entry['category'] === LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE
+        )), 'A switch read as off is not a fault');
+        $log = $this->logsContaining('switch read as off after the gate');
+        $this->assertCount(1, $log);
+        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_SKIPPED, $log[0]['category']);
+    }
+
+    public function testRunNowSendsNothingWhenBatchSizeIsUnreadable(): void
+    {
+        $repo = $this->makeRepoThatMustNotBeQueried();
+        $sendSvc = $this->makeSendSvc($repo);
+
+        $this->makeJob(
+            $this->makeSettingsWithFailingRead(switchFails: false, batchSizeFails: true),
+            $sendSvc,
+            $this->makeSender($repo, $sendSvc),
+        )->runNow();
+
+        $this->assertSame([], $this->pingTransport->urls, 'runNow() never pings');
+        $this->assertSame([], $GLOBALS['mockSentEmails']);
+        $this->assertCount(1, $this->logsContaining('batch size unreadable'));
     }
 
     // --- Helpers -------------------------------------------------------------

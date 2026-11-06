@@ -27,35 +27,45 @@ $vsPanelEsc   = static fn (string $value): string => htmlspecialchars($value, EN
 ?>
 <details class="card registry-card mb-4" id="verificationStatusPanel"<?= $vsHealthy ? '' : ' open' ?>>
     <summary class="card-header card-header-er-l2">
-        <h5 class="d-inline mb-0 card-header-er-l2-text">
-            <i class="fas fa-heartbeat"></i> System Status &amp; Feature Switch
-        </h5>
+        <!-- A span, not a heading: some screen readers drop a heading inside <summary>. -->
+        <span class="h5 d-inline mb-0 card-header-er-l2-text">
+            <i class="fas fa-heartbeat" aria-hidden="true"></i> System Status &amp; Feature Switch
+        </span>
         <?php if ($vsHealthy) { ?>
-        <span class="badge text-bg-success ms-2"><i class="fas fa-check-circle"></i> All healthy</span>
+        <span class="badge text-bg-success ms-2"><i class="fas fa-check-circle" aria-hidden="true"></i> All healthy</span>
         <?php } else { ?>
-        <span class="badge text-bg-warning ms-2"><i class="fas fa-exclamation-triangle"></i> Needs attention</span>
+        <span class="badge text-bg-warning ms-2"><i class="fas fa-exclamation-triangle" aria-hidden="true"></i> Needs attention</span>
         <?php } ?>
     </summary>
     <div class="card-body">
 
         <!-- Status -->
-        <h6 class="text-primary mb-3"><i class="fas fa-heartbeat"></i> Status</h6>
+        <h6 class="text-primary mb-3"><i class="fas fa-heartbeat" aria-hidden="true"></i> Status</h6>
         <dl class="row mb-4">
             <?php foreach ($vsStatus->rows() as $vsRow) { ?>
             <dt class="col-sm-4"><?= $vsPanelEsc($vsRow['label']) ?></dt>
             <dd class="col-sm-8" data-status-row="<?= $vsPanelEsc($vsRow['key']) ?>">
                 <span class="<?= $vsPanelEsc($vsRow['badgeClass']) ?>">
                     <?php if ($vsRow['icon'] !== '') { ?>
-                    <i class="fas <?= $vsPanelEsc($vsRow['icon']) ?>"></i>
+                    <i class="fas <?= $vsPanelEsc($vsRow['icon']) ?>" aria-hidden="true"></i>
                     <?php } ?>
                     <?= $vsPanelEsc($vsRow['badgeText']) ?>
                 </span>
                 <?php if ($vsRow['detail'] !== '') { ?>
                 <small class="text-muted ms-1">
                     <?php if ($vsRow['detailIcon'] !== '') { ?>
-                    <i class="fas <?= $vsPanelEsc($vsRow['detailIcon']) ?>"></i>
+                    <i class="fas <?= $vsPanelEsc($vsRow['detailIcon']) ?>" aria-hidden="true"></i>
                     <?php } ?>
                     <?= $vsPanelEsc($vsRow['detail']) ?>
+                </small>
+                <?php } ?>
+                <?php // Admins only: an editor cannot act on the next step.
+                if ($vsCanToggle && $vsRow['advice'] !== []) { ?>
+                <small class="text-muted d-block mt-1" data-status-advice>
+                    <?php foreach ($vsRow['advice'] as $vsAdvice) {
+                        echo $vsPanelEsc($vsAdvice['text']);
+                        if ($vsAdvice['code'] !== '') { ?><code><?= $vsPanelEsc($vsAdvice['code']) ?></code><?php }
+                    } ?>
                 </small>
                 <?php } ?>
                 <?php if ($vsRow['recent'] !== []) { ?>
@@ -64,7 +74,7 @@ $vsPanelEsc   = static fn (string $value): string => htmlspecialchars($value, EN
                 <ul class="list-unstyled small mt-2 mb-0">
                     <?php foreach ($vsRow['recent'] as $vsRecentEntry) { ?>
                     <li class="text-muted">
-                        <i class="fas fa-triangle-exclamation text-danger"></i>
+                        <i class="fas fa-triangle-exclamation text-danger" aria-hidden="true"></i>
                         <span class="text-nowrap"><?= $vsPanelEsc($vsRecentEntry['loggedAt']) ?></span>
                         &mdash; <?= $vsPanelEsc($vsRecentEntry['message']) ?>
                     </li>
@@ -76,16 +86,17 @@ $vsPanelEsc   = static fn (string $value): string => htmlspecialchars($value, EN
         </dl>
 
         <!-- Toggle control -->
-        <h6 class="text-primary mb-3"><i class="fas fa-toggle-on"></i> Feature Switch</h6>
+        <h6 class="text-primary mb-3"><i class="fas fa-toggle-on" aria-hidden="true"></i> Feature Switch</h6>
 
-        <div id="verificationToggleFeedback" class="mb-2" role="alert" aria-live="polite"></div>
+        <!-- role="status" is already a polite live region, so it needs no aria-live. -->
+        <div id="verificationToggleFeedback" class="mb-2" role="status"></div>
 
         <?php if ($vsSwitch['unavailable']) { ?>
         <!-- No switch: its state is unknown, and a toggle with an unknown state is not safe. -->
         <span class="badge text-bg-danger" id="verificationSwitchUnavailable"
               aria-describedby="verificationToggleHelp">
-            <i class="fas fa-exclamation-circle"></i>
-            Unavailable
+            <i class="fas fa-exclamation-circle" aria-hidden="true"></i>
+            <span class="visually-hidden">Feature switch: </span>Unavailable
         </span>
         <?php } else { ?>
         <div class="form-check form-switch">
@@ -102,12 +113,12 @@ $vsPanelEsc   = static fn (string $value): string => htmlspecialchars($value, EN
 
         <?php if ($vsSwitch['disabledReason'] !== '') { ?>
             <small id="verificationToggleHelp" class="form-text text-muted d-block mt-1">
-                <i class="fas fa-info-circle"></i>
+                <i class="fas fa-info-circle" aria-hidden="true"></i>
                 <?= $vsPanelEsc($vsSwitch['disabledReason']) ?>
             </small>
         <?php } else { ?>
             <small class="form-text text-muted d-block mt-1">
-                <i class="fas fa-info-circle"></i>
+                <i class="fas fa-info-circle" aria-hidden="true"></i>
                 Turning this off hides all verification UI and stops the automatic send batch. It stops
                 nothing else. The webhook and both cron jobs (reconciliation and suppression sync) still
                 write delivery events and bounce or suppression state. It can always be turned off, even
@@ -116,15 +127,13 @@ $vsPanelEsc   = static fn (string $value): string => htmlspecialchars($value, EN
         <?php } ?>
 
         <?php // The switch does not stop event writes, so these manual steps are the only way.
-        // They show when the switch has no reason to show, which is never true
-        // for an editor. A failed probe or an unread switch also shows them to
-        // an admin, because the panel cannot tell the real state, and a fault
-        // is when they matter.
-        if ($vsSwitch['disabledReason'] === ''
-            || ($vsCanToggle && ($vsStatus->probeFailed() || $vsSwitch['unavailable']))) { ?>
+        // Admins only: an editor cannot change the token or the job rows. An
+        // admin needs the steps most when the switch is disabled, for example
+        // when Brevo is not ready.
+        if ($vsCanToggle) { ?>
             <small class="form-text text-muted d-block mt-2"
                    id="verificationIncidentSteps">
-                <i class="fas fa-exclamation-triangle"></i>
+                <i class="fas fa-exclamation-triangle" aria-hidden="true"></i>
                 To stop event writes in an incident, do all three steps:
             </small>
             <ol class="small text-muted mb-0">

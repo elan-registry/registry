@@ -29,10 +29,12 @@ use ElanRegistry\DatabaseInterface;
  *  - BLOCKED_USERNAME / BLOCKED car: profile email_blocked = 1 with cause
  *    blocklist — lands in the Blocked pill, chip "Blocked".
  *  - NO_PROFILE_USERNAME / NO_PROFILE car: pending, and the owner has no
- *    profiles row — chip "No profile", with no action button.
+ *    profiles row — chip "No profile", with no action button. Also lists in
+ *    the Invalid email pill (#2599: no profile or a malformed address).
  *  - BAD_ADDRESS_USERNAME / BAD_ADDRESS car (#2594): unsold, a live
  *    link (so Pending), and the owner's users.email is `None`. Chip
- *    "Invalid email", with no action button.
+ *    "Invalid email", with no action button. Also lists in the Invalid
+ *    email pill (#2599).
  *  - SOFT_BOUNCE_USERNAME / SOFT_BOUNCE car: pending (no bounce flag),
  *    with one `soft_bounce` er_email_events row after its `sent` row, and an
  *    owner-level `delivered` row with car_id NULL AFTER that soft bounce. A
@@ -58,7 +60,7 @@ use ElanRegistry\DatabaseInterface;
  *    innerText(), closing DOCUMENTED GAP #3 in
  *    admin-verification-send-tool.spec.js — this car is email_bounced = 0
  *    (the Status chip, not email_bounced, drives "Bounced" here), so it
- *    renders in the "All" and "Pending" pills with a Bounced chip, which is
+ *    renders in the "Pending" pill with a Bounced chip, which is
  *    exactly the case the plan's §8 callout documents ("a car's filter pill
  *    and status chip can disagree").
  *  - BOUNCED_USERNAME / BOUNCED_B car (#2361): a second car of the bounced

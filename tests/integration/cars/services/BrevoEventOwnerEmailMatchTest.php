@@ -63,6 +63,8 @@ final class BrevoEventOwnerEmailMatchTest extends IntegrationTestCase
         if ($this->databaseConnected) {
             foreach ($this->pluginMessageIds as $messageId) {
                 $this->db->query('DELETE FROM plg_sendinblue_messages WHERE message_id = ?', [$messageId]);
+                // An event with no owner is stored with user_id 0 (#2611). The prune test needs an empty table.
+                $this->db->query('DELETE FROM er_email_events WHERE user_id = 0 AND brevo_message_id = ?', [$messageId]);
             }
         }
         $this->pluginMessageIds = [];
@@ -74,6 +76,15 @@ final class BrevoEventOwnerEmailMatchTest extends IntegrationTestCase
     private function eventRowCount(int $userId): int
     {
         return (int) $this->db->query('SELECT COUNT(*) AS n FROM er_email_events WHERE user_id = ?', [$userId])->first()->n;
+    }
+
+    /** Rows with no owner (user_id 0) for one message (#2611). */
+    private function unmatchedRows(string $messageId): array
+    {
+        return $this->db->query(
+            'SELECT user_id, car_id, email, event FROM er_email_events WHERE user_id = 0 AND brevo_message_id = ?',
+            [$messageId]
+        )->results();
     }
 
     private function makePluginTable(): void
@@ -131,15 +142,23 @@ final class BrevoEventOwnerEmailMatchTest extends IntegrationTestCase
         $ownerId = $this->createTestUser(['email' => 'new-' . uniqid() . '@example.com'], true);
         $carId = $this->createTestCar($ownerId, ['email' => $old]);
 
-        $result = $this->processor->process($this->hardBounce($old));
+        $payload = $this->hardBounce($old);
+        $result = $this->processor->process($payload);
 
         $this->assertSame(ProcessingResult::NO_USER_MATCH, $result);
         $this->assertSame('0', (string) $this->getOwnerEmailFlags($ownerId)['email_bounced']);
         $this->assertSame(
             0,
             $this->eventRowCount($ownerId),
-            'An unmatched event writes no event row'
+            'An unmatched event writes no event row for the user'
         );
+        // The plugin has a row for the message, so the event is stored with no owner (#2611).
+        $rows = $this->unmatchedRows($payload['message-id']);
+        $this->assertCount(1, $rows, 'One row with no owner');
+        $this->assertSame(0, (int) $rows[0]->user_id);
+        $this->assertNull($rows[0]->car_id);
+        $this->assertSame(strtolower($old), $rows[0]->email);
+        $this->assertSame('hard_bounce', $rows[0]->event);
     }
 
     /**
@@ -181,13 +200,15 @@ final class BrevoEventOwnerEmailMatchTest extends IntegrationTestCase
         // The shared test schema keeps the seeded account, so its email must go back.
         $this->db->query('UPDATE users SET email = ? WHERE id = ?', [$address, $noOwnerId]);
         try {
-            $this->assertSame(ProcessingResult::NO_USER_MATCH, $this->processor->process($this->hardBounce($address)));
+            $payload = $this->hardBounce($address);
+            $this->assertSame(ProcessingResult::NO_USER_MATCH, $this->processor->process($payload));
         } finally {
             $this->db->query('UPDATE users SET email = ? WHERE id = ?', [$noOwnerRow->email, $noOwnerId]);
         }
 
         $this->assertSame($flagsBefore, $this->profileFlagRow($noOwnerId), 'The noowner profile must not get a flag');
         $this->assertSame(0, $this->eventRowCount($noOwnerId), 'No event row for the noowner account');
+        $this->assertCount(1, $this->unmatchedRows($payload['message-id']), 'The event is stored with no owner, not under noowner');
     }
 
     /** A stored users.email with case and white space (a tab too) still matches the plain event address. */

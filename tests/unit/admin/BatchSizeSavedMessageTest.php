@@ -14,9 +14,8 @@ use PHPUnit\Framework\TestCase;
  * index.php needs the full UserSpice bootstrap, so a unit test cannot render
  * it (see ClearBlockOutcomeMessageTest for the same constraint). After a
  * successful save, the handler reads the value back for the success message.
- * batchSize() gives the default 5 after a failed read, so the message would
- * show 5 as fact. The handler must use batchSizeOrNull() and show a warning
- * text on null.
+ * The handler must use batchSizeOrNull() and show a warning text on null,
+ * so that a failed read never shows a guessed value as fact.
  */
 #[Group('fast')]
 final class BatchSizeSavedMessageTest extends TestCase
@@ -41,11 +40,6 @@ final class BatchSizeSavedMessageTest extends TestCase
         $block = $this->readHandlerBlock();
 
         $this->assertStringContainsString('->batchSizeOrNull()', $block);
-        $this->assertDoesNotMatchRegularExpression(
-            '/->batchSize\(\)/',
-            $block,
-            'batchSize() shows the default 5 as fact after a failed read'
-        );
     }
 
     public function testNullReadBackShowsTheSavedButUnreadableText(): void

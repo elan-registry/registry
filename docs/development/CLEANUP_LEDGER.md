@@ -35,10 +35,6 @@ after an item is written.
 
 ## Items
 
-### `.claude/project.md` (test coverage)
-
-- [ ] No test checks that `milestone_checks` and `release_checks` name an executable script, and edits here do not trigger the hooks CI job (found in /flow:finish-milestone v2.31.0)
-
 ### `app/admin/includes/account-cleanup-helpers.php`
 
 - [ ] Replace 8 × `throw new RuntimeException` with a typed `AccountCleanupException extends ElanRegistryException`. Handle it in `app/api/admin/account-cleanup-data.php` with `ApiResponse` and `LogCategories` (from #1637)
@@ -49,18 +45,29 @@ after an item is written.
 - [ ] `transfer-request.php` logs a send-policy skip of the owner notice as `EMAIL_ERROR`, but `policyAllows()` already logged it. Drop the endpoint line or log it under `CAR_TRANSFER` (found in /flow:finish-milestone v2.31.0)
 - [ ] `process-transfer-approve.php` (~L131 and ~L147) wraps `$db->rollBack()` in `catch (\Throwable $rollbackEx)`. Remove the guard (see ERROR_HANDLING.md, no guards) (found in /flow:finish-milestone v2.31.0)
 
+### `app/admin/includes/tab-account_cleanup.php` `app/admin/includes/tab-car_mgmt.php` `app/admin/includes/tab-email_delivery.php` `app/admin/includes/tab-manage_cars.php` `app/admin/includes/tab-owner_mgmt.php` `app/admin/includes/tab-verification.php` (direct request)
+
+- [ ] A direct HTTP request to a tab include runs it with no `init.php`, and with `display_errors` on it prints a fatal error with the server path (for example "Call to undefined function currentUserId()"). No data is read. Stop direct requests for all tab files: a deny rule for `app/admin/includes/` or a guard at the top of each file (found in #2102 review)
+
 ### `app/admin/includes/tab-car_mgmt.php`
 
 - [ ] Narrow 2 × `catch (Exception $e)` (~L29, 53) to the typed exceptions from `Car` and `CarTransferRepository` (from #1637)
 
+### `app/admin/includes/tab-email_delivery.php` `usersc/classes/Email/DeliveryLogRepository.php`
+
+- [ ] The tab logs `ExceptionLogSummary::of($e)` only, and the repository puts the failed step ("table check", "tags column check", "window load") and the driver error only in the message, which it must not log. The log line cannot tell which query failed or why. Carry the step and the SQLSTATE (`errorInfo()[0]`) outside the message and log them (found in #2102 review)
+- [ ] The pager prints one link for each page. Show a window (first, current ±2, last) when the page count grows past about 10 (found in #2102 review)
+- [ ] The owner, car and plugin links open a new tab with no screen-reader cue. Fix with the shared helper from the `tab-verification.php` `vsNewTabLink()` item (found in #2102 review)
+- [ ] With an ignored recipient address, the `invalid-feedback d-block` hint grows the Recipient column, and `row g-2 align-items-end` then aligns the other filter controls to the hint, not the input. Use `align-items-start`, or move the hint to its own `col-12`. Also add `aria-invalid="true"` next to `is-invalid` (found in #2102 review)
+
 ### `app/admin/includes/tab-verification.php`
 
-- [ ] `EffectiveEmailFlags::fromQueueRow()` runs inside the render loop, after `<tbody>` opens. A throw stops the page mid-table with no admin message and no `logger()` line. Build the flags with the queue rows and catch `\InvalidArgumentException` in the queue fault domain (found in /flow:finish-milestone v2.31.0)
+- [ ] The Automatic Sending card shows only "Status unavailable" for an `UNREADABLE` or `MISSING` job state, and its "Next eligible" row says "the job status could not be read" for `MISSING` too. Show the same detail lines as the status panel rows, from one shared source next to `CronJobRunsReader::badgeFor()` (found in #2572 review)
+- [ ] `vsNewTabLink()` gives the queue and Recent Activity links no screen-reader cue that they open a new tab (WCAG G201), and neither table has an accessible name. Add `<span class="visually-hidden"> (opens in a new tab)</span>` in the helper, and a `visually-hidden` `<caption>` or `aria-labelledby` on each table (found in #2496 review)
 
-### `app/admin/index.php`
+### `app/admin/includes/verification-batch-size-field.php`
 
-- [ ] `verification_send_batch` logs a rejected scalar `car_ids` value with `var_export()` and no length limit or control-character strip, so an admin can put CR/LF into the log line. Cut the value to a fixed length and remove `[\x00-\x1F\x7F]` before the log call (found in #2457)
-- [ ] `verification_send_batch` logs every rejected scalar as `non-positive car id`, but `filterCarIds()` also rejects non-canonical values (`'03'`, `'1.5'`, `'+3'`). Say `invalid car id` (found in /flow:finish-milestone v2.31.0)
+- [ ] The decorative icons at ~L28, ~L46 and ~L51 have no `aria-hidden="true"`. The Verification tab around them has it since #2496 (found in #2496 review)
 
 ### `app/admin/scripts/maintenance/21-Fix-Page-Permissions.php` + `app/admin/scripts/maintenance/26-Reconcile-Owner-Fields.php` + `app/api/webhooks/brevo.php` + `usersc/classes/Car/CarAdministrationService.php` + `usersc/classes/Car/CarVerificationSendService.php` + `usersc/includes/custom_functions.php` + `usersc/plugins/hooker/hooks/user_form_hook.php` (logger guards)
 
@@ -71,13 +78,10 @@ after an item is written.
 - [ ] No test renders the notConfigured info notice or the manual-run log suffix. Run the script with the `plg_sendinblue` key cleared and assert the notice and no success alert (found in /flow:finish-milestone v2.31.0)
 - [ ] After a partial poll failure the page shows the yellow warning and a green "Reconciliation completed" alert. Show the counts as partial results (`alert-secondary`) when `pollFailed` is true (found in /flow:finish-milestone v2.31.0)
 
-### `app/api/cars/list.php`
-
-- [ ] `(new CarShowcaseService())->getNewCarIds()` (~64) runs an uncached query on every DataTables request (page turn, sort, search) since #1900. Before, it ran once per page load. Memoize it per request or for a short time. Accepted as low risk for v2.30.4. (found in /finish-milestone v2.30.4)
-
 ### `app/api/cars/save.php`
 
-- [ ] The `updateImages` and `removeImages` auth checks (about lines 233 and 244) compare `$user->data()->id != ...->user_id` with loose `!=`. Use a strict `(int)` comparison, as `removeImage()` does (found while working on #1929)
+- [ ] The upload-loop `logger()` calls in `uploadImages()` (~L801, ~L818, ~L828) log the client `$name` and `Input::get('car_id')` with no length cap. Cap them as the dropped-names log does (found in #2609)
+- [ ] `uploadImages()` (~L814) `arrayReplaceValue()` replaces the first match. If a new upload has the same browser file name as a stored photo, the new photo takes the stored photo's place (it can become the primary photo). Send a unique placeholder from `car-edit.js`, or replace only a name that is not stored (found in #2609)
 
 ### `app/assets/js/location-picker.js`
 
@@ -119,10 +123,11 @@ after an item is written.
 ### `docs/development/ERROR_HANDLING.md`
 
 - [ ] The exception table (~L127-157) lists `AdminVerificationException`, which has no file in `usersc/classes/Exceptions/`, and omits `VerificationConfigException`. Check the table against the directory and correct the count in the heading (found in /finish-milestone v2.30.10)
+- [ ] The doc names only the last-resort fallback, and says "no guards around database calls". It does not name the page-section fault-domain catch (catch `\Throwable` around one repository read, log `ExceptionLogSummary::of($e)`, show the section as Unavailable) that `tab-verification.php` and `VerificationTabStatus::read()` use (#2364). Add one paragraph (found in #2458)
 
-### `docs/development/UI_STANDARDS.md`
+### `docs/development/TESTING_STRATEGY.md` + `docs/development/adr/ADR-020-issue-driven-workflow.md`
 
-- [ ] No doc lists the shared car section partials in `app/views/cars/` and their caller variables (`$headingTag`, `$showOwnerId`, `$carId`). Add one short paragraph next to the `_vehicle_info_card.php` text (found in #2495)
+- [ ] TESTING_STRATEGY.md "Shell Tests for Git Hooks" names only `tests/hooks/lib/harness.sh`. Add `tests/hooks/lib/gh-stub.sh` and `tests/hooks/lib/workflow-extract.sh`, and list PyYAML (needed by `tests/hooks/test-review-render.sh`) in the hook-test prerequisites. ADR-020 (~L225) says a `Blocking` heading fails the build. Since #2506 a `blocking` finding in the structured output fails it (from #2512)
 
 ### `error/500.php`
 
@@ -150,6 +155,10 @@ after an item is written.
 - [ ] The class has its own `php -r` subprocess copy of the endpoint runner. Use `IntegrationTestCase::invokeEndpoint()` and delete the copy. `invokeEndpoint()` needs GET/HTML or session-flash support first (found in #2165)
 - [ ] The runner reads a missing `___EXIT:` marker as exit code 0 (`array_pad(..., '0')`, ~L161), and it ignores a failed `$loggedInUser->find()` (~L142), so an unknown user runs logged out. The class docblock (~L15) names `VerificationToggleEndpointBehaviorTest` as the model runner, but that class now uses `invokeEndpoint()`. The migration item above fixes all three. (found in #2165)
 
+### `tests/integration/AdminEmailDeliveryTabAuthTest.php`
+
+- [ ] The class copies `AdminDeliverabilityActionsAuthTest`: its own `grantPermission()` and permission-row cleanup (use `IntegrationTestCase::grantTestPermission()`), and its own `php -r` page runner (move to `invokeEndpoint()` with that class's item) (found in #2102 review)
+
 ### `tests/integration/CarEditOwnerColumnRefreshTest.php`
 
 - [ ] `testOwnerSelfEditSetsOwnerLastUpdatedButAdminEditDoesNot` only checks that the new `owner_last_updated` is later than a date two years ago, and does not count `cars_hist` rows. Bound it with `assertEqualsWithDelta(time(), ..., 60)` and assert one new history row (found while working on #1929)
@@ -157,6 +166,10 @@ after an item is written.
 ### `tests/integration/EmailEventRekeyReportAuthTest.php` (test coverage)
 
 - [ ] `testVisitorWhoIsNotLoggedInIsRefusedAndGetsNoReport` checks only that no report shows. A crash passes too. Assert exit code 0 and HTTP 302, as the editor test does (found in #2358 review)
+
+### `tests/integration/IntegrationTestCase.php` (test coverage)
+
+- [ ] `invokeEndpoint()` takes no GET parameters, so it renders only the default admin tab. A test cannot assert the Verification tab "Batch results" area after a manual send. Add a GET-params argument (found in #2572 review)
 
 ### `tests/integration/IntegrationTestCase.php` + `tests/integration/RetentionPurgeJobIntegrationTest.php` + `tests/integration/database/DeletedUserAddressesBacklogRuleTest.php`
 
@@ -190,25 +203,6 @@ after an item is written.
 
 - [ ] `testRepositorySqlHasNoMaxOverTheProfileFlagColumns` (~L151) and `testCarDetailsPageLoadsTheOwnerProfileStateForTheCard` (~L392) read source text with `file_get_contents()`. Replace them with behavior tests (found in #2330)
 
-### `tests/integration/cars/services/CarRepositoryProfileFlagReadersTest.php` (test coverage)
-
-- [ ] Only the `all` status checks the queue columns. Loop over `CarRepository::QUEUE_STATUSES` except `eligible` and call `EffectiveEmailFlags::fromQueueRow()` on each row (found in /flow:finish-milestone v2.31.0)
-
-### `tests/integration/database/AddCronJobRunsLastFailureAtMigrationTest.php`
-
-- [ ] The class has its own copy of `phinxAdapter()` and `pdoForPhinx()`. Move it onto `MigrationSandboxTestCase` (from #2167), which binds the migration to its own schema, and delete the copy (found in #2167)
-
-### `tests/integration/database/AddDeletedUserAddressesSandboxTest.php` (test coverage)
-
-- [ ] No test fails without `'signed' => true` on `user_id`. Assert that `COLUMN_TYPE` is `int`, not `int unsigned` (found in /finish-milestone v2.30.10)
-
-### `tests/integration/database/MigrationSandbox.php` + `tests/integration/database/MigrationSandboxTest.php` (test coverage)
-
-- [ ] No self-test covers the `migrateTo()` unknown-version pre-check (~L190) or the `phinxlog` post-check (~L209), the non-PDO guard in `connect()` (~L455), or the drop-on-failure path in `MigrationSandboxTestCase::setUpBeforeClass()`. A later edit can remove a guard and the suite stays green (found in #2167)
-- [ ] `testFingerprintDetectsAColumnChange` changes a column only. Add a `DROP TRIGGER` case, so a broken `TRIGGERS` query in `fingerprint()` fails a test (found in #2167)
-- [ ] `migrateTo(0)` is refused, although Phinx reads 0 as "roll back all": document it in `@throws` (found in #2167)
-- [ ] Only 4 migrations have a sandbox test, so about 28 reversible `down()` methods never run in a test. Add one sandbox class that rolls back through `Manager::rollback()` to `20260709000000` (its `down()` is irreversible), then migrates to latest again, and compares `fingerprint()` at each end. The 5 `change()`-only migrations also never run in reverse, and this test covers them too. `fingerprint()` hashes columns and triggers only, so it cannot see the engine, charset and index changes of `20260710181528`, `20260710200000` and `20260913205636` (found in #2167)
-
 ### `tests/playwright/admin-verification-dashboard.spec.js` (test coverage)
 
 - [ ] No test covers the queue and activity forms binding when the switch is absent (#2457). The probe-failure path needs a failing DB (see the note at L267) (found in /flow:finish-milestone v2.31.0)
@@ -221,13 +215,9 @@ after an item is written.
 
 - [ ] Seven `seed-*.php` fixtures and the migration fixture each copy the `er_deleted_user_addresses` cleanup: a table-exists check, then a `DELETE ... IN (...)`. Three also copy the username-to-ID lookup. None checks `$db->error()` after the check or the delete, although the cleanup loop in the same files exits on an error. Add one shared helper (for example `Tests\Support\DeletedUserAddressCleanup::forUserIds($db, $ids)`) that checks `error()`, and call it from each fixture (found in #2419)
 
-### `tests/unit/admin/VerificationBannerReasonTest.php` (test coverage)
+### `tests/unit/admin/VerificationBannerReasonTest.php` (test quality)
 
-- [ ] The "never echo unescaped" regexes miss `<?= htmlspecialchars($y) . $verificationBrevoNotReadyReason ?>` and `printf(...)`, and `[^;]*` can match across lines into comment text. Count the variable's uses in `app/admin/index.php` and assert each one is known. (found in /finish-milestone v2.30.6)
-
-### `tests/unit/api/ApiResponseTest.php` (test quality)
-
-- [ ] `testBuildAndEmitHeadersDiscardsBuffersAboveTheFloor` opens one buffer above the floor, so a `while` to `if` change in `buildAndEmitHeaders()` still passes. Open two or three nested buffers (found in /flow:finish-milestone v2.31.0)
+- [ ] The unreadable-banner check matches `app/admin/index.php` source with regexes, so a rename breaks it, and it does not check the outer `if ($verificationBannerSeverity !== null)` gate. Replace it with a render test when an `index.php` render harness exists (found in #2102 review)
 
 ### `tests/unit/cars/services/AdminVerificationQueueUrlStateTest.php` (test quality)
 
@@ -245,9 +235,9 @@ after an item is written.
 
 - [ ] `runWasMarkedFailed()` reads the private `AbstractCronJob::$runFailed` through reflection. When the job gets a healthcheck slug (#2586), assert the `/fail` ping through an injected pinger and delete the helper (found in /flow:finish-milestone v2.31.0)
 
-### `tests/unit/cron/VerificationSwitchGateSourceTest.php`
+### `tests/unit/cron/SendVerificationBatchJobTest.php` (test coverage)
 
-- [ ] The source check that the webhook does not read the switch (~L101) repeats behavior tests (`BrevoWebhookEndpointTest` ~L351, `BrevoEventPathParityIntegrationTest` ~L556, ~L605, ~L621). Delete it. Keep the convention scans at ~L63 and ~L110 (found in /finish-milestone v2.30.8)
+- [ ] `testEligibleCarIdsPassThroughUnchangedToProcessBatch` (~L255) uses `assertContains`, so a reordered batch passes, and no test checks that `VerificationBatchSender::processBatch()` sends in the submitted order. Assert the exact id order in both (found in #2599)
 
 ### `tests/unit/regression/Issue2360SendPolicySourceRegressionTest.php`
 
@@ -262,10 +252,6 @@ after an item is written.
 
 - [ ] Rename `testExactlyOneConfigEntryExistsPerAction`. It asserts presence, not uniqueness (from #2169)
 
-### `tests/unit/regression/VerificationTabSourceRegressionTest.php` (test quality)
-
-- [ ] `batchSizeComesFromStatus()` matches the first assignment only. Assert exactly one assignment to `$vsBatchSize`, with a negative control (found in /flow:finish-milestone v2.31.0)
-
 ### `tests/unit/security/AdminAjaxGuardTest.php`
 
 - [ ] Move `significantTokens()` / `tokensCallFunction()` into one `tests/Support/` helper, shared with the sibling pins from #2161 (from #2169)
@@ -276,9 +262,9 @@ after an item is written.
 - [ ] No test proves the `phpstan.neon` wiring of the path-based rules. A typo in a `files:` or `exemptPages:` entry, or a different working directory for `projectRoot`, makes the rule silently check nothing. Add a smoke test that runs PHPStan with the real config on one known violation per rule. (found in #2327)
 - [ ] `PageMetadataBeforeInitRule` does not report an `exemptPages` entry whose file was deleted or moved, or no longer calls `securePage()`. Report it as a stale exemption. (found in #2327)
 
-### `usersc/classes/AccountDeletionPrivacyResult.php`
+### `usersc/classes/Car/Car.php` + `app/api/cars/save.php`
 
-- [ ] The constructor does not check that `failedStage` is a non-empty string exactly for `RolledBack` and `CommitUnknown`. Only the private named constructors keep it. Add one guard (found in /flow:finish-milestone v2.31.0)
+- [ ] Each consumer builds the `{root}{ELAN_IMAGE_DIR}{carId}/` path by hand (`Car.php` ~L75 and ~L178, `save.php` ~L40 and ~L690, `24-Regenerate-Optimized-Thumbnails.php` ~L381, `app/owner/cars/index.php` ~L120, `details.php` ~L479, `statistics.php` ~L359). Add one helper and call it from each (from #1943)
 
 ### `usersc/classes/Car/CarAdministrationService.php`
 
@@ -286,16 +272,12 @@ after an item is written.
 
 ### `usersc/classes/Car/CarRepository.php`
 
-- [ ] `recentFlagChanges()` (~L2327) has no production caller, but tests in 15 unit and integration files read flag-change rows through it. Delete it only after those tests use a test helper, or let #2357 add it with its first caller (found in /finish-milestone v2.30.7)
+- [ ] `recentFlagChanges()` (~L2327) has no production caller, but tests in 15 unit and integration files read flag-change rows through it. Delete it only after those tests use a test helper (found in /finish-milestone v2.30.7)
 - [ ] The block-cause names are four loose string sets: `BLOCKED_CAUSES`, `EmailEventApplier::SUPPRESSION_EVENT_CAUSES`, the bare `'spam'` and `'unsubscribed'` matches in `VerificationTabStatus::chip()`, and `EffectiveEmailFlags::$blockedCause` (`?string`). Add `enum BlockedCause: string` and convert to a string only at the database boundary (found in /finish-milestone v2.30.8)
 
 ### `usersc/classes/Car/CarVerificationEmailComposer.php`
 
 - [ ] Photo FileError logs record user 0. The composer has no actor id, so an admin-started send is not attributed (found while working on #1894)
-
-### `usersc/classes/Car/ClearBlockOutcome.php`
-
-- [ ] The constructor does not check that `stillBounced` and `stillOptedOut` are false when the kind did not clear. Throw `\InvalidArgumentException` when `!$kind->isCleared()` and either is true (found in /flow:finish-milestone v2.31.0)
 
 ### `usersc/classes/Car/EffectiveEmailFlags.php`
 
@@ -315,9 +297,18 @@ after an item is written.
 
 - [ ] Replace the raw `string $status` with a backed enum, so callers cannot compare raw strings. `VerificationBatchSender` does `$sendResult->status === SendResult::STATUS_SENT` today. Update it in the same change (from #2149)
 
+### `usersc/classes/Car/VerificationEligibility.php`
+
+- [ ] The class docblock says the class encodes the same rules as the WHERE clause of `CarRepository::findVerificationEligible()` (built by `verificationEligibleFromSql()`). The #2594 address-shape rule is in the SQL only. Correct the docblock (from #2595)
+
+### `usersc/classes/Car/VerificationSettings.php`
+
+- [ ] `isEnabled()` has no production caller after #2602. All callers use `isEnabledOrNull()`. Remove `isEnabled()`, its tests in `VerificationSettingsTest`, and the references to it in `CLASSES.md` (method list and the `VerificationTabStatus` entry), the `{@see isEnabled()}` in `VerificationSettings.php`, and the `VerificationTabStatus.php` class docblock (found in /flow:finish-milestone v2.31.1)
+
 ### `usersc/classes/Car/VerificationTabStatus.php`
 
-- [ ] Five status probes in `read()`, and the eligible-preview and queue catches in `app/admin/includes/tab-verification.php`, log `$e->getMessage()`. Log `ExceptionLogSummary::of($e)` as the batch-size probe does (found in /flow:finish-milestone v2.31.0)
+- [ ] `blockedCauseLabel()` treats a whitespace-only `email_blocked_cause` as a cause and shows a blank-looking reason. Only manual SQL can write one. Trim before the empty check (found in #2458 review)
+- [ ] The `MISSING` job-row `detail` names `er_cron_job_runs` as plain text, so the panel cannot put it in `<code>`, as it does for the `advice` segments. Give `detail` the same `{text, code}` segments or move the name into `advice` (found in #2458 review)
 
 ### `usersc/classes/CarView.php`
 
@@ -325,20 +316,7 @@ after an item is written.
 
 ### `usersc/classes/Cron/HealthcheckPinger.php` + `usersc/classes/Cron/CurlHealthcheckTransport.php`
 
-- [ ] `HealthcheckPinger`: read the two env values in the constructor (or a config object), so tests need no `putenv` (found in /finish-milestone v2.30.9)
 - [ ] `CurlHealthcheckTransport`: set `CURLOPT_PROTOCOLS => CURLPROTO_HTTPS` and an explicit `CURLOPT_FOLLOWLOCATION => false` (defense in depth; the base URL is constant) (found in /finish-milestone v2.30.9)
-
-### `usersc/classes/Cron/ReconciliationSummary.php`
-
-- [ ] The constructor accepts `pollFailed` and `notConfigured` both true, and negative counts. Add guards, or a private constructor with `polled()`, `notConfigured()` and `failedPreflight()` named constructors (found in /flow:finish-milestone v2.31.0)
-
-### `usersc/classes/Cron/RetentionPurgeJob.php`
-
-- [ ] The constructor does not check that each element of `$rules` is a `RetentionRule`. A wrong element fails later as a TypeError reported as "rule #N". Throw `InvalidArgumentException` in the constructor (found in /finish-milestone v2.30.10)
-
-### `usersc/classes/Cron/SuppressionSyncSummary.php`
-
-- [ ] Reject negative counts in the constructor, and check `matched + unmatched + alreadyFlagged + skipped <= contactsExamined` when `contactsExamined > 0`; call it with named arguments (found in /finish-milestone v2.30.9)
 
 ### `usersc/classes/Email/BrevoApiFactory.php`
 
@@ -395,10 +373,6 @@ after an item is written.
 - [ ] Add a convention test that the rule file holds no `DELETE` or `UPDATE`, so "deletes nothing" is enforced, not only documented (found in /finish-milestone v2.30.10)
 - [ ] The alarm and a query failure both throw `RetentionPurgeException` and differ only by step text. Give the alarm its own step constant or subtype, so log triage can tell "run script 30" from "query failed" (found in /finish-milestone v2.30.10)
 
-### `usersc/classes/Retention/RetentionPolicy.php`
-
-- [ ] `rules()` reads the global `RETENTION_SENDINBLUE_MESSAGES_DAYS` constant, so a missing `define()` is a fatal Error. Check `defined()` and throw a typed exception, or take the window as an argument (found in /finish-milestone v2.30.10)
-
 ### `usersc/classes/Retention/SendinblueMessagesRetentionRule.php`
 
 - [ ] The missing-table skip reason is a long inline literal. Make it a class constant, so tests can assert it without a copy of the text (found in /finish-milestone v2.30.10)
@@ -428,7 +402,3 @@ after an item is written.
 ### `usersc/includes/rate_limits_dev_override.php`
 
 - [ ] Rename to a general name such as `dev_overrides.php` and update its includes. The file also applies the Brevo SDK host override (#2184), so its name no longer describes its scope. (found in #2385)
-
-### `usersc/login.php` + `tests/bootstrap-integration.php`
-
-- [ ] Remove the pre-6.1.7 version guards. Production runs UserSpice 6.1.7 since v2.30.10 (2026-10-28), so this can be done now: `method_exists($loginUser, 'recordLogin')` in `$recordCompletedLogin` (call `$loginUser->recordLogin($userId)` directly), `function_exists('reauthClearConfirmed')` in `$clearReauthConfirmation`, and `method_exists($totpHandler, 'encryptionAvailable')`. Also remove the `_instance` reflection fallback in `tests/bootstrap-integration.php`, and update the guard assertions in `tests/unit/security/LoginWiringTest.php`. (found in #2253)

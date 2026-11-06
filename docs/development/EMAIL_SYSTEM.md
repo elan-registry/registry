@@ -325,7 +325,8 @@ returns `false`. The send batch overrides it. See
 ### Stop Event Writes in an Incident
 
 Turning the switch off does not stop the webhook, the reconciliation job or
-the suppression import. To stop all event writes, do these three steps:
+the suppression import. To stop all event writes, do these three steps.
+The Verification tab shows them to every admin. An editor never sees them.
 
 1. Set `BREVO_WEBHOOK_TOKEN` to an empty value. The webhook then refuses
    every call with 401, and Brevo retries the call later.
@@ -355,7 +356,8 @@ The `VerificationSettings` class gates the entire verification system via a sing
 
 **Key Methods:**
 
-- `isEnabled(): bool` — reads the current switch state
+- `isEnabledOrNull(): ?bool` — reads the current switch state, or null when
+  the read fails or the row is missing (#2572). Every production caller uses it
 - `setEnabled(bool $enabled, int $actingUserId = 0): bool` — writes the
   switch; throws `VerificationConfigException` if attempting to enable while
   `brevoReady()` is false. `$actingUserId` attributes the change in the audit
@@ -394,6 +396,13 @@ The `VerificationSettings` class gates the entire verification system via a sing
   `cron_ip` allowlist denies never reaches this column at all, so there is
   no "exclude denied rows" filtering to do (unlike the `logs`-table scan
   this replaced — see #1974).
+- `cronStateOrNull(): ?array{ready: bool, lastRequestAt: ?DateTimeImmutable}` —
+  returns the cron readiness and the last request time from one read, or
+  `null` when the cron state is unreadable. The admin Verification tab uses
+  it (#2572). A failed query or a missing `id = 1` row returns `null` and
+  logs one `VerificationConfigWarning` line. A `NULL` or empty column returns
+  `['ready' => false, 'lastRequestAt' => null]`, which means cron has never
+  run. A corrupt value returns `null`, not "never ran".
 - `recordCronRequest(): bool` — writes `er_verification_settings.last_cron_request_at = NOW()`;
   called by `users/cron/cron.php` on every non-denied hit. Replaces the
   unconditional `CronRequest` log line removed by #1974 (144 rows/day/environment
@@ -421,6 +430,11 @@ always reflect current state.
 - The 20-minute window is 2× the standard documented cron transport interval (10 minutes)
 - If cron has never hit this environment (`last_cron_request_at` is `NULL`), `cronReady()` returns false
 - If the most recent hit is older than 20 minutes, `cronReady()` returns false
+- If the cron state is unreadable (a failed query, a missing `id = 1` row, or
+  a corrupt value), the admin Verification tab shows a `text-bg-danger`
+  "Unavailable" badge. It does not show "Stalled", and it does not show
+  "no cron request has ever been logged". That text appears only when the
+  row exists and `last_cron_request_at` is empty.
 - A hit denied by the `cron_ip` allowlist never writes `last_cron_request_at`
   at all — it proves only that the transport reached the server, not that it
   was recognized and ran jobs
@@ -477,7 +491,9 @@ The System Status panel shows 7 rows in this order:
    be read." plus a hint to check the system log for
    `VerificationConfigWarning`. The row does not show "Stalled" in this case,
    because the cron state is unknown. If the probe read the cron state and a
-   later read threw, the row shows the real state.
+   later read threw, the row shows the real state. The row also shows
+   "Unavailable" when `cronStateOrNull()` returns `null` (a failed query, a
+   missing row, or a corrupt value).
 3. **Webhook receiver** — badge `text-bg-success` ("Live"). Static row,
    always healthy. Records delivery events from all registry mail in real
    time; the nightly reconciliation job catches anything the webhook missed.
@@ -489,11 +505,21 @@ The System Status panel shows 7 rows in this order:
 5. **Last reconciliation run** — shows the badge from `CronJobRunsReader`
    for the job's state, its last run time, and whether the most recent run
    failed. The job backfills
-   missed events and prunes old event records.
+   missed events and prunes old event records. An unreadable job state
+   shows "The job state could not be read, so the job may not run." A
+   missing job row shows "The job has no row in er_cron_job_runs, so cron
+   does not run it." Every viewer sees that detail. An admin also sees the
+   next step, with each name in `<code>`: "Check the system log for
+   `CronJobFailure` entries." for an unreadable state, and "Run
+   `composer migrate:status`. If `20260918133038_rename_reconciliation_job`
+   is applied, insert the row again." for a missing row. An editor sees no
+   next step, because an editor cannot act on it (#2458).
 6. **Last suppression sync run** — shows the badge from `CronJobRunsReader`
    for the job's state, its last run time, and whether the most recent run
    failed. The job imports
-   suppressed contacts from Brevo.
+   suppressed contacts from Brevo. The unreadable and missing job states
+   show the same detail and next step as the reconciliation row. The
+   missing-row step names `20260909170000_seed_brevo_suppression_sync_cron`.
 7. **Cron job failures** — shows a count. Badge `text-bg-success` if 0.
    Badge `text-bg-danger` if above 0. Badge `text-bg-danger` ("Unavailable")
    if the read failed. Shows the
@@ -504,9 +530,11 @@ The System Status panel shows 7 rows in this order:
 **Toggle Control:**
 
 - Located on the Verification System tab
-- If the settings probe threw before it read the switch state, or the switch
-  query failed, the state is unknown. The panel shows a `text-bg-danger` "Unavailable" badge
-  (`#verificationSwitchUnavailable`) and the reason "The switch state could
+- If the settings probe threw before it read the switch state, the switch
+  query failed, or the settings row is missing, the state is unknown. The
+  panel shows a `text-bg-danger` "Unavailable" badge
+  (`#verificationSwitchUnavailable`), with a visually hidden "Feature switch:"
+  prefix for screen readers, and the reason "The switch state could
   not be read." The panel does not render `#verificationEnabledSwitch`. This
   applies to every viewer, admin and editor. An admin also sees the incident
   steps.
@@ -521,12 +549,19 @@ The System Status panel shows 7 rows in this order:
 
 **Dashboard Banner:**
 
-A conditional banner appears below pending-migrations alerts when `isEnabled() && (!brevoReady() || !cronReady())`. Severity:
+A conditional banner appears below pending-migrations alerts when `isEnabledOrNull() === true && (!brevoReady() || !cronReady())`. Severity:
 
 - `alert-danger` if `!brevoReady()`
 - `alert-warning` if `brevoReady()` is true but `!cronReady()`
 
 The banner states which prerequisite failed and links to the Verification System tab for details.
+
+The banner also has an unreadable state. It appears when
+`VerificationSettings::isEnabledOrNull()` returns null, or when the readiness
+check throws. An unreadable switch is not "off", so the banner does not hide.
+The banner is `alert-danger` with this text: "**The verification switch or its
+readiness could not be read.** The verification status is unknown. Check the
+system log for details." The Verification System nav badge also shows.
 
 ## Admin Verification Email Send Tool (#1884)
 
@@ -534,7 +569,7 @@ The banner states which prerequisite failed and links to the Verification System
 **Implementation:** `app/admin/index.php` (POST command handling) + `app/admin/includes/tab-verification.php` (UI rendering)  
 **Access:** Admin only (`securePage()` + `hasPerm([2])`)  
 **Independent of Feature Switch:** This manual admin tool runs regardless of
-`VerificationSettings::isEnabled()`. A deliberate decision: the admin may want
+the switch (`VerificationSettings::isEnabledOrNull()`). A deliberate decision: the admin may want
 to send a one-off batch of reminders even while the automatic system is paused
 for operational reasons, or to test sending before enabling automation.
 
@@ -563,18 +598,36 @@ parts appear in this order, from top to bottom:
    line shows `last_run_at` plus `SendVerificationBatchJob::GUARD_INTERVAL_HOURS`
    (20 hours). The line shows the earliest time the job can run. The real
    send time is the first cron heartbeat after that time. **Send Batch Now**
-   is a link to the Eligible queue view. It does not send. The send happens
-   only when the admin presses **Send batch** in that view.
-   If the batch size read throws or its query fails, the Batch size row
-   shows a `text-bg-danger` "Unavailable" badge and no Save form for every
-   viewer. The form would post a placeholder value over the real setting. A
-   missing row does not fail: the row shows the default of 5.
-4. **Verification Queue.** One table with eight filter pills and the Window
+   is a link to the Next Queue view (`status=next_queue`). It does not send.
+   The send happens only when the admin presses **Send batch** in that view.
+   If the batch size is unreadable (a failed query or a missing `id = 1`
+   row), the Batch size row shows a `text-bg-danger` "Unavailable" badge and
+   no Save form for every viewer. The form would post a placeholder value
+   over the real setting. The tab never shows a default batch size.
+   The job does not send while the batch size or the switch is unreadable.
+   It logs the reason under `CronJobFailure` and pings `/fail` from `run()`.
+   See [Preview & Send Flow](#preview--send-flow) for the admin send.
+4. **Verification Queue.** One table with nine filter pills and the Window
    and Show controls. See [Verification Queue](#verification-queue).
 5. **Recent Activity.** The latest 20 `cars_hist` rows with operation
-   `VERIFIED` or `VERIFIED SOLD`, newest first
-   (`CarRepository::findRecentVerificationActivity()`). It has its own
-   Window control, in the `activity_window` URL parameter. This query reads
+   `VERIFIED` or `VERIFIED SOLD` (`CarRepository::findRecentVerificationActivity()`).
+   The panel is a sortable table. It uses the vendored DataTables library.
+   The newest row comes first by default. Click a column header to sort by
+   that column. The table has no paging and no search. It has these columns:
+
+   - **Time.** The time of the event.
+   - **Operation.** `VERIFIED` or `VERIFIED SOLD`.
+   - **Car.** The car. It links to `app/owner/cars/details.php?car_id=<id>`.
+   - **Owner.** The owner name. It links to the Owner Management tab,
+     `app/admin/index.php?tab=owner-mgmt&owner_id=<id>`.
+   - **User ID.** The owner's user id. It links to
+     `users/admin.php?view=user&id=<id>`.
+
+   The owner in the Owner and User ID columns is the owner at the time of the
+   event, from the history row. It is not the current owner. Each link opens in
+   a new tab, as the Verification Queue links do. When the window has no events,
+   the panel shows an empty-state message, not an empty table. The panel has its
+   own Window control, in the `activity_window` URL parameter. This query reads
    `cars_hist` only, with no join to `cars`, so it can list a row for a car
    that has since been deleted (there is no foreign key from `cars_hist` to
    `cars`; see [DATABASE.md](DATABASE.md#no-enforced-foreign-key-constraints)).
@@ -589,20 +642,26 @@ error or "unavailable" and the other parts still render.
 
 The queue replaces the earlier separate tables. One table shows all views.
 
-**Filter pills:** `All`, `Eligible`, `Pending`, `Bounced`, `Blocked`,
-`Opted out`, `Verified`, `Sold`. Each pill is a plain GET link and shows its
-count. The allowed values are in `CarRepository::QUEUE_STATUSES`. An unknown
-`?status=` value shows all rows.
+**Filter pills, in this order:** `Eligible`, `Next Queue`, `Pending`,
+`Bounced`, `Blocked`, `Opted out`, `Verified`, `Sold`, `Invalid email`.
+Each pill is a plain GET link and shows its count. The allowed values are in
+`CarRepository::QUEUE_STATUSES`. The default view is Eligible. An unknown
+`?status=` value, for example the removed `all`, shows Eligible.
 
-**What `All` counts.** `All` is the distinct count of cars that are
-Eligible, Pending, Bounced, Blocked, or Opted out. It also counts the unsold
-cars of a live owner (not `noowner`) who has no `profiles` row, so the admin
-can see them as "No profile". The same applies to the unsold cars of a live
-owner (not `noowner`) whose address is not NULL, not empty, and not well
-formed. The admin sees them as "Invalid email" (#2594). It excludes Verified
-and Sold: those two are
-history, not a current queue state. Multiple status flags on one owner may
-apply to the same car, so `All` can be less than the sum of the pills.
+**Send order.** The batch sends cars by `last_verified ASC` (NULL first), then
+`cars.id ASC`. The id tiebreak makes the order the same on every query.
+Eligible lists eligible cars in this order, up to the Show limit. Next Queue
+shows the first rows of Eligible, up to the batch size. A batch sends the same
+cars that Next Queue shows.
+
+**Next Queue count.** The pill shows `min(eligible, batch size)`. It shows no
+count when the batch size or the summary cannot be read.
+
+**What `Invalid email` counts.** `Invalid email` counts the unsold cars of a
+live owner (not `noowner`) who have no `profiles` row, or whose address is
+not NULL, not empty, and not well formed (#2594, #2599). A car counts once.
+This pill can overlap the other pills. A car in `Invalid email` can also be
+in another pill, for example Pending or Blocked. The view has no summary card.
 
 **Where the pills read their state.** The owner's `profiles` row is the
 system of record (#2101). Bounced counts cars whose owner has
@@ -613,6 +672,10 @@ Opted out counts cars whose owner has `email_opted_out = 1`. An owner with no
 The rule lives once, in `CarRepository::countVerificationSummary()`.
 
 **Table columns:** Car, Chassis, Owner, User ID, Sent, Days, Status, Actions.
+The Car cell links to the car details page (`app/owner/cars/details.php?car_id=N`).
+The Owner cell links to the Owner Management tab
+(`app/admin/index.php?tab=owner-mgmt&owner_id=N`). A row with no owner user
+shows the owner name as plain text. Both links open in a new tab.
 The User ID links to the user's admin page (`users/admin.php?view=user&id=N`)
 in a new tab. A row with no owner shows a dash.
 
@@ -623,7 +686,7 @@ never reaches SQL.
 
 | Parameter | Allowed values | Default |
 | --- | --- | --- |
-| `status` | `all`, `eligible`, `pending`, `bounced`, `blocked`, `opted_out`, `verified`, `sold` | `all` |
+| `status` | `eligible`, `next_queue`, `pending`, `bounced`, `blocked`, `opted_out`, `verified`, `sold`, `invalid_email` | `eligible` |
 | `window` | `7`, `30`, `90`, `365` (days), `0` (all time) | `30` |
 | `show` | `10`, `25`, `50`, `100` (rows) | `25` |
 
@@ -634,8 +697,9 @@ Rules for the controls:
 
 - **Window** applies to the Verified and Sold views and their summary cards
   only. The other views show the current state.
-- **Show** limits the number of rows. It does not apply to the Eligible
-  view. That view shows one batch (see [Preview & Send Flow](#preview--send-flow)).
+- **Show** limits the number of rows. Show applies to every view except Next
+  Queue, which previews one batch (see
+  [Preview & Send Flow](#preview--send-flow)).
 - The Pending view lists the longest-waiting car first.
 - The Verified and Sold views count each car one time. The pill count and
   the list length match **only when the pill count is at or below the
@@ -722,14 +786,18 @@ checks run in this order, and the first match wins (`VerificationTabStatus::chip
    owner's email address is not valid. Fix the address on the owner's
    account." The check uses the same pattern as `findVerificationEligible()`
    in CLASSES.md (#2594).
-3. `email_blocked = 1`: "Blocked". The reason text is `email_blocked_cause`
-   (`spam`, `unsubscribed`, `blocklist`), or "cause unknown" when the cause
-   is NULL. The reason shows as small muted text under the badge.
+3. `email_blocked = 1`: "Blocked". The reason text is the readable form of
+   `email_blocked_cause`: `spam` gives "Spam complaint", `unsubscribed` gives
+   "Unsubscribed in Brevo", `blocklist` gives "On Brevo blocklist", and NULL
+   or an empty value gives "Cause unknown". A cause that has no label shows as stored (#2458).
+   The reason shows as small muted text under the badge.
 4. `email_bounced = 1`: "Bounced". The reason text is the reason of the
    latest event when that event is a hard bounce, else empty.
 5. `email_opted_out = 1`: "Opted out".
 6. Otherwise the chip shows the latest email event, as the rules above select it.
    A hard-bounce event shows "Bounced" also for an owner with no bounce flag.
+   A legacy `request` or `requests` row shows "Sent". The webhook and the
+   reconciliation job do not record these events now (#2458).
 
 The tab does not read suppression events or `cars_hist` to find the cause.
 The cause is the stored `email_blocked_cause`. Steps 3 and 4 count a flag only
@@ -805,7 +873,7 @@ The handlers and their owner-level effects are described in
 [Mark Bounced / Clear Bounced / Clear Block / Clear Opt-out](#mark-bounced--clear-bounced--clear-block--clear-opt-out-owner-level-actions).
 
 Each button submits a sibling form through the `form=` attribute, because the
-Eligible view wraps its table in the batch form and nested forms are not
+Next Queue view wraps its table in the batch form and nested forms are not
 valid HTML. Editors see a dash in the Actions column (read-only). A row
 whose owner could not be loaded, has no `profiles` row, or is the `noowner`
 system account (the GDPR-erasure reassignment target), also shows a dash: the
@@ -815,16 +883,21 @@ cars. The server independently rejects any of the four commands posted for a
 
 ### Preview & Send Flow
 
-**GET request (no side effects):** The Eligible view of the Verification
-Queue (`?tab=verification&status=eligible`) renders a table of eligible cars,
-up to the configured batch size (`VerificationSettings::batchSize()`, default
-5), under the heading "Send Verification Emails". Car data shown: ID, chassis,
+**GET request (no side effects):** The Next Queue view of the Verification
+Queue (`?tab=verification&status=next_queue`) renders a table of eligible cars,
+up to the configured batch size (`VerificationSettings::batchSizeOrNull()`),
+under the heading "Send Verification Emails". If the batch size is unreadable,
+the preview lists no cars and shows an error instead. Car data shown: ID, chassis,
 owner name, sent date, days, status chip, and the row action. Every dynamic
 value is HTML-escaped at render time.
 
 **POST `verification_send_batch` action:** Sends verification emails to one batch of cars.
 CSRF token validated first (`Token::check()`); missing/invalid token includes the
-standard UserSpice token-error page and no writes occur. For each submitted car ID:
+standard UserSpice token-error page and no writes occur. The handler then reads
+`batchSizeOrNull()`. On `null`, it adds an error that names the
+`VerificationConfigWarning` log, sends no email, and shows the error on the
+page with no batch results.
+The admin send does not read the switch. Then, for each submitted car ID:
 
 1. Look up the car row (`findById()`)
 2. Re-evaluate eligibility via `VerificationEligibility::skipReason()` — a car
@@ -1369,11 +1442,29 @@ trailing spaces. Matching never uses `LIKE`, `FIND_IN_SET` or a substring.
   [Retention of plugin rows](#retention-of-plugin-rows)). So the event
   matches no user, and a verification-tagged event counts as unmatched.
 
-An event for our message with no matching user returns `NO_USER_MATCH`. The
-webhook returns 2xx and writes no row. It logs the first 8 hex characters of
-the SHA-256 of the normalized address, never the address. Only an event that
-carries the tag `car_verification` increments
+An event for our message with no single user (no user, or two or more users,
+hold the address) returns `NO_USER_MATCH`. The webhook returns 2xx. It logs the
+first 8 hex characters of the SHA-256 of the normalized address, never the
+address. Only an event that carries the tag `car_verification` increments
 `er_verification_settings.unmatched_recipient_count`.
+
+The matcher gives these results a second state. When the message ID has a
+`plg_sendinblue_messages` row, the result is `EmailEventMatch::noUserOnPluginRow()`
+(`hasPluginRow()` is true). The processor then stores one `er_email_events`
+row with `user_id` 0 and `car_id` NULL (#2611). It logs
+`event "%s" matched no single user (address hash %s); stored with no owner.`
+A resent event (same message ID and event) makes no second row. A second
+unmatched recipient of the same message with the same event also makes no row,
+because all these rows share `user_id` 0. A failed insert returns
+`WRITE_FAILURE` (5xx), so Brevo retries. The row changes no owner state and
+does not count in the Verification tab. The Email Delivery tab shows its
+outcome with no owner link. Without a plugin row (a `sent` row only), the
+processor stores no row.
+
+Account deletion does not remove a `user_id` 0 row that holds the deleted
+address. The prune removes a `user_id` 0 row after 24 months for a terminal
+event (hard bounce or suppression), and after 90 days for any other event.
+Deleting these rows at account deletion is tracked in #2614.
 
 #### Date Guards
 
@@ -1398,7 +1489,10 @@ column, so a dropped event leaves a trace.
 #### `sendinblueRecordEvent()`
 
 The sendinblue plugin may define `sendinblueRecordEvent()` (#2355). The webhook
-calls it after the apply step, and also for an event with no user. The call is:
+calls it after the apply step, and also for an event with no user. sendinblue
+1.8.0 has no `sendinblueRecordEvent()`, so on that version the step is a
+no-op. The plugin row does not get the event. The processor logs nothing for
+this (#2355). The call is:
 
 ```php
 sendinblueRecordEvent($messageId, $event, $occurredAtSeconds, $reason ?? '');
@@ -1442,7 +1536,7 @@ retry a 2xx.
 | Matched to one user, transaction committed | 2xx |
 | Not a delivery event (for example `opened`, `click`) | 2xx, logged (event name only) |
 | Message not sent by this environment | 2xx, no log |
-| Our message, no single user holds the address | 2xx, logged (address hash prefix only). A `car_verification`-tagged event increments `er_verification_settings.unmatched_recipient_count` |
+| Our message, no single user holds the address | 2xx, logged (address hash prefix only). When the message has a plugin row, one `user_id` 0 row is stored, and a failed insert gives 5xx. A `car_verification`-tagged event increments `er_verification_settings.unmatched_recipient_count` |
 | Brevo prerequisites not met | 2xx, logged |
 | Malformed or unparseable payload (including a top-level JSON list and a bad address) | 400, logged |
 | Stored data that cannot be parsed (for example a zero message time, or a profile flag value not 0 or 1). It fails the same way on every retry. The event row is rolled back, so the log line is the only record of the event | 400, logged (no message) |
@@ -1757,6 +1851,113 @@ A row that is not older than 90 days does not change.
 - **Log.** The job writes one line for each rule under the category
   `RetentionPurge`. A line holds the rule name and counts, never an address.
 
+### Admin Email Delivery Tab (#2102)
+
+The Email Delivery tab on the Registry Management page shows whether mail
+arrived. It lists every kind of mail.
+
+**Data sources.** The tab reads two tables. It never writes to them.
+
+- `plg_sendinblue_messages` provides the mail rows. It holds the mail that the
+  sendinblue plugin accepted.
+- `er_email_events` provides the Brevo webhook events. Each event attaches to
+  one mail by `brevo_message_id`. The join compares IDs as `utf8mb4_bin`, because
+  Brevo message IDs are case-sensitive. `sent` events are not joined.
+- Events never attach by address. A match uses the message ID only.
+
+**Outcome map.** The event name sets the outcome. The map is
+`ElanRegistry\Email\DeliveryOutcome`.
+
+| Event name | Outcome | Label |
+| --- | --- | --- |
+| `delivered` | `Delivered` | Delivered |
+| `hard_bounce`, `invalid`, `invalid_email` | `HardBounce` | Hard bounce |
+| `soft_bounce` | `SoftBounce` | Soft bounce |
+| `blocked` | `Blocked` | Blocked |
+| `unsubscribed` | `Unsubscribed` | Unsubscribed |
+| `spam` | `SpamComplaint` | Spam complaint |
+| No event | `None` | No outcome |
+
+Event names that the map does not list, such as `sent`, are not an outcome.
+The hard-bounce names follow `EmailEventApplier::HARD_BOUNCE_EVENTS`.
+`blocked` is in that list, but it keeps the `Blocked` outcome.
+
+**Chosen outcome.** A mail can have several events. The tab uses the event with
+the latest `occurred_at`. If two events share a time, the tab uses the event with
+the higher `er_email_events.id`.
+
+- A soft bounce followed by a delivery shows `Delivered`.
+- A delivery followed by a bounce shows the bounce.
+
+**Filters.** Each filter is a URL parameter on `tab=email-delivery`. The filters
+combine.
+
+A recipient filter puts the address in the URL. So the address goes into the
+browser history, the server access log, and the Cloudflare request log. This is
+an accepted risk for v2.31.1: only an admin can open the tab, and a URL filter
+can be bookmarked.
+
+- `email`: the whole recipient address. The column collation makes the match
+  case-insensitive. An invalid address gives no recipient filter. The input
+  keeps the invalid address and marks it as not valid.
+- `tag`: one tag from the plugin's comma-separated `tags` value. The plugin
+  trims each stored tag and folds its commas to spaces (`sendinblueStoredTags()`).
+  The tab folds a comma in the input to a space the same way. The tab does not
+  decode HTML entities. It reads the value with `ElanRegistry\Input::raw()`,
+  which does not encode it. The plugin's `delivery_logs.php` decodes only
+  because it reads `Input::get()`, which encodes.
+- `outcome`: `all` (default), one outcome from the map, or `stale`. `stale`
+  shows "No outcome after N hours". It lists mail with outcome `None` that Brevo
+  accepted more than N hours ago. `None` means that the mail has no outcome event
+  of any kind. A mail whose only event is `unsubscribed` or `spam` has that
+  outcome, so it is not stale.
+- `hours`: an integer from 1 to 720. The default is 2. The value applies to
+  `stale` only.
+- `page`: an integer of 1 or more.
+
+An invalid value gives its default. It never gives an error.
+
+**Count line.** The counts cover all filtered mail, on every page, not only the
+50 rows on the current page.
+
+**Paging.** Each page shows 50 mail. A page number past the last page shows the
+last page.
+
+**Limits.**
+
+- The tab shows only mail accepted inside the retention window. The window is
+  the constant `RETENTION_SENDINBLUE_MESSAGES_DAYS` in `usersc/includes/config.php`,
+  which is 90 days. Older mail does not appear, even when a webhook event names it.
+- An event for an address that no single user holds shows with an outcome and
+  no owner link (#2611). Only mail with a `plg_sendinblue_messages` row gets
+  such an event row. A mail with no event shows No outcome.
+- A mail can show No outcome although Brevo delivered it, when no event was
+  stored (for example, the event never arrived, or it arrived before #2611).
+- The tab joins events on the message ID only. It shows one outcome for each
+  message, not for each recipient.
+- The plugin table has no index that leads with `accepted_at`, so the window
+  query scans `plg_sendinblue_messages`. A recipient filter can use the
+  `recipient_accepted` index. The plugin owns this table, so the Registry does
+  not add an index to it.
+- Owner and car links come only from the chosen event row. A mail with no event
+  has no owner or car link. A `user_id` or `car_id` that is not a positive
+  integer (for example 0, for an address that no single user holds) also
+  gives no link.
+- An old plugin table has no `tags` column. The tab then hides the tag filter.
+
+**Admin only.** Only admins see the tab.
+
+- The tab key is not in `$validTabs` for a non-admin. A request with
+  `tab=email-delivery` opens the default tab.
+- The tab include checks `hasPerm([2])` again.
+
+**No Refresh and no Brevo call.** The tab has no Refresh action. It makes no
+Brevo API call. It reads database rows that already exist.
+
+For a manual check of one mail, open `usersc/plugins/sendinblue/delivery_logs.php`.
+Only master accounts can open it. The plugin directory is outside Git (see
+[Overview](#overview)), so this path is not a link.
+
 ### Address-Match Rule (#2356)
 
 A block or a bounce is tied to the address that caused it. The stored flag
@@ -1930,8 +2131,11 @@ verification switch off.
   treats an event date more than 5 minutes after the run time as missing, and
   uses the run time. It passes that run time to `apply()` as a fallback. The
   Clear Block compare then uses the message time (#2480).
-- **Unmatched events.** The job increments the unmatched recipient counter only
-  for a `car_verification`-tagged event of our mail with no single user.
+- **Unmatched events.** When the message has a plugin row, the job stores one
+  `user_id` 0 row through `EmailEventApplier::recordUnmatched()` (#2611). A
+  write failure counts in `skippedCount`, and the job continues. The job
+  increments the unmatched recipient counter only for a `car_verification`-tagged
+  event of our mail with no single user.
 - **Bad stored data.** A stored value that cannot be parsed (for example a
   zero message time) fails the same way on every run. The job counts the
   event in `skippedCount`, logs the `ExceptionLogSummary`, and continues with

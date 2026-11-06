@@ -1656,7 +1656,11 @@ final class CarRepositoryTest extends TestCase
             $capturedSql,
             'Freshness moved from a 2-year to a 1-year window'
         );
-        $this->assertStringContainsString('ORDER BY cars.last_verified ASC', $capturedSql);
+        $this->assertStringContainsString(
+            'ORDER BY cars.last_verified ASC, cars.id ASC',
+            $capturedSql,
+            'The id tiebreak keeps the send order stable (#2599)'
+        );
         $this->assertStringContainsString(
             'cars.verification_attempts_since IS NULL',
             $capturedSql,
@@ -2184,12 +2188,99 @@ final class CarRepositoryTest extends TestCase
     public static function queueStatusProvider(): array
     {
         return [
-            'all' => ['all'],
             'pending' => ['pending'],
             'bounced' => ['bounced'],
             'blocked' => ['blocked'],
             'opted_out' => ['opted_out'],
+            'invalid_email' => ['invalid_email'],
         ];
+    }
+
+    public function testQueueStatusesAreTheNinePillsInOrder(): void
+    {
+        $this->assertSame(
+            'eligible,next_queue,pending,bounced,blocked,opted_out,verified,sold,invalid_email',
+            implode(',', CarRepository::QUEUE_STATUSES)
+        );
+    }
+
+    /**
+     * Run findVerificationQueue() and return the SQL it sent.
+     */
+    private function queueSql(string $status): string
+    {
+        $capturedSql = null;
+        $db = $this->makeDbMock();
+        $db->expects($this->once())
+            ->method('query')
+            ->willReturnCallback(
+                function (string $sql) use (&$capturedSql, $db): DatabaseInterface {
+                    $capturedSql = $sql;
+                    return $db;
+                }
+            );
+        $db->method('error')->willReturn(false);
+        $db->method('results')->willReturn([]);
+
+        (new CarRepository($db))->findVerificationQueue($status, null, 10);
+
+        $this->assertIsString($capturedSql);
+        return $capturedSql;
+    }
+
+    public function testFindVerificationQueueEligibleUsesTheSendOrderWithIdTiebreak(): void
+    {
+        $this->assertStringContainsString(
+            'ORDER BY cars.last_verified ASC, cars.id ASC',
+            $this->queueSql('eligible')
+        );
+    }
+
+    public function testFindVerificationQueueInvalidEmailHoldsBothPredicatesAndOrdersById(): void
+    {
+        $sql = $this->queueSql('invalid_email');
+        $noProfile = (new \ReflectionMethod(CarRepository::class, 'verificationNoProfileWhereSql'))->invoke(null);
+        $malformed = (new \ReflectionMethod(CarRepository::class, 'verificationMalformedAddressWhereSql'))->invoke(null);
+
+        $this->assertIsString($noProfile);
+        $this->assertIsString($malformed);
+        $this->assertStringContainsString(
+            'WHERE ' . $noProfile . ' OR ' . $malformed . ' ORDER BY cars.id ASC',
+            $sql
+        );
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function rejectedQueueStatusProvider(): array
+    {
+        return [
+            'removed all pill' => ['all'],
+            'next_queue is not queryable here' => ['next_queue'],
+            'unknown' => ['not-a-status'],
+            'empty' => [''],
+        ];
+    }
+
+    #[DataProvider('rejectedQueueStatusProvider')]
+    public function testFindVerificationQueueRejectsAStatusItCannotQuery(string $status): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->never())->method('query');
+
+        $this->expectException(CarValidationException::class);
+        (new CarRepository($db))->findVerificationQueue($status, null, 10);
+    }
+
+    public function testFindVerificationQueueNextQueueErrorNamesFindEligible(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->never())->method('query');
+
+        $this->expectException(CarValidationException::class);
+        $this->expectExceptionMessage('findEligible()');
+        (new CarRepository($db))->findVerificationQueue('next_queue', null, 10);
     }
 
     /**
@@ -2248,7 +2339,7 @@ final class CarRepositoryTest extends TestCase
         );
         $db->method('error')->willReturn(false);
         $db->method('first')->willReturn((object) [
-            'eligible' => 0, 'pending' => 0, 'bounced' => 0, 'blocked' => 0, 'opted_out' => 0, 'all_count' => 0,
+            'eligible' => 0, 'pending' => 0, 'bounced' => 0, 'blocked' => 0, 'opted_out' => 0, 'invalid_email' => 0,
             'verified' => 0, 'sold' => 0,
             'bounced_owners' => 0, 'blocked_owners' => 0, 'opted_out_owners' => 0,
         ]);
@@ -2261,7 +2352,7 @@ final class CarRepositoryTest extends TestCase
         $this->assertStringContainsString(CarRepository::emailFlagActiveSql('email_blocked'), $capturedSql);
         $this->assertSame(
             [
-                'all', 'eligible', 'pending', 'bounced', 'blocked', 'opted_out', 'verified', 'sold',
+                'eligible', 'pending', 'bounced', 'blocked', 'opted_out', 'verified', 'sold', 'invalid_email',
                 'bounced_owners', 'blocked_owners', 'opted_out_owners',
             ],
             array_keys($summary),

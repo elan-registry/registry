@@ -31,13 +31,17 @@ use ElanRegistry\LogCategories;
  *    one that fails `FILTER_VALIDATE_EMAIL`, before any match.
  * 3. {@see EmailEventMatcher::matchByMessageId()} finds the user. A message
  *    that this environment did not send is {@see ProcessingResult::IGNORED},
- *    with no row and no log line.
+ *    with no row and no log line. Our message with no single user is
+ *    {@see ProcessingResult::NO_USER_MATCH}. When the plugin has a row for
+ *    the message, {@see EmailEventApplier::recordUnmatched()} first stores
+ *    the event with no owner (#2611).
  * 4. {@see EmailEventApplier::apply()} records the event and applies the
  *    flag in one transaction. The escalation rules live there, so the
  *    reconciliation job escalates the same way.
  * 5. `sendinblueRecordEvent()` puts the event on the plugin's message row,
  *    when the installed plugin has that function. This step also runs for
- *    an event that matched no user, which has no registry row.
+ *    an event that matched no user. sendinblue 1.8.0 has no such function,
+ *    so there this step does nothing (#2355).
  *
  * A stored value that cannot be parsed (for example a zero message time) is
  * {@see ProcessingResult::MALFORMED}. It fails the same way on every retry.
@@ -188,10 +192,29 @@ final class BrevoWebhookEventProcessor
         }
 
         if ($match->isNoUser()) {
+            $addressHash = EmailEventMatcher::addressLogHash($address);
+            $storeNote = '';
+            if ($match->hasPluginRow()) {
+                try {
+                    $isNewRow = $this->applier->recordUnmatched($match, $address, $event, $reason, $messageId, $occurredAt);
+                } catch (CarDatabaseException $e) {
+                    $this->logFailure('record', $event, $e);
+                    return ProcessingResult::WRITE_FAILURE;
+                } catch (CarValidationException | \InvalidArgumentException $e) {
+                    $this->logDataFault('record', $event, $e, "address hash {$addressHash}");
+                    return ProcessingResult::MALFORMED;
+                }
+                $storeNote = $isNewRow ? '; stored with no owner' : '; already stored with no owner';
+                if ($isNewRow && $timeFallback !== null) {
+                    // The stored time is a guess, so say so, as the matched path does.
+                    $storeNote .= sprintf('; the event had %s; occurred_at is the receipt time', $timeFallback);
+                }
+            }
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
-                'Brevo webhook: event "%s" matched no single user (address hash %s).',
+                'Brevo webhook: event "%s" matched no single user (address hash %s)%s.',
                 $event,
-                EmailEventMatcher::addressLogHash($address)
+                $addressHash,
+                $storeNote
             ));
             $this->recordOnPluginRow($messageId, $event, $occurredAtSeconds, $reason);
             return ProcessingResult::NO_USER_MATCH;
@@ -312,10 +335,11 @@ final class BrevoWebhookEventProcessor
     /**
      * Put the event on the sendinblue plugin's message row, when the plugin can
      *
-     * The plugin function is optional (#2355). A failure here is logged and
-     * never changes the response. The registry's own work for the event is
-     * already done: the applier committed, or the event matched no user and
-     * has no registry row.
+     * The plugin function is optional (#2355). sendinblue 1.8.0 has no
+     * `sendinblueRecordEvent()`, so there this step returns at once and
+     * writes no log line. A failure here is logged and never changes the
+     * response. The registry's own work for the event is already done: the
+     * applier committed, or the event matched no single user.
      */
     private function recordOnPluginRow(string $messageId, string $event, int $occurredAtSeconds, ?string $reason): void
     {

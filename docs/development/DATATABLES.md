@@ -91,6 +91,31 @@ const table = $("#cartable").DataTable({
 - AJAX-based registry link lookup (checks if chassis exists in registry)
 - Custom rendering for "Registry Link" column
 
+### Admin Account Cleanup Tab
+
+**Files**: `app/admin/includes/tab-account_cleanup.php`, `app/admin/assets/js/tab-account-cleanup.js`
+
+- Client-side tables that load their rows by AJAX from
+  `app/api/admin/account-cleanup-data.php`.
+- 10 rows per page. The tab loads the DataTables files itself.
+
+### Admin Verification Tab: Recent Activity
+
+**Files**: `app/admin/includes/tab-verification.php` (`#verificationActivityTable`), `app/admin/assets/js/tab-verification.js`
+
+```javascript
+$("#verificationActivityTable").DataTable({
+  paging: false,
+  searching: false,
+  info: false,
+  order: [[0, "desc"]]
+});
+```
+
+- PHP renders the rows (at most 20). DataTables only adds column sorting.
+- The Time cells sort on a `data-order` timestamp, not on the display text.
+- The tab loads the DataTables files only when the table renders.
+
 ### Backend Data Providers
 
 Two dedicated POST-only endpoints (v2.25.3+, issue #1036):

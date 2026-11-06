@@ -115,6 +115,8 @@ final class BrevoEventPathParityIntegrationTest extends IntegrationTestCase
         if ($this->databaseConnected) {
             foreach ($this->pluginMessageIds as $messageId) {
                 $this->db->query('DELETE FROM plg_sendinblue_messages WHERE message_id = ?', [$messageId]);
+                // An event with no owner is stored with user_id 0 (#2611). The prune test needs an empty table.
+                $this->db->query('DELETE FROM er_email_events WHERE user_id = 0 AND brevo_message_id = ?', [$messageId]);
             }
             $this->db->query(
                 'UPDATE er_verification_settings SET enabled = ?, unmatched_recipient_count = ? WHERE id = 1',
@@ -629,6 +631,48 @@ final class BrevoEventPathParityIntegrationTest extends IntegrationTestCase
                 : $this->repo->effectiveEmailFlags($owner['userId'])->blocked,
             'The flag now applies to the current address'
         );
+    }
+
+    // ------------------------------------------------------------------
+    // An event with no owner (#2611)
+    // ------------------------------------------------------------------
+
+    /** @return list<object> The rows with no owner for one message. */
+    private function unmatchedRows(string $messageId): array
+    {
+        return $this->db->query(
+            'SELECT user_id, car_id, email, event, reason, occurred_at FROM er_email_events
+              WHERE user_id = 0 AND brevo_message_id = ?',
+            [$messageId]
+        )->results();
+    }
+
+    /** The webhook and the reconciliation job store the same row for our message when no user holds the address. */
+    public function testNoOwnerEventGivesTheSameRowOnTheWebhookAndTheReconciliationPath(): void
+    {
+        $email = 'Parity-Nobody-' . uniqid() . '@Example.com';
+        $webhookId = 'noowner-wh-' . uniqid();
+        $jobId = 'noowner-job-' . uniqid();
+        $this->seedPluginRow($webhookId, $email, $this->eventTs - 600);
+        $this->seedPluginRow($jobId, $email, $this->eventTs - 600);
+
+        $this->assertSame(
+            ProcessingResult::NO_USER_MATCH,
+            $this->driveWebhook($email, $webhookId, 'hard_bounce', $this->eventTs)
+        );
+        $this->driveReconciliation($email, $jobId, 'hardBounces', $this->eventTs);
+
+        $fromWebhook = $this->unmatchedRows($webhookId);
+        $fromJob = $this->unmatchedRows($jobId);
+        $this->assertCount(1, $fromWebhook, 'The webhook stores one row');
+        $this->assertCount(1, $fromJob, 'The job stores one row');
+        $this->assertEquals($fromWebhook[0], $fromJob[0], 'Both paths store the same columns');
+        $this->assertSame(0, (int) $fromJob[0]->user_id);
+        $this->assertNull($fromJob[0]->car_id);
+        $this->assertSame(strtolower($email), $fromJob[0]->email);
+        $this->assertSame('hard_bounce', $fromJob[0]->event);
+        $this->assertSame('parity reason', $fromJob[0]->reason);
+        $this->assertSame($this->wall($this->eventTs), $fromJob[0]->occurred_at);
     }
 
     // ------------------------------------------------------------------

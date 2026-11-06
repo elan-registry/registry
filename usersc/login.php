@@ -96,26 +96,18 @@ if (isset($settings->totp) && ($settings->totp > 1)) {
 // Say that plainly instead of repeating "invalid code" forever; backup codes
 // are hashed rather than encrypted, so they still work as a way in.
 $totpUnavailableMsg = '';
-if ($totpHandler && method_exists($totpHandler, 'encryptionAvailable') && !$totpHandler->encryptionAvailable()) {
+if ($totpHandler && !$totpHandler->encryptionAvailable()) {
     $totpUnavailableMsg = 'Two-factor authentication is temporarily unavailable due to a server configuration problem. Please use a backup code or contact the site administrator.';
 }
 
-// ER START: UserSpice version guards
 // UserSpice 6.1.7 counts a login only after TOTP passes, via User::recordLogin().
-// Before 6.1.7, loginEmail() counted the login itself at the password step,
-// so on such a host there is nothing left to record here.
 $recordCompletedLogin = static function (User $loginUser, int|string|null $userId = null): void {
-    if (method_exists($loginUser, 'recordLogin')) {
-        $loginUser->recordLogin($userId);
-    }
+    $loginUser->recordLogin($userId);
 };
-// reauthClearConfirmed() is new in 6.1.7. Older hosts keep their old behavior.
 $clearReauthConfirmation = static function (): void {
-    if (function_exists('reauthClearConfirmed')) {
-        reauthClearConfirmed();
-    }
+    // @phpstan-ignore function.notFound (UserSpice helper in users/helpers/us_helpers.php; PHPStan does not scan users/.)
+    reauthClearConfirmed();
 };
-// ER END
 
 // Check for pending TOTP verification state
 $awaitingTOTP = false;

@@ -6,6 +6,8 @@ require_once __DIR__ . '/../IntegrationTestCase.php';
 
 use ElanRegistry\Car\Car;
 use ElanRegistry\Car\CarRepository;
+use ElanRegistry\Car\MailKind;
+use ElanRegistry\Car\SendPolicy;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -32,6 +34,15 @@ final class CarRepositoryEmailEventReadersTest extends IntegrationTestCase
 
         $this->repo = new CarRepository($this->db);
         $this->ownerId = $this->createTestUser([], true);
+    }
+
+    protected function tearDown(): void
+    {
+        if ($this->databaseConnected) {
+            // Rows with no owner (#2611) belong to no test user. The prune test needs an empty table.
+            $this->db->query("DELETE FROM er_email_events WHERE user_id = 0 AND brevo_message_id LIKE 'iso2611-%'");
+        }
+        parent::tearDown();
     }
 
     private function newCar(int $userId): int
@@ -253,5 +264,86 @@ final class CarRepositoryEmailEventReadersTest extends IntegrationTestCase
             $this->assertSame('delivered', $result[$carB]->event, "{$reader}: the delivered for car B's message must show on car B");
             $this->assertSame('brevo-m-y', $result[$carB]->brevo_message_id, $reader);
         }
+    }
+    /**
+     * #2611: a row with no owner (user_id 0) changes no flag, no send decision, no soft-bounce
+     * count, no dashboard chip and no summary count, also when two users share the event address.
+     */
+    public function testRowsWithNoOwnerForASharedAddressChangeNothingForEitherUser(): void
+    {
+        $shared = 'iso2611-' . uniqid() . '@example.com';
+        $userA = $this->createTestUser(['email' => $shared], true);
+        $userB = $this->createTestUser(['email' => $shared], true);
+        $this->db->query('UPDATE profiles SET email_address_since = ? WHERE user_id IN (?, ?)', ['2000-01-01 00:00:00', $userA, $userB]);
+        $carA = $this->createTestCar($userA, ['email' => $shared]);
+        $carB = $this->createTestCar($userB, ['email' => $shared]);
+        $this->insertEvent($userA, $carA, 'sent', 'iso2611-sent-a', '2026-05-10 10:00:00');
+        $this->insertEvent($userB, $carB, 'sent', 'iso2611-sent-b', '2026-05-10 10:00:00');
+        $policy = new SendPolicy($this->repo);
+
+        $snapshot = fn (): array => [
+            'flags' => [
+                $userA => $this->repo->effectiveEmailFlags($userA),
+                $userB => $this->repo->effectiveEmailFlags($userB),
+            ],
+            'profiles' => $this->db->query(
+                'SELECT user_id, email_opted_out, email_blocked, email_blocked_address, email_blocked_at, email_blocked_cause,
+                        email_bounced, email_bounced_address, email_bounced_at
+                   FROM profiles WHERE user_id IN (?, ?) ORDER BY user_id',
+                [$userA, $userB]
+            )->results(),
+            'decisions' => [
+                $policy->forUser(MailKind::Verification, $userA),
+                $policy->forUser(MailKind::Verification, $userB),
+                $policy->forAddress(MailKind::Verification, $shared),
+            ],
+            'flagChanges' => [
+                count($this->repo->recentFlagChanges($userA, 50)),
+                count($this->repo->recentFlagChanges($userB, 50)),
+            ],
+            'softBounces' => [
+                $this->repo->countSoftBouncesSinceLastDelivered($userA, $shared),
+                $this->repo->countSoftBouncesSinceLastDelivered($userB, $shared),
+            ],
+            'summary' => $this->repo->countVerificationSummary(null),
+        ];
+        $before = $snapshot();
+        $this->assertSame(0, $before['softBounces'][0], 'Setup: no soft bounce yet');
+
+        // Three soft bounces would reach the escalation threshold, so they must not count for anyone.
+        foreach (['hard_bounce', 'spam', 'unsubscribed', 'soft_bounce'] as $index => $event) {
+            $this->insertEvent(0, null, $event, 'iso2611-' . $index, '2026-05-10 11:0' . $index . ':00');
+        }
+        foreach (['iso2611-s2', 'iso2611-s3'] as $index => $messageId) {
+            $this->insertEvent(0, null, 'soft_bounce', $messageId, '2026-05-10 12:0' . $index . ':00');
+        }
+        // The insert used the shared address in the e-mail column of the helper, so set it for the rows with no owner.
+        $this->db->query("UPDATE er_email_events SET email = ? WHERE user_id = 0 AND brevo_message_id LIKE 'iso2611-%'", [$shared]);
+        $stored = (int) $this->db->query(
+            "SELECT COUNT(*) AS cnt FROM er_email_events WHERE user_id = 0 AND email = ? AND brevo_message_id LIKE 'iso2611-%'",
+            [$shared]
+        )->first()->cnt;
+        $this->assertSame(6, $stored, 'Setup: the rows with no owner are stored');
+
+        $this->assertEquals($before, $snapshot(), 'Rows with no owner change no flag, decision, count or summary');
+        foreach ($this->bothReaders([$carA, $carB]) as $reader => $result) {
+            $this->assertCount(2, $result, "{$reader}: one chip for each car");
+            foreach ([$carA, $carB] as $carId) {
+                $this->assertSame('sent', $result[$carId]->event, "{$reader}: a row with no owner must not change the chip of car {$carId}");
+                $this->assertSame(
+                    $carId === $carA ? 'iso2611-sent-a' : 'iso2611-sent-b',
+                    $result[$carId]->brevo_message_id,
+                    "{$reader}: the chip of car {$carId} is its own sent row, not a row with no owner"
+                );
+            }
+        }
+
+        // Control: the same soft-bounce rows under the real user are counted. Without this the checks above could pass on a dead query.
+        foreach (['iso2611-c1', 'iso2611-c2'] as $index => $messageId) {
+            $this->insertEvent($userA, null, 'soft_bounce', $messageId, '2026-05-10 13:0' . $index . ':00');
+        }
+        $this->db->query("UPDATE er_email_events SET email = ? WHERE user_id = ? AND brevo_message_id LIKE 'iso2611-c%'", [$shared, $userA]);
+        $this->assertSame(2, $this->repo->countSoftBouncesSinceLastDelivered($userA, $shared), 'Control: rows of the real user count');
+        $this->assertSame(0, $this->repo->countSoftBouncesSinceLastDelivered($userB, $shared), 'Control: the other user still has none');
     }
 }

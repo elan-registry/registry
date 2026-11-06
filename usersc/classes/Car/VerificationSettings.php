@@ -48,7 +48,7 @@ final class VerificationSettings
     private const SETTINGS_ROW_ID = 1;
 
     /**
-     * Smallest batch size {@see setBatchSize()} will persist and {@see batchSize()} will return.
+     * Smallest batch size {@see setBatchSize()} will persist and {@see batchSizeOrNull()} will return.
      *
      * A batch of zero or fewer is not "sending paused" — pausing is what the
      * feature switch and the cron job's own enable flag are for — it is a
@@ -58,18 +58,13 @@ final class VerificationSettings
     private const BATCH_SIZE_MIN = 1;
 
     /**
-     * Largest batch size {@see setBatchSize()} will persist and {@see batchSize()} will return.
+     * Largest batch size {@see setBatchSize()} will persist and {@see batchSizeOrNull()} will return.
      *
      * The verification programme deliberately sends in small batches to protect
      * sender reputation (#1922); 25 is the ceiling an admin can reach from the
      * dashboard without a code change.
      */
     private const BATCH_SIZE_MAX = 25;
-
-    /**
-     * Batch size {@see batchSize()} returns when the settings row is missing or unreadable.
-     */
-    private const BATCH_SIZE_DEFAULT = 5;
 
     /**
      * Minutes to fall back to for {@see cronStaleAfterSeconds()} if
@@ -132,7 +127,7 @@ final class VerificationSettings
      * class runs the same three steps — issue the scoped single-row SELECT,
      * check `error()`, check the returned row is an object carrying the column —
      * but each one then applies a *different* fail-closed policy on top:
-     * a different sentinel (`false`, `5`, `null`), a different amount of extra
+     * a different sentinel (`false`, `null`), a different amount of extra
      * validation (numeric range, date parsing), and a different log wording.
      * This helper owns only the part that is genuinely identical, and hands the
      * caller back a bare `null` for "could not read it" so the caller can apply
@@ -149,15 +144,19 @@ final class VerificationSettings
      * by hand-rolling the query again.
      *
      * The two failure modes return the same `null` but are distinguishable via
-     * `$queryFailed`, set by reference. Every caller uses it to decide whether
-     * to add its own row-shape warning line, since the query-error line has
-     * already been written by then and this class has always logged exactly
-     * one line per failed read. {@see isEnabledOrNull()} and
-     * {@see batchSizeOrNull()} also use it to return null for a failed query
-     * and a default for a missing row. Reporting it out here
+     * `$queryFailed`, set by reference. A caller that adds its own row-shape
+     * warning line uses it to skip that line after a failed query, since the
+     * query-error line has already been written by then and this class has
+     * always logged exactly one line per failed read. Reporting it out here
      * rather than having callers re-check `$this->db->error()` keeps the answer
      * tied to the read that produced it instead of to whatever state the
      * connection happens to be in afterwards.
+     *
+     * `$rowMissing` is the second out-parameter. It tells a missing `id = 1`
+     * row from a row whose column is NULL. Only {@see cronStateOrNull()} needs
+     * it: a NULL `last_cron_request_at` means "cron never ran", but a missing
+     * row means the value is unreadable. The other reads treat both as
+     * unreadable, so they ignore it.
      *
      * @param string $column Column to select. Interpolated into the SQL, so it
      *                       must be a hard-coded identifier from this class —
@@ -180,17 +179,25 @@ final class VerificationSettings
      *                               absent or NULL. Accepts null purely so an
      *                               uninitialised local can be passed in; it is
      *                               always a bool on the way out.
+     * @param bool|null $rowMissing Set by reference to true when the query
+     *                              succeeded but returned no `id = 1` row,
+     *                              false otherwise (also false when the query
+     *                              failed). Accepts null for the same reason
+     *                              as `$queryFailed`.
      * @param-out bool $queryFailed
+     * @param-out bool $rowMissing
      * @return mixed The raw column value, or null if the query failed or the
      *               row/column was absent. A stored NULL also reads back as
-     *               null, which every caller already treats as unreadable.
+     *               null. Only `$rowMissing` tells it from a missing row.
      */
     private function readSettingsColumn(
         string $column,
         ?string $errorSubject = null,
-        ?bool &$queryFailed = null
+        ?bool &$queryFailed = null,
+        ?bool &$rowMissing = null
     ): mixed {
         $queryFailed = false;
+        $rowMissing  = false;
 
         $this->db->query(
             sprintf('SELECT %s FROM er_verification_settings WHERE id = ?', $column),
@@ -211,8 +218,12 @@ final class VerificationSettings
         }
 
         $row = $this->db->first();
+        if (!is_object($row)) {
+            $rowMissing = true;
+            return null;
+        }
 
-        return is_object($row) && isset($row->$column) ? $row->$column : null;
+        return isset($row->$column) ? $row->$column : null;
     }
 
     /**
@@ -267,6 +278,19 @@ final class VerificationSettings
     }
 
     /**
+     * One warning text for a missing settings row, shared by the OrNull reads
+     */
+    private function logRowMissing(string $setting): void
+    {
+        $this->logWarning(sprintf(
+            'er_verification_settings row id=%d is missing — reporting the %s '
+            . 'as unreadable. Re-run `composer migrate` to reseed the row.',
+            self::SETTINGS_ROW_ID,
+            $setting
+        ));
+    }
+
+    /**
      * Clamp a batch size to `[BATCH_SIZE_MIN, BATCH_SIZE_MAX]`
      *
      * The write and the read share this one range rule.
@@ -307,7 +331,7 @@ final class VerificationSettings
      * rather than throwing. This is the read path consulted on every page that
      * renders verification UI, and a database hiccup should hide the feature,
      * not break the page. A caller that must not show `false` as fact after a
-     * failed query uses {@see isEnabledOrNull()}.
+     * failed query or a missing row uses {@see isEnabledOrNull()}.
      *
      * @return bool True if verification is enabled
      */
@@ -317,17 +341,17 @@ final class VerificationSettings
     }
 
     /**
-     * Whether the car verification system is switched on, or null when the query failed
+     * Whether the car verification system is switched on, or null when the switch is unreadable
      *
-     * For the admin Verification tab, which must show "Unavailable" and not a
-     * guessed "off" when the settings query fails. UserSpice `DB::query()`
-     * reports a failed execute through `error()` and does not throw, so a
-     * caller cannot see that failure through {@see isEnabled()}.
+     * For the admin Verification tab and the send job, which must not treat
+     * an unreadable switch as "off". Unreadable means a failed query or a
+     * missing `id = 1` row. Each logs one VerificationConfigWarning line.
+     * UserSpice `DB::query()` reports a failed execute through `error()` and
+     * does not throw, so a caller cannot see that failure through
+     * {@see isEnabled()}.
      *
-     * A missing row is not a query failure. It returns `false` and logs a
-     * warning, the same as {@see isEnabled()}.
-     *
-     * @return bool|null True if verification is enabled, or null if the query failed
+     * @return bool|null True if verification is enabled, or null if the
+     *                   query failed or the row is missing
      */
     public function isEnabledOrNull(): ?bool
     {
@@ -344,57 +368,34 @@ final class VerificationSettings
             // The migration seeds id=1 and nothing in the app ever deletes it,
             // so an absent row means the migration part-applied or the table
             // was truncated/restored incompletely — a schema problem, not
-            // "switched off". Fail closed, but never silently: an admin trying
-            // to enable verification here would otherwise see a misleading
+            // "switched off". Never silent: an admin trying to enable
+            // verification here would otherwise see a misleading
             // Brevo-related rejection with no clue the real fault is a missing
             // settings row.
-            $this->logWarning(sprintf(
-                'er_verification_settings row id=%d is missing — reporting verification OFF '
-                . 'as a fail-closed default. Re-run `composer migrate` to reseed the row.',
-                self::SETTINGS_ROW_ID
-            ));
-            return false;
+            $this->logRowMissing('verification switch');
+            return null;
         }
 
         return (bool) $enabled;
     }
 
     /**
-     * Number of verification emails the admin manual-send tool sends per batch
+     * Configured batch size, or null when the batch size is unreadable
      *
-     * Fails closed: a missing settings row or a failed query reports the default
-     * of 5 rather than throwing. This is the read path consulted by the send
-     * job and the admin send handler, and a database hiccup should fall back to
-     * a conservative batch size, not break the job or the page. A caller that
-     * must not show 5 as fact after a failed query uses
-     * {@see batchSizeOrNull()}.
+     * For the admin Verification tab and the send paths. The tab's editable
+     * Batch size field must not show the default 5 for an unreadable value,
+     * because a Save would then write 5 over the real setting (#2457).
+     * Unreadable means a failed query or a missing `id = 1` row. Each logs
+     * one VerificationConfigWarning line. There is no read with a default:
+     * a guessed batch size is not the admin's setting.
      *
      * {@see self::setBatchSize()} clamps to `[1, 25]` before it writes, but a
      * direct database write (a test fixture, a manual edit) can bypass it. The
      * read clamps to the same range too, so no caller ever sends more than 25
      * emails in one batch. An out-of-range stored value logs a warning.
      *
-     * @return int Configured batch size in `[1, 25]`, or 5 if it could not be read
-     */
-    public function batchSize(): int
-    {
-        return $this->batchSizeOrNull() ?? self::BATCH_SIZE_DEFAULT;
-    }
-
-    /**
-     * Configured batch size, or null when the query failed
-     *
-     * For the admin Verification tab. Its editable Batch size field must not
-     * show the default 5 after a failed query, because a Save would then
-     * write 5 over the real setting (#2457). UserSpice `DB::query()` reports
-     * a failed execute through `error()` and does not throw, so a caller
-     * cannot see that failure through {@see batchSize()}.
-     *
-     * A missing row is not a query failure. It returns the default of 5 and
-     * logs a warning, the same as {@see batchSize()}.
-     *
-     * @return int|null Configured batch size in `[1, 25]`, 5 if the row is
-     *                  missing, or null if the query failed
+     * @return int|null Configured batch size in `[1, 25]`, or null if the
+     *                  query failed or the row is missing
      */
     public function batchSizeOrNull(): ?int
     {
@@ -407,15 +408,9 @@ final class VerificationSettings
 
         if ($batchSize === null) {
             // Same rationale as isEnabledOrNull(): an absent row is a schema
-            // problem, not "no batch size configured". Fail closed to the
-            // default, but never silently.
-            $this->logWarning(sprintf(
-                'er_verification_settings row id=%d is missing — reporting default batch '
-                . 'size of %d. Re-run `composer migrate` to reseed the row.',
-                self::SETTINGS_ROW_ID,
-                self::BATCH_SIZE_DEFAULT
-            ));
-            return self::BATCH_SIZE_DEFAULT;
+            // problem, not "no batch size configured". Never silent.
+            $this->logRowMissing('batch size');
+            return null;
         }
 
         $stored = (int) $batchSize;
@@ -731,6 +726,8 @@ final class VerificationSettings
      * Never throws: no recorded cron request at all, an unreadable/zero-date
      * column value, or a missing `CRON_TRANSPORT_INTERVAL_MINUTES` (see
      * {@see cronStaleAfterSeconds()}) all report "not ready" rather than raising.
+     * A caller that must tell "unreadable" from "never ran" uses
+     * {@see cronStateOrNull()}.
      *
      * @return bool True if {@see lastCronRequestAt()} reports a timestamp less
      *              than twice the cron transport interval ago
@@ -738,10 +735,80 @@ final class VerificationSettings
     public function cronReady(): bool
     {
         $lastRequest = $this->lastCronRequestAt();
-        if ($lastRequest === null) {
-            return false;
+
+        return $lastRequest !== null && $this->cronRequestIsFresh($lastRequest);
+    }
+
+    /**
+     * Cron readiness and the last cron request time from one read, or null when unreadable
+     *
+     * For the admin Verification tab, which must not say "no cron request has
+     * ever been logged" when it could not read the timestamp. One query gives
+     * both values, so the readiness and the time cannot disagree.
+     *
+     * - Row present, column NULL or empty: cron never ran. Returns
+     *   `{ready: false, lastRequestAt: null}` and logs nothing.
+     * - Failed query or missing `id = 1` row: returns null and logs one
+     *   VerificationConfigWarning line.
+     * - Zero-date, unparseable or non-scalar value: returns null and logs one
+     *   "Unparseable" line. {@see lastCronRequestAt()} reports these as
+     *   "never ran", but a corrupt value is not proof that cron never ran.
+     *
+     * `ready` uses the same rule as {@see cronReady()}.
+     *
+     * Unlike {@see lastCronRequestAt()}, this read logs a failed query. Only
+     * the Verification tab calls it, so a DB fault writes one line per tab
+     * view, not one line per admin page.
+     *
+     * @return array{ready: bool, lastRequestAt: ?DateTimeImmutable}|null The
+     *         cron state, or null if it could not be read
+     */
+    public function cronStateOrNull(): ?array
+    {
+        $raw = $this->readSettingsColumn(
+            'last_cron_request_at',
+            queryFailed: $queryFailed,
+            rowMissing: $rowMissing
+        );
+
+        if ($queryFailed) {
+            // The helper has already logged the query error.
+            return null;
         }
 
+        if ($rowMissing) {
+            $this->logRowMissing('cron state');
+            return null;
+        }
+
+        if ($raw === null || $raw === '') {
+            return ['ready' => false, 'lastRequestAt' => null];
+        }
+
+        if (!is_scalar($raw)) {
+            $this->logWarning(sprintf(
+                'Unparseable last_cron_request_at: non-scalar %s value',
+                get_debug_type($raw)
+            ));
+            return null;
+        }
+
+        $lastRequest = $this->parseCronRequestTimestamp((string) $raw);
+        if ($lastRequest === null) {
+            return null;
+        }
+
+        return ['ready' => $this->cronRequestIsFresh($lastRequest), 'lastRequestAt' => $lastRequest];
+    }
+
+    /**
+     * True when a cron request time is younger than {@see cronStaleAfterSeconds()}
+     *
+     * {@see cronReady()} and {@see cronStateOrNull()} share this one rule, so
+     * the two cannot report different readiness for the same timestamp.
+     */
+    private function cronRequestIsFresh(DateTimeImmutable $lastRequest): bool
+    {
         $elapsedSeconds = time() - $lastRequest->getTimestamp();
 
         return $elapsedSeconds < $this->cronStaleAfterSeconds();
@@ -883,6 +950,10 @@ final class VerificationSettings
      * construction: there is no write path by which a denied hit could ever
      * reach this column, so no filter is needed to exclude one.
      *
+     * Collapses "never ran" and "unreadable" into null, and stays silent on a
+     * failed query or a missing row. A caller that must tell the two apart
+     * uses {@see cronStateOrNull()}.
+     *
      * @return DateTimeImmutable|null When cron last ran, or null if it never has
      *                                (or the timestamp could not be read)
      */
@@ -902,8 +973,21 @@ final class VerificationSettings
             return null;
         }
 
-        $value = (string) $raw;
+        return $this->parseCronRequestTimestamp((string) $raw);
+    }
 
+    /**
+     * Parse a stored `last_cron_request_at` value, or null with one warning when it is unparseable
+     *
+     * {@see lastCronRequestAt()} and {@see cronStateOrNull()} share this
+     * parse, so both log the same "Unparseable" line for the same value.
+     *
+     * @param string $value The non-empty stored column value
+     * @return DateTimeImmutable|null The parsed time, or null if the value is
+     *                                a zero-date or does not parse
+     */
+    private function parseCronRequestTimestamp(string $value): ?DateTimeImmutable
+    {
         // MySQL's zero-date ('0000-00-00 00:00:00') does not throw when passed
         // to DateTimeImmutable's constructor — it silently parses to a bogus
         // year -1 date instead, which would otherwise slip past the catch

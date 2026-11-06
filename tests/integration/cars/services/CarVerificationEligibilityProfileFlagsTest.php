@@ -123,17 +123,17 @@ final class CarVerificationEligibilityProfileFlagsTest extends IntegrationTestCa
         $this->assertNotContains($carId, $this->allVerificationEligibleCarIds(), 'No profiles row means do not mail');
     }
 
-    public function testOwnerWithNoProfileRowShowsAsNoProfileInTheAllQueue(): void
+    public function testOwnerWithNoProfileRowShowsAsNoProfileInTheInvalidEmailQueue(): void
     {
         $ownerId = $this->createTestUser();
         $carId = $this->createEligibleCar($ownerId);
 
         $rows = array_values(array_filter(
-            $this->repo->findVerificationQueue('all', null, PHP_INT_MAX),
+            $this->repo->findVerificationQueue('invalid_email', null, PHP_INT_MAX),
             static fn (object $row): bool => (int) $row->id === $carId
         ));
 
-        $this->assertCount(1, $rows, 'The car must be in the all queue so that an admin can see it');
+        $this->assertCount(1, $rows, 'The car must be in the Invalid email queue so that an admin can see it');
         $this->assertSame(0, (int) $rows[0]->has_profile);
         $this->assertSame(0, (int) $rows[0]->email_opted_out);
         $this->assertSame(0, (int) $rows[0]->email_blocked_active);
@@ -345,10 +345,9 @@ final class CarVerificationEligibilityProfileFlagsTest extends IntegrationTestCa
         $this->assertNull($this->queueRow('pending', $carId), 'The car does not show as Pending');
         $this->assertSame($before['pending'], $after['pending'], 'The Pending count does not include the car');
         $this->assertSame($before[$pill] + 1, $after[$pill], "The {$pill} count includes the car");
-        $this->assertNotNull($this->queueRow($pill, $carId), "The car shows under the {$pill} pill");
-        $row = $this->queueRow('all', $carId);
-        $this->assertNotNull($row, 'The car is in the all queue');
-        $this->assertSame(1, (int) $row->{'email_' . $flag . '_active'}, "The all row marks the {$flag} flag as active");
+        $row = $this->queueRow($pill, $carId);
+        $this->assertNotNull($row, "The car shows under the {$pill} pill");
+        $this->assertSame(1, (int) $row->{'email_' . $flag . '_active'}, "The {$pill} row marks the {$flag} flag as active");
     }
 
     /** @return array<string, array{string}> */
@@ -428,7 +427,7 @@ final class CarVerificationEligibilityProfileFlagsTest extends IntegrationTestCa
     }
 
     /**
-     * Queue rows (the `all` queue): the `_active` columns follow the match,
+     * Queue rows (read through the bounced, then the opted out queue): the `_active` columns follow the match,
      * the opt-out column does not. The owner and the car both move to the
      * new address. The blocked and bounced pills use the
      * same predicate. The opted out pill does not follow the address.
@@ -441,8 +440,8 @@ final class CarVerificationEligibilityProfileFlagsTest extends IntegrationTestCa
         $this->setOwnerBounced($ownerId, self::OWNER_EMAIL);
         $this->setOwnerOptedOut($ownerId);
 
-        $row = $this->queueRow('all', $carId);
-        $this->assertNotNull($row, 'Test setup: the car is in the all queue');
+        $row = $this->queueRow('bounced', $carId);
+        $this->assertNotNull($row, 'Test setup: the car is in the bounced queue');
         $this->assertSame([1, 1, 1], [(int) $row->email_blocked_active, (int) $row->email_bounced_active, (int) $row->email_opted_out]);
         $this->assertNotNull($this->queueRow('bounced', $carId), 'The bounced pill holds the car while the bounce applies');
         $this->assertNotNull($this->queueRow('blocked', $carId), 'The blocked pill holds the car while the block applies');
@@ -452,8 +451,8 @@ final class CarVerificationEligibilityProfileFlagsTest extends IntegrationTestCa
         $this->setUserEmailRaw($ownerId, $moved);
         $this->setCarEmailRaw($carId, $moved);
 
-        $row = $this->queueRow('all', $carId);
-        $this->assertNotNull($row, 'The opted-out car stays in the all queue');
+        $row = $this->queueRow('opted_out', $carId);
+        $this->assertNotNull($row, 'The opted-out car stays in the opted out queue');
         $this->assertSame(
             [0, 0, 1],
             [(int) $row->email_blocked_active, (int) $row->email_bounced_active, (int) $row->email_opted_out],
@@ -481,7 +480,7 @@ final class CarVerificationEligibilityProfileFlagsTest extends IntegrationTestCa
         $this->setFlagColumnOnly($ownerId, 'email_bounced');
         $this->setUserEmailRaw($ownerId, 'moved-' . uniqid() . '@example.com');
 
-        $row = $this->queueRow('all', $carId);
+        $row = $this->queueRow('blocked', $carId);
         $this->assertNotNull($row);
         $this->assertSame(1, (int) $row->email_blocked_active);
         $this->assertSame(1, (int) $row->email_bounced_active);

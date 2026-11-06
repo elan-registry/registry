@@ -25,6 +25,8 @@ These files are the source of truth for PHP rules:
   `(new Owner($userId))->data()`.
 - For schema changes, write a migration with the FIX script pattern. See
   `FIX_SCRIPTS.md`.
+- A script that opens its own PDO connection must set the PHP zone and the
+  MySQL session zone. See `docs/development/DATABASE.md`, "Time zone".
 
 ## When you simplify code
 

@@ -26,6 +26,7 @@ Use this table to choose the right class for your task:
 | Verification codes, verification timestamps, email-bounce tracking | CarVerificationManager | Business-logic layer over CarRepository; validates and throws rather than returning falsy on failure | `(new CarVerificationManager($repo))->generateVerificationCode()` |
 | Create database backups | BackupManager | SQL dump creation, verification, and retention cleanup | `$backup = new BackupManager(...)` |
 | Decode car images | CarImageProcessor | Decodes the `cars.image` JSON array into usable entries | `$processor->decodeAndProcessImages($car->image, ...)` |
+| Decide which names an upload save keeps in `cars.image` | CarImageProcessor | Static, no DB. Keeps names this request generated (`isValidFilename()`) and names already stored for the car (`isSafeFilename()`), in the requested order. Returns the other names as `dropped` for the caller to log | `CarImageProcessor::resolveUploadOrder($order, $newNames, $storedNames)` |
 | Remove one image from a car | Car / CarImageProcessor | CAS-guarded single-filename removal; throws on concurrent modification. Pass `true` when the owner removes it, to reset `owner_last_updated` | `$car->removeImage($filename, $isOwnerInitiated)` |
 | Remove multiple images from a car | Car / CarImageProcessor | CAS-guarded bulk removal; returns `['updated' => bool, 'casConflict' => bool]` instead of throwing, for callers (e.g. `mvTmpImages()`'s move-failure cleanup) that already have their own error-reporting path | `$car->removeImages($filenames)` |
 | Decide which status badges (Sold, Verified, New) a car shows | CarBadges | One definition of the badges and the rule that picks them, for the account page and the cars list | `CarBadges::forCar($car->data())` |
@@ -44,6 +45,7 @@ The Elan Registry uses namespaces to organize classes by their architectural rol
 | **(root)** | Entity classes (domain objects) | `/usersc/classes/` | Car, Owner |
 | `ElanRegistry\Exceptions` | Custom exception types | `/usersc/classes/Exceptions/` | CarNotFoundException, CarValidationException |
 | `ElanRegistry\Retention` | Retention rules for the daily purge | `/usersc/classes/Retention/` | RetentionRule, RetentionPolicy, RetentionResult, SendinblueMessagesRetentionRule, DeletedUserAddressesBacklogRule |
+| `ElanRegistry\Database` | Database connection setup | `/usersc/classes/Database/` | SessionTimeZone |
 | `ElanRegistry\Reference` | **External reference data** | `/usersc/classes/Reference/` | CarModel |
 
 ### Reference Data vs. Entity Classes
@@ -729,6 +731,12 @@ to provide a focused, testable data access layer wrapping the `cars`,
   fallback ID (`local:` and the SHA-256 of the new vericode). Returns MySQL's
   `rowCount()`: 1 for a new row, 0 for a duplicate or when no row is written
   (#1887, #2358, #2359)
+- `insertUnmatchedEmailEvent(string $email, string $event, ?string $reason, string $messageId, string $occurredAt): int` -
+  Record an event of our mail when no single user holds the address (#2611).
+  It writes `user_id` 0 and `car_id` NULL through `upsertEmailEvent()`, so the
+  unique key `(user_id, brevo_message_id, event)` stops a resent event.
+  Returns 1 for a new row and 0 for a duplicate. Throws `CarDatabaseException`
+  on a database error. `EmailEventApplier::recordUnmatched()` calls it
 - `insertOwnerEmailEvent(int $userId, string $email, string $event, ?string $reason, string $messageId, string $occurredAt, ?int $carId = null): int` -
   Record a webhook, reconciliation or suppression-import event for an owner
   (#2358). `$carId` is the car of the matched verification `sent` row (a step
@@ -899,11 +907,9 @@ to provide a focused, testable data access layer wrapping the `cars`,
   where the SQL form uses MySQL's `NOW()`. First production caller is the admin
   user-view's "Verification & Email" card (`usersc/plugins/hooker/hooks/user_form_hook.php`,
   #1924), which renders per-car Verified/Unverified badges from it. Both clocks
-  must resolve to the same timezone or the two forms can disagree at the
-  one-year boundary from skew alone. Sharing a host does **not** guarantee
-  this: `users/init.php` pins PHP to `America/Los_Angeles` on every web
-  request, while MySQL follows its own `time_zone`, so agreement must be
-  verified per environment. Validates **both** operands before comparing —
+  use Pacific wall time: `users/init.php` sets PHP to `America/Los_Angeles`,
+  and `SessionTimeZone::apply()` sets the MySQL session to the same zone.
+  See `DATABASE.md`, "Time zone". Validates **both** operands before comparing —
   deliberately not short-circuiting on a fresh `$ownerLastUpdated` — and throws
   `CarValidationException` if either is empty, malformed, or not a real
   calendar date (`2026-02-30` is rejected rather than rolled over to March 2),
@@ -944,10 +950,12 @@ to provide a focused, testable data access layer wrapping the `cars`,
   window. `freshnessCutoff()` and the Verified badge tooltip
   (`CarBadges::verifiedTooltip()`) use it. `freshnessSql()` writes the same
   window as `INTERVAL 1 YEAR`; a unit test pins the two together.
-- `QUEUE_STATUSES` - Public constant, `['all', 'eligible', 'pending',
-  'bounced', 'blocked', 'opted_out', 'verified', 'sold']`. The statuses
-  `findVerificationQueue()` accepts. Public so the admin dashboard can check
-  a `?status=` URL value against the same list (#1896).
+- `QUEUE_STATUSES` - Public constant, `['eligible', 'next_queue',
+  'pending', 'bounced', 'blocked', 'opted_out', 'verified', 'sold',
+  'invalid_email']`. The pills render in this order. The list is the
+  allow-list for the `?status=` URL value, so the admin dashboard can check
+  a value against it (#1896, #2599). `findVerificationQueue()` accepts every
+  entry except `next_queue`.
 - `findVerificationStateByOwner(int $ownerId): array` - Per-car verification state for
   every car a user owns (`id`, `model`, `series`, `variant`, `year`, `email`,
   `owner_last_updated`, `last_verified`), ordered `model, year`. The rows hold car columns only. For
@@ -982,9 +990,12 @@ to provide a focused, testable data access layer wrapping the `cars`,
   `^[^@[:space:]]+@[^@[:space:]]+[.][^@[:space:]]+$`. It is a shape check, not full RFC validation.
   Brevo rejects a malformed address with HTTP 400. A failed send does not increment
   `verification_attempts`, so the car would return in every batch.
+  The order is `cars.last_verified ASC` (NULL first), then `cars.id ASC`
+  (#2599). The id tiebreak makes the order the same on every query. The send
+  and the Eligible view use this order.
 - `countVerificationSummary(?int $windowDays): array` - Count cars in each
-  verification dashboard state: `all`, `eligible`, `pending`, `bounced`,
-  `blocked`, `opted_out`, `verified`, `sold`, and count owners for the three
+  verification dashboard state: `eligible`, `pending`, `bounced`,
+  `blocked`, `opted_out`, `verified`, `sold`, `invalid_email`, and count owners for the three
   owner cards: `bounced_owners`, `blocked_owners`, `opted_out_owners`. Backs
   the admin dashboard's summary cards and filter-pill counts (#1896, #2361).
   The pills show the car counts. The Bounced, Blocked and Opted out cards show
@@ -992,13 +1003,12 @@ to provide a focused, testable data access layer wrapping the `cars`,
   cars counts once. `eligible`, `pending`, `bounced`, `blocked` and
   `opted_out` are current state; `verified` and `sold` count distinct
   existing cars with a matching `cars_hist` row in the `$windowDays` window
-  (`null` for all time). `all` counts distinct cars that are eligible,
-  pending, bounced, blocked or opted out — it excludes verified and sold, since
-  those are history, not a queue state. One owner can have more than one flag,
-  so `all` can be less than the sum of the pills. `all` also counts the unsold cars of a live owner
-  (not `noowner`) who has no `profiles` row, so the queue shows them as "No profile". The same applies to the unsold cars of a live owner
-  (not `noowner`) whose address is not NULL, not empty, and not well formed
-  (#2594). The queue shows them as "Invalid email". `bounced` and
+  (`null` for all time). The result has no `all` key (#2599).
+  `invalid_email` counts the unsold cars of a live owner (not `noowner`) who
+  have no `profiles` row, or whose address is not NULL, not empty, and not
+  well formed (#2594). A car with both problems counts once. This key
+  can overlap the other keys, so a car can count in `invalid_email` and also
+  in another key, for example `pending` or `blocked`. `bounced` and
   `blocked` count cars whose owner's flag applies to the owner's current address
   (`emailFlagActiveSql()`). `opted_out` counts cars whose owner has `email_opted_out = 1`; an
   opt-out is not tied to an address. `pending` leaves out the bounced, blocked and opted-out cars. Throws
@@ -1006,22 +1016,29 @@ to provide a focused, testable data access layer wrapping the `cars`,
   `CarDatabaseException` on a query failure.
 - `findVerificationQueue(string $status, ?int $windowDays, int $limit): array` -
   List the cars for one verification queue filter pill. `$status` must be
-  one of `QUEUE_STATUSES`; each status uses the same definition as its count
+  one of `QUEUE_STATUSES` except `next_queue`; each status uses the same definition as its count
   in `countVerificationSummary()`. `$windowDays` applies only to `verified`
   and `sold`. Row order depends on status: `pending` is longest-waiting
-  first, `eligible` is oldest-verified first, `verified`/`sold` is most
-  recent history row first, and `all`/`bounced`/`blocked`/`opted_out` is car id
-  ascending. Each row carries the owner's state from `profiles`: `has_profile`,
+  first, `eligible` is send order (`last_verified ASC`, NULL first, then
+  `cars.id ASC`), `verified`/`sold` is most recent history row first, and
+  `bounced`/`blocked`/`opted_out`/`invalid_email` is car id ascending.
+  `invalid_email` lists the cars with no `profiles` row or a malformed
+  address. `next_queue` throws `CarValidationException`. The message points to
+  `findEligible()`, which is the only source of the Next Queue rows, so one
+  query selects the rows that the send form posts.
+  The rows that this method returns carry the owner's state from `profiles`: `has_profile`,
   `email_opted_out`, `email_blocked_active`, `email_blocked_cause` and `email_bounced_active`. The
   `_active` columns are 1 only while the flag applies to the owner's current address
   (`emailFlagActiveSql()`). The row also carries `email_address_malformed` (0 or 1).
   It is 1 for an unsold car of a live owner who is not `noowner`, when the
   owner's address is not NULL, not empty, and not well formed (#2594). Throws
-  `CarValidationException` for an unknown `$status` or an invalid `$windowDays`, and
+  `CarValidationException` for an unknown `$status`, for `next_queue`, or an invalid `$windowDays`, and
   `CarDatabaseException` on a query failure.
 - `findRecentVerificationActivity(?int $windowDays, int $limit = 20): array` -
   List the most recent `VERIFIED` and `VERIFIED SOLD` `cars_hist` rows,
-  newest first. Backs the dashboard's Recent Activity panel (#1896). Reads
+  newest first. Each row also has `user_id`, the owner at the time of the
+  event, read from the same `cars_hist` row. Backs the dashboard's Recent
+  Activity panel (#1896). Reads
   `cars_hist` only, with no join to `cars` — a car merged or deleted after
   the event still appears, with the year/chassis/owner name values recorded
   at the time of the event. This is why Recent Activity can list a car that
@@ -1639,9 +1656,10 @@ returns it.
   `email_blocked_active`, `email_bounced_active`, `email_opted_out`,
   `email_blocked_cause`). It throws `\InvalidArgumentException` when a column
   is missing. The addresses and dates are null.
-- `EffectiveEmailFlags::eligible()` is the state of an Eligible preview row:
-  a profile and no flag. The eligibility query excludes every other owner,
-  so its rows have no profile columns.
+- `EffectiveEmailFlags::eligible()` is the state of a Next Queue row: a
+  profile and no flag. The eligibility query excludes every other owner, so
+  its rows have no profile columns. The Eligible view rows come from
+  `findVerificationQueue()` and use `fromQueueRow()`.
 
 **Used By**: `EmailNoticeBuilder`, `SendPolicy`, `VerificationTabStatus::chip()`, `app/admin/includes/tab-verification.php`, `CarVerificationSendService::sendOne()`,
 `BrevoSuppressionSyncJob`, `user_form_hook.php`, `usersc/user_settings.php`,
@@ -1892,13 +1910,16 @@ other probes.
   a cron job probe failure under `LOG_CATEGORY_CRON_JOB_FAILURE`
 - `probeFailed(): bool` - True when the VerificationSettings probe threw
 - `batchSize(): ?int` - The configured batch size, or `null` when the probe
-  threw or the query failed. The Batch size field then shows "Unavailable"
-  and no form (#2457)
+  threw, the query failed, or the settings row is missing. The Batch size
+  field then shows "Unavailable" and no form (#2457, #2572)
 - `brevoReady(): bool` - True when Brevo is ready to send tagged mail: the
   settings probe did not fail and it gave no not-ready reason
 - `rows(): array` - Give the panel rows in render order. Each row is an associative
   array with `key`, `label`, `badgeText`, `badgeClass`, `icon`, `detail`,
-  `detailIcon`, and `recent` (list of recent failure entries)
+  `detailIcon`, `recent` (list of recent failure entries), and `advice`. A job
+  row with an `UNREADABLE` or `MISSING` state puts the cause in `detail` and
+  the next step in `advice`, a list of `{text, code}` segments. The panel
+  shows `advice` to admins only and puts each `code` in `<code>` (#2458)
 - `allHealthy(): bool` - True when the settings probe worked, the switch is on,
   Brevo is ready, cron runs, the unmatched count is 0, the cron failure
   count is 0, and the batch size was read. An unreadable counter, failure
@@ -1909,15 +1930,16 @@ other probes.
 - `featureSwitch(bool $canToggle): array` - Give the feature switch state for the
   panel. Returns `['checked' => bool, 'disabled' => bool, 'disabledReason' =>
   string, 'unavailable' => bool]`. When the settings probe threw before it
-  read the switch state, or the switch query failed, the state is unknown.
+  read the switch state, the switch query failed, or the settings row is
+  missing, the state is unknown.
   The method then returns
   `unavailable` as `true`, `checked` as `false`, `disabled` as `true`, and a
   reason for every viewer. The panel then shows a red "Unavailable" badge and
   no switch. When the probe read the switch state and a later read threw, the
   method returns the real `checked` value. An admin can then turn the switch
   off, but not on, because the Brevo status is not known. The cron row shows
-  a red "Unavailable" badge, not "Stalled", only when the probe threw before
-  it read the cron state.
+  a red "Unavailable" badge, not "Stalled", when the probe threw before it
+  read the cron state, or when `cronStateOrNull()` returns `null`.
 - `autoSendState(): CronJobEnabledState` - The automatic send job's enabled state
 - `autoSendLastRunAt(): ?DateTimeImmutable` - When the automatic send job last
   claimed a run, or `null` if never
@@ -1940,13 +1962,16 @@ other probes.
   `SendPolicy` and `EmailNoticeBuilder` read, so `blocked` and `bounced` are
   true only when the flag applies to the owner's current address. The tab
   builds it with `EffectiveEmailFlags::fromQueueRow()`, or
-  `EffectiveEmailFlags::eligible()` in the Eligible view. Order: no profile, invalid email,
+  `EffectiveEmailFlags::eligible()` in the Next Queue view. Order: no profile, invalid email,
   blocked, bounced, opted out. The blocked, bounced and opted out steps match
   `SendPolicy::verificationReason()` (#2461). `$addressMalformed` is the queue row's
   `email_address_malformed`. The invalid email step gives kind
   `bad_address`, label "Invalid email", class `text-bg-warning`, and no reason (#2594).
   Otherwise the chip shows the car's latest email event. A hard-bounce event
-  still shows "Bounced" for an owner with no bounce flag. Returns
+  still shows "Bounced" for an owner with no bounce flag. The blocked step
+  gives a readable cause as `reason` ("Spam complaint", "Unsubscribed in
+  Brevo", "On Brevo blocklist", "Cause unknown"). A legacy `request` or
+  `requests` event gives the Sent chip (#2458). Returns
   `['kind' => string, 'label' => string, 'class' => string, 'reason' => string]`.
   `kind` is empty when there is no event to show
 
@@ -2000,19 +2025,28 @@ dependency exists between the two.
 - **Asymmetric gate**: `setEnabled(true)` throws `VerificationConfigException`
   when `brevoReady()` is false; `setEnabled(false)` never throws, for any
   reason — an admin must always be able to disable verification mid-incident
-- Every probe fails closed and logs rather than throwing, so a database or
-  filesystem hiccup hides the feature instead of breaking the page
+- No probe throws, so a database or filesystem fault does not break the
+  page. The plain reads return a closed default. `lastCronRequestAt()` and
+  `cronReady()` do not log a failed read. The `*OrNull()` reads log and
+  return `null`, so the caller can show "Unavailable"
 - Performs no permission checks itself — callers must run `hasPerm()` before
   calling `setEnabled()`
+
+**Unreadable state**: A `*OrNull()` read returns `null` when it cannot read
+the value. The value is unreadable when the query fails or the `id = 1` row
+is missing. Each `*OrNull()` read logs one `VerificationConfigWarning` line
+in that case. The plain reads keep their defaults: `isEnabled()` returns
+`false`. The batch size has no plain read. Code that acts on the value must
+use the `*OrNull()` read. A default must not look like a real setting.
 
 **Methods**:
 
 - `isEnabled(): bool` - Whether verification is currently switched on;
   `false` on a failed query or a missing row
 - `isEnabledOrNull(): ?bool` - Like `isEnabled()`, but `null` when the
-  settings query failed (UserSpice `DB::query()` reports it through
-  `error()` and does not throw). A missing row still gives `false`. The
-  admin Verification tab uses it to show "Unavailable" (#2457)
+  switch is unreadable. The admin Verification tab uses it to show
+  "Unavailable" (#2457), not "off". The send job does not send on `null`
+  (#2572)
 - `setEnabled(bool $enabled, int $actingUserId = 0): bool` - Turn verification on or off
 - `brevoReady(): bool` - True only if `brevoNotReadyReason()` returns `null`:
   the plugin table is readable, the API key is saved, `plugins.ini.php` has
@@ -2026,7 +2060,21 @@ dependency exists between the two.
   20 minutes today)
 - `lastCronRequestAt(): ?DateTimeImmutable` - Timestamp of the most recent
   cron transport hit, read from `er_verification_settings.last_cron_request_at`
-  (#1974; previously scanned the `logs` table)
+  (#1974; previously scanned the `logs` table). Returns `null` for both
+  "never ran" and "unreadable". Use `cronStateOrNull()` to tell them apart
+- `cronStateOrNull(): ?array{ready: bool, lastRequestAt: ?DateTimeImmutable}` -
+  Cron readiness and the last cron request time, from one read. Returns
+  `null` when the cron state is unreadable. The admin Verification tab uses
+  it (#2572). It has three outcomes:
+  - Row present, column `NULL` or empty: cron has never run. Returns
+    `['ready' => false, 'lastRequestAt' => null]`. Logs nothing.
+  - Failed query or missing `id = 1` row: returns `null`. Logs one
+    `VerificationConfigWarning` line.
+  - Zero-date, unparseable, or non-scalar value: returns `null`. Logs one
+    `VerificationConfigWarning` line. A corrupt value is not proof that cron
+    never ran, so this case does not return "never ran".
+
+  `ready` uses the same staleness rule as `cronReady()`.
 - `recordCronRequest(): bool` - Record that the cron transport hit this
   environment; called by `users/cron/cron.php` on every non-denied hit,
   writing `er_verification_settings.last_cron_request_at`; never throws (logs
@@ -2049,14 +2097,14 @@ dependency exists between the two.
   counter must not render alike. The admin Verification tab shows a
   `text-bg-danger` "Unavailable" badge for the `null` case
   (`app/admin/includes/tab-verification.php`, #2085)
-- `batchSize(): int` - Configured verification-email batch size
-  (`er_verification_settings.batch_size`); fails closed to `5` on any read
-  problem (#1884). Clamps a stored value outside `[1, 25]` to that range and
-  logs a `VERIFICATION_CONFIG_WARNING` with the stored value (#2363)
-- `batchSizeOrNull(): ?int` - Like `batchSize()`, but `null` when the
-  settings query failed. A missing row still gives `5`. The admin
-  Verification tab uses it, so its Batch size form never shows, and a Save
-  never writes, a guessed value (#2457)
+- `batchSizeOrNull(): ?int` - Configured verification-email batch size
+  (`er_verification_settings.batch_size`), or `null` when the batch size is
+  unreadable: a failed query or a missing row. Clamps a stored value outside
+  `[1, 25]` to that range and logs a `VERIFICATION_CONFIG_WARNING` with the
+  stored value (#2363). The admin Verification tab uses it, so its Batch size
+  form never shows, and a Save never writes, a guessed value (#2457). The
+  send job and the admin send do not send on `null` (#2572). There is no read
+  with a default
 - `setBatchSize(int $size, int $actingUserId = 0): bool` - Set the batch
   size, clamped to `[1, 25]` regardless of the submitted value; never throws
   (logs and returns `false` on a DB error or unconfirmed write) (#1885)
@@ -2072,7 +2120,7 @@ dependency exists between the two.
 - Brevo webhook receiver (`app/api/webhooks/brevo.php`) — the
   `brevoNotReadyReason()` gate (it does not read the switch), and
   `incrementUnmatchedRecipientCounter()` (#1887)
-- `SendVerificationBatchJob::refusesWhileSwitchOff()` — the `isEnabled()` gate,
+- `SendVerificationBatchJob::refusesWhileSwitchOff()` — the `isEnabledOrNull() === false` gate,
   checked by `AbstractCronJob::run()` and `runNow()` before the job-level
   `enabled` flag. It is the only cron job that reads the switch (#2358). The
   reconciliation and suppression-sync jobs, and their `runNowWithSummary()`
@@ -2337,12 +2385,15 @@ public function __construct(private CarRepository $repo)
   1. Not ours (no `sent` row and no plugin row has the ID): `notOurs()`.
   2. Step (a): exactly one `sent` row with this ID has the event address.
      Result: that row's user and car, with the row's `occurred_at` as the
-     message time. Two such rows give `noUser()`.
+     message time. Two such rows give `noUserOnPluginRow()` when the plugin
+     row with this ID exists, and `noUser()` when it does not.
   3. Step (b): the plugin row with this ID has the event address as one whole
      `recipient_email`, and exactly one user holds the address. Result: that
      user, with no car and `accepted_at` as the message time. A row with more
      than one recipient matches nothing.
-  4. Step (c): `noUser()`.
+  4. Step (c): `noUserOnPluginRow()` when the plugin row exists (no user, or
+     two or more users, hold the address). Otherwise `noUser()`. An empty
+     normalized address gives `noUser()`.
 
   Throws `CarDatabaseException` if a query fails.
 - `matchUserByAddress(string $address): ?int` - For the suppression import.
@@ -2368,22 +2419,29 @@ public function __construct(private CarRepository $repo)
 **Namespace**: `ElanRegistry\Car`
 
 **Purpose**: `final` value object that `EmailEventMatcher` returns (#2359). It
-has three kinds of result.
+has four kinds of result.
 
 **Factories**:
 
 - `notOurs()` - This environment did not send the message. The caller writes
   no row and sets no flag.
-- `noUser()` - The message is ours, but no single user holds the event address.
-  The caller writes no row and sets no flag.
+- `noUser()` - The message is ours, but no single user holds the event address,
+  and the message has no plugin row (or the address is empty). The caller
+  writes no row and sets no flag.
+- `noUserOnPluginRow()` - The message is ours, the message ID has a
+  `plg_sendinblue_messages` row, and no single user holds the event address.
+  The caller sets no flag. It stores one row with `user_id` 0 through
+  `EmailEventApplier::recordUnmatched()` (#2611).
 - `matched(int $userId, ?int $carId, string $messageTime)` - The event belongs
   to one user. `$carId` is the car of the `sent` row, or null when the plugin
   row gave the match. `$messageTime` is when the message left this site. The
   date guards of `EmailEventApplier::apply()` compare against it. Throws
   `InvalidArgumentException` for an ID that is not more than 0, or an empty time.
 
-**Methods**: `isNotOurs()`, `isNoUser()`, `isMatched()`, `userId()`, `carId()`,
-`messageTime()`. The last three throw `LogicException` when the result is not
+**Methods**: `isNotOurs()`, `isNoUser()`, `hasPluginRow()`, `isMatched()`,
+`userId()`, `carId()`, `messageTime()`. `isNoUser()` is true for both no-user
+results. `hasPluginRow()` is true only for `noUserOnPluginRow()`. `userId()`,
+`carId()` and `messageTime()` throw `LogicException` when the result is not
 `matched`.
 
 **See Also**:
@@ -2417,7 +2475,10 @@ endpoint itself needs.
   event only (at most 32 characters). The webhook subscribes only to delivery
   events, so another name shows a Brevo change. There is no tag filter
 - Finds the user with `EmailEventMatcher::matchByMessageId()`. A message that
-  this environment did not send is `IGNORED`
+  this environment did not send is `IGNORED`. For `noUserOnPluginRow()`, it
+  calls `EmailEventApplier::recordUnmatched()` and returns `NO_USER_MATCH`.
+  A `CarDatabaseException` gives `WRITE_FAILURE`. A `CarValidationException`
+  or `InvalidArgumentException` gives `MALFORMED` (#2611)
 - A missing or invalid `ts_event`/`ts`, or one more than 5 minutes after
   receipt, falls back to the receipt time. The log line names the user ID only
 - Delegates the transaction, the guards and the flag rules to
@@ -2425,7 +2486,8 @@ endpoint itself needs.
   job (#1889)
 - Calls `sendinblueRecordEvent($messageId, $event, $occurredAtSeconds, $reason)`
   when the function exists. A `false` return or an exception is logged (no
-  message) and does not change the result
+  message) and does not change the result. sendinblue 1.8.0 has no such
+  function, so on that version the step is a silent no-op (#2355)
 - No log line holds an email address. No `catch` block calls `getMessage()`
 
 **Methods**:
@@ -2577,6 +2639,28 @@ public function apply(
   Throws `CarValidationException` for an invalid datetime (nothing is written).
   Throws `CarDatabaseException` when a read or write fails (all writes roll back).
 
+```php
+public function recordUnmatched(
+    EmailEventMatch $match,
+    string $address,
+    string $event,
+    ?string $reason,
+    string $messageId,
+    string $occurredAt
+): bool
+```
+
+- `recordUnmatched()` stores the event of a message that is ours when no single
+  user holds the address (#2611). It writes one row with `user_id` 0 and
+  `car_id` NULL through `CarRepository::insertUnmatchedEmailEvent()`. It
+  returns true for a new row and false for a duplicate. It sets no flag. It
+  cuts the reason with `REASON_MAX_CHARS`. It opens no transaction, because it
+  makes one insert. The webhook and the reconciliation job both call it.
+- Throws `InvalidArgumentException` when `$match` is not
+  `noUserOnPluginRow()`, or when the address is empty after normalizing.
+  Throws `CarValidationException` for an invalid datetime. Throws
+  `CarDatabaseException` when the insert fails.
+
 **Used By**:
 
 - `BrevoWebhookEventProcessor::process()`
@@ -2634,8 +2718,8 @@ endpoint maps each case 1:1 to an HTTP status (#1887).
 | --- | --- | --- |
 | `MATCHED_AND_RECORDED` | The event matched one user and the transaction committed | 2xx |
 | `IGNORED` | Not a delivery event (for example `opened`), or a message that this environment did not send | 2xx, no row, no log |
-| `NO_USER_MATCH` | The message is ours, but no single user holds the address | 2xx, logged. A verification-tagged event increments the unmatched counter |
-| `MALFORMED` | The payload is not a JSON object, misses a required field, or has a bad address or a message ID over 255 bytes. Or the match or apply step cannot parse a stored value (for example a zero message time) | 4xx, logged |
+| `NO_USER_MATCH` | The message is ours, but no single user holds the address | 2xx, logged. With a plugin row, one `user_id` 0 row is stored, and a failed insert gives `WRITE_FAILURE`. A verification-tagged event increments the unmatched counter |
+| `MALFORMED` | The payload is not a JSON object, misses a required field, or has a bad address or a message ID over 255 bytes. Or the match, record or apply step cannot parse a stored value (for example a zero message time) | 4xx, logged |
 | `WRITE_FAILURE` | A database read or write failed | 5xx. The only retryable case |
 
 Since #2359, `NO_TAG_MATCH` and `NO_CAR_MATCH` do not exist.
@@ -2680,7 +2764,7 @@ a job-owned enabled flag independent of UserSpice's own `crons.active`.
   admin-triggered immediate execution, retaining crash isolation only
 - **Verification feature switch (opt-in)**: `refusesWhileSwitchOff()` returns
   `false` by default, so a job runs with the switch off. A job that sends
-  email overrides it to return `!$settings->isEnabled()`. `run()` checks it
+  email overrides it to return `$settings->isEnabledOrNull() === false`. `run()` checks it
   before the enabled read and the guard claim, so a refused run does not stamp
   `last_run_at`. `runNow()` checks it first (#2358)
 
@@ -3111,15 +3195,17 @@ handler already calls, so the two paths can never drift apart.
 **Key Features**:
 
 - **The only job that the verification switch stops**: it overrides
-  `refusesWhileSwitchOff()` to return `!$this->settings->isEnabled()` (#2358).
-  With the switch off, `run()` and `runNow()` send nothing, and `run()` leaves
+  `refusesWhileSwitchOff()` to return `true` only when
+  `isEnabledOrNull()` returns `false` (#2358, #2572). With the switch off,
+  `run()` and `runNow()` send nothing, and `run()` leaves
   `er_cron_job_runs.last_run_at` unchanged. The first `run()` after the switch
-  goes on claims the run and sends
+  goes on claims the run and sends. An unreadable switch (`null`) does not
+  refuse. `execute()` then fails the run, as described below
 - **Bounded work per invocation**: one page of at most
-  `VerificationSettings::batchSize()` cars (clamped to `[1, 25]`) per claimed
-  run, never a loop until the eligible set empties — both for cron's
+  `VerificationSettings::batchSizeOrNull()` cars (clamped to `[1, 25]`) per
+  claimed run, never a loop until the eligible set empties — both for cron's
   in-process dispatch model and to enforce the deliberate slow send-volume
-  ramp
+  ramp. An unreadable batch size (`null`) sends nothing and fails the run
 - **Ships paused everywhere**: the seed migration sets
   `er_cron_job_runs.enabled = 0` in every environment (test and production
   alike), since no `APP_ENV`-style environment-detection convention exists
@@ -3167,19 +3253,33 @@ public function __construct(
 - `guardIntervalHours(): int` — Returns `20`
 - `healthcheckSlug(): string` — Protected. Returns `'send-verification-batch'`.
   Narrows the parent's `?string` return type, because this job always pings
-- `refusesWhileSwitchOff(): bool` — Protected. Returns `true` while the
-  verification switch is off. `AbstractCronJob::run()` and `runNow()` call it
-  before any other step
-- `execute(): void` — Read the configured batch size, ask
-  `CarVerificationSendService::findEligible()` for that many candidates,
-  hand ids to `VerificationBatchSender::processBatch()`, persist outcome
-  counts, log a routine completion line under `LOG_CATEGORY_CAR_VERIFICATION`.
-  If the eligible-car query fails, it logs, calls `markRunFailed()` and
-  returns, so `run()` pings `/fail`. After the batch, it calls
-  `markRunFailed()` when no send succeeded and at least one send failed (a
-  full send outage), or when any send is `unrecorded`. Each of these two
-  cases also logs one `LOG_CATEGORY_CRON_JOB_FAILURE` line with counts only.
-  A partial send failure pings success on purpose (#2480)
+- `refusesWhileSwitchOff(): bool` — Protected. Returns `true` only when
+  `isEnabledOrNull()` reads the switch as off. An unreadable switch returns
+  `false`. `AbstractCronJob::run()` and `runNow()` call it before any other
+  step. A refusal pings nothing
+- `execute(): void` — Runs one batch in this order:
+  1. Read `isEnabledOrNull()`. On `null`, log one
+     `LOG_CATEGORY_CRON_JOB_FAILURE` line, call `markRunFailed()`, and return.
+     Nothing is sent. On `false` (the gate's read failed, or an admin switched
+     off after the gate), log one `LOG_CATEGORY_CRON_JOB_SKIPPED` line and
+     return. Nothing is sent, the run pings success, and the claim stays
+     taken, so the next send can wait up to the guard interval.
+  2. Read `batchSizeOrNull()`. On `null`, log one
+     `LOG_CATEGORY_CRON_JOB_FAILURE` line, call `markRunFailed()`, and return.
+     Nothing is sent. The job has no default batch size.
+  3. Ask `CarVerificationSendService::findEligible()` for that many
+     candidates. If the query fails, log it, call `markRunFailed()`, and
+     return.
+  4. Hand the ids to `VerificationBatchSender::processBatch()`, persist the
+     outcome counts, and log a routine completion line under
+     `LOG_CATEGORY_CAR_VERIFICATION`.
+  5. Call `markRunFailed()` when no send succeeded and at least one send
+     failed (a full send outage), or when any send is `unrecorded`. Each of
+     these two cases also logs one `LOG_CATEGORY_CRON_JOB_FAILURE` line with
+     counts only.
+
+  A partial send failure pings success on purpose (#2480). `run()` pings
+  `/fail` when any `markRunFailed()` call ran. `runNow()` pings nothing.
 
 **Private Methods**:
 
@@ -3365,6 +3465,188 @@ are the strings that the log lines use.
 
 ---
 
+### DeliveryOutcome (enum)
+
+**Location**: `/usersc/classes/Email/DeliveryOutcome.php`
+
+**Namespace**: `ElanRegistry\Email`
+
+**Purpose**: The webhook outcome of one mail on the Email Delivery tab (#2102).
+The string value is the outcome filter value in the tab URL. `None` means that
+the mail has no outcome event.
+
+**Cases**: `Delivered`, `HardBounce`, `SoftBounce`, `Blocked`, `Unsubscribed`,
+`SpamComplaint`, `None`. The values are `delivered`, `hard_bounce`,
+`soft_bounce`, `blocked`, `unsubscribed`, `spam_complaint` and `none`.
+
+**Methods**:
+
+- `public static fromEvent(string $event): ?self` - Maps an `er_email_events.event`
+  name to an outcome. Returns null for `sent` and for an unknown name.
+- `public function label(): string` - The display text, for example `Hard bounce`.
+
+**Used By**: `DeliveryLogReport`, the Email Delivery tab
+
+**See Also**: `DeliveryOutcomeResolver`, `DeliveryLogReport`
+
+---
+
+### DeliveryOutcomeResolver
+
+**Location**: `/usersc/classes/Email/DeliveryOutcomeResolver.php`
+
+**Namespace**: `ElanRegistry\Email`
+
+**Purpose**: Chooses the outcome event of one mail (#2102). It is pure: it uses
+no database and no clock. The caller groups rows by Brevo message ID, never by
+address. The chosen row has the latest `occurred_at`. A tie goes to the higher
+`event_id`. Rows with no outcome are ignored: `sent`, unknown names and the
+null row of a LEFT JOIN with no match.
+
+**Methods**:
+
+- `public function resolve(array $events): ?array` - Takes the event rows of one
+  mail. Each row needs `event_id`, `event` and `occurred_at` (`Y-m-d H:i:s`).
+  Returns the chosen row unchanged, or null when no row has an outcome.
+
+**Used By**: `DeliveryLogReport`
+
+**See Also**: `DeliveryOutcome`, `DeliveryLogRepository::loadWindow()`
+
+---
+
+### DeliveryLogEntry
+
+**Location**: `/usersc/classes/Email/DeliveryLogEntry.php`
+
+**Namespace**: `ElanRegistry\Email`
+
+**Purpose**: One mail row on the Email Delivery tab (#2102). A final readonly
+value object. The mail fields come from `plg_sendinblue_messages`. The outcome
+fields, the user ID and the car ID come from the chosen outcome event. A mail
+with no event has outcome `DeliveryOutcome::None` and null outcome fields. The
+retention purge empties the recipient, but only in rows older than the window
+that the tab reads. So the tab normally never sees an empty recipient.
+
+**Methods**:
+
+- `__construct(...)` - Promoted public readonly properties with the same names.
+  The signature, in order:
+
+```php
+__construct(
+    int $id,
+    string $messageId,
+    string $recipient,
+    ?string $tags,
+    DateTimeImmutable $acceptedAt,
+    DeliveryOutcome $outcome,
+    ?DateTimeImmutable $outcomeAt,
+    ?string $reason,
+    ?int $userId,
+    ?int $carId,
+)
+```
+
+**Used By**: `DeliveryLogReport`
+
+**See Also**: `DeliveryOutcome`, `DeliveryLogReport`
+
+---
+
+### DeliveryLogFilter
+
+**Location**: `/usersc/classes/Email/DeliveryLogFilter.php`
+
+**Namespace**: `ElanRegistry\Email`
+
+**Purpose**: The validated filters of the Email Delivery tab (#2102). A final
+readonly value object. Only `fromInput()` builds a filter, so each value is valid.
+An invalid input value gives its default. It never gives an error.
+
+**Constants**: `OUTCOME_ALL` (`all`), `OUTCOME_STALE` (`stale`), `HOURS_DEFAULT` (2),
+`HOURS_MIN` (1), `HOURS_MAX` (720).
+
+**Properties**: `?string $recipient`, `?string $tag`, `string $outcome`,
+`int $hours`, `int $page`.
+
+**Methods**:
+
+- `public static fromInput(mixed $email, mixed $tag, mixed $outcome, mixed $hours, mixed $page): self` -
+  Builds the filter from raw request values.
+- `public static allowedOutcomes(): array` - Returns `all`, each `DeliveryOutcome`
+  value, and `stale`.
+
+The constructor is private. Do not call `new DeliveryLogFilter()`.
+
+**Used By**: `DeliveryLogReport`, the Email Delivery tab
+
+**See Also**: `DeliveryOutcome`
+
+---
+
+### DeliveryLogRepository
+
+**Location**: `/usersc/classes/Email/DeliveryLogRepository.php`
+
+**Namespace**: `ElanRegistry\Email`
+
+**Purpose**: The read-only SQL of the Email Delivery tab (#2102). It reads
+`plg_sendinblue_messages` and `er_email_events`. It never writes, and it never
+calls Brevo. A failed query throws `AdminOperationException`.
+
+**Methods**:
+
+- `__construct(DatabaseInterface $db)` - The database connection.
+- `public function tablesReady(): bool` - True when `plg_sendinblue_messages`
+  exists. It is absent when the sendinblue plugin is not installed.
+- `public function hasTagsColumn(): bool` - True when the `tags` column exists.
+  An old plugin table lacks it. Then the tab hides the tag filter.
+- `public function loadWindow(DateTimeImmutable $cutoff, ?string $recipient, ?string $tag): array` -
+  Returns one row per mail and event, for mail accepted at or after `$cutoff`.
+  A mail with no event gives one row with null event fields. The cutoff is in
+  PHP time, because the plugin writes `accepted_at` with `date()`. The `$tag`
+  filter is ignored when the `tags` column is absent.
+
+**Used By**: The Email Delivery tab (`app/admin/includes/tab-email_delivery.php`)
+
+**See Also**: `DeliveryOutcomeResolver`, `DeliveryLogReport`, `RETENTION_SENDINBLUE_MESSAGES_DAYS`
+
+---
+
+### DeliveryLogReport
+
+**Location**: `/usersc/classes/Email/DeliveryLogReport.php`
+
+**Namespace**: `ElanRegistry\Email`
+
+**Purpose**: Builds one page of the Email Delivery tab (#2102). It groups the
+rows of `loadWindow()` by message ID, chooses each outcome, applies the outcome
+filter, counts outcomes over the filtered set and sorts newest first by
+`acceptedAt`, then `id`. It cuts one page of 50. It is pure: the caller gives
+the current time.
+
+**Constants**: `PER_PAGE` (50).
+
+**Properties**: `array $entries` (list of `DeliveryLogEntry`), `array $counts`
+(count per outcome value, every case present), `int $total`, `int $page`,
+`int $pageCount`.
+
+**Methods**:
+
+- `public static build(array $rows, DeliveryLogFilter $filter, DateTimeImmutable $now): self` -
+  The `stale` filter keeps a mail with outcome `None` that was accepted before
+  `$now` minus the filter's hours. A page past the last page gives the last page.
+  An empty set gives a page count of 1.
+
+The constructor is private. Use `build()`.
+
+**Used By**: The Email Delivery tab (`app/admin/includes/tab-email_delivery.php`)
+
+**See Also**: `DeliveryLogEntry`, `DeliveryOutcomeResolver`, `DeliveryLogRepository`
+
+---
+
 ### BrevoEventReconciliationClient
 
 **Location**: `/usersc/classes/Cron/BrevoEventReconciliationClient.php`
@@ -3498,9 +3780,13 @@ applies events of all registry mail (#2359). It passes the source
   set, adds " — Brevo is not set up here, no poll ran" to the summary log
   line, and `run()` pings success. `FAILED` polls nothing, sets `pollFailed`, and `run()` pings `/fail`.
   `READY` polls each type as before. The prune runs in all three cases
+- **Unmatched events**: for `noUserOnPluginRow()`, the job calls
+  `EmailEventApplier::recordUnmatched()` with the resolved event time. A write
+  failure counts as `skipped`, and the job continues (#2611)
 - **Unmatched counter**: `countUnmatched()` increments the unmatched recipient
   counter only for a verification-tagged event with no single user
-- **No address in logs**: lines name the user ID or the address hash prefix.
+- **No address in logs**: lines name the user ID (`user <id>` or `owner <id>`)
+  or, for an event with no owner, the address hash prefix (`no owner (hash <hash>)`).
   `catch` blocks log the `ExceptionLogSummary` of the exception, not its message
 
 **Constructor**:
@@ -3563,14 +3849,22 @@ The `$now` parameter is injectable for testing; defaults to wall-clock time.
 - `applyEvent(object $event, string $apiEventType, string $eventName, array &$counts, array &$eventTypeCounts): void`
   — Apply one Brevo statistics-API event (field and address validation,
   `EmailEventMatcher::matchByMessageId()`, `EmailEventApplier::apply()`),
-  incrementing the passed-by-reference counters. Counts per event — see
+  incrementing the passed-by-reference counters. A `noUserOnPluginRow()`
+  match goes to `recordUnmatched()`. Counts per event — see
   `ReconciliationSummary`
 - `countUnmatched(mixed $rawTag, array &$counts): void` — Count an event of our
   mail that matched no single user, and increment the dashboard counter for a
   verification-tagged one
 - `pruneExpiredEvents(): void` — Call `CarRepository::deleteEmailEventsOlderThan()`
   with the two cutoffs
-- `resolveOccurredAt(mixed $rawDate, int $userId, string $eventName): array{occurredAt: string, usable: bool}` —
+- `recordUnmatched(EmailEventMatch $match, object $event, string $normalized, string $eventName, string $messageId, array &$counts): bool` —
+  Store an event of our mail that matched no single user, through
+  `EmailEventApplier::recordUnmatched()`. A failed write goes to
+  `skipWrite()`, and the method returns false (#2611)
+- `skipWrite(array &$counts, string $subject, string $eventName, \Throwable $e): void` —
+  Count a failed event write as `skipped` and log it. A database failure
+  line says the event is retried on the next run. A data fault line does not
+- `resolveOccurredAt(mixed $rawDate, string $subject, string $eventName): array{occurredAt: string, usable: bool}` —
   Parse Brevo's UTC date string into a PHP-default-timezone DATETIME string.
   On a parse failure or an out-of-range value, log and use the run time with
   `usable: false`. `applyEvent()` passes `!usable` as `occurredAtIsFallback`.
@@ -3833,6 +4127,32 @@ if ($result['valid']) {
     'format_type' => 'detected format type'
 ]
 ```
+
+### SessionTimeZone
+
+**Location**: `/usersc/classes/Database/SessionTimeZone.php`
+(namespace `ElanRegistry\Database`)
+
+**Purpose**: Sets the MySQL session `time_zone` to the named PHP zone
+(`America/Los_Angeles`), so PHP and MySQL both use Pacific wall time all year.
+The named zone needs the MySQL time zone tables. The rule and its
+reasons are in `DATABASE.md`, "Time zone".
+
+**Public API**:
+
+- `APP_TIMEZONE` - constant, `'America/Los_Angeles'`. Entry points that do not
+  load `users/init.php` use it to set the PHP zone.
+- `apply(DatabaseInterface $db): void` - Runs `SET time_zone = ?` with the
+  PHP zone name on the connection. Throws `SessionTimeZoneException` on a
+  database error, for example when the time zone tables are missing.
+- `initCommand(): string` - Returns `SET time_zone = '<zone>'` for raw PDO
+  connections and the phinx `mysql_attr_init_command`.
+
+**Usage**:
+
+- `usersc/includes/loader.php` calls `SessionTimeZone::apply(dbi())`. See
+  `DATABASE.md`, "Time zone", for where the hook runs and its limits,
+  including `DB::reconnect()` and `DB::getDB()`.
 
 ## Retention
 

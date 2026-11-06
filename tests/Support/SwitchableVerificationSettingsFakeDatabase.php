@@ -14,7 +14,8 @@ namespace Tests\Support;
  *
  * Safe only as the VerificationSettings connection of SendVerificationBatchJob.
  * It answers every first() with {batch_size, enabled}, so a job that reads
- * another row through it gets wrong data.
+ * another row through it gets wrong data. Its first() ignores error(), so
+ * do not combine it with the base fake's query-error flags.
  *
  * Named class, not anonymous: see FakeDatabase (`impureMethod.pure`).
  *

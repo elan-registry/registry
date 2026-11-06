@@ -125,6 +125,8 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
             );
             foreach ($this->pluginMessageIds as $messageId) {
                 $this->db->query('DELETE FROM plg_sendinblue_messages WHERE message_id = ?', [$messageId]);
+                // An event with no owner is stored with user_id 0 (#2611). The prune test needs an empty table.
+                $this->db->query('DELETE FROM er_email_events WHERE user_id = 0 AND brevo_message_id = ?', [$messageId]);
             }
             // HEALTHCHECKS_* is unset here, so a claimed run() logs one "not sent" line.
             $this->db->query(
@@ -527,6 +529,69 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
         $this->assertSame(0, $summary->unmatchedCount);
         $this->assertSame($this->originalUnmatchedCount, $this->unmatchedCounter());
         $this->assertSame(0, $this->countAllEventRows($messageId));
+    }
+
+    /**
+     * The rows with no owner (user_id 0) for a message ID (#2611)
+     *
+     * @return list<object>
+     */
+    private function rowsWithNoOwner(string $messageId): array
+    {
+        return $this->db->query(
+            'SELECT user_id, car_id, email, event, reason FROM er_email_events WHERE user_id = 0 AND brevo_message_id = ?',
+            [$messageId]
+        )->results();
+    }
+
+    /** The plugin has a row for the message, so the event is stored with no owner and the counter rule stays (#2611). */
+    public function testUnmatchedVerificationRecipientOnAPluginRowStoresOneRowWithNoOwnerAndStillCounts(): void
+    {
+        $messageId = 'reconcile-noowner-' . uniqid();
+        $address = 'Reconcile-Stranger-' . uniqid() . '@Example.com';
+        $this->seedPluginRow($messageId, $address);
+
+        $summary = $this->makeJob([
+            new FakeBrevoEvent(
+                email: $address,
+                event: 'hardBounces',
+                messageId: $messageId,
+                tag: 'car_verification',
+                date: '2026-09-08T12:00:00Z',
+                reason: 'mailbox unavailable'
+            ),
+        ])->runNowWithSummary();
+
+        $rows = $this->rowsWithNoOwner($messageId);
+        $this->assertCount(1, $rows, 'One row with no owner');
+        $this->assertNull($rows[0]->car_id);
+        $this->assertSame(strtolower($address), $rows[0]->email);
+        $this->assertSame('hard_bounce', $rows[0]->event);
+        $this->assertSame('mailbox unavailable', $rows[0]->reason);
+        $this->assertSame(1, $summary->unmatchedCount);
+        $this->assertSame(0, $summary->skippedCount);
+        $this->assertSame($this->originalUnmatchedCount + 1, $this->unmatchedCounter(), 'The counter rule is unchanged');
+    }
+
+    public function testASecondRunMakesNoSecondRowWithNoOwner(): void
+    {
+        $messageId = 'reconcile-noowner-twice-' . uniqid();
+        $address = 'reconcile-stranger-' . uniqid() . '@example.com';
+        $this->seedPluginRow($messageId, $address);
+        $event = new FakeBrevoEvent(
+            email: $address,
+            event: 'hardBounces',
+            messageId: $messageId,
+            tag: 'password_reset',
+            date: '2026-09-08T12:00:00Z'
+        );
+
+        $this->makeJob([$event])->runNowWithSummary();
+        $second = $this->makeJob([$event])->runNowWithSummary();
+
+        $this->assertCount(1, $this->rowsWithNoOwner($messageId), 'The unique key keeps one row');
+        $this->assertSame(0, $second->skippedCount, 'A duplicate is not a failure');
+        $this->assertSame($this->originalUnmatchedCount, $this->unmatchedCounter(), 'A non-verification event is stored, not counted');
     }
 
     private function unmatchedCounter(): int

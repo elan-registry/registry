@@ -184,6 +184,10 @@ split *is* the permission boundary:
   gated on live Brevo/cron readiness checks. Admin can toggle it; enabling
   while a prerequisite has failed is refused, disabling always succeeds. See
   [EMAIL_SYSTEM.md § Verification System Feature Switch](EMAIL_SYSTEM.md#verification-system-feature-switch).
+- **Email Delivery** — administrators only. The page hides the tab from
+  editors. It lists each mail sent through Brevo with its stored webhook
+  outcome. It is read-only and makes no Brevo call. See
+  [EMAIL_SYSTEM.md § Admin Email Delivery Tab](EMAIL_SYSTEM.md#admin-email-delivery-tab-2102) (#2102).
 - **User verification & email status** — the admin user-detail page surfaces
   per-car verification state (freshness badge), bounce status, and Brevo
   suppression reasons via the user form hook, letting admins diagnose email

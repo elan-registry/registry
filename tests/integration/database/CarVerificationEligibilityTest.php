@@ -940,4 +940,33 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
             'The 5 slots must go to the 5 cars with a well-formed owner email'
         );
     }
+
+    /**
+     * #2599: cars with the same last_verified go in car id order, so a batch
+     * and the pages of the Eligible list never repeat or skip a car. The
+     * tied cars have the oldest date, so they come first.
+     */
+    #[Group('fast')]
+    public function testFindVerificationEligibleOrdersTiedLastVerifiedByCarId(): void
+    {
+        $tiedIds = [];
+        for ($i = 0; $i < 4; $i++) {
+            $tiedIds[] = $this->createTestCar(
+                $this->testUserId,
+                array_merge($this->staleCarFields("tie-{$i}@example.com"), ['last_verified' => '1989-06-15 00:00:00'])
+            );
+        }
+        $ahead = array_filter(
+            $this->repo->findVerificationEligible(1000, 0),
+            static fn ($row) => !in_array((int) $row->id, $tiedIds, true)
+                && ($row->last_verified === null || $row->last_verified <= '1989-06-15 00:00:00')
+        );
+        $this->assertSame([], array_values($ahead), 'Setup: no other eligible car sorts ahead of the tied cars');
+
+        $ids = static fn (array $rows): array => array_map(static fn ($row) => (int) $row->id, $rows);
+
+        $this->assertSame($tiedIds, $ids($this->repo->findVerificationEligible(4, 0)));
+        $this->assertSame(array_slice($tiedIds, 0, 2), $ids($this->repo->findVerificationEligible(2, 0)));
+        $this->assertSame(array_slice($tiedIds, 2, 2), $ids($this->repo->findVerificationEligible(2, 2)));
+    }
 }

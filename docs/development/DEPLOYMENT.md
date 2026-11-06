@@ -348,6 +348,19 @@ until the user asks for that deploy.
 
 ### Database Migrations
 
+**Before the first deploy that holds `SessionTimeZone`:** check that the
+MySQL time zone tables load on the target database. Run this as the app
+database user:
+
+```sql
+SELECT CONVERT_TZ('2027-01-15 18:00:00', 'UTC', 'America/Los_Angeles');
+-- expect 2027-01-15 10:00:00, not NULL
+```
+
+A NULL result means the zone tables are empty. Every request, cron run, and
+`composer migrate` then stops with `SessionTimeZoneException`. See
+`DATABASE.md`, "Time zone".
+
 After every deployment, run pending migrations:
 
 ```bash
@@ -936,10 +949,10 @@ visibility that the job is disabled (not just silently not running). The
 and its shim `users/cron/brevo_event_reconciliation.php` for the required
 patterns.
 
-**The site-wide verification switch** (`VerificationSettings::isEnabled()`,
+**The site-wide verification switch** (`VerificationSettings::isEnabledOrNull()`,
 `er_verification_settings.enabled`): a job opts in. `AbstractCronJob` has the
 method `refusesWhileSwitchOff(): bool`, which returns `false` by default. A job
-that sends email overrides it to return `!$settings->isEnabled()`. Only
+that sends email overrides it to return `$settings->isEnabledOrNull() === false`. Only
 `SendVerificationBatchJob` does this. `run()` checks the method before the
 job-owned `enabled` flag and before the claim, so a refused run does not
 change `er_cron_job_runs.last_run_at`. `runNow()` checks it first. The
@@ -958,8 +971,10 @@ list.
    Do not override `run()` or `runNow()` — both are `final`.
    **Note**: Your job runs with the site-wide verification switch off. If the
    job sends email, override `refusesWhileSwitchOff()` to return
-   `!$settings->isEnabled()`, so that the switch stops it. A job that reads
-   from Brevo or prunes data must not override it.
+   `$settings->isEnabledOrNull() === false`, so that the switch stops it. A
+   `null` read (unreadable switch) does not refuse, so `execute()` must read
+   the switch again and fail the run on `null`. A job that reads from Brevo
+   or prunes data must not override it.
 2. Add the job name to `CronJobGuard::ALLOWED_JOB_NAMES` (manually maintained
    allowlist).
 3. Create a migration seeding a row in `er_cron_job_runs` for your job, with

@@ -26,6 +26,13 @@ class VerificationTabStatusProbeFakeDatabase extends CronJobRunsReaderFakeDataba
     /** @var array<string, mixed> Row for every er_verification_settings query */
     public array $settingsRow = [];
 
+    /**
+     * When true, the settings SELECT finds no row. UserSpice DB::first() then
+     * returns an empty array, not an object, which is how the readers tell a
+     * deleted id = 1 row from a row with an empty column.
+     */
+    public bool $settingsRowMissing = false;
+
     /** Count for the cron failure log query. Null makes the count unreadable. */
     public ?int $failureCount = 0;
 
@@ -88,6 +95,10 @@ class VerificationTabStatusProbeFakeDatabase extends CronJobRunsReaderFakeDataba
     public function first(bool $assoc = false): array|object
     {
         if ($this->lastWasSettings) {
+            if ($this->settingsRowMissing) {
+                return [];
+            }
+
             return $assoc ? $this->settingsRow : (object) $this->settingsRow;
         }
         if ($this->lastWasFailureCount && $this->failureCount !== null) {
@@ -175,16 +186,12 @@ final class VerificationTabStatusTest extends TestCase
     /**
      * @param array<string, mixed> $o
      * @return array{key: string, label: string, badgeText: string, badgeClass: string, icon: string,
-     *     detail: string, detailIcon: string, recent: list<array{loggedAt: string, message: string}>}
+     *     detail: string, detailIcon: string, recent: list<array{loggedAt: string, message: string}>,
+     *     advice: list<array{text: string, code: string}>}
      */
     private static function row(string $key, array $o = []): array
     {
-        foreach (self::makeStatus($o)->rows() as $row) {
-            if ($row['key'] === $key) {
-                return $row;
-            }
-        }
-        self::fail("No row with key {$key}");
+        return self::rowByKey(self::makeStatus($o), $key);
     }
 
     // ---- row order and shape ----
@@ -211,7 +218,7 @@ final class VerificationTabStatusTest extends TestCase
         $this->assertNotEmpty($rows);
         foreach ($rows as $row) {
             $this->assertSame(
-                ['key', 'label', 'badgeText', 'badgeClass', 'icon', 'detail', 'detailIcon', 'recent'],
+                ['key', 'label', 'badgeText', 'badgeClass', 'icon', 'detail', 'detailIcon', 'recent', 'advice'],
                 array_keys($row)
             );
         }
@@ -487,6 +494,76 @@ final class VerificationTabStatusTest extends TestCase
 
         $this->assertSame($text, $row['badgeText']);
         $this->assertSame($class, $row['badgeClass']);
+    }
+
+    /**
+     * The badge text is shared with the auto-send card, so the reason lives in
+     * the detail (#2573). The next step is in the advice, for admins (#2458).
+     */
+    #[DataProvider('jobRowProvider')]
+    #[Group('regression')]
+    public function test_jobRow_unreadable_hasCauseDetailAndCronJobFailureAdvice(string $key, string $option): void
+    {
+        $row = self::row($key, [$option => self::job(CronJobEnabledState::UNREADABLE, null)]);
+
+        $this->assertSame('Status unavailable', $row['badgeText']);
+        $this->assertSame('The job state could not be read, so the job may not run.', $row['detail']);
+        $this->assertSame('', $row['detailIcon']);
+        $this->assertSame(
+            [
+                ['text' => 'Check the system log for ', 'code' => 'CronJobFailure'],
+                ['text' => ' entries.', 'code' => ''],
+            ],
+            $row['advice']
+        );
+    }
+
+    /** @return array<string, array{string, string, string}> */
+    public static function missingJobRowProvider(): array
+    {
+        return [
+            // The seed migration 20260909134838 adds only the `crons` row. The
+            // er_cron_job_runs row has its current name from the rename migration.
+            'reconciliation'   => ['reconciliation', 'reconciliation', '20260918133038_rename_reconciliation_job'],
+            'suppression sync' => ['suppression_sync', 'suppressionSync', '20260909170000_seed_brevo_suppression_sync_cron'],
+        ];
+    }
+
+    #[DataProvider('missingJobRowProvider')]
+    #[Group('regression')]
+    public function test_jobRow_missing_hasShortDetailAndAdviceNamingTheJobsMigration(
+        string $key,
+        string $option,
+        string $migration
+    ): void {
+        $row = self::row($key, [$option => self::job(CronJobEnabledState::MISSING, null)]);
+
+        $this->assertSame('Status unavailable', $row['badgeText']);
+        $this->assertSame('The job has no row in er_cron_job_runs, so cron does not run it.', $row['detail']);
+        $this->assertSame('', $row['detailIcon']);
+        $this->assertSame(
+            [
+                ['text' => 'Run ', 'code' => 'composer migrate:status'],
+                ['text' => '. If ', 'code' => $migration],
+                ['text' => ' is applied, insert the row again.', 'code' => ''],
+            ],
+            $row['advice']
+        );
+        $this->assertFileExists(__DIR__ . '/../../../database/migrations/' . $migration . '.php');
+    }
+
+    /** Only job rows carry advice; a healthy job row has none. */
+    public function test_rows_onlyAnUnavailableJobRowHasAdvice(): void
+    {
+        $rows = self::makeStatus([
+            'reconciliation' => self::job(CronJobEnabledState::MISSING, null),
+            'cronReady'      => null,
+            'unmatched'      => null,
+        ])->rows();
+
+        foreach ($rows as $row) {
+            $this->assertSame($row['key'] === 'reconciliation', $row['advice'] !== [], "Row {$row['key']}");
+        }
     }
 
     /** One job's state must not leak into another job's row. */
@@ -902,8 +979,31 @@ final class VerificationTabStatusTest extends TestCase
         $db->withRow(self::SUPPRESSION, true, '2026-10-18 02:30:00');
         $db->withRow(self::AUTO_SEND, true, '2026-10-18 03:00:00');
         $db->withOutcomeCounts(self::AUTO_SEND, 4, 5, 6);
+        // A full row, so a test that sets nothing reads real values. An empty
+        // row would be a missing row, which the tab now reports as unreadable.
+        $db->settingsRow = [
+            'enabled'                   => 1,
+            'batch_size'                => 5,
+            'unmatched_recipient_count' => 0,
+            'last_cron_request_at'      => date('Y-m-d H:i:s'),
+        ];
 
         return $db;
+    }
+
+    /**
+     * @return array{key: string, label: string, badgeText: string, badgeClass: string, icon: string,
+     *     detail: string, detailIcon: string, recent: list<array{loggedAt: string, message: string}>,
+     *     advice: list<array{text: string, code: string}>}
+     */
+    private static function rowByKey(VerificationTabStatus $status, string $key): array
+    {
+        foreach ($status->rows() as $row) {
+            if ($row['key'] === $key) {
+                return $row;
+            }
+        }
+        self::fail("No row with key {$key}");
     }
 
     /**
@@ -1116,7 +1216,7 @@ final class VerificationTabStatusTest extends TestCase
         $this->assertSame('Status unavailable', $badges['suppression_sync']['badgeText']);
         $this->assertSame('0', $badges['cron_failures']['badgeText']);
         $this->assertSame(CronJobEnabledState::ENABLED, $status->autoSendState());
-        $this->assertLogged(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, 'Suppression sync status probe failed [RuntimeException]: simulated reader outage');
+        $this->assertLogged(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, 'Suppression sync status probe failed: RuntimeException (code 0) at VerificationTabStatusTest.php:');
     }
 
     #[Group('regression')]
@@ -1131,7 +1231,7 @@ final class VerificationTabStatusTest extends TestCase
         $this->assertSame('Status unavailable', $badges['reconciliation']['badgeText']);
         $this->assertSame('Ran', $badges['suppression_sync']['badgeText']);
         $this->assertSame(CronJobEnabledState::ENABLED, $status->autoSendState());
-        $this->assertLogged(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, 'Reconciliation status probe failed [RuntimeException]: simulated reader outage');
+        $this->assertLogged(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, 'Reconciliation status probe failed: RuntimeException (code 0) at VerificationTabStatusTest.php:');
     }
 
     public function test_read_autoSendProbeThrows_isUnreadableWithUnreadableCounts(): void
@@ -1146,7 +1246,7 @@ final class VerificationTabStatusTest extends TestCase
         $this->assertSame('Ran', self::badgesByKey($status)['reconciliation']['badgeText']);
         $this->assertLogged(
             LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE,
-            'Automatic send status or outcome counts probe failed [RuntimeException]: simulated reader outage'
+            'Automatic send status or outcome counts probe failed: RuntimeException (code 0) at VerificationTabStatusTest.php:'
         );
     }
 
@@ -1161,7 +1261,7 @@ final class VerificationTabStatusTest extends TestCase
         $badges = self::badgesByKey($status);
         $this->assertSame('Unavailable', $badges['cron_failures']['badgeText']);
         $this->assertSame('Ran', $badges['reconciliation']['badgeText']);
-        $this->assertLogged(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, 'Cron failure log summary probe failed [RuntimeException]: simulated reader outage');
+        $this->assertLogged(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, 'Cron failure log summary probe failed: RuntimeException (code 0) at VerificationTabStatusTest.php:');
     }
 
     /** The settings fault must not blank the cron rows (#2086 fault domains). */
@@ -1182,7 +1282,7 @@ final class VerificationTabStatusTest extends TestCase
         $this->assertSame('0', $badges['cron_failures']['badgeText']);
         $this->assertLogged(
             LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING,
-            'Verification tab status probe failed [RuntimeException]: simulated settings outage'
+            'Verification tab status probe failed: RuntimeException (code 0) at VerificationTabStatusTest.php:'
         );
     }
 
@@ -1265,15 +1365,60 @@ final class VerificationTabStatusTest extends TestCase
         );
     }
 
-    /** A missing row is not a query failure, so the batch size is the default 5. */
-    public function test_read_settingsRowMissing_batchSizeIsTheDefault(): void
+    /**
+     * A deleted settings row gives no real batch size. A guessed 5 would let an
+     * admin save a form over a setting that is not there (#2572).
+     */
+    #[Group('regression')]
+    public function test_read_settingsRowMissing_batchSizeIsUnreadable(): void
     {
         $db = self::healthyJobsDb();
+        $db->settingsRowMissing = true;
 
         $status = VerificationTabStatus::read($db, 7);
 
-        $this->assertSame(5, $status->batchSize());
-        $this->assertFalse($status->featureSwitch(true)['unavailable']);
+        $this->assertNull($status->batchSize());
+        $this->assertTrue($status->featureSwitch(true)['unavailable']);
+        $this->assertFalse($status->allHealthy());
+    }
+
+    /** "Unavailable" and "never logged" tell an admin different things to do (#2572). */
+    #[Group('regression')]
+    public function test_read_settingsRowMissing_cronIsUnavailableNotNoRequestLogged(): void
+    {
+        $db = self::healthyJobsDb();
+        $db->settingsRowMissing = true;
+
+        $cron = self::rowByKey(VerificationTabStatus::read($db, 7), 'cron');
+
+        $this->assertSame('Unavailable', $cron['badgeText']);
+        $this->assertStringNotContainsString('no cron request has ever been logged', $cron['detail']);
+    }
+
+    #[Group('regression')]
+    public function test_read_cronColumnNull_saysNeverLogged(): void
+    {
+        $db = self::healthyJobsDb();
+        $db->settingsRow['last_cron_request_at'] = null;
+
+        $cron = self::rowByKey(VerificationTabStatus::read($db, 7), 'cron');
+
+        $this->assertSame('Stalled', $cron['badgeText']);
+        $this->assertSame('no cron request has ever been logged', $cron['detail']);
+    }
+
+    #[Group('regression')]
+    public function test_read_cronQueryFails_cronIsUnavailable(): void
+    {
+        $db = self::healthyJobsDb();
+        $db->settingsErrorColumns = ['last_cron_request_at'];
+
+        $status = VerificationTabStatus::read($db, 7);
+        $cron   = self::rowByKey($status, 'cron');
+
+        $this->assertSame('Unavailable', $cron['badgeText']);
+        $this->assertStringNotContainsString('no cron request has ever been logged', $cron['detail']);
+        $this->assertFalse($status->probeFailed(), 'A failed query does not throw');
     }
 
     public function test_read_storedBatchSizeReachesTheTab(): void

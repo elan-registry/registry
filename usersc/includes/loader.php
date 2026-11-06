@@ -12,6 +12,10 @@ DO NOT EVER use it to do anything that will echo text to the screen
 or it will break important functionality.
 */
 
+// MySQL uses the server's own zone. Set the session to PHP's named zone, so
+// NOW() and PHP dates agree all year (#2589). init.php sets the PHP zone before this file.
+\ElanRegistry\Database\SessionTimeZone::apply(dbi());
+
 // Load global application configuration
 require_once $abs_us_root . $us_url_root . 'usersc/includes/config.php';
 

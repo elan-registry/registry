@@ -244,7 +244,9 @@ function emailOnFileStateTests(role, getUsername, getPassword) {
             await expect(value).not.toContainText('Suppressed');
 
             const tooltip = await openTooltip(page, 'What Opted out means');
-            await expect(tooltip).toContainText('stopped all registry email except account email');
+            await expect(tooltip).toHaveText('The owner stopped registry email. The registry does not send verification email, '
+                + 'messages from other owners, messages from an admin, or transfer notices to this owner. Account email is still sent. '
+                + 'The owner can lift the opt-out with Resume registry email in Account Settings, or an admin can lift it.');
             await expect(tooltip).toContainText('Resume registry email');
             await expect(tooltip).not.toContainText('Clear Opt-out');
         });
@@ -304,6 +306,34 @@ function emailOnFileStateTests(role, getUsername, getPassword) {
             }
             expect(texts.every(text => text && text.length > 0)).toBe(true);
             expect(new Set(texts).size).toBe(3);
+        });
+
+        test('each help button has a target of at least 44 x 44 px', async ({ page }) => {
+            await page.goto(detailsUrl(seeded.stateCars.nullDates), { waitUntil: 'networkidle' });
+            const buttons = page.locator('button.er-help-btn');
+            // Verified, Email on file, Opted out, Bounced and Blocked.
+            await expect(buttons).toHaveCount(5);
+            const sizes = await buttons.evaluateAll(els => els.map(el => {
+                const after = getComputedStyle(el, '::after');
+                return {
+                    // A static button lets the absolute box anchor to another
+                    // ancestor, so the target would miss the button.
+                    buttonPosition: getComputedStyle(el).position,
+                    content: after.content,
+                    position: after.position,
+                    width: parseFloat(after.width),
+                    height: parseFloat(after.height),
+                };
+            }));
+            // A declared width shows even when no box renders, so check that
+            // the pseudo-element exists and is a sized, absolute box.
+            for (const size of sizes) {
+                expect(size.buttonPosition).not.toBe('static');
+                expect(size.content).not.toBe('none');
+                expect(size.position).toBe('absolute');
+                expect(size.width).toBeGreaterThanOrEqual(44);
+                expect(size.height).toBeGreaterThanOrEqual(44);
+            }
         });
 
         test('car with no delivery problem shows no Email on file row', async ({ page }) => {

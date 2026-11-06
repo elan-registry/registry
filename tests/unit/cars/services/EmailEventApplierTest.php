@@ -912,6 +912,178 @@ final class EmailEventApplierTest extends TestCase
         );
     }
 
+    // --- recordUnmatched() (#2611) ----------------------------------------
+
+    public function testRecordUnmatchedWritesTheNormalizedAddressAndTheCutReasonAndReturnsTrueForANewRow(): void
+    {
+        $stored = null;
+        $this->mockRepo->expects($this->never())->method('beginTransaction');
+        $this->mockRepo->expects($this->once())->method('insertUnmatchedEmailEvent')->willReturnCallback(
+            function (string $email, string $event, ?string $reason, string $messageId, string $occurredAt) use (&$stored): int {
+                $stored = [$email, $event, $reason, $messageId, $occurredAt];
+                return 1;
+            }
+        );
+
+        $isNew = $this->applier->recordUnmatched(
+            EmailEventMatch::noUserOnPluginRow(),
+            "  Stranger@Example.COM\t",
+            'hard_bounce',
+            str_repeat('é', 5000) . "\xC3",
+            'msg-9',
+            self::EVENT_TIME
+        );
+
+        $this->assertTrue($isNew);
+        $this->assertIsArray($stored);
+        $this->assertSame('stranger@example.com', $stored[0]);
+        $this->assertSame('hard_bounce', $stored[1]);
+        $this->assertIsString($stored[2]);
+        $this->assertSame(255, mb_strlen($stored[2], 'UTF-8'));
+        $this->assertTrue(mb_check_encoding($stored[2], 'UTF-8'));
+        $this->assertSame('msg-9', $stored[3]);
+        $this->assertSame(self::EVENT_TIME, $stored[4]);
+    }
+
+    public function testRecordUnmatchedPassesANullReasonThrough(): void
+    {
+        // with(null) compares loosely, so '' would also pass. A callback checks the type.
+        $this->mockRepo->expects($this->once())->method('insertUnmatchedEmailEvent')
+            ->with(
+                'stranger@example.com',
+                'delivered',
+                $this->callback(static fn (mixed $reason): bool => $reason === null),
+                'msg-1',
+                self::EVENT_TIME
+            )
+            ->willReturn(1);
+
+        $this->applier->recordUnmatched(
+            EmailEventMatch::noUserOnPluginRow(),
+            'stranger@example.com',
+            'delivered',
+            null,
+            'msg-1',
+            self::EVENT_TIME
+        );
+    }
+
+    public function testRecordUnmatchedReturnsFalseForADuplicate(): void
+    {
+        $this->mockRepo->method('insertUnmatchedEmailEvent')->willReturn(0);
+
+        $isNew = $this->applier->recordUnmatched(
+            EmailEventMatch::noUserOnPluginRow(),
+            self::ADDRESS,
+            'delivered',
+            null,
+            'msg-1',
+            self::EVENT_TIME
+        );
+
+        $this->assertFalse($isNew);
+    }
+
+    public function testRecordUnmatchedLetsAWriteFailurePropagate(): void
+    {
+        $this->mockRepo->method('insertUnmatchedEmailEvent')->willThrowException(new CarDatabaseException('db down'));
+
+        $this->expectException(CarDatabaseException::class);
+
+        $this->applier->recordUnmatched(
+            EmailEventMatch::noUserOnPluginRow(),
+            self::ADDRESS,
+            'delivered',
+            null,
+            'msg-1',
+            self::EVENT_TIME
+        );
+    }
+
+    /**
+     * @return array<string, array{EmailEventMatch}>
+     */
+    public static function matchesThatAreNotNoUserOnPluginRowProvider(): array
+    {
+        return [
+            'matched' => [EmailEventMatch::matched(1, null, '2026-01-01 00:00:00')],
+            'not ours' => [EmailEventMatch::notOurs()],
+            'no user without a plugin row' => [EmailEventMatch::noUser()],
+        ];
+    }
+
+    #[DataProvider('matchesThatAreNotNoUserOnPluginRowProvider')]
+    public function testRecordUnmatchedThrowsInvalidArgumentForAMatchThatIsNotNoUserOnPluginRowAndWritesNothing(
+        EmailEventMatch $match
+    ): void {
+        $this->mockRepo->expects($this->never())->method('insertUnmatchedEmailEvent');
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('noUserOnPluginRow');
+
+        $this->applier->recordUnmatched($match, self::ADDRESS, 'delivered', null, 'msg-1', self::EVENT_TIME);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function emptyAddressProvider(): array
+    {
+        return [
+            'empty' => [''],
+            'spaces' => ['   '],
+            'tab and newline' => ["\t\n"],
+        ];
+    }
+
+    #[DataProvider('emptyAddressProvider')]
+    public function testRecordUnmatchedThrowsInvalidArgumentForAnEmptyAddressAndWritesNothing(string $address): void
+    {
+        $this->mockRepo->expects($this->never())->method('insertUnmatchedEmailEvent');
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('address is empty');
+
+        $this->applier->recordUnmatched(
+            EmailEventMatch::noUserOnPluginRow(),
+            $address,
+            'delivered',
+            null,
+            'msg-1',
+            self::EVENT_TIME
+        );
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function malformedDatetimeProvider(): array
+    {
+        return [
+            'impossible date' => ['2026-02-30 00:00:00'],
+            'not a date' => ['yesterday-ish'],
+            'empty' => [''],
+        ];
+    }
+
+    #[DataProvider('malformedDatetimeProvider')]
+    public function testRecordUnmatchedThrowsCarValidationExceptionForAMalformedDatetimeAndWritesNothing(
+        string $occurredAt
+    ): void {
+        $this->mockRepo->expects($this->never())->method('insertUnmatchedEmailEvent');
+
+        $this->expectException(CarValidationException::class);
+
+        $this->applier->recordUnmatched(
+            EmailEventMatch::noUserOnPluginRow(),
+            self::ADDRESS,
+            'delivered',
+            null,
+            'msg-1',
+            $occurredAt
+        );
+    }
+
     private function assertNoLogEntries(): void
     {
         global $mockLogEntries;
