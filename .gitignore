@@ -251,13 +251,5 @@ scripts/check-plugin-updates/*.conf
 # would exclude the directory itself and make the negation a no-op.
 docs/plans/*
 
-# Exception: the v2.30.2-v2.30.6 combined deploy sheet is committed on
-# purpose (decided during /finish-milestone v2.30.3) — it spans multiple
-# milestones and must survive between them, unlike a normal per-milestone
-# deploy sheet or plan file.
-!docs/plans/releases/
-docs/plans/releases/*
-!docs/plans/releases/v2.30-deploy.md
-
 # Local-only scratch (audit reports, etc.) — never commit
 _noupload/

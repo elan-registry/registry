@@ -23,8 +23,7 @@ docs/development/
 docs/testing/
 docs/releases/
 docs/README.md
-# The committed deploy sheet (docs/plans/releases/v2.30-deploy.md) names
-# host paths and deploy steps. Git ignores the rest of docs/plans/.
+# Private planning notes. Git ignores this folder.
 docs/plans/
 
 # Tests

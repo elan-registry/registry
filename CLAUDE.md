@@ -128,10 +128,7 @@ skill. These notes are for Registry only.
 - Deploying to test and production is a separate manual step. Update
   release notes with a PR, from `docs/development/RELEASE_NOTES_TEMPLATE.md`.
 - Planning documents live in the gitignored `docs/plans/`. Never commit
-  them. One named file, `docs/plans/releases/v2.30-deploy.md`, is a
-  committed exception (see `.gitignore` and
-  `.claude/rules/planning-docs.md`). It is not a general rule for
-  `docs/plans/releases/`.
+  them.
 
 ## Quick Deployment Reference
 
