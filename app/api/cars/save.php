@@ -642,9 +642,10 @@ function updateComments(array &$cardetails): void
  * Store the uploaded photos and set the final image list in $cardetails['image'].
  *
  * This is the one place that decides the image list, with or without new
- * files. Each name that cannot go into the list adds an owner error, so the
- * caller stops the save before the database write and cars.image does not
- * change (#2626).
+ * files. Each name in the requested order that cannot go into the list adds
+ * an owner error, so the caller stops the save before the database write and
+ * cars.image does not change (#2626). A stored name that the request leaves
+ * out is removed with no error.
  *
  * @param array $cardetails Car details. 'image' is set to the JSON image list
  * @param array $errors     Errors array passed by reference — appended to on failure
