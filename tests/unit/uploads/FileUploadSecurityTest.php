@@ -230,6 +230,40 @@ class FileUploadSecurityTest extends TestCase
     }
 
     /**
+     * The owner must learn which photo failed and what to do (#2626). The
+     * technical message stays for the log.
+     */
+    #[DataProvider('uploadErrorUserMessageProvider')]
+    public function testValidateFileUploadGivesOwnerMessageForUploadError(int $errorCode, string $expectedUserMessage): void
+    {
+        try {
+            CarImageProcessor::validateFileUpload(['error' => $errorCode, 'size' => 0, 'tmp_name' => '']);
+            $this->fail('validateFileUpload() must throw for an upload error code');
+        } catch (ImageProcessingException $e) {
+            $this->assertSame($expectedUserMessage, $e->getUserMessage());
+            $this->assertSame('File upload error: ' . $errorCode, $e->getMessage());
+        }
+    }
+
+    /**
+     * @return array<string, array{int, string}>
+     */
+    public static function uploadErrorUserMessageProvider(): array
+    {
+        $tooLarge = 'Photo is too large for the server. Make the photo smaller, then upload it again.';
+        $other    = 'The server could not receive the photo. Upload the photo again.';
+
+        return [
+            'INI_SIZE'    => [UPLOAD_ERR_INI_SIZE, $tooLarge],
+            'FORM_SIZE'   => [UPLOAD_ERR_FORM_SIZE, $tooLarge],
+            'PARTIAL'     => [UPLOAD_ERR_PARTIAL, 'Photo upload did not complete. Upload the photo again.'],
+            'NO_TMP_DIR'  => [UPLOAD_ERR_NO_TMP_DIR, $other],
+            'CANT_WRITE'  => [UPLOAD_ERR_CANT_WRITE, $other],
+            'unknown 99'  => [99, $other],
+        ];
+    }
+
+    /**
      * @return array<string, array{int}>
      */
     public static function uploadErrorCodeProvider(): array

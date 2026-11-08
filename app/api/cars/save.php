@@ -65,7 +65,6 @@ switch ($action) {
     case "addCar":
         try {
             buildCarDetails($cardetails, $errors);
-            buildImageDetails($cardetails);
 
             if (!empty($errors)) {
                 ApiResponse::validationError(
@@ -89,7 +88,7 @@ switch ($action) {
                 ->withLogging(
                     $user->data()->id,
                     LogCategories::LOG_CATEGORY_FILE_ERROR,
-                    'Car add aborted: image upload errors: ' . json_encode($errors)
+                    'Car add aborted: image upload errors: ' . json_encode($errors, JSON_HEX_TAG | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_HEX_APOS)
                 )->send();
             }
 
@@ -153,7 +152,6 @@ switch ($action) {
         }
         try {
             buildCarDetails($cardetails, $errors, $car_id);
-            buildImageDetails($cardetails);
 
             if (!empty($errors)) {
                 ApiResponse::validationError(
@@ -177,7 +175,7 @@ switch ($action) {
                 ->withLogging(
                     $user->data()->id,
                     LogCategories::LOG_CATEGORY_FILE_ERROR,
-                    'Car update aborted: image upload errors: ' . json_encode($errors)
+                    'Car update aborted: image upload errors: ' . json_encode($errors, JSON_HEX_TAG | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_HEX_APOS)
                 )->send();
             }
 
@@ -247,7 +245,7 @@ switch ($action) {
                 ->send();
         }
         // Use the read-path guard (isSafeFilename) here — consistent with
-        // buildImageDetails() and decodeAndProcessImages(), which also use it
+        // decodeAndProcessImages() and resolveUploadOrder(), which also use it
         // to handle legacy filenames stored in the DB. removeImage() performs
         // no filesystem deletion (DB JSON only), so the permissive guard is
         // correct and safe. basename() is defence-in-depth; isSafeFilename()
@@ -641,50 +639,19 @@ function updateComments(array &$cardetails): void
 }
 
 /**
- * Build and encode image details from form input
+ * Store the uploaded photos and set the final image list in $cardetails['image'].
  *
- * @param array $cardetails Car details array to update with image encoding
+ * This is the one place that decides the image list, with or without new
+ * files. Each name that cannot go into the list adds an owner error, so the
+ * caller stops the save before the database write and cars.image does not
+ * change (#2626).
+ *
+ * @param array $cardetails Car details. 'image' is set to the JSON image list
+ * @param array $errors     Errors array passed by reference — appended to on failure
  * @return void
+ * @throws ImageProcessingException If the car ID or the upload path is not valid,
+ *                                  or the upload directory cannot be made
  */
-function buildImageDetails(array &$cardetails): void
-{
-    global $user;
-
-    $requestedOrder = array_values(array_filter(
-        explode(',', Input::raw('filenames') ?? '')
-    ));
-
-    // Use the read-path guard (isSafeFilename) so legacy filenames already in the
-    // DB survive a reorder-only submission intact. New browser-supplied filenames
-    // (e.g. "my-photo.jpg") also pass this guard; uploadImages() replaces them
-    // with secure server-side names before the final DB write.
-    //
-    // Double-write pattern: on updateCar with no new files, this value is the
-    // FINAL write (uploadImages() returns early on the 'blob' sentinel). On
-    // addCar with no new files, uploadImages() clears it to an empty list. When
-    // files ARE uploaded, uploadImages() unconditionally overwrites
-    // $cardetails['image'] with the list from
-    // CarImageProcessor::resolveUploadOrder() before returning.
-    $safeOrder = [];
-    $invalid   = [];
-    foreach ($requestedOrder as $filename) {
-        if (CarImageProcessor::isSafeFilename($filename)) {
-            $safeOrder[] = $filename;
-        } else {
-            $invalid[] = $filename;
-        }
-    }
-
-    if (!empty($invalid)) {
-        $userId = isset($user) ? (int) $user->data()->id : 0;
-        logger($userId, LogCategories::LOG_CATEGORY_SECURITY,
-            'buildImageDetails: filtering unsafe filename(s): '
-            . htmlspecialchars(implode(', ', $invalid), ENT_QUOTES, 'UTF-8'));
-    }
-
-    $cardetails['image'] = json_encode($safeOrder);
-}
-
 function uploadImages(array &$cardetails, array &$errors): void
 {
     global $targetFilePath;
@@ -694,91 +661,88 @@ function uploadImages(array &$cardetails, array &$errors): void
     $thumbnailSizes = explode(',', ELAN_IMAGE_THUMBNAIL_SIZES);
     $imageSizes = array_map('intval', array_map('trim', $thumbnailSizes));
 
-
     // Do I have any new files?
-    if (!isset($_FILES['file']['name'][0]) || $_FILES['file']['name'][0] == 'blob') {
-        if (empty($cardetails['id'])) {
-            // New car with no uploaded files: clear any phantom filenames that
-            // buildImageDetails() may have written from the filenames POST param.
-            // For updateCar, the filenames represent the existing image order and
-            // must be preserved, so this branch only runs for addCar.
-            $cardetails['image'] = json_encode([]);
-        }
+    $hasNewFiles = isset($_FILES['file']['name'][0]) && $_FILES['file']['name'][0] != 'blob';
+
+    if (!$hasNewFiles && empty($cardetails['id'])) {
+        // New car with no uploaded files: a name in the filenames POST param
+        // cannot refer to a photo, so the list is empty.
+        $cardetails['image'] = json_encode([]);
         return;
     }
+
     // Names already in cars.image for this car. A new car has none, so only
     // the names that this request generates can stay.
     $storedNames = [];
-
-    // Secure path construction with validation
-    if (empty($cardetails['id'])) {
-        $filePath = $targetFilePath . 'temp' . '/';
-    } else {
+    $carId       = 0;
+    if (!empty($cardetails['id'])) {
         // Validate car ID is numeric to prevent directory traversal
         $carId = filter_var($cardetails['id'], FILTER_VALIDATE_INT);
         if ($carId === false || $carId <= 0) {
             throw new ImageProcessingException("Invalid car ID for file upload");
         }
-        $filePath = $targetFilePath . $carId . '/';
-
-        // Same JSON-or-CSV rule as CarAdministrationService::storedImageFilenames(): old rows hold CSV.
-        $storedImage = (string) ((new Car($carId))->data()->image ?? '');
-        if ($storedImage !== '') {
-            $decoded = json_decode($storedImage, true);
-            if (!is_array($decoded)) {
-                $decoded = explode(',', $storedImage);
-            }
-            $storedNames = array_values(array_filter(
-                $decoded,
-                static fn(mixed $n): bool => is_string($n) && $n !== ''
-            ));
-        }
-    }
-
-    // Ensure the upload destination resolves inside the configured upload
-    // directory — a path that resolves elsewhere (traversal, or a sibling
-    // directory sharing the same prefix) must never be written to.
-    if (!UploadPathGuard::isWithinTarget($targetFilePath, $filePath)) {
-        logger($user->data()->id, LogCategories::LOG_CATEGORY_FILE_ERROR,
-            'uploadImages: path guard failed — realpath() returned false or traversal detected'
-            . ' (targetFilePath=' . htmlspecialchars($targetFilePath, ENT_QUOTES, 'UTF-8')
-            . ', filePath=' . htmlspecialchars($filePath, ENT_QUOTES, 'UTF-8') . ')');
-        throw new ImageProcessingException("Invalid upload path detected");
-    }
-
-    if (!is_dir($filePath)) {
-        // Create directory with secure permissions (755)
-        if (!mkdir($filePath, 0755, true)) {
-            logger($user->data()->id, LogCategories::LOG_CATEGORY_FILE_ERROR, "Failed to create upload directory: " . $filePath);
-            throw new ImageProcessingException("Failed to create upload directory");
-        }
+        $storedNames = CarImageProcessor::storedImageFilenames((new Car($carId))->data()->image ?? null);
     }
 
     $requestedOrder = array_values(array_filter(explode(',', Input::raw('filenames') ?? '')));
     $newNames       = [];
+    // Client names of uploads that already have a loop error, so that
+    // checkUploadOrder() does not report them a second time.
+    $failedNames    = [];
 
-    //  $_FILES['file']['tmp_name'] is an array so have to use loop
-    foreach ($_FILES['file']['tmp_name'] as $key => $value) {
-        $name  = $_FILES['file']['name'][$key];
-        $tempFile = $_FILES['file']['tmp_name'][$key];
+    if ($hasNewFiles) {
+        // Secure path construction with validation
+        $filePath = $carId === 0
+            ? $targetFilePath . 'temp' . '/'
+            : $targetFilePath . $carId . '/';
 
-        if ($tempFile !== '') { //  deal with empty file name
+        // Ensure the upload destination resolves inside the configured upload
+        // directory — a path that resolves elsewhere (traversal, or a sibling
+        // directory sharing the same prefix) must never be written to.
+        if (!UploadPathGuard::isWithinTarget($targetFilePath, $filePath)) {
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_FILE_ERROR,
+                'uploadImages: path guard failed — realpath() returned false or traversal detected'
+                . ' (targetFilePath=' . htmlspecialchars($targetFilePath, ENT_QUOTES, 'UTF-8')
+                . ', filePath=' . htmlspecialchars($filePath, ENT_QUOTES, 'UTF-8') . ')');
+            throw new ImageProcessingException("Invalid upload path detected");
+        }
+
+        if (!is_dir($filePath)) {
+            // Create directory with secure permissions (755)
+            if (!mkdir($filePath, 0755, true)) {
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_FILE_ERROR, "Failed to create upload directory: " . $filePath);
+                throw new ImageProcessingException("Failed to create upload directory");
+            }
+        }
+
+        //  $_FILES['file']['tmp_name'] is an array so have to use loop
+        foreach ($_FILES['file']['tmp_name'] as $key => $tempFile) {
+            // An empty file input is not a photo. Each other error code goes
+            // to validateFileUpload(): PHP leaves tmp_name empty for a failed
+            // upload, and the owner needs to know which photo failed.
+            if ($_FILES['file']['error'][$key] === UPLOAD_ERR_NO_FILE) {
+                continue;
+            }
+            $name        = (string) $_FILES['file']['name'][$key];
+            $displayName = CarImageProcessor::cleanClientText($name, 100);
+            $logName     = clientLogText($name, 100);
+
             try {
                 // Create file info array for validation
                 $fileInfo = [
-                    'name' => $_FILES['file']['name'][$key],
+                    'name' => $name,
                     'tmp_name' => $tempFile,
                     'error' => $_FILES['file']['error'][$key],
                     'size' => $_FILES['file']['size'][$key]
                 ];
-                
+
                 // Validate file upload security constraints
                 CarImageProcessor::validateFileUpload($fileInfo);
 
                 // Get and validate MIME type
                 $mimeType = CarImageProcessor::getMimeType($tempFile);
                 $extension = CarImageProcessor::getExtension($mimeType);
-                
+
                 // Generate cryptographically secure filename
                 $newFileName = CarImageProcessor::generateSecureFilename($extension);
 
@@ -801,70 +765,79 @@ function uploadImages(array &$cardetails, array &$errors): void
                             logger(
                                 $user->data()->id,
                                 LogCategories::LOG_CATEGORY_FILE_ERROR,
-                                'Image resize failed for carId: ' . Input::get('car_id') .
-                                    ' file: ' . $newFileName . ' size: ' . $size . ' error: ' . $e->getMessage()
+                                'Image resize failed for carId: ' . $carId .
+                                    ' file: ' . $newFileName . ' (' . $logName . ') size: ' . $size . ' error: ' . $e->getMessage()
                             );
                             break;
                         }
                     }
-                    
+
                     if (!$resizeSuccess) {
-                        $errors[] = "Image resize: Failed";
+                        $errors[] = "Image resize failed for photo " . $displayName;
                     }
                     arrayReplaceValue($requestedOrder, $name, $newFileName);
                     $newNames[] = $newFileName;
                 } else {
-                    $errors[] = "Photo failed to upload " . $name . " as " . $newFileName;
+                    $failedNames[] = $name;
+                    $errors[] = "Photo failed to upload " . $displayName . " as " . $newFileName;
                     logger(
                         $user->data()->id,
                         LogCategories::LOG_CATEGORY_FILE_ERROR,
                         "ERROR: File upload failed for carId: " .
-                            Input::get('car_id') . " File: " . $name . " Target: " . $newFileName
+                            $carId . " File: " . $logName . " Target: " . $newFileName
                     );
                 }
             } catch (ElanRegistryException $e) {
                 // Log security violation and reject file
-                $errors[] = "File upload rejected: " . $e->getUserMessage();
+                $failedNames[] = $name;
+                $errors[] = "File upload rejected for " . $displayName . ": " . $e->getUserMessage();
                 logger(
                     $user->data()->id,
                     LogCategories::LOG_CATEGORY_FILE_ERROR,
                     "SECURITY: File upload rejected for carId: " .
-                        Input::get('car_id') . " File: " . $name . " Reason: " . $e->getMessage()
+                        $carId . " File: " . $logName . " Reason: " . $e->getMessage()
                 );
             }
         }
     }
+
     $result = CarImageProcessor::resolveUploadOrder($requestedOrder, $newNames, $storedNames);
+    $check  = CarImageProcessor::checkUploadOrder($result, $newNames, $failedNames);
+
     if (!empty($result['dropped'])) {
-        // The dropped names come from the client, so cap what goes into the log
-        // row and remove control characters, which could fake a log line.
         logger($user->data()->id, LogCategories::LOG_CATEGORY_FILE_ERROR,
             'uploadImages: dropped ' . count($result['dropped'])
             . ' filename(s) not generated by this request or stored for car '
-            . (int) ($cardetails['id'] ?? 0) . ': '
-            . htmlspecialchars(
-                mb_substr((string) preg_replace(
-                    '/[\x00-\x1F\x7F]/',
-                    '',
-                    implode(', ', array_slice($result['dropped'], 0, 20))
-                ), 0, 1000),
-                ENT_QUOTES,
-                'UTF-8'
-            ));
+            . $carId . ': '
+            . clientLogText(implode(', ', array_slice($result['dropped'], 0, 20)), 1000));
     }
-    // A stored file with no entry in cars.image is a photo lost with no message.
-    // This occurs when the browser file name in 'filenames' does not match the
-    // $_FILES name: a comma breaks the explode(','), and PHP changes names that
-    // hold '"' or '\'. The error stops the save before the DB write.
-    $unplaced = array_values(array_diff($newNames, $result['kept']));
-    if ($unplaced !== []) {
+    if ($check['storedUnsafe'] !== []) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_FILE_ERROR,
-            'uploadImages: ' . count($unplaced)
-            . ' uploaded file(s) not in the requested order for car '
-            . (int) ($cardetails['id'] ?? 0) . ': ' . implode(', ', $unplaced));
-        $errors[] = 'Photo could not be added. Rename the file with plain characters (letters, numbers, - and _). Then upload it again.';
+            'uploadImages: ' . count($check['storedUnsafe'])
+            . ' stored filename(s) fail isSafeFilename() for car ' . $carId
+            . '; save stopped so that cars.image keeps them: '
+            . clientLogText(implode(', ', array_slice($check['storedUnsafe'], 0, 20)), 1000));
     }
+    if ($check['unplaced'] !== []) {
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_FILE_ERROR,
+            'uploadImages: ' . count($check['unplaced'])
+            . ' uploaded file(s) not in the requested order for car '
+            . $carId . ': ' . implode(', ', $check['unplaced']));
+    }
+    array_push($errors, ...$check['errors']);
     $cardetails['image'] = json_encode($result['kept']);
+}
+
+/**
+ * Make client text safe to put in a log row.
+ *
+ * @param string $text      Client text, for example a browser file name
+ * @param int    $maxLength Maximum length in characters, before encoding
+ * @return string Cleaned and HTML-encoded text
+ */
+function clientLogText(string $text, int $maxLength): string
+{
+    return htmlspecialchars(CarImageProcessor::cleanClientText($text, $maxLength), ENT_QUOTES, 'UTF-8');
 }
 
 /**
@@ -916,11 +889,11 @@ function fetchImages(int $car_id): void
 /**
  * Move temporary images to permanent car directory
  *
- * Only called from the addCar path (after buildImageDetails() and
- * uploadImages() have both run), so every filename in $cardetails['image']
- * has already been through uploadImages()'s resolveUploadOrder() filter. A new
- * car has no stored names, so only names that pass isValidFilename() stay (or,
- * for a no-upload addCar, the list is cleared to empty) — the legacy-format-skip
+ * Only called from the addCar path (after uploadImages() runs), so every
+ * filename in $cardetails['image'] has already been through uploadImages()'s
+ * resolveUploadOrder() filter. A new car has no stored names, so only names
+ * that pass isValidFilename() stay (or, for a no-upload addCar, the list is
+ * cleared to empty) — the legacy-format-skip
  * branch inside the loop below is therefore not currently reachable, but is
  * kept as a defensive no-op skip. See the inline comment on that branch.
  *

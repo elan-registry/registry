@@ -8,7 +8,7 @@ The maps show every car on first load.
 
 ## User-Facing Changes
 
-- (Filled in as issues complete.)
+- A car save with a photo that did not reach the server now stops and tells the owner why.
 
 ## Admin-Facing Changes
 
