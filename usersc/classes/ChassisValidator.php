@@ -11,15 +11,16 @@ use ElanRegistry\Exceptions\CarValidationException;
  * ChassisValidator.php
  * Centralized Lotus Elan chassis number validation system
  * 
- * Provides comprehensive validation for all Lotus Elan chassis numbering formats
- * including historical race car formats and production car evolution from 1963-1974.
+ * Validates the Lotus Elan chassis formats: race cars for model years
+ * 1963-1966 and production cars for model years 1963-1974. The registry has no
+ * rule for other model years, so validate() rejects them.
  *
  * Sources for the rules: the Robinshaw and Ross book on the Lotus Elan, and the
  * lotuselansprint.com "Unit Numbers" and "Number Made" pages.
  *
- * Cars built from 1 January 1972 dropped the batch number (BB): YYMMBBXXXXC
- * became YYMMXXXXC. The format follows the build date (YY), not the model year,
- * so a 1972-1974 model year car built in 1970 or 1971 still has 11 characters.
+ * Model years 1972-1974 use only the 9-character YYMMXXXXC format, without the
+ * batch number (BB) of YYMMBBXXXXC (issue #2613). An admin sets the override
+ * for a car with a different chassis.
  * 
  * @author Elan Registry Team
  */
@@ -50,29 +51,31 @@ class ChassisValidator
         1964 => ['/^26-R-\d{2}$/', '/^26-S2-\d{2}$/'],
         1965 => ['/^26-S2-\d{2}$/'],
         1966 => ['/^26-S2-\d{2}$/'],
-        'default' => ['/^26-R-\d{2}$/']
     ];
+
+    /** First and last production model years that the registry accepts */
+    private const FIRST_MODEL_YEAR = 1963;
+    private const LAST_MODEL_YEAR = 1974;
 
     /** First model year of the post-1970 formats; also the 5-character transition year */
     private const FIRST_POST_1970_YEAR = 1970;
 
-    /** First and last model years that allow the 9-character YYMMXXXXC format */
+    /** First model year of the 9-character YYMMXXXXC format */
     private const FIRST_NINE_CHAR_YEAR = 1972;
-    private const LAST_NINE_CHAR_YEAR = 1974;
 
     /**
      * Rule groups that ruleGroup() returns, in display order, with admin labels.
      * Admin reports group failing cars by these keys.
      */
     public const RULE_GROUPS = [
-        'race' => 'Race cars: 26-R-xx or 26-S2-xx, by year',
+        'race' => 'Race cars, model years 1963-1966: 26-R-xx or 26-S2-xx, by year',
         'pre_1970' => 'Model years before 1970: 4 digits',
         'year_1970' => 'Model year 1970: 5 or 11 characters',
         'year_1971' => 'Model year 1971: 11 characters YYMMBBXXXXC',
         'years_1972_1974' => 'Model years 1972-1974: 9 characters YYMMXXXXC',
-        'from_1975' => 'Model years 1975 and later: 11 characters YYMMBBXXXXC',
-        // A null or 0 year. validate() has no rule for it; callers report the car without validate().
-        'year_empty' => 'Year empty',
+        // validate() rejects a production year outside 1963-1974. A null year has no
+        // int value for validate(), so callers report that car without validate().
+        'year_out_of_range' => 'Year empty or out of range',
         'model_unreadable' => 'Model not readable',
     ];
 
@@ -139,9 +142,8 @@ class ChassisValidator
      *
      * The routing follows validate() after its chassis checks (empty chassis,
      * invalid characters): a model that does not parse comes first, then race
-     * variants, then the year. One exception: a null or 0 year gives
-     * 'year_empty', but validate() applies the pre-1970 rule to year 0. Do not
-     * call validate() for a car with an empty year.
+     * variants, then the year. A race car with a year outside 1963-1966 stays
+     * in 'race', because validate() reports it with the race car error.
      *
      * @param int|null $year  The car year; null or 0 means the year is empty
      * @param string   $model The model string (series|variant|type)
@@ -160,12 +162,11 @@ class ChassisValidator
         }
 
         return match (true) {
-            $year === null || $year === 0 => 'year_empty',
+            $year === null, $year < self::FIRST_MODEL_YEAR, $year > self::LAST_MODEL_YEAR => 'year_out_of_range',
             $year < self::FIRST_POST_1970_YEAR => 'pre_1970',
             $year === self::FIRST_POST_1970_YEAR => 'year_1970',
             $year < self::FIRST_NINE_CHAR_YEAR => 'year_1971',
-            $year <= self::LAST_NINE_CHAR_YEAR => 'years_1972_1974',
-            default => 'from_1975',
+            default => 'years_1972_1974',
         };
     }
 
@@ -190,9 +191,12 @@ class ChassisValidator
     {
         $this->result['format_type'] = 'race';
         
-        $patterns = self::RACE_PATTERNS[$year] ?? self::RACE_PATTERNS['default'];
-        
-        foreach ($patterns as $pattern) {
+        if (!isset(self::RACE_PATTERNS[$year])) {
+            $this->result['error_reason'] = 'Race car year must be 1963-1966';
+            return;
+        }
+
+        foreach (self::RACE_PATTERNS[$year] as $pattern) {
             if (preg_match($pattern, $chassis)) {
                 $this->result['valid'] = true;
                 return;
@@ -202,8 +206,7 @@ class ChassisValidator
         $this->result['error_reason'] = match ($year) {
             1963       => '1963 race cars must use format 26-R-xx (e.g., 26-R-01)',
             1964       => '1964 race cars must use format 26-R-xx or 26-S2-xx (e.g., 26-R-01 or 26-S2-01)',
-            1965, 1966 => "{$year} race cars must use format 26-S2-xx (e.g., 26-S2-01)",
-            default    => "{$year} race cars must use format 26-R-xx (e.g., 26-R-01)",
+            default    => "{$year} race cars must use format 26-S2-xx (e.g., 26-S2-01)",
         };
     }
 
@@ -217,6 +220,11 @@ class ChassisValidator
      */
     private function validateProductionCar(string $chassis, int $year, string $series, int $chassisLength): void
     {
+        if ($year < self::FIRST_MODEL_YEAR || $year > self::LAST_MODEL_YEAR) {
+            $this->result['error_reason'] = 'Year must be 1963-1974';
+            return;
+        }
+
         if ($year < self::FIRST_POST_1970_YEAR) {
             $this->validatePre1970($chassis, $chassisLength);
         } else {
@@ -246,7 +254,7 @@ class ChassisValidator
     }
 
     /**
-     * Validate post-1970 chassis (YYMMBBXXXXC or YYMMXXXXC format)
+     * Validate 1970-1974 chassis (5 characters, YYMMBBXXXXC or YYMMXXXXC format)
      * 
      * @param string $chassis
      * @param int $year
@@ -257,38 +265,23 @@ class ChassisValidator
     {
         $this->result['format_type'] = 'post_1970';
 
-        // 1972-1974 model years: 9 characters if built from January 1972, else 11 characters
-        if ($year >= self::FIRST_NINE_CHAR_YEAR && $year <= self::LAST_NINE_CHAR_YEAR) {
+        if ($year >= self::FIRST_NINE_CHAR_YEAR) {
             if ($chassisLength === 9) {
                 $this->validateNineCharFormat($chassis, $series);
-            } elseif ($chassisLength === 11) {
-                $this->validateElevenCharFormat($chassis, $series);
-                if ($this->result['valid'] && !in_array(substr($chassis, 0, 2), ['70', '71'], true)) {
-                    $this->result['valid'] = false;
-                    $this->result['error_reason'] = 'An 11-character YYMMBBXXXXC chassis must start with 70 or 71 (built before 1972). ' .
-                                                  'Cars built from January 1972 use 9 characters YYMMXXXXC (e.g., 73081602L)';
-                }
             } else {
-                $this->result['error_reason'] = '1972-1974 chassis must be 11 characters YYMMBBXXXXC (built before 1972, e.g., 7112290609G) ' .
-                                              'or 9 characters YYMMXXXXC (built from January 1972, e.g., 73081602L)';
+                $this->result['error_reason'] = '1972-1974 chassis must be 9 characters YYMMXXXXC (e.g., 73081602L)';
             }
             return;
         }
 
-        // Standard 11-character format: YYMMBBXXXXC
         if ($chassisLength === 11) {
             $this->validateElevenCharFormat($chassis, $series);
-        } 
-        // 1970 transition year also allows 5-character legacy format
-        elseif ($year === self::FIRST_POST_1970_YEAR && $chassisLength === 5) {
+        } elseif ($year === self::FIRST_POST_1970_YEAR && $chassisLength === 5) {
             $this->validateFiveCharFormat($chassis, $series);
-        } 
-        else {
-            if ($year === self::FIRST_POST_1970_YEAR) {
-                $this->result['error_reason'] = '1970 chassis must be 5 characters (legacy format) or 11 characters (new YYMMBBXXXXC format)';
-            } else {
-                $this->result['error_reason'] = 'Post-1970 chassis must be 11 characters in YYMMBBXXXXC format (e.g., 7112290609G)';
-            }
+        } elseif ($year === self::FIRST_POST_1970_YEAR) {
+            $this->result['error_reason'] = '1970 chassis must be 5 characters (legacy format) or 11 characters (new YYMMBBXXXXC format)';
+        } else {
+            $this->result['error_reason'] = '1971 chassis must be 11 characters in YYMMBBXXXXC format (e.g., 7112290609G)';
         }
     }
 
@@ -319,7 +312,7 @@ class ChassisValidator
     }
 
     /**
-     * Validate 9-character format (YYMMXXXXC), used for cars built from January 1972
+     * Validate 9-character format (YYMMXXXXC), used for model years 1972-1974
      *
      * @param string $chassis
      * @param string $series

@@ -434,7 +434,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                         <tbody id="invalid-chassis-tbody">
                                             <?php foreach ($report['groups'] as $groupKey => $groupCars) { ?>
                                             <tr class="table-secondary">
-                                                <th colspan="8" scope="colgroup"><?= htmlspecialchars(ChassisValidator::RULE_GROUPS[$groupKey], ENT_QUOTES, 'UTF-8') ?> (<?= count($groupCars) ?>)</th>
+                                                <th colspan="8" scope="rowgroup"><?= htmlspecialchars(ChassisValidator::RULE_GROUPS[$groupKey], ENT_QUOTES, 'UTF-8') ?> (<?= count($groupCars) ?>)</th>
                                             </tr>
                                             <?php foreach ($groupCars as $car) {
                                                 $chassisOverride = (int)($car->chassis_override ?? 0);
@@ -752,7 +752,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                         <div class="text-center p-3 border rounded bg-light">
                             <h6 class="text-info mb-2">1972–1974</h6>
                             <code class="d-block mb-2">73081602L</code>
-                            <small class="text-muted">9 characters YYMMXXXXC (model years 1972–1974 only). 11 characters if built in 1970 or 1971.</small>
+                            <small class="text-muted">9 characters YYMMXXXXC only</small>
                         </div>
                     </div>
                 </div>
@@ -792,7 +792,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                             <li><code class="text-success">5678A</code> - 1970 Elan</li>
                             <li><code class="text-success">7012345678M</code> - 1970 +2</li>
                             <li><code class="text-success">72110581E</code> - 1972 Elan</li>
-                            <li><code class="text-success">7100000468L</code> - 1972 +2 built in 1971</li>
+                            <li><code class="text-success">73081602L</code> - 1973 +2</li>
                         </ul>
                     </div>
                     <div class="col-md-6">

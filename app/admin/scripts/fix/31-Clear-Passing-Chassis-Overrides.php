@@ -63,7 +63,7 @@ $dbi = dbi();
  * - `manual`: the chassis passes, but the comment needs a manual edit.
  * - `failing`: the chassis still fails, or the year is empty (null or 0).
  *   The flag and the note stay. `group` is the ChassisValidator::RULE_GROUPS
- *   key of the rule the car uses, or `year_empty`.
+ *   key of the rule the car uses, or `year_out_of_range` for an empty year.
  * - `info`: 1972-1974 cars with `chassis_override = 0` that fail the rule.
  *
  * A car that throws during validation is skipped, logged, and added to
@@ -101,10 +101,10 @@ function fix31_classify_cars(DatabaseInterface $db, int $userId): array
         $comments = $car->comments === null ? null : (string) $car->comments;
 
         try {
-            // validate() applies the pre-1970 rule to year 0, so a 4-digit
-            // chassis would pass and clear the override. Report it instead.
+            // validate() takes an int year, so it cannot check a null year.
+            // It also fails year 0, so this branch gives the same result for 0.
             if ($year === null || $year === 0) {
-                $lists['failing'][] = ['id' => $carId, 'year' => $year, 'chassis' => $chassis, 'before' => $comments, 'reason' => 'Year is empty', 'group' => 'year_empty'];
+                $lists['failing'][] = ['id' => $carId, 'year' => $year, 'chassis' => $chassis, 'before' => $comments, 'reason' => 'Year is empty', 'group' => ChassisValidator::ruleGroup($year, (string) $car->model)];
                 continue;
             }
 
@@ -220,7 +220,7 @@ $userId = (int) $user->data()->id;
                                     <li>Selects each car with <code>chassis_override = 1</code> or an override note
                                         in its comments, for all years</li>
                                     <li>Validates each chassis again, without an override, with the current rule for the car's
-                                        year (for 1972-1974: 9 characters <code>YYMMXXXXC</code>, or 11 characters when built in 1970 or 1971)</li>
+                                        year (for 1972-1974: 9 characters <code>YYMMXXXXC</code> only)</li>
                                     <li>For each chassis that passes, sets <code>chassis_override = 0</code> and removes
                                         the <code>CHASSIS VALIDATION OVERRIDDEN</code> notes from the comments</li>
                                     <li>Keeps the flag and the note on each car that still fails</li>
@@ -417,9 +417,9 @@ $userId = (int) $user->data()->id;
                                 }
                                 if ($dbi->count() !== 1) {
                                     $skippedIds[] = $row['id'];
-                                    logProgress("Car {$row['id']} ({$row['year']}, {$row['chassis']}): skipped - comment changed during this run", 'warning');
+                                    logProgress("Car {$row['id']} ({$row['year']}, {$row['chassis']}): skipped - row changed during this run", 'warning');
                                     logger($userId, LogCategories::LOG_CATEGORY_FIX_SCRIPT,
-                                        "31-Clear-Passing-Chassis-Overrides skipped car {$row['id']}: comments changed during this run");
+                                        "31-Clear-Passing-Chassis-Overrides skipped car {$row['id']}: row changed during this run");
                                     continue;
                                 }
                                 $updated++;
@@ -461,7 +461,7 @@ $userId = (int) $user->data()->id;
                             "31-Clear-Passing-Chassis-Overrides completed - cleared: {$updated}, manual edit: "
                             . count($lists['manual']) . ($manualIds !== '' ? " [{$manualIds}]" : '')
                             . ', still failing: ' . count($lists['failing'])
-                            . ', skipped (comment changed during this run): ' . count($skippedIds) . ($skippedList !== '' ? " [{$skippedList}]" : '')
+                            . ', skipped (row changed during this run): ' . count($skippedIds) . ($skippedList !== '' ? " [{$skippedList}]" : '')
                             . ', errors: ' . count($lists['errors']) . ($errorIds !== '' ? " [{$errorIds}]" : ''));
 
                         // Display summary
@@ -475,7 +475,7 @@ $userId = (int) $user->data()->id;
                         }
                         logProgress('Still failing (kept): ' . count($lists['failing']), 'info');
                         if ($skippedIds !== []) {
-                            logProgress('Skipped - comment changed during this run: ' . count($skippedIds) . " [{$skippedList}]", 'error');
+                            logProgress('Skipped - row changed during this run: ' . count($skippedIds) . " [{$skippedList}]", 'error');
                         }
                         if ($lists['errors'] !== []) {
                             logProgress('Errors: ' . count($lists['errors']) . " [{$errorIds}]", 'error');

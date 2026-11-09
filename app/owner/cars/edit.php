@@ -260,8 +260,8 @@ function updateCarDetails(array &$car): void
                         <div id="chassis_post1970" class="hidden">
                             <strong>After 1970</strong><br>The chassis number starts with the year the car was built.<br>
                             <ul>
-                                <li>Built in 1970 or 1971: 11 characters (i.e. YYmmbbuuuuT)</li>
-                                <li>Built from 1 January 1972 (model years 1972-1974): 9 characters, with no batch number (i.e. YYmmuuuuT)</li>
+                                <li>Model year 1971: 11 characters (i.e. YYmmbbuuuuT)</li>
+                                <li>Model years 1972-1974: 9 characters only, with no batch number (i.e. YYmmuuuuT)</li>
                                 <ul>
                                     <li>YY = 2 digit year built</li>
                                     <li>mm = month</li>
@@ -445,7 +445,7 @@ function updateCarDetails(array &$car): void
                         <div class="text-center p-3 border rounded bg-light">
                             <h6 class="text-info mb-2">1972–1974</h6>
                             <code class="d-block mb-2">73081602L</code>
-                            <small class="text-muted">9 characters YYMMXXXXC (model years 1972–1974 only). 11 characters if built in 1970 or 1971.</small>
+                            <small class="text-muted">9 characters YYMMXXXXC only</small>
                         </div>
                     </div>
                 </div>
@@ -485,7 +485,7 @@ function updateCarDetails(array &$car): void
                             <li><code class="text-success">5678A</code> - 1970 Elan</li>
                             <li><code class="text-success">7012345678M</code> - 1970 +2</li>
                             <li><code class="text-success">72110581E</code> - 1972 Elan</li>
-                            <li><code class="text-success">7100000468L</code> - 1972 +2 built in 1971</li>
+                            <li><code class="text-success">73081602L</code> - 1973 +2</li>
                         </ul>
                     </div>
                     <div class="col-md-6">

@@ -360,8 +360,8 @@ final class CarActionsHistoryAndValidationWiringTest extends TestCase
     /**
      * A genuinely invalid chassis number fails validation with a reason.
      *
-     * Arrange: "ABC123" passes the character allowlist but is not 11 characters,
-     *          so the post-1970 format rule rejects it.
+     * Arrange: "ABC123" passes the character allowlist but is not 9 characters,
+     *          so the 1972-1974 format rule rejects it.
      * Act:     run the validator.
      * Assert:  valid is false and a non-empty error_reason explains why — the
      *          endpoint still reports this as an HTTP 200 success payload.
@@ -375,7 +375,7 @@ final class CarActionsHistoryAndValidationWiringTest extends TestCase
         $this->assertSame('post_1970', $result['format_type']);
         $this->assertFalse($result['override_used']);
         $this->assertNotEmpty($result['error_reason'], 'A failed validation must explain itself');
-        $this->assertStringContainsString('11 characters', $result['error_reason']);
+        $this->assertStringContainsString('9 characters', $result['error_reason']);
     }
 
     // =========================================================================
