@@ -1474,6 +1474,33 @@ message)
 
 ---
 
+### ChassisOverrideNote
+
+**Location**: `/usersc/classes/Car/ChassisOverrideNote.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: Removes the `CHASSIS VALIDATION OVERRIDDEN: <Y-m-d H:i:s>` notes
+from a `cars.comments` value (#2613). Static, no DB.
+
+**Methods**:
+
+- `strip(?string $comments): ChassisOverrideNoteResult` - Removes each note
+  and the line breaks before it. The owner text that stays is not trimmed.
+  When the text that stays still contains "overrid" or "chassis validation"
+  (any case), the result keeps the original comment and sets `manual`.
+  Throws `\RuntimeException` when the PCRE engine fails.
+
+**ChassisOverrideNoteResult** (`/usersc/classes/Car/ChassisOverrideNoteResult.php`):
+final readonly value object with `comments` (`?string`, the value to store),
+`changed` (`bool`) and `manual` (`bool`). Create it only with the named
+constructors `unchanged()`, `stripped()` and `manual()`, so `changed` and
+`manual` are never both true.
+
+**Used By**: `app/admin/scripts/fix/31-Clear-Passing-Chassis-Overrides.php`
+
+---
+
 ### CarBadges
 
 **Location**: `/usersc/classes/Car/CarBadges.php`
@@ -4130,6 +4157,20 @@ if ($result['valid']) {
     'format_type' => 'detected format type'
 ]
 ```
+
+**Rule groups**:
+
+- `ruleGroup(?int $year, string $model): string` - static. Returns the key of
+  the rule that `validate()` applies to the car. The routing follows
+  `validate()` after its chassis checks (empty chassis, invalid characters):
+  `model_unreadable` when `CarValidator::parseModel()` throws, then `race` for
+  a Race variant, then `year_empty` for a `null` or `0` year, then the year
+  range: `pre_1970`, `year_1970`, `year_1971`, `years_1972_1974`,
+  `from_1975`. One exception: `validate()` applies the pre-1970 rule to year
+  `0`. Do not call `validate()` for a car with an empty year.
+- `RULE_GROUPS` - public constant. Maps each key to an admin label, in display
+  order. Fix script 31 and the "Invalid Chassis Numbers" report on the
+  manage-cars tab group failing cars by these keys.
 
 ### SessionTimeZone
 

@@ -171,6 +171,13 @@ function getDataQualityReports(object $db): array {
         }
     }
 
+    // Group the failing cars by the rule they use, in RULE_GROUPS order; empty groups are left out.
+    $invalidChassisGroups = array_fill_keys(array_keys(ChassisValidator::RULE_GROUPS), []);
+    foreach ($invalidChassisData as $car) {
+        $invalidChassisGroups[ChassisValidator::ruleGroup((int)$car->year, (string)$car->model)][] = $car;
+    }
+    $invalidChassisGroups = array_filter($invalidChassisGroups, static fn (array $cars): bool => $cars !== []);
+
     $reports['invalid_chassis'] = [
         'title' => 'Invalid Chassis Numbers',
         'description' => 'Cars with chassis numbers that fail validation against Lotus numbering standards',
@@ -178,6 +185,7 @@ function getDataQualityReports(object $db): array {
         'severity' => 'danger',
         'count' => count($invalidChassisData),
         'data' => $invalidChassisData,
+        'groups' => $invalidChassisGroups,
         'impact' => 'High - May indicate incorrect data entry or non-standard numbering'
     ];
 
@@ -424,7 +432,11 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                             </tr>
                                         </thead>
                                         <tbody id="invalid-chassis-tbody">
-                                            <?php foreach ($report['data'] as $car) {
+                                            <?php foreach ($report['groups'] as $groupKey => $groupCars) { ?>
+                                            <tr class="table-secondary">
+                                                <th colspan="8" scope="colgroup"><?= htmlspecialchars(ChassisValidator::RULE_GROUPS[$groupKey], ENT_QUOTES, 'UTF-8') ?> (<?= count($groupCars) ?>)</th>
+                                            </tr>
+                                            <?php foreach ($groupCars as $car) {
                                                 $chassisOverride = (int)($car->chassis_override ?? 0);
                                             ?>
                                             <tr data-override="<?= $chassisOverride ?>">
@@ -471,6 +483,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                     </button>
                                                 </td>
                                             </tr>
+                                            <?php } ?>
                                             <?php } ?>
                                             <tr id="invalid-chassis-no-results" class="d-none">
                                                 <td colspan="8" class="text-center text-muted py-3">No cars match the current filter.</td>
@@ -713,14 +726,14 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
             <div class="modal-body">
                 <!-- Format Overview -->
                 <div class="row mb-4">
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <div class="text-center p-3 border rounded bg-light">
                             <h6 class="text-primary mb-2">Pre-1970 (1963-1969)</h6>
                             <code class="d-block mb-2">1234</code>
                             <small class="text-muted">4 digits only</small>
                         </div>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <div class="text-center p-3 border rounded bg-light">
                             <h6 class="text-warning mb-2">1970 Transition</h6>
                             <code class="d-block mb-1">1234A</code>
@@ -728,11 +741,18 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                             <small class="text-muted">5 or 11 characters</small>
                         </div>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <div class="text-center p-3 border rounded bg-light">
-                            <h6 class="text-success mb-2">Post-1970 (1971-1974)</h6>
-                            <code class="d-block mb-2">7301019999B</code>
+                            <h6 class="text-success mb-2">1971</h6>
+                            <code class="d-block mb-2">7112290609G</code>
                             <small class="text-muted">11 characters YYMMBBXXXXC</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center p-3 border rounded bg-light">
+                            <h6 class="text-info mb-2">1972–1974</h6>
+                            <code class="d-block mb-2">73081602L</code>
+                            <small class="text-muted">9 characters YYMMXXXXC (model years 1972–1974 only). 11 characters if built in 1970 or 1971.</small>
                         </div>
                     </div>
                 </div>
@@ -771,15 +791,16 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                             <li><code class="text-success">1234</code> - Pre-1970</li>
                             <li><code class="text-success">5678A</code> - 1970 Elan</li>
                             <li><code class="text-success">7012345678M</code> - 1970 +2</li>
-                            <li><code class="text-success">7301019999B</code> - 1973 Elan</li>
+                            <li><code class="text-success">72110581E</code> - 1972 Elan</li>
+                            <li><code class="text-success">7100000468L</code> - 1972 +2 built in 1971</li>
                         </ul>
                     </div>
                     <div class="col-md-6">
                         <h6 class="text-danger"><i class="fas fa-times-circle"></i> Invalid Examples</h6>
                         <ul class="list-unstyled">
                             <li><code class="text-danger">123</code> - Too short</li>
-                            <li><code class="text-danger">7301019999I</code> - Invalid letter I</li>
-                            <li><code class="text-danger">7301019999L</code> - Wrong letter for Elan</li>
+                            <li><code class="text-danger">72110581I</code> - Invalid letter I</li>
+                            <li><code class="text-danger">72110581L</code> - Wrong letter for Elan</li>
                             <li><code class="text-danger">36/1234</code> - Includes type prefix</li>
                         </ul>
                     </div>
@@ -791,7 +812,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                 </div>
             </div>
             <div class="modal-footer">
-                <a href="../help/chassis-validation.php" target="_blank" class="btn btn-outline-primary">
+                <a href="<?= $us_url_root ?>docs/reference/chassis-validation.php" target="_blank" class="btn btn-outline-primary">
                     <i class="fas fa-external-link-alt"></i> View Full Documentation
                 </a>
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>

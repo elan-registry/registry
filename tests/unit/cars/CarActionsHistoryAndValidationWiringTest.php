@@ -341,17 +341,17 @@ final class CarActionsHistoryAndValidationWiringTest extends TestCase
     /**
      * A genuinely valid chassis number validates successfully.
      *
-     * Arrange: "7301019999B" is the canonical post-1970 YYMMBBXXXXC example —
-     *          10 numeric characters plus an Elan letter code (A-K excluding I).
+     * Arrange: "73081602B" is the canonical 1972-1974 YYMMXXXXC example —
+     *          8 numeric characters plus an Elan letter code (A-K excluding I).
      * Act:     run the same validator the endpoint instantiates.
      * Assert:  the result carries every key the endpoint forwards verbatim.
      */
     public function testValidateChassisSuccessReturnsApiResponseWithResult(): void
     {
-        $result = (new ChassisValidator())->validate('7301019999B', 1973, self::VALID_MODEL);
+        $result = (new ChassisValidator())->validate('73081602B', 1973, self::VALID_MODEL);
 
         $this->assertTrue($result['valid'], 'Canonical post-1970 chassis must validate');
-        $this->assertSame('7301019999B', $result['chassis']);
+        $this->assertSame('73081602B', $result['chassis']);
         $this->assertSame('post_1970', $result['format_type']);
         $this->assertFalse($result['override_used'], 'No override was requested');
         $this->assertSame('', $result['error_reason'], 'A valid chassis must carry no error reason');

@@ -35,7 +35,8 @@ $validationRules = [
     'production_cars' => [
         'pre_1970'  => '4 digits numeric only',
         '1970'      => '5 characters (legacy) or 11 characters (YYMMBBXXXXC)',
-        'post_1970' => '11 characters YYMMBBXXXXC format',
+        '1971'      => '11 characters, YYMMBBXXXXC format',
+        '1972_1974' => '9 characters (YYMMXXXXC), or 11 characters (YYMMBBXXXXC) if the car was built in 1970 or 1971',
     ],
     'letter_codes' => [
         'elan'  => 'A, B, C, D, E, F, G, H, J, K (excluding I)',
@@ -66,26 +67,32 @@ $validationRules = [
                         <div class="card-body">
                             <p>
                                 The Lotus Elan Registry uses chassis validation to ensure data accuracy
-                                and maintain historical authenticity. The validation system recognizes three distinct
-                                periods in Lotus chassis numbering evolution:
+                                and maintain historical authenticity. The validation system recognizes four
+                                periods in Lotus chassis numbering:
                             </p>
                             <div class="row">
-                                <div class="col-md-4">
+                                <div class="col-md-3">
                                     <div class="text-center p-3 border rounded bg-light">
                                         <h5 class="text-primary">Pre-1970</h5>
                                         <p class="small mb-0">Simple 4-digit format<br>All models use same system</p>
                                     </div>
                                 </div>
-                                <div class="col-md-4">
+                                <div class="col-md-3">
                                     <div class="text-center p-3 border rounded bg-light">
                                         <h5 class="text-warning">1970 Transition</h5>
-                                        <p class="small mb-0">Both legacy and new formats<br>5 or 11 character options</p>
+                                        <p class="small mb-0">Both legacy and new formats<br>5 or 11 characters</p>
                                     </div>
                                 </div>
-                                <div class="col-md-4">
+                                <div class="col-md-3">
                                     <div class="text-center p-3 border rounded bg-light">
-                                        <h5 class="text-success">Post-1970</h5>
-                                        <p class="small mb-0">Standardized 11-character<br>YYMMBBXXXXC format</p>
+                                        <h5 class="text-success">1971</h5>
+                                        <p class="small mb-0">11 characters<br>YYMMBBXXXXC format</p>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="text-center p-3 border rounded bg-light">
+                                        <h5 class="text-info">1972-1974</h5>
+                                        <p class="small mb-0">9 characters<br>YYMMXXXXC format<br>(11 if built in 1970 or 1971)</p>
                                     </div>
                                 </div>
                             </div>
@@ -160,15 +167,16 @@ $validationRules = [
                                 </div>
                             </div>
 
-                            <!-- Post-1970 -->
+                            <!-- 1970-1971 -->
                             <div class="mb-4">
                                 <h5 class="text-success">
-                                    <i class="fas fa-calendar-plus"></i> Post-1970 Format (1971-1974)
+                                    <i class="fas fa-calendar-plus"></i> 11-Character Format (1970-1971)
                                 </h5>
                                 <div class="alert alert-success">
-                                    <strong>Rule:</strong> <?= $validationRules['production_cars']['post_1970'] ?>
+                                    <strong>Rule:</strong> <?= $validationRules['production_cars']['1971'] ?>.
+                                    A 1970 car can also use the 5-character format above.
                                 </div>
-                                
+
                                 <div class="card border-left-primary">
                                     <div class="card-body">
                                         <h6>YYMMBBXXXXC Format Breakdown:</h6>
@@ -185,32 +193,32 @@ $validationRules = [
                                                 <tr>
                                                     <td>1-2</td>
                                                     <td>YY</td>
-                                                    <td>Year (last 2 digits)</td>
-                                                    <td>73 = 1973</td>
+                                                    <td>Year built (last 2 digits)</td>
+                                                    <td>71 = 1971</td>
                                                 </tr>
                                                 <tr>
                                                     <td>3-4</td>
                                                     <td>MM</td>
-                                                    <td>Month of production</td>
-                                                    <td>01 = January</td>
+                                                    <td>Month built</td>
+                                                    <td>12 = December</td>
                                                 </tr>
                                                 <tr>
                                                     <td>5-6</td>
                                                     <td>BB</td>
                                                     <td>Production batch</td>
-                                                    <td>01 = First batch</td>
+                                                    <td>29</td>
                                                 </tr>
                                                 <tr>
                                                     <td>7-10</td>
                                                     <td>XXXX</td>
-                                                    <td>Sequential number</td>
-                                                    <td>9999 = Unit number</td>
+                                                    <td>Unit number</td>
+                                                    <td>0609</td>
                                                 </tr>
                                                 <tr>
                                                     <td>11</td>
                                                     <td>C</td>
                                                     <td>Model type letter</td>
-                                                    <td>B = Elan, M = +2</td>
+                                                    <td>G = Elan</td>
                                                 </tr>
                                             </tbody>
                                         </table>
@@ -221,16 +229,101 @@ $validationRules = [
                                     <div class="col-md-6">
                                         <h6>✅ Valid Examples:</h6>
                                         <ul class="list-unstyled">
-                                            <li><code class="text-success">7301019999B</code> - 1973 Elan</li>
-                                            <li><code class="text-success">7412345678M</code> - 1974 +2 model</li>
+                                            <li><code class="text-success">7112290609G</code> - Elan built in December 1971</li>
+                                            <li><code class="text-success">7100000468L</code> - +2 built in 1971</li>
                                         </ul>
                                     </div>
                                     <div class="col-md-6">
                                         <h6>❌ Invalid Examples:</h6>
                                         <ul class="list-unstyled">
-                                            <li><code class="text-danger">73010199B</code> - Too short (10 chars)</li>
-                                            <li><code class="text-danger">730101999AB</code> - Too long (12 chars)</li>
-                                            <li><code class="text-danger">7301019999I</code> - Invalid letter (I not used)</li>
+                                            <li><code class="text-danger">711229069G</code> - Too short (10 characters)</li>
+                                            <li><code class="text-danger">71122906099G</code> - Too long (12 characters)</li>
+                                            <li><code class="text-danger">7112290609I</code> - Invalid letter (I not used)</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 1972-1974 -->
+                            <div class="mb-4">
+                                <h5 class="text-info">
+                                    <i class="fas fa-calendar-check"></i> 9-Character Format (1972-1974)
+                                </h5>
+                                <div class="alert alert-info">
+                                    <strong>Rule:</strong> <?= $validationRules['production_cars']['1972_1974'] ?>.
+                                </div>
+                                <p>
+                                    From 1 January 1972, Lotus dropped the batch number (BB) from the chassis number.
+                                    The format follows the year the car was built (YY), not the model year.
+                                    Some cars built in 1970 or 1971 were sold as 1972-1974 models.
+                                    These cars keep the 11-character YYMMBBXXXXC format.
+                                </p>
+                                <ul>
+                                    <li>9 characters: positions 1-8 are digits, and YY is 72 or more.</li>
+                                    <li>11 characters: YY must be 70 or 71.</li>
+                                    <li>The last letter must be valid for the model (see the letter codes below).</li>
+                                    <li>Spaces inside the number are not allowed.</li>
+                                </ul>
+
+                                <div class="card border-left-primary">
+                                    <div class="card-body">
+                                        <h6>YYMMXXXXC Format Breakdown:</h6>
+                                        <table class="table table-sm">
+                                            <thead>
+                                                <tr>
+                                                    <th>Position</th>
+                                                    <th>Code</th>
+                                                    <th>Meaning</th>
+                                                    <th>Example</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr>
+                                                    <td>1-2</td>
+                                                    <td>YY</td>
+                                                    <td>Year built (last 2 digits)</td>
+                                                    <td>73 = 1973</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>3-4</td>
+                                                    <td>MM</td>
+                                                    <td>Month built</td>
+                                                    <td>08 = August</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>5-8</td>
+                                                    <td>XXXX</td>
+                                                    <td>Unit number</td>
+                                                    <td>1602</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>9</td>
+                                                    <td>C</td>
+                                                    <td>Model type letter</td>
+                                                    <td>L = +2</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                <div class="row mt-3">
+                                    <div class="col-md-6">
+                                        <h6>✅ Valid Examples:</h6>
+                                        <ul class="list-unstyled">
+                                            <li><code class="text-success">72110581E</code> - Elan built in November 1972</li>
+                                            <li><code class="text-success">73081602L</code> - +2 built in August 1973</li>
+                                            <li><code class="text-success">7100000468L</code> - 1972 +2 built in 1971</li>
+                                            <li><code class="text-success">7112290609G</code> - 1972 Elan built in December 1971</li>
+                                        </ul>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <h6>❌ Invalid Examples:</h6>
+                                        <ul class="list-unstyled">
+                                            <li><code class="text-danger">71110581E</code> - 9 characters, but built in 1971</li>
+                                            <li><code class="text-danger">7308011602L</code> - 11 characters, but built in 1973</li>
+                                            <li><code class="text-danger">72110581I</code> - Invalid letter (I not used)</li>
+                                            <li><code class="text-danger">7211 0581E</code> - Contains a space</li>
                                         </ul>
                                     </div>
                                 </div>
@@ -320,6 +413,13 @@ $validationRules = [
                             <div class="alert alert-warning mt-3">
                                 <strong>Important:</strong> The letter codes are mutually exclusive. Elan models cannot use +2 codes (L, M, N)
                                 and +2 models cannot use Elan codes (A-K). The letter "I" is never used to avoid confusion with the number "1".
+                            </div>
+
+                            <div class="alert alert-info mb-0">
+                                <strong>Sources:</strong> The Elan letters A-K come from the suffix table on the
+                                lotuselansprint.com "Number Made" page. Registry cars use E, G, H and K, and the
+                                registry accepts A-K except I. The +2 letters L, M and N come from the Robinshaw and Ross book.
+                                The lotuselansprint.com pages do not cover the +2.
                             </div>
                         </div>
                     </div>
@@ -482,6 +582,29 @@ $validationRules = [
                                            target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-info">
                                             <i class="fas fa-external-link-alt"></i> View on Amazon
                                         </a>
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="card border-left-primary mt-3">
+                                <div class="card-body">
+                                    <h6 class="text-primary">
+                                        <i class="fas fa-globe"></i> Lotus Elan Sprint website
+                                    </h6>
+                                    <ul class="mb-2">
+                                        <li>
+                                            <a href="https://www.lotuselansprint.com/index.asp?pageid=41826"
+                                               target="_blank" rel="noopener noreferrer">Unit Numbers</a>
+                                            - the 1 January 1972 change from YYMMBBXXXXC to YYMMXXXXC
+                                        </li>
+                                        <li>
+                                            <a href="https://www.lotuselansprint.com/index.asp?pageid=41847"
+                                               target="_blank" rel="noopener noreferrer">Number Made</a>
+                                            - the Elan suffix letters
+                                        </li>
+                                    </ul>
+                                    <p class="mb-0 small text-muted">
+                                        The book does not give the 1972 change. A registry contact told us about it.
                                     </p>
                                 </div>
                             </div>
