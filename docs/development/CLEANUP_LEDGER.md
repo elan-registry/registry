@@ -80,8 +80,7 @@ after an item is written.
 
 ### `app/api/cars/save.php`
 
-- [ ] The upload-loop `logger()` calls in `uploadImages()` (~L801, ~L818, ~L828) log the client `$name` and `Input::get('car_id')` with no length cap. Cap them as the dropped-names log does (found in #2609)
-- [ ] `uploadImages()` (~L814) `arrayReplaceValue()` replaces the first match. If a new upload has the same browser file name as a stored photo, the new photo takes the stored photo's place (it can become the primary photo). Send a unique placeholder from `car-edit.js`, or replace only a name that is not stored (found in #2609)
+- [ ] `uploadImages()` (~L778) `arrayReplaceValue()` replaces the first match. If a new upload has the same browser file name as a stored photo, the new photo takes the stored photo's place (it can become the primary photo). Send a unique placeholder from `car-edit.js`, or replace only a name that is not stored (found in #2609)
 
 ### `app/assets/js/location-picker.js`
 
@@ -136,6 +135,10 @@ after an item is written.
 ### `package.json` + `scripts/build.js` + `app/assets/js/car-edit.js` (−1 dependency)
 
 - [ ] Drop `filepond-plugin-image-exif-orientation`: the package, its `<script>` tag, its `registerPlugin()` argument (car-edit.js ~29), and its copy line (build.js ~47). Current browsers apply EXIF orientation natively. **First upload one rotated phone JPEG with the plugin removed, and confirm that the stored image and the resized variants are upright.** (found in the #2208 audit)
+
+### `scripts/render-deploy-sheet.sh`
+
+- [ ] ~L143 `grep -qx '.env.example'` reads `.` as any character. Use `grep -Fxq '.env.example'`, so only the literal file name matches (found in #2233)
 
 ### `scripts/spike-1871/` (est. −960)
 
@@ -264,11 +267,7 @@ after an item is written.
 
 ### `usersc/classes/Car/Car.php` + `app/api/cars/save.php`
 
-- [ ] Each consumer builds the `{root}{ELAN_IMAGE_DIR}{carId}/` path by hand (`Car.php` ~L75 and ~L178, `save.php` ~L40 and ~L690, `24-Regenerate-Optimized-Thumbnails.php` ~L381, `app/owner/cars/index.php` ~L120, `details.php` ~L479, `statistics.php` ~L359). Add one helper and call it from each (from #1943)
-
-### `usersc/classes/Car/CarAdministrationService.php`
-
-- [ ] The merge path keeps an `error_log()` before `rollback()` against the #2561 no-guard policy. Add one line that says why: it is the only trace of moved files (found in /flow:finish-milestone v2.31.0)
+- [ ] Each consumer builds the `{root}{ELAN_IMAGE_DIR}{carId}/` path by hand (`Car.php` ~L75 and ~L178, `save.php` ~L41, ~L697 and ~L915, `24-Regenerate-Optimized-Thumbnails.php` ~L381, `app/owner/cars/index.php` ~L120, `details.php` ~L479, `statistics.php` ~L359). Add one helper and call it from each (from #1943)
 
 ### `usersc/classes/Car/CarRepository.php`
 
@@ -370,7 +369,6 @@ after an item is written.
 
 ### `usersc/classes/Retention/DeletedUserAddressesBacklogRule.php`
 
-- [ ] Add a convention test that the rule file holds no `DELETE` or `UPDATE`, so "deletes nothing" is enforced, not only documented (found in /finish-milestone v2.30.10)
 - [ ] The alarm and a query failure both throw `RetentionPurgeException` and differ only by step text. Give the alarm its own step constant or subtype, so log triage can tell "run script 30" from "query failed" (found in /finish-milestone v2.30.10)
 
 ### `usersc/classes/Retention/SendinblueMessagesRetentionRule.php`

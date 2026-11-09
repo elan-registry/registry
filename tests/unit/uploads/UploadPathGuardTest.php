@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use ElanRegistry\UploadPathGuard;
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -172,17 +173,15 @@ class UploadPathGuardTest extends TestCase
     }
 
     /**
-     * uploadImages() must build the final image order with
-     * CarImageProcessor::resolveUploadOrder() and log the names it drops. A
-     * return to an isValidFilename() filter would delete every legacy-named
-     * stored photo on a save with a new upload (#2609). The body is cut out
-     * of the file so that the other isValidFilename() callers in save.php do
-     * not hide a regression here.
+     * uploadImages() must use the CarImageProcessor helpers for the image
+     * list and stop the save on any error before the database write. The
+     * decisions are tested in CarImageProcessorTest, so this test only
+     * checks the wiring (#2626). The body is cut out of the file so that the
+     * other callers in save.php do not hide a regression here.
      */
-    public function testUploadImagesUsesResolveUploadOrderAndLogsDroppedNames(): void
+    public function testUploadImagesIsWiredToTheCarImageProcessorHelpers(): void
     {
-        $saveFile = dirname(__DIR__, 3) . '/app/api/cars/save.php';
-        $content = (string) file_get_contents($saveFile);
+        $content = (string) file_get_contents(dirname(__DIR__, 3) . '/app/api/cars/save.php');
 
         $start = strpos($content, 'function uploadImages(');
         $this->assertNotFalse($start, 'save.php must define uploadImages()');
@@ -190,35 +189,97 @@ class UploadPathGuardTest extends TestCase
         $this->assertNotFalse($end, 'uploadImages() must be followed by another docblock');
         $body = substr($content, $start, $end - $start);
 
-        // Without the stored names, every legacy photo drops again and the
-        // resolveUploadOrder() unit tests still pass.
-        $this->assertMatchesRegularExpression(
-            '/\$storedImage\s*=.*?->data\(\)->image.*?\$storedNames\s*=.*?'
-            . 'CarImageProcessor::resolveUploadOrder\(\s*\$requestedOrder\s*,\s*\$newNames\s*,\s*\$storedNames\s*\)/s',
-            $body,
-            'uploadImages() must read cars.image into $storedNames and pass it to resolveUploadOrder()'
+        // On the add path the early return for no files comes first, so the
+        // stored-name read is after it. Order is checked from that return.
+        $earlyReturn = strpos($body, 'json_encode([])');
+        $stored      = strpos($body, 'CarImageProcessor::storedImageFilenames(');
+        $resolve     = strpos($body, 'CarImageProcessor::resolveUploadOrder(');
+        $check       = strpos($body, 'CarImageProcessor::checkUploadOrder(');
+        $this->assertNotFalse($earlyReturn, 'uploadImages() must clear the list for a new car with no files');
+        $this->assertNotFalse($stored, 'uploadImages() must read the stored names with storedImageFilenames()');
+        $this->assertNotFalse($resolve, 'uploadImages() must call resolveUploadOrder()');
+        $this->assertNotFalse($check, 'uploadImages() must call checkUploadOrder()');
+        $this->assertTrue(
+            $earlyReturn < $stored && $stored < $resolve && $resolve < $check,
+            'uploadImages() must read stored names, then resolve the order, then check it'
         );
-        // The regex above still matches if $storedNames is reset before the call.
+        // Only a new car with no files may return early. An update with no
+        // files must reach resolve and check, or a dropped or stored unsafe
+        // name leaves cars.image with no message (#2626).
+        $this->assertSame(1, substr_count($body, 'return;'), 'uploadImages() must have one early return only');
+        $this->assertStringContainsString(
+            "if (!\$hasNewFiles && empty(\$cardetails['id'])) {",
+            $body,
+            'the early return must apply to a new car with no files only'
+        );
+        $this->assertMatchesRegularExpression(
+            '/^    \$result = CarImageProcessor::resolveUploadOrder\(\$requestedOrder, \$newNames, \$storedNames\);$/m',
+            $body,
+            'uploadImages() must resolve the order with the stored names at function level, outside if ($hasNewFiles)'
+        );
+        $this->assertMatchesRegularExpression(
+            '/^    \$check  = CarImageProcessor::checkUploadOrder\(\$result, \$newNames, \$failedNames\);$/m',
+            $body,
+            'uploadImages() must check the order at function level, outside if ($hasNewFiles)'
+        );
         $this->assertSame(
-            2,
-            preg_match_all('/\$storedNames\s*=/', $body),
-            'uploadImages() must assign $storedNames only as [] and from cars.image'
+            1,
+            substr_count($body, '$storedNames = CarImageProcessor::storedImageFilenames('),
+            'uploadImages() must set the stored names from storedImageFilenames() once'
         );
-        $this->assertMatchesRegularExpression(
-            "/array_diff\\(\\s*\\\$newNames\\s*,\\s*\\\$result\\['kept'\\]\\s*\\).*?\\\$errors\\[\\]\\s*=/s",
+        $this->assertStringContainsString(
+            "array_push(\$errors, ...\$check['errors']);",
             $body,
-            'uploadImages() must fail the save when an uploaded file is not in the kept order'
+            'uploadImages() must add the checkUploadOrder() errors to $errors'
         );
-        $this->assertMatchesRegularExpression(
-            "/\\['dropped'\\].*?logger\\(/s",
+        $this->assertStringContainsString(
+            "stored filename(s) fail isSafeFilename()",
             $body,
-            'uploadImages() must log the dropped names'
+            'uploadImages() must log stored names that fail isSafeFilename() apart from dropped names'
         );
+        // A return to an isValidFilename() filter deletes every legacy-named
+        // stored photo on a save with a new upload (#2609).
         $this->assertStringNotContainsString(
             'isValidFilename(',
             $body,
             'uploadImages() must not filter stored names with isValidFilename() (#2609)'
         );
+    }
+
+    /**
+     * Each save case must stop on $errors after uploadImages() and before the
+     * database write, so that a photo error cannot end as "Car updated".
+     */
+    #[DataProvider('saveCaseProvider')]
+    public function testSaveCaseStopsOnUploadErrorsBeforeDatabaseWrite(string $case, string $write): void
+    {
+        $content = (string) file_get_contents(dirname(__DIR__, 3) . '/app/api/cars/save.php');
+
+        $caseStart = strpos($content, 'case "' . $case . '":');
+        $this->assertNotFalse($caseStart, "save.php must have case \"$case\"");
+        $upload = strpos($content, 'uploadImages($cardetails, $errors);', $caseStart);
+        $this->assertNotFalse($upload, "$case must call uploadImages()");
+        $stop = strpos($content, 'if (!empty($errors)) {', $upload);
+        $this->assertNotFalse($stop, "$case must check \$errors after uploadImages()");
+        $dbWrite = strpos($content, $write . '($cardetails', $upload);
+        $this->assertNotFalse($dbWrite, "$case must call $write()");
+        $this->assertLessThan($dbWrite, $stop, "$case must stop on \$errors before $write()");
+        $this->assertStringContainsString(
+            '->send();',
+            substr($content, $stop, $dbWrite - $stop),
+            "$case must send an error response in the \$errors stop"
+        );
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function saveCaseProvider(): array
+    {
+        return [
+            'addCar'    => ['addCar', 'addCar'],
+            'updateCar' => ['updateCar', 'updateCar'],
+        ];
     }
 
     /**
