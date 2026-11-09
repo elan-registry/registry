@@ -1474,6 +1474,33 @@ message)
 
 ---
 
+### ChassisOverrideNote
+
+**Location**: `/usersc/classes/Car/ChassisOverrideNote.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: Removes the `CHASSIS VALIDATION OVERRIDDEN: <Y-m-d H:i:s>` notes
+from a `cars.comments` value (#2613). Static, no DB.
+
+**Methods**:
+
+- `strip(?string $comments): ChassisOverrideNoteResult` - Removes each note
+  and the line breaks before it. The owner text that stays is not trimmed.
+  When the text that stays still contains "overrid" or "chassis validation"
+  (any case), the result keeps the original comment and sets `manual`.
+  Throws `\RuntimeException` when the PCRE engine fails.
+
+**ChassisOverrideNoteResult** (`/usersc/classes/Car/ChassisOverrideNoteResult.php`):
+final readonly value object with `comments` (`?string`, the value to store),
+`changed` (`bool`) and `manual` (`bool`). Create it only with the named
+constructors `unchanged()`, `stripped()` and `manual()`, so `changed` and
+`manual` are never both true.
+
+**Used By**: `app/admin/scripts/fix/31-Clear-Passing-Chassis-Overrides.php`
+
+---
+
 ### CarBadges
 
 **Location**: `/usersc/classes/Car/CarBadges.php`
@@ -4101,9 +4128,9 @@ car formats (1963-1974).
 **Common Usage**:
 
 ```php
-// Validate chassis number
+// validate(string $chassis, int $year, string $model, bool $allowOverride = false)
 $validator = new ChassisValidator();
-$result = $validator->validate('26/0001');
+$result = $validator->validate('73081602L', 1973, 'Elan+2|Standard|Coupe');
 
 if ($result['valid']) {
     echo "Valid: " . $result['chassis'];
@@ -4113,23 +4140,35 @@ if ($result['valid']) {
 }
 ```
 
-**Supported Formats**:
-
-- Series 1/2/3/4 production cars
-- Sprint models
-- Plus 2 models
-- Historical race cars (special formats)
+**Supported Formats**: the rules for each model year are in
+[docs/reference/chassis-validation.php](../reference/chassis-validation.php).
 
 **Validation Results**:
 
 ```php
 [
     'valid' => true/false,
-    'chassis' => 'normalized chassis number',
+    'chassis' => 'trimmed chassis number',
     'error_reason' => 'error message if invalid',
-    'format_type' => 'detected format type'
+    'format_type' => 'detected format type',
+    'override_used' => true/false // true when $allowOverride made a failing chassis valid
 ]
 ```
+
+**Rule groups**:
+
+- `ruleGroup(?int $year, string $model): string` - static. Returns the key of
+  the rule that `validate()` applies to the car. The routing follows
+  `validate()` after its chassis checks (empty chassis, invalid characters):
+  `model_unreadable` when `CarValidator::parseModel()` throws, then `race` for
+  a Race variant (any year, because `validate()` rejects a race car year
+  outside 1963-1966 with the race car error), then `year_out_of_range` for a
+  `null` year or a year outside 1963-1974, then the year range: `pre_1970`,
+  `year_1970`, `year_1971`, `years_1972_1974`. `validate()` takes an `int`
+  year, so callers report a car with a `null` year without `validate()`.
+- `RULE_GROUPS` - public constant. Maps each key to an admin label, in display
+  order. Fix script 31 and the "Invalid Chassis Numbers" report on the
+  manage-cars tab group failing cars by these keys.
 
 ### SessionTimeZone
 

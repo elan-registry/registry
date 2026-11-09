@@ -9,10 +9,13 @@ The maps show every car on first load.
 ## User-Facing Changes
 
 - A car save with a photo that did not reach the server now stops and tells the owner why.
+- A 1972-1974 car with a 9-character chassis number (for example 73081602L) now saves with no admin override.
+- Some chassis numbers that passed before now fail: 11-character chassis numbers for model years 1972-1974,
+  race cars outside model years 1963-1966, and model years outside 1963-1974. An admin must check each of these cars or set the override.
 
 ## Admin-Facing Changes
 
-- (Filled in as issues complete.)
+- An admin tool clears the override and note on cars that now pass and lists unclear notes for hand edits.
 
 ## Issues Resolved
 
