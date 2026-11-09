@@ -391,7 +391,11 @@ function buildCarDetails(array &$cardetails, array &$errors, ?int $carId = null)
                     'buildCarDetails: Car ID ' . $carId . ' ' . $ownerDescription . '; skipping owner-contact refresh');
             }
         } else {
-            logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS,
+            // The caller's auth guard loaded this car, so the not-found
+            // message leaks nothing. The $errors entry makes the caller's
+            // !empty($errors) guard stop the request before uploadImages().
+            $errors[] = 'The car you are trying to edit could not be found.';
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS,
                 'buildCarDetails: Car ID ' . $carId . ' not found or failed to load for user_id=' . $user->data()->id);
             return;
         }
