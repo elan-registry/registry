@@ -396,7 +396,7 @@ function buildCarDetails(array &$cardetails, array &$errors, ?int $carId = null)
             // !empty($errors) guard stop the request before uploadImages().
             $errors[] = 'The car you are trying to edit could not be found.';
             logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS,
-                'buildCarDetails: Car ID ' . $carId . ' not found or failed to load for user_id=' . $user->data()->id);
+                'buildCarDetails: Car ID ' . $carId . ' not found (deleted after the auth check) for user_id=' . $user->data()->id);
             return;
         }
     } else {

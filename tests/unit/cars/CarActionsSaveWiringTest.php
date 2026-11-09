@@ -483,7 +483,7 @@ final class CarActionsSaveWiringTest extends TestCase
     {
         $functionBody = $this->withoutComments($this->readBuildCarDetailsBody());
 
-        $logMessagePos = strpos($functionBody, "' not found or failed to load for user_id='");
+        $logMessagePos = strpos($functionBody, "' not found (deleted after the auth check) for user_id='");
         $this->assertIsInt($logMessagePos, 'Could not locate the not-found log message in buildCarDetails()');
 
         // The branch runs from the `} else {` before the log message to the
