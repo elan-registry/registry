@@ -16,8 +16,8 @@ The maps show every car on first load.
 
 ## Issues Resolved
 
-- WIP: [#2626](https://github.com/elan-registry/registry/issues/2626) — A car save with a dropped photo name tells the owner, and keeps stored photos.
-- WIP: [#2619](https://github.com/elan-registry/registry/issues/2619) — Behavioral tests for the stored-photo-name read and the unplaced-upload stop.
+- [#2626](https://github.com/elan-registry/registry/issues/2626) — A car save with a dropped photo name tells the owner, and keeps stored photos.
+- [#2619](https://github.com/elan-registry/registry/issues/2619) — Behavioral tests for the stored-photo-name read and the unplaced-upload stop.
 - WIP: [#1975](https://github.com/elan-registry/registry/issues/1975) — An edit of a car that does not load stops early with a correct message.
 - WIP: [#2613](https://github.com/elan-registry/registry/issues/2613) — Chassis validation accepts the 9-character format for 1972-1974 cars.
 - WIP: [#2608](https://github.com/elan-registry/registry/issues/2608) — The verification email has an Update button after Verify and Sold.
