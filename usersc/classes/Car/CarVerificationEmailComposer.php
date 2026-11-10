@@ -13,7 +13,7 @@ use ElanRegistry\LogCategories;
  * Composes the subject line and full branded HTML body for the verification
  * email an owner receives at most twice per twelve months, asking them to
  * confirm their car record is still accurate. The rendered layout matches the
- * approved design: greeting, Verify/Sold buttons, Owner Information, Car
+ * approved design: greeting, Verify/Sold/Update buttons, Owner Information, Car
  * Information (with the conditional chassis-override badge and highlighted
  * rows for any blank optional field — Color, Variant, Purchase Date, Photos,
  * Website), the conditional "About the Chassis Number" alert, the edit CTA,
@@ -113,6 +113,7 @@ final class CarVerificationEmailComposer
             'Website'       => $website === '',
         ]));
 
+        $carId   = $this->intOrZero($carData->id ?? null);
         $subject = EMAIL_SUBJECT_PREFIX . ' Please verify your Lotus Elan registry record';
 
         // 1. Greeting
@@ -124,10 +125,13 @@ final class CarVerificationEmailComposer
             . ' still current, if you\'ve sold the car, or click through to update it.</p>'
             . '<p>Thank you,<br>Jim, aka The Registrar</p>';
 
-        // 3. Verify + Sold, side by side
+        // 3. Verify + Sold + Update, side by side. Update links to the
+        // login-gated edit page, never the vericode, so it opens no write
+        // path without a login.
         $content .= $this->template->createButtonRow([
             ['label' => 'Verify', 'url' => $this->verifyUrl($vericode), 'style' => 'primary'],
             ['label' => 'Sold',   'url' => $this->soldUrl($vericode),   'style' => 'danger'],
+            ['label' => 'Update', 'url' => $this->editUrl($carId),      'style' => 'secondary'],
         ]);
 
         // 4. Owner Information
@@ -165,12 +169,13 @@ final class CarVerificationEmailComposer
             );
         }
 
-        // 8. Single CTA. Requires logging in (unlike Verify/Sold, which work
-        // directly from the link) — the label says so up front rather than
-        // letting the owner discover a login wall after clicking.
+        // 8. Single CTA. Like Update, it requires logging in (unlike
+        // Verify/Sold, which work directly from the link). Only this label
+        // says so up front, rather than letting the owner discover a login
+        // wall after clicking.
         $content .= $this->template->createButton(
             'Login and Review or Update Your Car Record',
-            $this->editUrl($this->intOrZero($carData->id ?? null)),
+            $this->editUrl($carId),
             'primary'
         );
 
