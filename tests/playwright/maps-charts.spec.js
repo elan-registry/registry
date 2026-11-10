@@ -135,27 +135,27 @@ test.describe('Maps and Charts', () => {
     expect(outside, `Markers outside the map box ${JSON.stringify(mapBox)}: ${JSON.stringify(outside.slice(0, 5))}`).toHaveLength(0);
   }
 
-  // The view must reach Alaska (-167) in the west and New Zealand (178) in
-  // the east. The desktop views must also reach northern Scandinavia (69) and
-  // southern South America (-49). 1024 px is above the 768 px breakpoint, so
-  // the map has the fixed 500 px height there.
-  for (const { name, viewport, checkLatitude } of [
-    { name: 'desktop', viewport: { width: 1280, height: 800 }, checkLatitude: true },
-    { name: 'tablet', viewport: { width: 1024, height: 768 }, checkLatitude: true },
-    { name: 'phone', viewport: { width: 375, height: 812 }, checkLatitude: false },
+  // The view must reach Alaska (-167) in the west, New Zealand (178) in the
+  // east, northern Scandinavia (71) in the north and Patagonia (-49) in the
+  // south.
+  for (const { name, viewport } of [
+    { name: 'desktop', viewport: { width: 1280, height: 800 } },
+    // 1024 px is above the 768 px breakpoint, so the map has the fixed 500 px height.
+    { name: 'tablet', viewport: { width: 1024, height: 768 } },
+    // Below the breakpoint, .map-container-world sets a 3:2 map.
+    { name: 'phone', viewport: { width: 375, height: 812 } },
   ]) {
     test(`statistics map shows all markers on a ${name} viewport`, async ({ page }) => {
       await page.setViewportSize(viewport);
       await openStatisticsMap(page);
 
-      const b = await page.evaluate(() => window.statisticsMap.getBounds().toArray());
-      const [[west, south], [east, north]] = b;
-      expect(west, `bounds ${JSON.stringify(b)}`).toBeLessThanOrEqual(-167);
-      expect(east, `bounds ${JSON.stringify(b)}`).toBeGreaterThanOrEqual(178);
-      if (checkLatitude) {
-        expect(north, `bounds ${JSON.stringify(b)}`).toBeGreaterThanOrEqual(69);
-        expect(south, `bounds ${JSON.stringify(b)}`).toBeLessThanOrEqual(-49);
-      }
+      const bounds = await page.evaluate(() => window.statisticsMap.getBounds().toArray());
+      const [[west, south], [east, north]] = bounds;
+      const msg = `bounds ${JSON.stringify(bounds)}`;
+      expect(west, msg).toBeLessThanOrEqual(-167);
+      expect(east, msg).toBeGreaterThanOrEqual(178);
+      expect(north, msg).toBeGreaterThanOrEqual(71);
+      expect(south, msg).toBeLessThanOrEqual(-49);
 
       await expectMarkersInsideMap(page);
     });
@@ -180,17 +180,17 @@ test.describe('Maps and Charts', () => {
     const zoomEnd = waitForMoveEnd();
     await page.locator('#map').getByRole('button', { name: 'Zoom in' }).click();
     await zoomEnd;
-    expect((await view()).zoom).toBeGreaterThan(beforeZoom.zoom);
+    const afterZoom = await view();
+    expect(afterZoom.zoom).toBeGreaterThan(beforeZoom.zoom);
 
     const box = await page.locator('#map').boundingBox();
-    const beforePan = await view();
     const panEnd = waitForMoveEnd();
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.down();
     await page.mouse.move(box.x + box.width / 2 + 150, box.y + box.height / 2 + 60, { steps: 10 });
     await page.mouse.up();
     await panEnd;
-    expect((await view()).center).not.toEqual(beforePan.center);
+    expect((await view()).center).not.toEqual(afterZoom.center);
 
     // Filter: statistics.js sets display:none on the marker wrapper when its
     // series is cleared. Pick a series that has markers, so the check is not vacuous.

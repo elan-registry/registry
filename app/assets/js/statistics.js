@@ -1357,16 +1357,16 @@ function statisticsInitMap() {
   const map = new maplibregl.Map({
     container: "map",
     style: window.statisticsConfig.versatileStyleUrl,
-    // 360° of longitude from Alaska (-167) east to past New Zealand (193 is
-    // -167 one world east), and northern Scandinavia to southern South
-    // America. At phone width this fits only because .map-container-world
-    // in customizer.css keeps the map wider than tall. The padding keeps the
+    // A 360° span from Alaska (-167) east across the date line, so the east
+    // bound (193) is past New Zealand (178). North to northern Scandinavia
+    // (71), south to Patagonia (-49). At phone width this needs
+    // .map-container-world (see customizer.css). The padding keeps the
     // marker icons at the edges inside the map.
     bounds: [[-167, -49], [193, 71]],
     fitBoundsOptions: { padding: 16 },
     attributionControl: false
   });
-  // Read by tests/playwright/maps-charts.spec.js to check the view.
+  // Read by tests/playwright/maps-charts.spec.js.
   window.statisticsMap = map;
 
   map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");

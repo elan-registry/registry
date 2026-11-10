@@ -187,11 +187,12 @@ const build = () => Promise.resolve()
   );
   console.log('Vendored DataTables (core, fixedheader, responsive) assets.');
 
-  // Generate VersaTiles style JSON (v9 API: v6 replaced colorful() with
-  // osm({ theme: 'colorful' }) — see node_modules/@versatiles/style/API_DESIGN.md,
-  // "Migration from v5"). tiles.versatiles.org retired the v5 "basics" sprite
-  // sheet; the current sheet is /assets/sprites/base.{json,png} (v9 emits the
-  // extensionless ".../sprites/base" — MapLibre appends .json/@2x.png itself).
+  // Generate VersaTiles style JSON. Since v6, osm({ theme: 'colorful' })
+  // replaces colorful() — see node_modules/@versatiles/style/API_DESIGN.md,
+  // "Migration from v5". tiles.versatiles.org retired the v5 "basics" sprite
+  // sheet; the current sheet is /assets/sprites/base.{json,png} (the package
+  // emits the extensionless ".../sprites/base" — MapLibre appends
+  // .json/@2x.png itself).
   const VERSATILES_BASE = 'https://tiles.versatiles.org';
   // Passing urls.osm as a URL string makes osm() emit {type, url} — a live
   // reference to the TileJSON MapLibre fetches at map load. That TileJSON's

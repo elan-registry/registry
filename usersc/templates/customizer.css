@@ -777,9 +777,12 @@ img.card-img-top {
     height: 400px;
   }
 
-  /* MapLibre does not zoom out past the point where the square Mercator world
-     fills the map height, so a map as tall as it is wide shows at most 360°
-     of longitude and cuts off the edge markers. 3:2 leaves room for them. */
+  /* The statistics map fits 360° of longitude (statistics.js). MapLibre does
+     not zoom out past the point where the square Mercator world fills the map
+     height, so the 400px rule above makes a phone map taller than wide, and
+     the edge markers fall outside. A map as tall as it is wide still cuts
+     them off. 3:2 leaves room for them. Wider screens have the 500px height,
+     which is already wider than tall. */
   .map-container.map-container-world {
     height: auto;
     aspect-ratio: 3 / 2;
