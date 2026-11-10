@@ -4,7 +4,7 @@
 **Type:** Patch Release - Correct Behavior for Owners and Visitors
 
 Real 1972-1974 chassis numbers pass, the verification email links to Update, and a car save keeps every stored photo or says why not.
-The maps show every car on first load.
+The statistics map shows every car on first load.
 
 ## User-Facing Changes
 
@@ -16,6 +16,7 @@ The maps show every car on first load.
 - A 1972-1974 car with a 9-character chassis number (for example 73081602L) now saves with no admin override.
 - Some chassis numbers that passed before now fail: 11-character chassis numbers for model years 1972-1974,
   race cars outside model years 1963-1966, and model years outside 1963-1974. An admin must check each of these cars or set the override.
+- The statistics map shows every car on first load, on a phone too.
 
 ## Admin-Facing Changes
 
