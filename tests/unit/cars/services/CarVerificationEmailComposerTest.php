@@ -251,7 +251,7 @@ final class CarVerificationEmailComposerTest extends TestCase
         $this->assertSame('btn btn-secondary', $update['class']);
     }
 
-    public function testUpdateTargetEditPageCallsSecurePageBeforeHandlingPost(): void
+    public function testUpdateTargetEditPageCallsSecurePageBeforeHandlingPostOrGet(): void
     {
         $source = file_get_contents(dirname(__DIR__, 4) . '/app/owner/cars/edit.php');
         $this->assertIsString($source);
@@ -266,6 +266,7 @@ final class CarVerificationEmailComposerTest extends TestCase
 
         $gate = null;
         $post = null;
+        $get  = null;
         foreach ($tokens as $i => $token) {
             $name     = is_array($token) ? strtolower(ltrim($token[1], '\\')) : '';
             $previous = $tokens[$i - 1] ?? null;
@@ -274,19 +275,28 @@ final class CarVerificationEmailComposerTest extends TestCase
             if ($gate === null && $name === 'securepage' && $isCall) {
                 $gate = $i;
             }
-            if ($post === null && $name === 'input'
+            $isInputCall = $name === 'input'
                 && is_array($tokens[$i + 1] ?? null) && $tokens[$i + 1][0] === T_DOUBLE_COLON
-                && is_array($tokens[$i + 2] ?? null) && strtolower($tokens[$i + 2][1]) === 'existspost'
-            ) {
+                && is_array($tokens[$i + 2] ?? null);
+            if ($post === null && $isInputCall && strtolower($tokens[$i + 2][1]) === 'existspost') {
                 $post = $i;
+            }
+            if ($get === null && $isInputCall && strtolower($tokens[$i + 2][1]) === 'existsget') {
+                $get = $i;
             }
         }
         $this->assertNotNull($gate, 'edit.php must call securePage()');
         $this->assertNotNull($post, 'edit.php must handle POST through Input::existsPost()');
+        $this->assertNotNull($get, 'edit.php must handle the GET car_id through Input::existsGet()');
         $this->assertLessThan(
             $post,
             $gate,
             'securePage() must run before any POST handling, so the Update link needs a login'
+        );
+        $this->assertLessThan(
+            $get,
+            $gate,
+            'securePage() must run before the GET car_id load, so the Update link needs a login'
         );
     }
 

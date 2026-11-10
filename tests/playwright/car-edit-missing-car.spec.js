@@ -2,9 +2,10 @@
 // ownership-violation logout branch. security/car-update-ownership.spec.js
 // covers save.php, a different code path.
 //
-// updateCarDetails() runs only on a POST with action=updateCar, so the tests
-// POST directly. The ownership test needs a non-admin account
-// (E2E_DEV_NONADMIN_USERNAME, owns no cars): admins bypass the logout branch.
+// These tests POST action=updateCar directly, because only the POST path
+// logs out a non-owner. car-edit-get-car-id.spec.js covers the GET path. The
+// ownership test needs a non-admin account (E2E_DEV_NONADMIN_USERNAME, owns
+// no cars): admins bypass the logout branch.
 
 const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn, login, logout } = require('./auth-helper.js');
@@ -84,7 +85,7 @@ test.describe('Car edit page — missing car (#1313)', () => {
         ).toBe(false);
     });
 
-    test('genuine ownership violation on an existing car still logs the user out (edit.php:119-124)', async ({ page, browserName }) => {
+    test('genuine ownership violation on an existing car still logs the user out (POST path)', async ({ page, browserName }) => {
         test.skip(browserName !== 'chromium', 'Login/logout dance only needs to run once, not per-browser-project');
 
         await logout(page);
@@ -121,7 +122,7 @@ test.describe('Car edit page — missing car (#1313)', () => {
         expect(
             postNavUrl.includes('login') || postNavUrl.includes('Please Log In') || postNavContent.includes('Please Log In'),
             'A genuine ownership violation (non-owner, non-admin) POSTing action=updateCar to edit.php must log the user out — ' +
-            'still being logged in here would mean edit.php:119-124\'s logout branch did not fire'
+            'still being logged in here would mean the POST logout branch in updateCarDetails() did not fire'
         ).toBe(true);
     });
 });
