@@ -16,7 +16,7 @@ function versatilesStyleOptions(base, osmTileJson) {
     urls: { base, osm: osmTileJson },
     text: { language: 'en' },
     theme: 'colorful',
-    // @versatiles/style v6 defaults the style projection to 'globe', and the
+    // @versatiles/style v9 defaults the style projection to 'globe', and the
     // MapLibre GL JS version we ship obeys it. Mercator is a product choice,
     // not an oversight: the registry maps show where cars are on a flat world
     // view. Do not remove this to return to the library default.

@@ -107,6 +107,119 @@ test.describe('Maps and Charts', () => {
     expect(await page.evaluate(() => window.maplibregl.getVersion())).toBe(installed);
   });
 
+  // Open the statistics page and wait until the map is loaded and the markers
+  // exist. statistics.js adds the markers in map.on('load').
+  async function openStatisticsMap(page) {
+    await page.goto('app/owner/reports/statistics.php');
+    await page.waitForFunction(() => window.statisticsMap && window.statisticsMap.loaded(), null, { timeout: 30000 });
+    await expect(page.locator('#map .elan-marker').first()).toBeVisible({ timeout: 15000 });
+  }
+
+  // Every visible marker box must lie inside the map box. One evaluate call
+  // reads all boxes, so the check does not make one round trip per marker.
+  async function expectMarkersInsideMap(page) {
+    const { mapBox, count, outside } = await page.evaluate(() => {
+      const m = document.getElementById('map').getBoundingClientRect();
+      const boxes = [...document.querySelectorAll('#map .elan-marker')]
+        .filter((el) => el.checkVisibility())
+        .map((el) => el.getBoundingClientRect());
+      return {
+        mapBox: { x: m.x, y: m.y, width: m.width, height: m.height },
+        count: boxes.length,
+        outside: boxes
+          .filter((b) => b.left < m.left || b.top < m.top || b.right > m.right || b.bottom > m.bottom)
+          .map((b) => ({ x: b.x, y: b.y, width: b.width, height: b.height })),
+      };
+    });
+    expect(count, 'Expected at least one visible marker').toBeGreaterThan(0);
+    expect(outside, `Markers outside the map box ${JSON.stringify(mapBox)}: ${JSON.stringify(outside.slice(0, 5))}`).toHaveLength(0);
+  }
+
+  // The view must reach Alaska (-167) in the west and New Zealand (178) in
+  // the east. The desktop views must also reach northern Scandinavia (69) and
+  // southern South America (-49). 1024 px is above the 768 px breakpoint, so
+  // the map has the fixed 500 px height there.
+  for (const { name, viewport, checkLatitude } of [
+    { name: 'desktop', viewport: { width: 1280, height: 800 }, checkLatitude: true },
+    { name: 'tablet', viewport: { width: 1024, height: 768 }, checkLatitude: true },
+    { name: 'phone', viewport: { width: 375, height: 812 }, checkLatitude: false },
+  ]) {
+    test(`statistics map shows all markers on a ${name} viewport`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await openStatisticsMap(page);
+
+      const b = await page.evaluate(() => window.statisticsMap.getBounds().toArray());
+      const [[west, south], [east, north]] = b;
+      expect(west, `bounds ${JSON.stringify(b)}`).toBeLessThanOrEqual(-167);
+      expect(east, `bounds ${JSON.stringify(b)}`).toBeGreaterThanOrEqual(178);
+      if (checkLatitude) {
+        expect(north, `bounds ${JSON.stringify(b)}`).toBeGreaterThanOrEqual(69);
+        expect(south, `bounds ${JSON.stringify(b)}`).toBeLessThanOrEqual(-49);
+      }
+
+      await expectMarkersInsideMap(page);
+    });
+  }
+
+  test('statistics map zooms, pans and filters markers by series', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await openStatisticsMap(page);
+
+    // Use the zoom control and a mouse drag, so the test fails if the control
+    // is missing or drag panning is turned off. waitForMoveEnd resolves on the
+    // next moveend event.
+    const view = () => page.evaluate(() => ({
+      zoom: window.statisticsMap.getZoom(),
+      center: window.statisticsMap.getCenter().toArray(),
+    }));
+    const waitForMoveEnd = () => page.evaluate(() => new Promise((resolve) => {
+      window.statisticsMap.once('moveend', () => resolve());
+    }));
+
+    const beforeZoom = await view();
+    const zoomEnd = waitForMoveEnd();
+    await page.locator('#map').getByRole('button', { name: 'Zoom in' }).click();
+    await zoomEnd;
+    expect((await view()).zoom).toBeGreaterThan(beforeZoom.zoom);
+
+    const box = await page.locator('#map').boundingBox();
+    const beforePan = await view();
+    const panEnd = waitForMoveEnd();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 150, box.y + box.height / 2 + 60, { steps: 10 });
+    await page.mouse.up();
+    await panEnd;
+    expect((await view()).center).not.toEqual(beforePan.center);
+
+    // Filter: statistics.js sets display:none on the marker wrapper when its
+    // series is cleared. Pick a series that has markers, so the check is not vacuous.
+    const series = await page.evaluate(() => {
+      const names = [...document.querySelectorAll('#map-series-filter input[data-series]')].map((c) => c.dataset.series);
+      return names.find((n) => document.querySelector(`#map .elan-marker.${n}`)) || null;
+    });
+    expect(series, 'No series checkbox has markers').not.toBeNull();
+
+    // Counts the shown markers of the chosen series and of all other series.
+    const shownCounts = () => page.evaluate((s) => {
+      const shown = [...document.querySelectorAll('#map .elan-marker')]
+        .filter((el) => el.closest('.elan-marker-wrapper')?.style.display !== 'none');
+      return {
+        series: shown.filter((el) => el.classList.contains(s)).length,
+        others: shown.filter((el) => !el.classList.contains(s)).length,
+      };
+    }, series);
+
+    const initial = await shownCounts();
+    expect(initial.series).toBeGreaterThan(0);
+
+    const target = page.locator(`#map-series-filter input[data-series="${series}"]`);
+    await target.uncheck();
+    expect(await shownCounts()).toEqual({ series: 0, others: initial.others });
+    await target.check();
+    expect(await shownCounts()).toEqual(initial);
+  });
+
   test('statistics page marker data is inlined as JSON', async ({ page }) => {
     await page.goto('app/owner/reports/statistics.php');
     await page.waitForLoadState('networkidle');

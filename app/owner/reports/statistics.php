@@ -153,7 +153,7 @@ foreach ($markerRows as $car) {
                                                     <h4 class="mb-0 card-header-er-primary-text">Global Car Distribution</h4>
                                                 </div>
                                                 <div class="card-body text-center">
-                                                    <div class="map-container">
+                                                    <div class="map-container map-container-world">
                                                         <div id="map"></div>
                                                     </div>
                                                     <div class="mt-2 d-flex flex-wrap justify-content-center gap-3" id="map-series-filter">

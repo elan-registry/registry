@@ -776,4 +776,12 @@ img.card-img-top {
   .map-container.map-container-small {
     height: 400px;
   }
+
+  /* MapLibre does not zoom out past the point where the square Mercator world
+     fills the map height, so a map as tall as it is wide shows at most 360°
+     of longitude and cuts off the edge markers. 3:2 leaves room for them. */
+  .map-container.map-container-world {
+    height: auto;
+    aspect-ratio: 3 / 2;
+  }
 }
