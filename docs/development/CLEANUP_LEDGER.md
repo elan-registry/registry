@@ -212,7 +212,9 @@ after an item is written.
 
 ### `tests/playwright/car-edit-text-save.spec.js` (test-only, no estimate)
 
-- [ ] The `action=fetchImages`/`action=removeImages` string match used to filter `save.php` route interception (5 call sites, e.g. ~line 985) checks for the literal substring `action=fetchImages` in the raw POST body. The real body is `multipart/form-data`, where the field looks like `name="action"\r\n\r\nfetchImages`, so the substring check can never match. Each site is safe today only because of request-timing luck (the matched call runs before the route is registered, or no other `save.php` call happens in that window) — found during #2295's review. Switch each to `postData.includes('fetchImages')` / `includes('removeImages')` (or parse the multipart `action` field) so the filter is correct on its own, not by accident of timing. (found in #2295)
+- [ ] The test "comments with special characters save and reload as plain text" (~line 399) fails on every parallel run and in 2 of 4 runs with `--workers=1`. After the mocked save, `car-edit.js` goes to `details.php`, so `#comments` is not on the page and the `waitForFunction` (~line 523) times out. Read the saved comments on `details.php`, or stop the redirect in the mock (found in #2608)
+- [ ] The test "details page renders special chars as readable text" (~line 1091) fails on every run. It reads `body.textContent`, which includes inline `<script>` text such as `.replace(/&/g, '&amp;')`. Read `innerText`, or only the car text fields (found in #2608)
+- [ ] With default workers, this spec, `car-edit-get-car-id.spec.js`, and `car-edit-missing-car.spec.js` together had extra failures in 4 of 12 runs, a different set each time (timeouts, "processFiles() did not resolve"). With `--workers=1`, 4 of 4 runs had none. Update mode on a GET `car_id` now fires a real `fetchImages` in each test, which adds load. Mock `fetchImages` before each `goto`, or wait on a page condition, not a fixed 5 s timeout (found in #2608)
 
 ### `tests/playwright/local/fixtures/` + `tests/integration/database/EmailEventRekeyMigrationFixture.php`
 
@@ -323,6 +325,10 @@ after an item is written.
 - [ ] Replace the `array{reason, cause, detail}` returns of `readApiKey()` and `loadSdk()` with two small readonly result types (or PHPStan shape aliases) (found in /finish-milestone v2.30.9)
 - [ ] No test calls `readApiKey()` directly. Add `tests/unit/classes/Email/BrevoApiFactoryTest.php` with `SendinblueSettingsFakeDatabase`: success, key not set, `42S02` and `HY000`, each with the `sqlState` value (found in #2488)
 - [ ] The class is no longer `final` only so a test double can extend it, and a double must override `loadSdk()` too. Extract a small interface (`loadSdk()`, `createApi()`) for `BrevoBlocklistClient` and make the factory `final` again (found in /flow:finish-milestone v2.31.0)
+
+### `usersc/classes/EmailTemplate.php`
+
+- [ ] The `createButtonRow()` docblock says the buttons stack full-width below 600 px, but each `<a>` keeps its inline `display: inline-block`, so stacked buttons keep their own width. Correct the docblock or the style (found in #2608)
 
 ### `usersc/classes/Exceptions/ProfileFlagValueException.php`
 

@@ -76,21 +76,35 @@ if (Input::existsPost()) {
         }
     }
     // Messages will be displayed by UserSpice session system in template
+} elseif (Input::existsGet('car_id')) {
+    // The verification email links here with ?car_id=N. A missing, zero, or
+    // non-numeric id keeps the Add Car form.
+    $getCarId = filter_var(Input::get('car_id'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($getCarId !== false) {
+        $cardetails['id'] = $getCarId;
+        $action = 'updateCar';
+        // A link is easy to craft, so a denied GET must not log the user out.
+        updateCarDetails($cardetails, false);
+    }
 }
 
 /**
  * Update car details from database for editing
  *
+ * A missing car redirects to the cars index. A user who is not the owner and
+ * has no admin/editor permission is logged out, or with $logoutOnDenied false
+ * is redirected to the cars index.
+ *
  * @param array &$car Reference to car details array
+ * @param bool $logoutOnDenied Log out a denied user (POST) instead of a redirect (GET)
  * @return void
- * @throws Exception If user doesn't own the car
  */
-function updateCarDetails(array &$car): void
+function updateCarDetails(array &$car, bool $logoutOnDenied = true): void
 {
     global $user, $us_url_root;
 
     if (empty($car['id'])) {
-        logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, 'Empty car_id field in GET');
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, 'Empty car_id field in POST');
         return;
     }
 
@@ -109,6 +123,13 @@ function updateCarDetails(array &$car): void
     $hasAdminAccess = hasPerm([2, 3]); // Permission 2 = Administrator, 3 = Editor
     
     if (!$isOwner && !$hasAdminAccess) {
+        if (!$logoutOnDenied) {
+            // A former owner can still click an old email link, so redirect only.
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, 'Access denied for car edit GET - USER ' . $user->data()->id . ' CAR ' . $car['id'] . ' (not owner, no admin/editor perms)');
+            usError('You can only edit your own cars.');
+            Redirect::to($us_url_root . 'app/owner/cars/index.php');
+            exit;
+        }
         // Security violation: User attempting to access car they don't own and don't have admin/editor access
         logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, 'Access denied for car edit - USER ' . $user->data()->id . ' CAR ' . $car['id'] . ' (not owner, no admin/editor perms)');
         $user->logout();

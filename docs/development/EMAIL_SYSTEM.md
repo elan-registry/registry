@@ -2420,7 +2420,8 @@ the composer testable with fixture objects and an optional temp image directory,
 The composed email includes:
 
 - **Greeting and explanation** — why the owner is receiving this request
-- **Verify/Sold side-by-side buttons** — confirm ownership or report the car sold
+- **Verify, Sold, and Update buttons in one row** — confirm ownership, report the car sold, or open the car's edit page.
+  Verify and Sold work from the link with no login. Update opens the login-gated edit page and carries no vericode.
 - **Owner Information box** — ID, name, email, location, join date
 - **Car Information box** — ID, year, type, chassis, series, variant, color, purchase/sale dates, website, and a Photos row
   (see Photos row states below)
@@ -2498,7 +2499,7 @@ The vericode is the unguessable credential; session-less CSRF tokens would add n
 ### Brevo Link Rewriting
 
 Brevo rewrites every http(s) link in a transactional email through its click-tracking redirect domain. This applies to
-the Verify, Sold, Opt-Out, and edit links in the verification email, and to the http(s) links in the auth emails. It
+the Verify, Sold, Update, Opt-Out, and edit CTA links in the verification email, and to the http(s) links in the auth emails. It
 is not configurable. Brevo has no per-link exclusion for transactional email: no CSS class, tag, or API parameter
 turns tracking off for one link (confirmed during #2147).
 

@@ -9,6 +9,10 @@ The maps show every car on first load.
 ## User-Facing Changes
 
 - A car save with a photo that did not reach the server now stops and tells the owner why.
+- The verification email has an Update button. It opens the car's edit page, after a login if necessary.
+- Links to a car's edit page now open that car. Before, they opened a blank Add Car form. This applies to the
+  "Login and Review or Update Your Car Record" button in the verification email, the "Review & Update" link on the
+  verify page, and the "Update Your Car Record" button in the email that an admin sends to an owner.
 - A 1972-1974 car with a 9-character chassis number (for example 73081602L) now saves with no admin override.
 - Some chassis numbers that passed before now fail: 11-character chassis numbers for model years 1972-1974,
   race cars outside model years 1963-1966, and model years outside 1963-1974. An admin must check each of these cars or set the override.
