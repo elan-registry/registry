@@ -13,6 +13,7 @@ It also keeps stored car photos on save and shows every car on the statistics ma
 - Chassis checks accept only 9 characters for 1972-1974 and reject model years outside 1963-1974. ([#2613](https://github.com/elan-registry/registry/issues/2613))
 - The verification email has an Update button, and each car edit link now opens that car. ([#2608](https://github.com/elan-registry/registry/issues/2608))
 - The statistics map shows every car on first load. ([#2568](https://github.com/elan-registry/registry/issues/2568))
+- A car save keeps the stored photo order and no longer changes the main photo. ([#2642](https://github.com/elan-registry/registry/issues/2642))
 
 ## Admin-Facing Changes
 
@@ -27,3 +28,4 @@ It also keeps stored car photos on save and shows every car on the statistics ma
 - [#2608](https://github.com/elan-registry/registry/issues/2608) — The verification email has an Update button after Verify and Sold.
 - [#2552](https://github.com/elan-registry/registry/issues/2552) — The map style moves to @versatiles/style 9.
 - [#2568](https://github.com/elan-registry/registry/issues/2568) — The statistics map shows every car on first load.
+- [#2642](https://github.com/elan-registry/registry/issues/2642) — A car save keeps the stored photo order.

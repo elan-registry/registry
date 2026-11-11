@@ -21,7 +21,7 @@ Use this table to choose the right class for your task:
 | Display owner name, quality badge, location | OwnerView | Static HTML generation, no DB, consolidated display logic | `ElanRegistry\OwnerView::displayName($owner)` |
 | Update car data and create history | Car + update() | Automatic history via triggers, audit logging | `$car->update(['color' => 'Blue', ...])` |
 | Access owner profile and user data | Owner | User profile integration, custom user methods | `$owner = new Owner($uid)` |
-| Validate VIN/chassis format | ChassisValidator | Specialized validation for vehicle identifiers | `$validator->validate('26/0001')` |
+| Validate VIN/chassis format | ChassisValidator | Specialized validation for vehicle identifiers | `$validator->validate('73081602L', 1973, 'Elan+2\|Standard\|Coupe')` |
 | Direct DB queries on cars/history/factory data | CarRepository | Testable data-access layer, used by Car and API endpoints | `(new CarRepository($db))->findByChassisKey($year, $type, $chassis)` |
 | Verification codes, verification timestamps, email-bounce tracking | CarVerificationManager | Business-logic layer over CarRepository; validates and throws rather than returning falsy on failure | `(new CarVerificationManager($repo))->generateVerificationCode()` |
 | Create database backups | BackupManager | SQL dump creation, verification, and retention cleanup | `$backup = new BackupManager(...)` |
