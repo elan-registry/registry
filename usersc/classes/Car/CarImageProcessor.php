@@ -148,6 +148,10 @@ class CarImageProcessor
     /**
      * Validate file upload security constraints
      *
+     * An upload error code gets an owner message, because PHP leaves tmp_name
+     * empty for a failed upload and the owner must know which photo to send
+     * again (#2626).
+     *
      * @param array $file File upload array from $_FILES
      * @param int $maxSize Maximum file size in bytes (default 5MB)
      * @throws ImageProcessingException If validation fails
@@ -155,7 +159,15 @@ class CarImageProcessor
     public static function validateFileUpload(array $file, int $maxSize = 5242880): void // Default 5MB
     {
         if ($file['error'] !== UPLOAD_ERR_OK) {
-            throw new ImageProcessingException("File upload error: " . $file['error']);
+            $userMessage = match ($file['error']) {
+                UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE =>
+                    'Photo is too large for the server. Make the photo smaller, then upload it again.',
+                UPLOAD_ERR_PARTIAL =>
+                    'Photo upload did not complete. Upload the photo again.',
+                default =>
+                    'The server could not receive the photo. Upload the photo again.',
+            };
+            throw new ImageProcessingException("File upload error: " . $file['error'], 0, null, $userMessage);
         }
 
         if ($file['size'] > $maxSize) {
@@ -204,9 +216,6 @@ class CarImageProcessor
      * Extension list is derived from ALLOWED_EXTENSIONS plus 'jpeg' for legacy DB rows,
      * so adding a new extension to ALLOWED_EXTENSIONS automatically permits it here too.
      *
-     * Used by decodeAndProcessImages(), buildImageDetails() (reorder path) and
-     * resolveUploadOrder() (stored names on the upload path).
-     *
      * @param string $filename Filename to validate (directory components are
      *                         rejected because '/' is not in [\w\-.])
      * @return bool True if the filename is safe for filesystem use
@@ -218,34 +227,158 @@ class CarImageProcessor
     }
 
     /**
-     * Decide which names in an upload save's requested order go into cars.image.
+     * Read the base filenames stored in a car's `image` column.
+     *
+     * The column normally holds a JSON array of bare filenames, but rows
+     * predating that format store a comma-separated list — the same fallback
+     * decodeAndProcessImages() applies. Values are returned verbatim. Each
+     * caller validates a name before it touches the filesystem or keeps it.
+     *
+     * @param string|null $imageData Raw `cars.image` value.
+     * @return list<string> Stored filenames in their stored order, possibly empty.
+     */
+    public static function storedImageFilenames(?string $imageData): array
+    {
+        if ($imageData === null || $imageData === '') {
+            return [];
+        }
+
+        $decoded = json_decode($imageData, true);
+        if (!is_array($decoded)) {
+            $decoded = explode(',', $imageData);
+        }
+
+        $filenames = [];
+        foreach ($decoded as $filename) {
+            if (is_string($filename) && $filename !== '') {
+                $filenames[] = $filename;
+            }
+        }
+
+        return $filenames;
+    }
+
+    /**
+     * Decide which names in a save's requested order go into cars.image.
      *
      * The allowlist comes from server state, so a client cannot add a name the
      * car never had. A name this request generated must match the secure format.
      * A name already stored for the car needs only isSafeFilename(), so legacy
-     * names (timestamps, bare hashes, .jpeg) survive an upload save (#2609).
-     * Each other name, for example an upload name that did not get replaced, is
-     * dropped. Order is kept and duplicates are not removed.
+     * names (timestamps, bare hashes, .jpeg) survive a save (#2609). A stored
+     * name that fails isSafeFilename() goes to storedUnsafe, apart from
+     * dropped, so that the caller can stop the save and not remove the photo
+     * (#2626). Each other name, for example an upload name that did not get
+     * replaced, is dropped. Order is kept and duplicates are not removed.
      *
      * @param list<string> $requestedOrder Client order, with upload names already replaced
      * @param list<string> $newNames       Names that this request generated
      * @param list<string> $storedNames    Names in cars.image before this save
-     * @return array{kept: list<string>, dropped: list<string>}
+     * @return array{kept: list<string>, dropped: list<string>, storedUnsafe: list<string>}
      */
     public static function resolveUploadOrder(array $requestedOrder, array $newNames, array $storedNames): array
     {
-        $kept    = [];
-        $dropped = [];
+        $kept         = [];
+        $dropped      = [];
+        $storedUnsafe = [];
         foreach ($requestedOrder as $name) {
             if (in_array($name, $newNames, true) && self::isValidFilename($name)) {
                 $kept[] = $name;
-            } elseif (in_array($name, $storedNames, true) && self::isSafeFilename($name)) {
-                $kept[] = $name;
+            } elseif (in_array($name, $storedNames, true)) {
+                if (self::isSafeFilename($name)) {
+                    $kept[] = $name;
+                } else {
+                    $storedUnsafe[] = $name;
+                }
             } else {
                 $dropped[] = $name;
             }
         }
-        return ['kept' => $kept, 'dropped' => $dropped];
+        return ['kept' => $kept, 'dropped' => $dropped, 'storedUnsafe' => $storedUnsafe];
+    }
+
+    /**
+     * Find the problems in a resolveUploadOrder() result that must stop the save.
+     *
+     * Each problem means that the save would lose a photo with no message, so
+     * each one gets an owner message (#2626). A dropped name in $failedNames
+     * already has a message from the upload loop, so it is not reported again.
+     * The messages are plain text. The page escapes them when it shows them.
+     *
+     * @param array{kept: list<string>, dropped: list<string>, storedUnsafe: list<string>} $result
+     *        Return value of resolveUploadOrder()
+     * @param list<string> $newNames    Names that this request generated
+     * @param list<string> $failedNames Client names of uploads that failed with a message
+     * @return array{missing: list<string>, storedUnsafe: list<string>, unplaced: list<string>, errors: list<string>}
+     *         missing: dropped names with no message yet. unplaced: generated
+     *         names with no place in kept. errors: owner messages, empty when
+     *         the save can continue.
+     */
+    public static function checkUploadOrder(array $result, array $newNames, array $failedNames): array
+    {
+        $missing      = array_values(array_diff($result['dropped'], $failedNames));
+        $storedUnsafe = $result['storedUnsafe'];
+        $unplaced     = array_values(array_diff($newNames, $result['kept']));
+
+        $errors = [];
+        if ($missing !== []) {
+            $errors[] = count($missing) . ' photo(s) did not reach the server: '
+                . self::messageNames($missing)
+                . '. Reload the page, then add the photo(s) again.';
+        }
+        if ($storedUnsafe !== []) {
+            $errors[] = 'A saved photo has a file name that the registry cannot keep: '
+                . self::messageNames($storedUnsafe)
+                . '. The save stopped so that the photo is not removed. Contact the registry.';
+        }
+        // A stored file with no entry in cars.image is a photo lost with no
+        // message. This occurs when the browser file name in 'filenames' does
+        // not match the $_FILES name: a comma breaks the explode(','), and PHP
+        // changes names that hold '"' or '\'.
+        if ($unplaced !== []) {
+            $errors[] = 'Photo could not be added. Rename the file with plain characters (letters, numbers, - and _). Then upload it again.';
+        }
+
+        return [
+            'missing'      => $missing,
+            'storedUnsafe' => $storedUnsafe,
+            'unplaced'     => $unplaced,
+            'errors'       => $errors,
+        ];
+    }
+
+    /**
+     * Join file names for an owner message.
+     *
+     * The names can come from the client, so control characters are removed,
+     * invalid UTF-8 is replaced (the JSON response must encode), and the count
+     * and each length are capped.
+     *
+     * @param list<string> $names File names
+     * @return string Comma-separated names, safe as plain text
+     */
+    private static function messageNames(array $names): string
+    {
+        $clean = [];
+        foreach (array_slice($names, 0, 20) as $name) {
+            $clean[] = self::cleanClientText($name, 100);
+        }
+        return implode(', ', $clean);
+    }
+
+    /**
+     * Make client text safe to put in an owner message.
+     *
+     * Control characters could fake a log line or a message line, invalid UTF-8
+     * would make the JSON response fail, and the cap limits what a client can add.
+     * The text is not HTML-encoded: car-edit.js escapes the error text.
+     *
+     * @param string $text      Client text, for example a browser file name
+     * @param int    $maxLength Maximum length in characters
+     * @return string Cleaned text
+     */
+    public static function cleanClientText(string $text, int $maxLength): string
+    {
+        return mb_substr((string) preg_replace('/[\x00-\x1F\x7F]/', '', mb_scrub($text, 'UTF-8')), 0, $maxLength);
     }
 
     /**

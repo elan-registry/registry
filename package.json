@@ -60,7 +60,7 @@
   },
   "homepage": "https://github.com/elan-registry/registry#readme",
   "dependencies": {
-    "@versatiles/style": "^6.4.1",
+    "@versatiles/style": "^9.1.0",
     "chart.js": "4.6.1",
     "datatables.net-bs5": "3.1.5",
     "datatables.net-fixedheader-bs5": "5.1.2",
@@ -76,7 +76,7 @@
     "maplibre-gl": "6.16.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.64.1",
+    "@playwright/test": "^1.65.0",
     "dotenv": "^18.0.9",
     "eslint": "^10.14.0",
     "markdownlint-cli2": "^0.24.0"

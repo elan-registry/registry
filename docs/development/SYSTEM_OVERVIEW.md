@@ -133,7 +133,10 @@ detail, factory and statistics pages — as public.
   Cloudflare Turnstile on public forms for spam resistance.
 - **Add and edit cars** (`app/owner/cars/edit.php`) — specifications, dates,
   notes, links, and photographs. Every change is written to `cars_hist` by
-  database trigger, so the record's history survives the edit.
+  database trigger, so the record's history survives the edit. A GET link
+  `edit.php?car_id=N` (the verification email Update button) opens that car
+  for its owner, an admin or an editor. A denied GET redirects to the cars
+  list. A denied POST logs the user out.
 - **Upload photographs** — stored as a JSON array of filenames in `cars.image`,
   with files under `userimages/{carid}/` and resized variants generated at 100,
   300, 768, 1024 and 2048 px. Images are re-encoded through GD during resizing,

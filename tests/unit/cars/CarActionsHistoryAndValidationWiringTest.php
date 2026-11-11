@@ -341,17 +341,17 @@ final class CarActionsHistoryAndValidationWiringTest extends TestCase
     /**
      * A genuinely valid chassis number validates successfully.
      *
-     * Arrange: "7301019999B" is the canonical post-1970 YYMMBBXXXXC example —
-     *          10 numeric characters plus an Elan letter code (A-K excluding I).
+     * Arrange: "73081602B" is the canonical 1972-1974 YYMMXXXXC example —
+     *          8 numeric characters plus an Elan letter code (A-K excluding I).
      * Act:     run the same validator the endpoint instantiates.
      * Assert:  the result carries every key the endpoint forwards verbatim.
      */
     public function testValidateChassisSuccessReturnsApiResponseWithResult(): void
     {
-        $result = (new ChassisValidator())->validate('7301019999B', 1973, self::VALID_MODEL);
+        $result = (new ChassisValidator())->validate('73081602B', 1973, self::VALID_MODEL);
 
         $this->assertTrue($result['valid'], 'Canonical post-1970 chassis must validate');
-        $this->assertSame('7301019999B', $result['chassis']);
+        $this->assertSame('73081602B', $result['chassis']);
         $this->assertSame('post_1970', $result['format_type']);
         $this->assertFalse($result['override_used'], 'No override was requested');
         $this->assertSame('', $result['error_reason'], 'A valid chassis must carry no error reason');
@@ -360,8 +360,8 @@ final class CarActionsHistoryAndValidationWiringTest extends TestCase
     /**
      * A genuinely invalid chassis number fails validation with a reason.
      *
-     * Arrange: "ABC123" passes the character allowlist but is not 11 characters,
-     *          so the post-1970 format rule rejects it.
+     * Arrange: "ABC123" passes the character allowlist but is not 9 characters,
+     *          so the 1972-1974 format rule rejects it.
      * Act:     run the validator.
      * Assert:  valid is false and a non-empty error_reason explains why — the
      *          endpoint still reports this as an HTTP 200 success payload.
@@ -375,7 +375,7 @@ final class CarActionsHistoryAndValidationWiringTest extends TestCase
         $this->assertSame('post_1970', $result['format_type']);
         $this->assertFalse($result['override_used']);
         $this->assertNotEmpty($result['error_reason'], 'A failed validation must explain itself');
-        $this->assertStringContainsString('11 characters', $result['error_reason']);
+        $this->assertStringContainsString('9 characters', $result['error_reason']);
     }
 
     // =========================================================================

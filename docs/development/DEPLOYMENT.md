@@ -748,8 +748,9 @@ Test and production servers have a single shared post-receive hook
 
 **Host requirements:** steps 3-5 require Composer, PHP, and Node/npm to be
 resolvable non-interactively on the deploy host's login shell (no `nvm use`
-or similar interactive step). Verified against `test.elanregistry.org` during
-ADR-018's research: Node v18.20.8 / npm 10.8.2, no shell workaround needed.
+or similar interactive step). `@versatiles/style` requires Node 20 or
+later. On 2026-11-10 the `a2hosting` login shell had Node v22.23.2 and npm
+10.9.8, with no shell workaround.
 
 **Process limit on the shared host:** the host runs CloudLinux. LVE limits
 the account to 75 processes, and it counts each thread. The live sites,

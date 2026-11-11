@@ -424,14 +424,14 @@ class CarAdministrationService
             $renameMap = $this->relocator->relocate(
                 $oldCarId,
                 $newCarId,
-                $this->storedImageFilenames($oldCarData->image ?? null)
+                CarImageProcessor::storedImageFilenames($oldCarData->image ?? null)
             );
 
             // Target's own images keep their positions and the source's are
             // appended, so the surviving car's primary (first) image — the one
             // rendered as its card thumbnail — is unchanged by the merge.
             $mergedImageJson = (new CarImageProcessor($repo))->encodeImages(array_merge(
-                $this->storedImageFilenames($lockedTargetCar->image ?? null),
+                CarImageProcessor::storedImageFilenames($lockedTargetCar->image ?? null),
                 array_values($renameMap)
             ));
 
@@ -643,39 +643,6 @@ class CarAdministrationService
     private function errorLogFileWarning(string $message): void
     {
         error_log('ElanRegistry car merge image warning: ' . $message);
-    }
-
-    /**
-     * Read the base filenames stored in a car's `image` column.
-     *
-     * The column normally holds a JSON array of bare filenames, but rows
-     * predating that format store a comma-separated list — the same fallback
-     * CarImageProcessor::decodeAndProcessImages() applies. Values are returned
-     * verbatim; CarImageRelocator validates each one with isSafeFilename()
-     * before touching the filesystem.
-     *
-     * @param string|null $imageData Raw `cars.image` value.
-     * @return list<string> Stored filenames in their stored order, possibly empty.
-     */
-    private function storedImageFilenames(?string $imageData): array
-    {
-        if ($imageData === null || $imageData === '') {
-            return [];
-        }
-
-        $decoded = json_decode($imageData, true);
-        if (!is_array($decoded)) {
-            $decoded = explode(',', $imageData);
-        }
-
-        $filenames = [];
-        foreach ($decoded as $filename) {
-            if (is_string($filename) && $filename !== '') {
-                $filenames[] = $filename;
-            }
-        }
-
-        return $filenames;
     }
 
     /**

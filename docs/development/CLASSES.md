@@ -21,12 +21,15 @@ Use this table to choose the right class for your task:
 | Display owner name, quality badge, location | OwnerView | Static HTML generation, no DB, consolidated display logic | `ElanRegistry\OwnerView::displayName($owner)` |
 | Update car data and create history | Car + update() | Automatic history via triggers, audit logging | `$car->update(['color' => 'Blue', ...])` |
 | Access owner profile and user data | Owner | User profile integration, custom user methods | `$owner = new Owner($uid)` |
-| Validate VIN/chassis format | ChassisValidator | Specialized validation for vehicle identifiers | `$validator->validate('26/0001')` |
+| Validate VIN/chassis format | ChassisValidator | Specialized validation for vehicle identifiers | `$validator->validate('73081602L', 1973, 'Elan+2\|Standard\|Coupe')` |
 | Direct DB queries on cars/history/factory data | CarRepository | Testable data-access layer, used by Car and API endpoints | `(new CarRepository($db))->findByChassisKey($year, $type, $chassis)` |
 | Verification codes, verification timestamps, email-bounce tracking | CarVerificationManager | Business-logic layer over CarRepository; validates and throws rather than returning falsy on failure | `(new CarVerificationManager($repo))->generateVerificationCode()` |
 | Create database backups | BackupManager | SQL dump creation, verification, and retention cleanup | `$backup = new BackupManager(...)` |
 | Decode car images | CarImageProcessor | Decodes the `cars.image` JSON array into usable entries | `$processor->decodeAndProcessImages($car->image, ...)` |
-| Decide which names an upload save keeps in `cars.image` | CarImageProcessor | Static, no DB. Keeps names this request generated (`isValidFilename()`) and names already stored for the car (`isSafeFilename()`), in the requested order. Returns the other names as `dropped` for the caller to log | `CarImageProcessor::resolveUploadOrder($order, $newNames, $storedNames)` |
+| Read the filenames stored in `cars.image` | CarImageProcessor | Static, no DB. Reads a JSON array first. Reads a comma-separated list if the value is not JSON (old rows). Keeps non-empty strings only. Returns `[]` for `null` or `''`. Does not check names. The caller checks each name with `isSafeFilename()` | `CarImageProcessor::storedImageFilenames($car->image)` |
+| Decide which names a save keeps in `cars.image` | CarImageProcessor | Static, no DB. Keeps names this request generated (`isValidFilename()`) and names already stored for the car (`isSafeFilename()`), in the requested order. Returns the other names as `dropped` for the caller to log. Returns a stored name that fails `isSafeFilename()` as `storedUnsafe`, not as `dropped`. Result keys: `kept`, `dropped`, `storedUnsafe` | `CarImageProcessor::resolveUploadOrder($order, $newNames, $storedNames)` |
+| Find the problems that must stop an upload save | CarImageProcessor | Static, no DB. Takes the `resolveUploadOrder()` result, the generated names, and the client names of uploads that already failed with a message. Returns `missing`, `storedUnsafe`, `unplaced`, and `errors`. `errors` holds owner messages. The save can continue only if `errors` is empty | `CarImageProcessor::checkUploadOrder($result, $newNames, $failedNames)` |
+| Check one uploaded file | CarImageProcessor | Static. Throws `ImageProcessingException`. For each `UPLOAD_ERR_*` code, it sets an owner message (`getUserMessage()`). The technical message stays `File upload error: N` | `CarImageProcessor::validateFileUpload($file)` |
 | Remove one image from a car | Car / CarImageProcessor | CAS-guarded single-filename removal; throws on concurrent modification. Pass `true` when the owner removes it, to reset `owner_last_updated` | `$car->removeImage($filename, $isOwnerInitiated)` |
 | Remove multiple images from a car | Car / CarImageProcessor | CAS-guarded bulk removal; returns `['updated' => bool, 'casConflict' => bool]` instead of throwing, for callers (e.g. `mvTmpImages()`'s move-failure cleanup) that already have their own error-reporting path | `$car->removeImages($filenames)` |
 | Decide which status badges (Sold, Verified, New) a car shows | CarBadges | One definition of the badges and the rule that picks them, for the account page and the cars list | `CarBadges::forCar($car->data())` |
@@ -1468,6 +1471,33 @@ reports a new case that the `app/admin/index.php` message map does not handle.
 **Used By**: `CarVerificationManager::clearBlockedForOwner()` (returns it) and
 the `clear_block` command in `app/admin/index.php` (maps each kind to an admin
 message)
+
+---
+
+### ChassisOverrideNote
+
+**Location**: `/usersc/classes/Car/ChassisOverrideNote.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: Removes the `CHASSIS VALIDATION OVERRIDDEN: <Y-m-d H:i:s>` notes
+from a `cars.comments` value (#2613). Static, no DB.
+
+**Methods**:
+
+- `strip(?string $comments): ChassisOverrideNoteResult` - Removes each note
+  and the line breaks before it. The owner text that stays is not trimmed.
+  When the text that stays still contains "overrid" or "chassis validation"
+  (any case), the result keeps the original comment and sets `manual`.
+  Throws `\RuntimeException` when the PCRE engine fails.
+
+**ChassisOverrideNoteResult** (`/usersc/classes/Car/ChassisOverrideNoteResult.php`):
+final readonly value object with `comments` (`?string`, the value to store),
+`changed` (`bool`) and `manual` (`bool`). Create it only with the named
+constructors `unchanged()`, `stripped()` and `manual()`, so `changed` and
+`manual` are never both true.
+
+**Used By**: `app/admin/scripts/fix/31-Clear-Passing-Chassis-Overrides.php`
 
 ---
 
@@ -4098,9 +4128,9 @@ car formats (1963-1974).
 **Common Usage**:
 
 ```php
-// Validate chassis number
+// validate(string $chassis, int $year, string $model, bool $allowOverride = false)
 $validator = new ChassisValidator();
-$result = $validator->validate('26/0001');
+$result = $validator->validate('73081602L', 1973, 'Elan+2|Standard|Coupe');
 
 if ($result['valid']) {
     echo "Valid: " . $result['chassis'];
@@ -4110,23 +4140,35 @@ if ($result['valid']) {
 }
 ```
 
-**Supported Formats**:
-
-- Series 1/2/3/4 production cars
-- Sprint models
-- Plus 2 models
-- Historical race cars (special formats)
+**Supported Formats**: the rules for each model year are in
+[docs/reference/chassis-validation.php](../reference/chassis-validation.php).
 
 **Validation Results**:
 
 ```php
 [
     'valid' => true/false,
-    'chassis' => 'normalized chassis number',
+    'chassis' => 'trimmed chassis number',
     'error_reason' => 'error message if invalid',
-    'format_type' => 'detected format type'
+    'format_type' => 'detected format type',
+    'override_used' => true/false // true when $allowOverride made a failing chassis valid
 ]
 ```
+
+**Rule groups**:
+
+- `ruleGroup(?int $year, string $model): string` - static. Returns the key of
+  the rule that `validate()` applies to the car. The routing follows
+  `validate()` after its chassis checks (empty chassis, invalid characters):
+  `model_unreadable` when `CarValidator::parseModel()` throws, then `race` for
+  a Race variant (any year, because `validate()` rejects a race car year
+  outside 1963-1966 with the race car error), then `year_out_of_range` for a
+  `null` year or a year outside 1963-1974, then the year range: `pre_1970`,
+  `year_1970`, `year_1971`, `years_1972_1974`. `validate()` takes an `int`
+  year, so callers report a car with a `null` year without `validate()`.
+- `RULE_GROUPS` - public constant. Maps each key to an admin label, in display
+  order. Fix script 31 and the "Invalid Chassis Numbers" report on the
+  manage-cars tab group failing cars by these keys.
 
 ### SessionTimeZone
 

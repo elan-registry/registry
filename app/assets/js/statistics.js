@@ -1357,10 +1357,17 @@ function statisticsInitMap() {
   const map = new maplibregl.Map({
     container: "map",
     style: window.statisticsConfig.versatileStyleUrl,
-    center: [-20, 30],
-    zoom: 1,
+    // A 360° span from Alaska (-167) east across the date line, so the east
+    // bound (193) is past New Zealand (178). North to northern Scandinavia
+    // (71), south to Patagonia (-49). At phone width this needs
+    // .map-container-world (see customizer.css). The padding keeps the
+    // marker icons at the edges inside the map.
+    bounds: [[-167, -49], [193, 71]],
+    fitBoundsOptions: { padding: 16 },
     attributionControl: false
   });
+  // Read by tests/playwright/maps-charts.spec.js.
+  window.statisticsMap = map;
 
   map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
   map.once("idle", function () {

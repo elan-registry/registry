@@ -219,7 +219,8 @@ SHOW TRIGGERS LIKE 'cars';   -- 3 rows: cars_insert, cars_update, cars_delete
 <!-- IF: new-pages -->
 11. Register new pages (you — admin UI)
 
-Run 21-Fix-Page-Permissions.php from the Maintenance page on test.
+Open each new page or script once as admin, so UserSpice adds its pages row.
+Then run 21-Fix-Page-Permissions.php from the Maintenance page on test.
 <!-- END IF -->
 
 <!-- IF: admin-scripts -->
@@ -313,7 +314,8 @@ SHOW TRIGGERS LIKE 'cars';   -- 3 rows
 <!-- IF: new-pages -->
 21. Register new pages (you — admin UI)
 
-Run 21-Fix-Page-Permissions.php from the Maintenance page on prod.
+Open each new page or script once as admin, so UserSpice adds its pages row.
+Then run 21-Fix-Page-Permissions.php from the Maintenance page on prod.
 <!-- END IF -->
 
 <!-- IF: admin-scripts -->

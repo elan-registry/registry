@@ -6,10 +6,14 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Unit test for the car save endpoint's action-routing fallback.
+ * Source-inspection tests for the car save endpoint (app/api/cars/save.php).
  *
  * Covers:
  * - app/api/cars/save.php (the switch statement's default: branch)
+ * - app/api/cars/save.php buildCarDetails() not-found branch (#1975): it
+ *   appends to $errors and logs under the car-error category
+ * - app/api/cars/save.php `case "updateCar"` branch: the $errors guard runs between
+ *   buildCarDetails() and uploadImages() (#1975)
  *
  * The endpoint file cannot be require()'d from PHPUnit: every response path
  * ends in ApiResponse::send(), which calls exit and would terminate the test
@@ -67,6 +71,52 @@ final class CarActionsSaveWiringTest extends TestCase
         $this->assertIsString($content, "Endpoint file must be readable: {$relativePath}");
 
         return $content;
+    }
+
+    /**
+     * Remove comments and docblocks from PHP source, so that a commented-out
+     * line cannot satisfy a source assertion.
+     *
+     * @param string $source PHP source text, with or without the open tag
+     * @return string The source without T_COMMENT and T_DOC_COMMENT tokens
+     */
+    private function withoutComments(string $source): string
+    {
+        $hasOpenTag = str_starts_with($source, '<?php');
+        $tokens = token_get_all($hasOpenTag ? $source : '<?php ' . $source);
+
+        $code = '';
+        foreach ($tokens as $token) {
+            if (is_array($token)) {
+                if ($token[0] === T_COMMENT || $token[0] === T_DOC_COMMENT) {
+                    continue;
+                }
+                $code .= $token[1];
+            } else {
+                $code .= $token;
+            }
+        }
+
+        return $hasOpenTag ? $code : substr($code, strlen('<?php '));
+    }
+
+    /**
+     * Return the source of save.php's buildCarDetails(), from its signature to
+     * the next top-level function.
+     *
+     * @return string The function source text
+     */
+    private function readBuildCarDetailsBody(): string
+    {
+        $content = $this->readEndpointSource(self::SAVE_ENDPOINT);
+
+        $functionStart = strpos($content, 'function buildCarDetails(');
+        $this->assertIsInt($functionStart, 'Could not locate the buildCarDetails() function');
+
+        $nextFunctionStart = strpos($content, "\nfunction ", $functionStart + 1);
+        $this->assertIsInt($nextFunctionStart, 'Could not locate the end of the buildCarDetails() function body');
+
+        return substr($content, $functionStart, $nextFunctionStart - $functionStart);
     }
 
     // =========================================================================
@@ -241,14 +291,7 @@ final class CarActionsSaveWiringTest extends TestCase
      */
     public function testBuildCarDetailsConstructsOwnerFromCarRowNotSessionUserBeforeAnyInputIsProcessed(): void
     {
-        $content = $this->readEndpointSource(self::SAVE_ENDPOINT);
-
-        $functionStart = strpos($content, 'function buildCarDetails(');
-        $this->assertIsInt($functionStart, 'Could not locate the buildCarDetails() function');
-
-        $nextFunctionStart = strpos($content, "\nfunction ", $functionStart + 1);
-        $this->assertIsInt($nextFunctionStart, 'Could not locate the end of the buildCarDetails() function body');
-        $functionBody = substr($content, $functionStart, $nextFunctionStart - $functionStart);
+        $functionBody = $this->readBuildCarDetailsBody();
 
         // --- (a) Owner must be constructed from the car row's user_id ---
         //
@@ -377,14 +420,7 @@ final class CarActionsSaveWiringTest extends TestCase
      */
     public function testBuildCarDetailsActuallyInvokesTheOwnerContactRefresher(): void
     {
-        $content = $this->readEndpointSource(self::SAVE_ENDPOINT);
-
-        $functionStart = strpos($content, 'function buildCarDetails(');
-        $this->assertIsInt($functionStart, 'Could not locate the buildCarDetails() function');
-
-        $nextFunctionStart = strpos($content, "\nfunction ", $functionStart + 1);
-        $this->assertIsInt($nextFunctionStart, 'Could not locate the end of the buildCarDetails() function body');
-        $functionBody = substr($content, $functionStart, $nextFunctionStart - $functionStart);
+        $functionBody = $this->readBuildCarDetailsBody();
 
         $this->assertStringContainsString(
             'new OwnerContactRefresher()',
@@ -421,5 +457,98 @@ final class CarActionsSaveWiringTest extends TestCase
                 'the owner-contact refresh, for the same reason the Owner construction must.'
             );
         }
+    }
+
+    // =========================================================================
+    // save.php — car load failure in updateCar (source inspection)
+    // =========================================================================
+
+    /**
+     * When the car fails to load in buildCarDetails(), the not-found branch
+     * must add an entry to $errors and log under the car-error category.
+     *
+     * Without the $errors entry, the caller's `!empty($errors)` guard passes,
+     * uploadImages() runs for a car that does not exist, and Car::update()
+     * then reports "No data or ID provided for car update" (#1975).
+     *
+     * Source inspection: in practice the branch is reachable only when the
+     * car is deleted between the auth guard's load and this load, which a
+     * request cannot drive, and save.php cannot be require()'d (every path
+     * exits). Comments are removed first, so a commented-out line cannot
+     * satisfy the assertions.
+     *
+     * @see https://github.com/elan-registry/registry/issues/1975
+     */
+    public function testBuildCarDetailsNotFoundBranchAppendsErrorAndLogsAsError(): void
+    {
+        $functionBody = $this->withoutComments($this->readBuildCarDetailsBody());
+
+        $logMessagePos = strpos($functionBody, "' not found (deleted after the auth check) for user_id='");
+        $this->assertIsInt($logMessagePos, 'Could not locate the not-found log message in buildCarDetails()');
+
+        // The branch runs from the `} else {` before the log message to the
+        // first `return;` after it.
+        $branchStart = strrpos(substr($functionBody, 0, $logMessagePos), '} else {');
+        $this->assertIsInt($branchStart, 'Could not locate the start of the not-found branch');
+        $branchEnd = strpos($functionBody, 'return;', $logMessagePos);
+        $this->assertIsInt($branchEnd, 'The not-found branch must end in return;');
+        $branch = substr($functionBody, $branchStart, $branchEnd - $branchStart);
+
+        $this->assertMatchesRegularExpression(
+            '/\$errors\[\]\s*=\s*\'The car you are trying to edit could not be found\.\';/',
+            $branch,
+            '#1975: the not-found branch must append its message to $errors before return; ' .
+            'otherwise the caller\'s !empty($errors) guard passes and uploadImages() runs.'
+        );
+        $this->assertStringContainsString(
+            'LogCategories::LOG_CATEGORY_CAR_ERRORS',
+            $branch,
+            '#1975: a car that fails to load is an error and must be logged under CarErrors.'
+        );
+        $this->assertStringNotContainsString(
+            'LogCategories::LOG_CATEGORY_CAR_ACTIONS',
+            $branch,
+            '#1975: the not-found branch must not log under CarActions, which records normal activity.'
+        );
+    }
+
+    /**
+     * In the `case "updateCar"` branch, the `!empty($errors)` guard must run
+     * after buildCarDetails() and must end the request with ->send() before
+     * uploadImages(), so that an error from buildCarDetails() stops the
+     * request before any image upload (#1975).
+     *
+     * @see https://github.com/elan-registry/registry/issues/1975
+     */
+    public function testUpdateCarChecksErrorsBeforeUploadingImages(): void
+    {
+        $content = $this->withoutComments($this->readEndpointSource(self::SAVE_ENDPOINT));
+
+        $caseStart = strpos($content, 'case "updateCar":');
+        $this->assertIsInt($caseStart, 'Could not locate the updateCar case');
+
+        $buildPos = strpos($content, 'buildCarDetails(', $caseStart);
+        $this->assertIsInt($buildPos, 'updateCar must call buildCarDetails()');
+
+        $guardPos = strpos($content, 'if (!empty($errors))', $buildPos);
+        $this->assertIsInt($guardPos, 'updateCar must check $errors after buildCarDetails()');
+
+        $uploadPos = strpos($content, 'uploadImages(', $caseStart);
+        $this->assertIsInt($uploadPos, 'updateCar must call uploadImages()');
+
+        $this->assertLessThan(
+            $uploadPos,
+            $guardPos,
+            '#1975: the $errors guard must run before uploadImages(), so a car that ' .
+            'failed to load in buildCarDetails() gets no image upload.'
+        );
+
+        // Order alone is not enough: a guard that only logs lets the request
+        // continue into uploadImages().
+        $this->assertStringContainsString(
+            '->send();',
+            substr($content, $guardPos, $uploadPos - $guardPos),
+            '#1975: the $errors guard must end the request with ->send() before uploadImages().'
+        );
     }
 }

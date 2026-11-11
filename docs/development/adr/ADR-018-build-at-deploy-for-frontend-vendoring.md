@@ -117,6 +117,11 @@ request-serving PHP process itself) without resource issues, this is not
 treated as a blocking unknown — but is noted as an incomplete measurement
 should evidence of memory pressure surface after implementation.
 
+**Update 2026-11-10:** `@versatiles/style` 9 is a runtime dependency of the
+build step and requires Node 20 or later. The host now has Node v22.23.2.
+DEPLOYMENT.md, "Host requirements", holds the current host fact. The
+paragraph below is the original research.
+
 `npm ci` produced 17 `EBADENGINE` warnings — packages declaring a minimum
 Node version above the host's v18.20.8 (`eslint@10.8.1`, `@playwright/
 test@1.62.1`, `markdownlint-cli2@0.23.2`, and others, mostly requiring
