@@ -80,8 +80,7 @@ after an item is written.
 
 ### `app/api/cars/save.php`
 
-- [ ] The upload-loop `logger()` calls in `uploadImages()` (~L801, ~L818, ~L828) log the client `$name` and `Input::get('car_id')` with no length cap. Cap them as the dropped-names log does (found in #2609)
-- [ ] `uploadImages()` (~L814) `arrayReplaceValue()` replaces the first match. If a new upload has the same browser file name as a stored photo, the new photo takes the stored photo's place (it can become the primary photo). Send a unique placeholder from `car-edit.js`, or replace only a name that is not stored (found in #2609)
+- [ ] `uploadImages()` (~L778) `arrayReplaceValue()` replaces the first match. If a new upload has the same browser file name as a stored photo, the new photo takes the stored photo's place (it can become the primary photo). Send a unique placeholder from `car-edit.js`, or replace only a name that is not stored (found in #2609)
 
 ### `app/assets/js/location-picker.js`
 
@@ -116,6 +115,10 @@ after an item is written.
 
 - [ ] The "Back to all options" `btn-link` is about 38px high, below the 44px touch target. The `#verify-actions` target cannot take focus, so a screen reader announces nothing after the jump. Add `tabindex="-1"` and a group label (found in #2495)
 
+### `database/4-sample-data.sql` + `tests/playwright/fixtures.js`
+
+- [ ] Sample car 1 (1973, chassis `7301019999B`) now fails the 1972-1974 9-character rule, and its comment still says "Post-1970 format: YYMMBBXXXXC". `CAR_ID_OWNED_BY_ADMIN` uses car 1, so an unmocked save test on it fails on the chassis. Change the sample chassis to a 9-character value such as `73081602L`, or note the failure on the fixture constant (found in /flow:finish-milestone v2.31.2)
+
 ### `database/migrations/20260915000000_add_cars_verification_attempts_columns.php`
 
 - [ ] The `down()` comment (~L84) says "MySQL refuses to DROP a column that a trigger body still references". MySQL 8 allows the drop; the next INSERT, UPDATE or DELETE on `cars` then fails with 1054. The restore-first order is still right. Correct the reason in the comment (found in #2167)
@@ -129,13 +132,26 @@ after an item is written.
 
 - [ ] TESTING_STRATEGY.md "Shell Tests for Git Hooks" names only `tests/hooks/lib/harness.sh`. Add `tests/hooks/lib/gh-stub.sh` and `tests/hooks/lib/workflow-extract.sh`, and list PyYAML (needed by `tests/hooks/test-review-render.sh`) in the hook-test prerequisites. ADR-020 (~L225) says a `Blocking` heading fails the build. Since #2506 a `blocking` finding in the structured output fails it (from #2512)
 
+### `docs/development/adr/ADR-018-build-at-deploy-for-frontend-vendoring.md`
+
+- [ ] The "Update 2026-11-10" note says Node 20 or later, but the original Node v18 research text below it is not marked as superseded. Mark that paragraph as superseded (found in /flow:finish-milestone v2.31.2)
+
+### `docs/reference/chassis-validation.php`
+
+- [ ] The section id `format-1971` sits on the heading "11-Character Format (1970-1971)", and the summary table links 1970 to `format-1970`. Rename the id to `format-11-char` and update its links (found in /flow:finish-milestone v2.31.2)
+
 ### `error/500.php`
 
 - [ ] Restore a unit pin: all nine status codes (400/401/403/404/405/408/500/502/504) have entries in both `$errorMessages` and `$logCategoryMap` (from #2169)
 
 ### `package.json` + `scripts/build.js` + `app/assets/js/car-edit.js` (−1 dependency)
 
+- [ ] `@versatiles/style` 9 needs Node 20 or later, but `package.json` has no `engines` field and the repo has no `.nvmrc`. Add `"engines": { "node": ">=20" }` (found in /flow:finish-milestone v2.31.2)
 - [ ] Drop `filepond-plugin-image-exif-orientation`: the package, its `<script>` tag, its `registerPlugin()` argument (car-edit.js ~29), and its copy line (build.js ~47). Current browsers apply EXIF orientation natively. **First upload one rotated phone JPEG with the plugin removed, and confirm that the stored image and the resized variants are upright.** (found in the #2208 audit)
+
+### `scripts/render-deploy-sheet.sh`
+
+- [ ] ~L143 `grep -qx '.env.example'` reads `.` as any character. Use `grep -Fxq '.env.example'`, so only the literal file name matches (found in #2233)
 
 ### `scripts/spike-1871/` (est. −960)
 
@@ -209,7 +225,9 @@ after an item is written.
 
 ### `tests/playwright/car-edit-text-save.spec.js` (test-only, no estimate)
 
-- [ ] The `action=fetchImages`/`action=removeImages` string match used to filter `save.php` route interception (5 call sites, e.g. ~line 985) checks for the literal substring `action=fetchImages` in the raw POST body. The real body is `multipart/form-data`, where the field looks like `name="action"\r\n\r\nfetchImages`, so the substring check can never match. Each site is safe today only because of request-timing luck (the matched call runs before the route is registered, or no other `save.php` call happens in that window) — found during #2295's review. Switch each to `postData.includes('fetchImages')` / `includes('removeImages')` (or parse the multipart `action` field) so the filter is correct on its own, not by accident of timing. (found in #2295)
+- [ ] The test "comments with special characters save and reload as plain text" (~line 463) fails on every parallel run and in 2 of 4 runs with `--workers=1`. After the mocked save, `car-edit.js` goes to `details.php`, so `#comments` is not on the page and the `waitForFunction` (~line 587) times out. Read the saved comments on `details.php`, or stop the redirect in the mock (found in #2608)
+- [ ] The test "details page renders special chars as readable text" (~line 1155) fails on every run. It reads `body.textContent`, which includes inline `<script>` text such as `.replace(/&/g, '&amp;')`. Read `innerText`, or only the car text fields (found in #2608)
+- [ ] With default workers, this spec, `car-edit-get-car-id.spec.js`, and `car-edit-missing-car.spec.js` together had extra failures in 4 of 12 runs, a different set each time (timeouts, "processFiles() did not resolve"). With `--workers=1`, 4 of 4 runs had none. Update mode on a GET `car_id` now fires a real `fetchImages` in each test, which adds load. Mock `fetchImages` before each `goto`, or wait on a page condition, not a fixed 5 s timeout (found in #2608)
 
 ### `tests/playwright/local/fixtures/` + `tests/integration/database/EmailEventRekeyMigrationFixture.php`
 
@@ -264,11 +282,12 @@ after an item is written.
 
 ### `usersc/classes/Car/Car.php` + `app/api/cars/save.php`
 
-- [ ] Each consumer builds the `{root}{ELAN_IMAGE_DIR}{carId}/` path by hand (`Car.php` ~L75 and ~L178, `save.php` ~L40 and ~L690, `24-Regenerate-Optimized-Thumbnails.php` ~L381, `app/owner/cars/index.php` ~L120, `details.php` ~L479, `statistics.php` ~L359). Add one helper and call it from each (from #1943)
+- [ ] Each consumer builds the `{root}{ELAN_IMAGE_DIR}{carId}/` path by hand (`Car.php` ~L75 and ~L178, `save.php` ~L41, ~L697 and ~L915, `24-Regenerate-Optimized-Thumbnails.php` ~L381, `app/owner/cars/index.php` ~L120, `details.php` ~L479, `statistics.php` ~L359). Add one helper and call it from each (from #1943)
 
-### `usersc/classes/Car/CarAdministrationService.php`
+### `usersc/classes/Car/CarImageProcessor.php`
 
-- [ ] The merge path keeps an `error_log()` before `rollback()` against the #2561 no-guard policy. Add one line that says why: it is the only trace of moved files (found in /flow:finish-milestone v2.31.0)
+- [ ] `resolveUploadOrder()` and `checkUploadOrder()` pass array shapes that only docblocks describe, and `checkUploadOrder()` returns data that the caller already holds (`missing`). Use a small readonly value object, or return only `errors`, `storedUnsafe` and `unplaced` (found in /flow:finish-milestone v2.31.2)
+- [ ] `cleanClientText()` is a general client-text helper, not image logic, and `save.php` calls it. Move it to a shared helper when a second caller appears (found in /flow:finish-milestone v2.31.2)
 
 ### `usersc/classes/Car/CarRepository.php`
 
@@ -278,6 +297,10 @@ after an item is written.
 ### `usersc/classes/Car/CarVerificationEmailComposer.php`
 
 - [ ] Photo FileError logs record user 0. The composer has no actor id, so an admin-started send is not attributed (found while working on #1894)
+
+### `usersc/classes/Car/ChassisOverrideNoteResult.php`
+
+- [ ] Two bools (`changed`, `manual`) allow a state that the named constructors forbid. Replace them with an enum (`Unchanged`, `Stripped`, `Manual`) (found in /flow:finish-milestone v2.31.2)
 
 ### `usersc/classes/Car/EffectiveEmailFlags.php`
 
@@ -314,6 +337,11 @@ after an item is written.
 
 - [ ] The no-photo placeholder in `displayCarousel()` is an `h5` under the `h3` Photos card, so it skips levels. Its `fa-camera` icon has no `aria-hidden="true"` (found in #2495)
 
+### `usersc/classes/ChassisValidator.php`
+
+- [ ] The `validatePost1970()` docblock says "5 characters" for 1970-1974, but the 5-character format applies only to model year 1970. Name each format with its years (found in /flow:finish-milestone v2.31.2)
+- [ ] `ruleGroup()` returns a `string` that only a docblock limits to `RULE_GROUPS` keys. A string-backed enum would remove the `RULE_GROUPS[$groupKey]` lookups in `tab-manage_cars.php` and fix script 31 (found in /flow:finish-milestone v2.31.2)
+
 ### `usersc/classes/Cron/HealthcheckPinger.php` + `usersc/classes/Cron/CurlHealthcheckTransport.php`
 
 - [ ] `CurlHealthcheckTransport`: set `CURLOPT_PROTOCOLS => CURLPROTO_HTTPS` and an explicit `CURLOPT_FOLLOWLOCATION => false` (defense in depth; the base URL is constant) (found in /finish-milestone v2.30.9)
@@ -324,6 +352,10 @@ after an item is written.
 - [ ] Replace the `array{reason, cause, detail}` returns of `readApiKey()` and `loadSdk()` with two small readonly result types (or PHPStan shape aliases) (found in /finish-milestone v2.30.9)
 - [ ] No test calls `readApiKey()` directly. Add `tests/unit/classes/Email/BrevoApiFactoryTest.php` with `SendinblueSettingsFakeDatabase`: success, key not set, `42S02` and `HY000`, each with the `sqlState` value (found in #2488)
 - [ ] The class is no longer `final` only so a test double can extend it, and a double must override `loadSdk()` too. Extract a small interface (`loadSdk()`, `createApi()`) for `BrevoBlocklistClient` and make the factory `final` again (found in /flow:finish-milestone v2.31.0)
+
+### `usersc/classes/EmailTemplate.php`
+
+- [ ] The `createButtonRow()` docblock says the buttons stack full-width below 600 px, but each `<a>` keeps its inline `display: inline-block`, so stacked buttons keep their own width. Correct the docblock or the style (found in #2608)
 
 ### `usersc/classes/Exceptions/ProfileFlagValueException.php`
 
@@ -370,7 +402,6 @@ after an item is written.
 
 ### `usersc/classes/Retention/DeletedUserAddressesBacklogRule.php`
 
-- [ ] Add a convention test that the rule file holds no `DELETE` or `UPDATE`, so "deletes nothing" is enforced, not only documented (found in /finish-milestone v2.30.10)
 - [ ] The alarm and a query failure both throw `RetentionPurgeException` and differ only by step text. Give the alarm its own step constant or subtype, so log triage can tell "run script 30" from "query failed" (found in /finish-milestone v2.30.10)
 
 ### `usersc/classes/Retention/SendinblueMessagesRetentionRule.php`

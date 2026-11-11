@@ -197,42 +197,107 @@ final class CarVerificationEmailComposerTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // 3. Verify + Sold render as one createButtonRow() table
+    // 3. Verify + Sold + Update render as one createButtonRow() table
     // ------------------------------------------------------------------
 
-    public function testVerifyAndSoldRenderInsideOneButtonRowTable(): void
+    public function testVerifySoldAndUpdateRenderInOrderInsideOneButtonRowTable(): void
     {
         $html = $this->composer->compose($this->carFixture(), $this->ownerFixture(), self::VERICODE)['html'];
 
-        // The Review & Update CTA also uses <a class="btn btn-primary">, so
-        // isolate the specific two-cell button-row table by locating it via
-        // its btn-row-cell markers rather than counting all <table> tags.
-        // The footer's "Stop sending me these" opt-out <a> also carries no
-        // btn-row-cell class, so this count is specific to createButtonRow().
+        // The "Login and Review or Update" CTA also uses <a class="btn btn-primary">, so
+        // isolate the button-row table by its btn-row-cell markers rather
+        // than counting all <table> tags. The footer's "Stop sending me
+        // these" opt-out <a> also carries no btn-row-cell class, so this
+        // count is specific to createButtonRow().
         $rowCellCount = substr_count($html, 'class="btn-row-cell"');
         $this->assertSame(
-            2,
+            3,
             $rowCellCount,
-            'Verify and Sold must render as exactly 2 btn-row-cell entries from one createButtonRow() table'
+            'Verify, Sold and Update must render as exactly 3 btn-row-cell entries from one createButtonRow() table'
         );
 
-        // Both buttons must be present as button-row cells (createButtonRow()'s
-        // own markup, distinct from createButton()'s single-button <div> wrapper
-        // used elsewhere for the CTA).
-        $this->assertStringContainsString('>Verify<', $html);
-        $this->assertStringContainsString('>Sold<', $html);
+        $cells = $this->buttonRowCells($html);
+        $this->assertSame(['Verify', 'Sold', 'Update'], array_column($cells, 'label'));
 
         // Neither Owner Information nor Car Information (the next two blocks)
-        // may appear between the two btn-row-cell entries — proving they sit
-        // in one row/table rather than two stacked createButton() blocks with
-        // other content interleaved.
-        $firstCell  = strpos($html, 'class="btn-row-cell"');
-        $secondCell = strpos($html, 'class="btn-row-cell"', $firstCell + 1);
+        // may appear between the first and last btn-row-cell entries — proving
+        // they sit in one row/table rather than stacked createButton() blocks
+        // with other content interleaved.
+        $firstCell = strpos($html, 'class="btn-row-cell"');
+        $lastCell  = strrpos($html, 'class="btn-row-cell"');
         $this->assertIsInt($firstCell);
-        $this->assertIsInt($secondCell);
-        $between = substr($html, $firstCell, $secondCell - $firstCell);
+        $this->assertIsInt($lastCell);
+        $between = substr($html, $firstCell, $lastCell - $firstCell);
         $this->assertStringNotContainsString('Owner Information', $between);
         $this->assertStringNotContainsString('Car Information', $between);
+    }
+
+    public function testUpdateButtonLinksToEditPageWithoutVericodeAndUsesSecondaryStyle(): void
+    {
+        $car  = $this->carFixture(['id' => 999]);
+        $html = $this->composer->compose($car, $this->ownerFixture(), self::VERICODE)['html'];
+
+        $update = $this->buttonRowCells($html)[2] ?? null;
+        $this->assertNotNull($update, 'The button row must have a third cell');
+        $this->assertSame('Update', $update['label']);
+        $this->assertSame(
+            htmlspecialchars($this->composer->editUrl(999), ENT_QUOTES, 'UTF-8'),
+            $update['href']
+        );
+        // The vericode authenticates Verify/Sold with no login. Update must
+        // not carry it, so the only route to a write is the login-gated page.
+        $this->assertStringNotContainsString(self::VERICODE, $update['href']);
+        $this->assertStringNotContainsString('vericode', $update['href']);
+        $this->assertSame('btn btn-secondary', $update['class']);
+    }
+
+    public function testUpdateTargetEditPageCallsSecurePageBeforeHandlingPostOrGet(): void
+    {
+        $source = file_get_contents(dirname(__DIR__, 4) . '/app/owner/cars/edit.php');
+        $this->assertIsString($source);
+
+        // Tokens, not strpos(), so a call that is only in a comment or a
+        // string does not count.
+        $tokens = array_values(array_filter(
+            token_get_all($source),
+            static fn (array|string $token): bool => !is_array($token)
+                || !in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)
+        ));
+
+        $gate = null;
+        $post = null;
+        $get  = null;
+        foreach ($tokens as $i => $token) {
+            $name     = is_array($token) ? strtolower(ltrim($token[1], '\\')) : '';
+            $previous = $tokens[$i - 1] ?? null;
+            $isCall   = ($tokens[$i + 1] ?? null) === '('
+                && !(is_array($previous) && in_array($previous[0], [T_FUNCTION, T_OBJECT_OPERATOR, T_DOUBLE_COLON], true));
+            if ($gate === null && $name === 'securepage' && $isCall) {
+                $gate = $i;
+            }
+            $isInputCall = $name === 'input'
+                && is_array($tokens[$i + 1] ?? null) && $tokens[$i + 1][0] === T_DOUBLE_COLON
+                && is_array($tokens[$i + 2] ?? null);
+            if ($post === null && $isInputCall && strtolower($tokens[$i + 2][1]) === 'existspost') {
+                $post = $i;
+            }
+            if ($get === null && $isInputCall && strtolower($tokens[$i + 2][1]) === 'existsget') {
+                $get = $i;
+            }
+        }
+        $this->assertNotNull($gate, 'edit.php must call securePage()');
+        $this->assertNotNull($post, 'edit.php must handle POST through Input::existsPost()');
+        $this->assertNotNull($get, 'edit.php must handle the GET car_id through Input::existsGet()');
+        $this->assertLessThan(
+            $post,
+            $gate,
+            'securePage() must run before any POST handling, so the Update link needs a login'
+        );
+        $this->assertLessThan(
+            $get,
+            $gate,
+            'securePage() must run before the GET car_id load, so the Update link needs a login'
+        );
     }
 
     // ------------------------------------------------------------------
@@ -344,10 +409,11 @@ final class CarVerificationEmailComposerTest extends TestCase
         $count = substr_count($html, 'Login and Review or Update Your Car Record');
         $this->assertSame(1, $count, 'Exactly one "Login and Review or Update Your Car Record" CTA must be present');
 
+        // The edit URL appears twice: the Update button and this CTA.
         $expectedUrl = $this->composer->editUrl(999);
-        $this->assertStringContainsString(
-            htmlspecialchars($expectedUrl, ENT_QUOTES, 'UTF-8'),
-            $html
+        $this->assertSame(
+            2,
+            substr_count($html, htmlspecialchars($expectedUrl, ENT_QUOTES, 'UTF-8'))
         );
         $this->assertStringContainsString('app/owner/cars/edit.php?car_id=999', $expectedUrl);
     }
@@ -1394,6 +1460,31 @@ final class CarVerificationEmailComposerTest extends TestCase
         $row = $this->detailRow($html, $label);
         $this->assertStringNotContainsString('#FFF9E0', $row, "{$label} row must not be highlighted");
         $this->assertStringNotContainsString('#B8860B', $row, "{$label} row must not be highlighted");
+    }
+
+    /**
+     * The anchors inside createButtonRow()'s btn-row-cell entries, in
+     * document order. The href is HTML-escaped again, so it compares with
+     * the escaped URL in the markup.
+     *
+     * @return list<array{label: string, href: string, class: string}>
+     */
+    private function buttonRowCells(string $html): array
+    {
+        $cells = [];
+        foreach ($this->parseFragment($html)->getElementsByTagName('td') as $td) {
+            $anchor = $td->getElementsByTagName('a')->item(0);
+            if ($td->getAttribute('class') !== 'btn-row-cell' || $anchor === null) {
+                continue;
+            }
+            $cells[] = [
+                'label' => trim($anchor->textContent),
+                'href'  => htmlspecialchars($anchor->getAttribute('href'), ENT_QUOTES, 'UTF-8'),
+                'class' => $anchor->getAttribute('class'),
+            ];
+        }
+
+        return $cells;
     }
 
     private function parseFragment(string $fragment): \DOMDocument

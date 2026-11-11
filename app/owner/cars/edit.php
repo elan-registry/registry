@@ -76,21 +76,35 @@ if (Input::existsPost()) {
         }
     }
     // Messages will be displayed by UserSpice session system in template
+} elseif (Input::existsGet('car_id')) {
+    // The verification email links here with ?car_id=N. A missing, zero, or
+    // non-numeric id keeps the Add Car form.
+    $getCarId = filter_var(Input::get('car_id'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($getCarId !== false) {
+        $cardetails['id'] = $getCarId;
+        $action = 'updateCar';
+        // A link is easy to craft, so a denied GET must not log the user out.
+        updateCarDetails($cardetails, false);
+    }
 }
 
 /**
  * Update car details from database for editing
  *
+ * A missing car redirects to the cars index. A user who is not the owner and
+ * has no admin/editor permission is logged out, or with $logoutOnDenied false
+ * is redirected to the cars index.
+ *
  * @param array &$car Reference to car details array
+ * @param bool $logoutOnDenied Log out a denied user (POST) instead of a redirect (GET)
  * @return void
- * @throws Exception If user doesn't own the car
  */
-function updateCarDetails(array &$car): void
+function updateCarDetails(array &$car, bool $logoutOnDenied = true): void
 {
     global $user, $us_url_root;
 
     if (empty($car['id'])) {
-        logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, 'Empty car_id field in GET');
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, 'Empty car_id field in POST');
         return;
     }
 
@@ -109,6 +123,13 @@ function updateCarDetails(array &$car): void
     $hasAdminAccess = hasPerm([2, 3]); // Permission 2 = Administrator, 3 = Editor
     
     if (!$isOwner && !$hasAdminAccess) {
+        if (!$logoutOnDenied) {
+            // A former owner can still click an old email link, so redirect only.
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, 'Access denied for car edit GET - USER ' . $user->data()->id . ' CAR ' . $car['id'] . ' (not owner, no admin/editor perms)');
+            usError('You can only edit your own cars.');
+            Redirect::to($us_url_root . 'app/owner/cars/index.php');
+            exit;
+        }
         // Security violation: User attempting to access car they don't own and don't have admin/editor access
         logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, 'Access denied for car edit - USER ' . $user->data()->id . ' CAR ' . $car['id'] . ' (not owner, no admin/editor perms)');
         $user->logout();
@@ -247,24 +268,28 @@ function updateCarDetails(array &$car): void
                             <strong>1970</strong><br>The chassis can have two forms<br>
                             <ul>
                                 <li>4 Digits plus letter - Do not enter the type (i.e. 26/0001x enter 0001x)</li>
-                                <li>11 digits starting with the Year (i.e. YYmmbbssssT)</li>
+                                <li>11 characters starting with the Year (i.e. YYmmbbuuuuT)</li>
                                 <ul>
                                     <li>YY = 2 digit year</li>
                                     <li>mm = month</li>
-                                    <li>bb = batch numner</li>
+                                    <li>bb = batch number (11 characters only)</li>
                                     <li>uuuu = unit number</li>
                                     <li>T = Type Letter</li>
                                 </ul>
                             </ul>
                         </div>
                         <div id="chassis_post1970" class="hidden">
-                            <strong>After 1970</strong><br>The Chassis number is 11 digits starting with the Year (i.e. YYmmbbssssT)<br>
+                            <strong>After 1970</strong><br>The chassis number starts with the year the car was built.<br>
                             <ul>
-                                <li>YY = 2 digit year</li>
-                                <li>mm = month</li>
-                                <li>bb = batch numner</li>
-                                <li>uuuu = unit number</li>
-                                <li>T = Type Letter</li>
+                                <li>Model year 1971: 11 characters (i.e. YYmmbbuuuuT)</li>
+                                <li>Model years 1972-1974: 9 characters only, with no batch number (i.e. YYmmuuuuT)</li>
+                                <ul>
+                                    <li>YY = 2 digit year built</li>
+                                    <li>mm = month</li>
+                                    <li>bb = batch number (11 characters only)</li>
+                                    <li>uuuu = unit number</li>
+                                    <li>T = Type Letter</li>
+                                </ul>
                             </ul>
                         </div>
 
@@ -288,7 +313,7 @@ function updateCarDetails(array &$car): void
                                 <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#chassisValidationModal">
                                     <i class="fas fa-info-circle"></i> Chassis Validation Rules
                                 </button>
-                                <a href="<?= $us_url_root ?>docs/chassis-validation.php" target="_blank" class="btn btn-sm btn-outline-secondary ms-1">
+                                <a href="<?= $us_url_root ?>docs/reference/chassis-validation.php" target="_blank" class="btn btn-sm btn-outline-secondary ms-1">
                                     <i class="fas fa-external-link-alt"></i> Full Documentation
                                 </a>
                             </div>
@@ -415,14 +440,14 @@ function updateCarDetails(array &$car): void
             <div class="modal-body">
                 <!-- Format Overview -->
                 <div class="row mb-4">
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <div class="text-center p-3 border rounded bg-light">
                             <h6 class="text-primary mb-2">1963–1969</h6>
                             <code class="d-block mb-2">1234</code>
                             <small class="text-muted">4 digits only</small>
                         </div>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <div class="text-center p-3 border rounded bg-light">
                             <h6 class="text-warning mb-2">1970 Transition</h6>
                             <code class="d-block mb-1">1234A</code>
@@ -430,11 +455,18 @@ function updateCarDetails(array &$car): void
                             <small class="text-muted">5 or 11 characters</small>
                         </div>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <div class="text-center p-3 border rounded bg-light">
-                            <h6 class="text-success mb-2">1971–1974</h6>
-                            <code class="d-block mb-2">7301019999B</code>
+                            <h6 class="text-success mb-2">1971</h6>
+                            <code class="d-block mb-2">7112290609G</code>
                             <small class="text-muted">11 characters YYMMBBXXXXC</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center p-3 border rounded bg-light">
+                            <h6 class="text-info mb-2">1972–1974</h6>
+                            <code class="d-block mb-2">73081602L</code>
+                            <small class="text-muted">9 characters YYMMXXXXC only</small>
                         </div>
                     </div>
                 </div>
@@ -473,15 +505,16 @@ function updateCarDetails(array &$car): void
                             <li><code class="text-success">1234</code> - Pre-1970</li>
                             <li><code class="text-success">5678A</code> - 1970 Elan</li>
                             <li><code class="text-success">7012345678M</code> - 1970 +2</li>
-                            <li><code class="text-success">7301019999B</code> - 1973 Elan</li>
+                            <li><code class="text-success">72110581E</code> - 1972 Elan</li>
+                            <li><code class="text-success">73081602L</code> - 1973 +2</li>
                         </ul>
                     </div>
                     <div class="col-md-6">
                         <h6 class="text-danger"><i class="fas fa-times-circle"></i> Invalid Examples</h6>
                         <ul class="list-unstyled">
                             <li><code class="text-danger">123</code> - Too short</li>
-                            <li><code class="text-danger">7301019999I</code> - Invalid letter I</li>
-                            <li><code class="text-danger">7301019999L</code> - Wrong letter for Elan</li>
+                            <li><code class="text-danger">72110581I</code> - Invalid letter I</li>
+                            <li><code class="text-danger">72110581L</code> - Wrong letter for Elan</li>
                             <li><code class="text-danger">36/1234</code> - Includes type prefix</li>
                         </ul>
                     </div>
@@ -493,7 +526,7 @@ function updateCarDetails(array &$car): void
                 </div>
             </div>
             <div class="modal-footer">
-                <a href="<?= $us_url_root ?>docs/chassis-validation.php" target="_blank" class="btn btn-outline-primary">
+                <a href="<?= $us_url_root ?>docs/reference/chassis-validation.php" target="_blank" class="btn btn-outline-primary">
                     <i class="fas fa-external-link-alt"></i> View Full Documentation
                 </a>
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>

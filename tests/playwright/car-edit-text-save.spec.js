@@ -93,7 +93,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
                 const postData = method === 'POST' ? request.postData() || '' : '';
 
                 // fetchImages: ElanRegistryAPI sends action in POST body (multipart), never the query string
-                if (postData.includes('action=fetchImages')) {
+                if (postData.includes('fetchImages')) {
                     await route.fulfill({
                         status: 200,
                         contentType: 'application/json',
@@ -127,9 +127,9 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
             { timeout: 15000 }
         );
 
-        // fetchImages fires only in update mode, which a GET never sets
-        // (#1846), so the pond starts empty. The sentinel assertions hold
-        // either way.
+        // A GET with car_id sets update mode (#2608), so fetchImages fires
+        // and the pond can hold LOCAL images. The sentinel assertions hold
+        // with or without them.
 
         // Registered after the fetchImages route so it runs first (LIFO).
         let capturedRequest = null;
@@ -140,8 +140,8 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
                 const postDataText = request.postData() || '';
 
                 // Only capture the form submission — skip fetchImages/removeImages
-                if (!postDataText.includes('action=fetchImages') &&
-                    !postDataText.includes('action=removeImages')) {
+                if (!postDataText.includes('fetchImages') &&
+                    !postDataText.includes('removeImages')) {
                     capturedRequest = {
                         buffer: postDataBuffer,
                         contentType: request.headers()['content-type'] || ''
@@ -225,12 +225,76 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         ).toBe(0);
     });
 
+    // FilePond inserts each added file before the others by default, so a
+    // serial load of the stored photos reversed them, and each save wrote the
+    // reversed order back. The main photo changed on every save.
+    test('save keeps the stored photo order', async ({ page }) => {
+        const storedOrder = ['order-a.png', 'order-b.png', 'order-c.png'];
+        // 1x1 transparent PNG, so FilePond loads each mock photo.
+        const tinyPng = Buffer.from(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+            'base64'
+        );
+
+        await page.route('**/order-test/*.png', route => route.fulfill({
+            status: 200,
+            contentType: 'image/png',
+            body: tinyPng
+        }));
+
+        let capturedRequest = null;
+        await page.route('**/app/api/cars/save.php', async (route, request) => {
+            const postData = request.method() === 'POST' ? request.postData() || '' : '';
+            if (postData.includes('fetchImages')) {
+                await route.fulfill({
+                    status: 200,
+                    contentType: 'application/json',
+                    body: JSON.stringify({
+                        success: true,
+                        images: storedOrder.map(name => ({ path: `order-test/${name}`, basename: name }))
+                    })
+                });
+                return;
+            }
+            if (request.method() === 'POST' && !postData.includes('removeImages')) {
+                capturedRequest = {
+                    buffer: request.postDataBuffer(),
+                    contentType: request.headers()['content-type'] || ''
+                };
+                await route.fulfill({
+                    status: 200,
+                    contentType: 'application/json',
+                    body: JSON.stringify({ success: true, cardetails: { id: 1 } })
+                });
+                return;
+            }
+            await route.fallback();
+        });
+
+        await page.goto(`app/owner/cars/edit.php?car_id=${CAR_ID_STANDARD}`, { waitUntil: 'domcontentloaded' });
+        expect(page.url(), 'edit.php must render for an authenticated session, not redirect to login').not.toContain('login');
+
+        await expect(page.locator('.filepond--item')).toHaveCount(storedOrder.length, { timeout: 15000 });
+
+        const submitBtn = page.locator('#submit');
+        await expect(submitBtn).toBeEnabled({ timeout: 15000 });
+        await submitBtn.click();
+
+        await expect.poll(() => capturedRequest, { timeout: 8000 }).not.toBeNull();
+
+        const boundary = capturedRequest.contentType.match(/boundary=([^\s;]+)/)[1];
+        const fields = parseMultipart(capturedRequest.buffer, boundary);
+        const filenames = (fields.get('filenames') || [])[0];
+        expect(filenames, 'filenames= field must be present').toBeDefined();
+        expect(filenames.value, 'filenames= must keep the stored photo order').toBe(storedOrder.join(','));
+    });
+
     // Guard: proves the sentinel check is not always true.
     test('sentinel blob absent when new file is queued for upload', async ({ page }) => {
         // Mock fetchImages to return no existing images (clean pond)
         await page.route('**/app/api/cars/save.php', async (route, request) => {
             const postData = request.postData() || '';
-            if (postData.includes('action=fetchImages')) {
+            if (postData.includes('fetchImages')) {
                 await route.fulfill({
                     status: 200,
                     contentType: 'application/json',
@@ -255,7 +319,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         await page.route('**/app/api/cars/save.php', async (route, request) => {
             if (request.method() === 'POST') {
                 const postData = request.postData() || '';
-                if (!postData.includes('action=fetchImages') && !postData.includes('action=removeImages')) {
+                if (!postData.includes('fetchImages') && !postData.includes('removeImages')) {
                     capturedRequest = {
                         buffer: request.postDataBuffer(),
                         contentType: request.headers()['content-type'] || ''
@@ -401,7 +465,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
 
         await page.route('**/app/api/cars/save.php', async (route, request) => {
             const postData = request.postData() || '';
-            if (postData.includes('action=fetchImages')) {
+            if (postData.includes('fetchImages')) {
                 await route.fulfill({
                     status: 200,
                     contentType: 'application/json',
@@ -434,7 +498,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         await page.route('**/app/api/cars/save.php', async (route, request) => {
             if (request.method() === 'POST') {
                 const postData = request.postData() || '';
-                if (!postData.includes('action=fetchImages') && !postData.includes('action=removeImages')) {
+                if (!postData.includes('fetchImages') && !postData.includes('removeImages')) {
                     // Fail loudly here; a silent null shows as a misleading 8s timeout below.
                     const contentType = request.headers()['content-type'] || '';
                     const boundaryMatch = contentType.match(/boundary=([^\s;]+)/);
@@ -621,7 +685,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         await page.route('**/app/api/cars/save.php', async (route, request) => {
             if (request.method() === 'POST') {
                 const postData = request.postData() || '';
-                if (!postData.includes('action=fetchImages') && !postData.includes('action=removeImages')) {
+                if (!postData.includes('fetchImages') && !postData.includes('removeImages')) {
                     capturedRequest = {
                         buffer: request.postDataBuffer(),
                         contentType: request.headers()['content-type'] || ''
@@ -795,7 +859,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         await page.route('**/app/api/cars/save.php', async (route, request) => {
             if (request.method() === 'POST') {
                 const postData = request.postData() || '';
-                if (!postData.includes('action=fetchImages') && !postData.includes('action=removeImages')) {
+                if (!postData.includes('fetchImages') && !postData.includes('removeImages')) {
                     const contentType = request.headers()['content-type'] || '';
                     const boundaryMatch = contentType.match(/boundary=([^\s;]+)/);
                     if (boundaryMatch) {
@@ -1026,6 +1090,17 @@ test.describe('encode-at-output regression — special chars in car text fields 
         await page.route('**/app/api/cars/save.php', async (route, request) => {
             if (request.method() === 'POST') {
                 const body = request.postData();
+                // A GET car_id is update mode, so fetchImages runs. A reply
+                // with no images array blocks #submit. The body is multipart,
+                // so match the value, not "action=fetchImages".
+                if (body !== null && body.includes('fetchImages')) {
+                    await route.fulfill({
+                        status: 200,
+                        contentType: 'application/json',
+                        body: JSON.stringify({ success: true, images: [] }),
+                    });
+                    return;
+                }
                 // Only capture non-null, non-empty bodies — a null or empty postData()
                 // means no body was sent, which would defeat the polling sentinel below.
                 if (body !== null && body !== '') {
