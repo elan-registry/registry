@@ -54,6 +54,9 @@
         const pond = FilePond.create(document.querySelector('#myPond'), {
             allowMultiple: true,
             allowReorder: true,
+            // The default 'before' puts each added file first, so the serial
+            // load of stored photos reversed them and each save stored that order.
+            itemInsertLocation: 'after',
             maxFiles: cfg.maxFiles,
             acceptedFileTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
             maxFileSize: cfg.maxFileSize,

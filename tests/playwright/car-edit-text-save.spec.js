@@ -225,6 +225,70 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         ).toBe(0);
     });
 
+    // FilePond inserts each added file before the others by default, so a
+    // serial load of the stored photos reversed them, and each save wrote the
+    // reversed order back. The main photo changed on every save.
+    test('save keeps the stored photo order', async ({ page }) => {
+        const storedOrder = ['order-a.png', 'order-b.png', 'order-c.png'];
+        // 1x1 transparent PNG, so FilePond loads each mock photo.
+        const tinyPng = Buffer.from(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+            'base64'
+        );
+
+        await page.route('**/order-test/*.png', route => route.fulfill({
+            status: 200,
+            contentType: 'image/png',
+            body: tinyPng
+        }));
+
+        let capturedRequest = null;
+        await page.route('**/app/api/cars/save.php', async (route, request) => {
+            const postData = request.method() === 'POST' ? request.postData() || '' : '';
+            if (postData.includes('fetchImages')) {
+                await route.fulfill({
+                    status: 200,
+                    contentType: 'application/json',
+                    body: JSON.stringify({
+                        success: true,
+                        images: storedOrder.map(name => ({ path: `order-test/${name}`, basename: name }))
+                    })
+                });
+                return;
+            }
+            if (request.method() === 'POST' && !postData.includes('removeImages')) {
+                capturedRequest = {
+                    buffer: request.postDataBuffer(),
+                    contentType: request.headers()['content-type'] || ''
+                };
+                await route.fulfill({
+                    status: 200,
+                    contentType: 'application/json',
+                    body: JSON.stringify({ success: true, cardetails: { id: 1 } })
+                });
+                return;
+            }
+            await route.fallback();
+        });
+
+        await page.goto(`app/owner/cars/edit.php?car_id=${CAR_ID_STANDARD}`, { waitUntil: 'domcontentloaded' });
+        expect(page.url(), 'edit.php must render for an authenticated session, not redirect to login').not.toContain('login');
+
+        await expect(page.locator('.filepond--item')).toHaveCount(storedOrder.length, { timeout: 15000 });
+
+        const submitBtn = page.locator('#submit');
+        await expect(submitBtn).toBeEnabled({ timeout: 15000 });
+        await submitBtn.click();
+
+        await expect.poll(() => capturedRequest, { timeout: 8000 }).not.toBeNull();
+
+        const boundary = capturedRequest.contentType.match(/boundary=([^\s;]+)/)[1];
+        const fields = parseMultipart(capturedRequest.buffer, boundary);
+        const filenames = (fields.get('filenames') || [])[0];
+        expect(filenames, 'filenames= field must be present').toBeDefined();
+        expect(filenames.value, 'filenames= must keep the stored photo order').toBe(storedOrder.join(','));
+    });
+
     // Guard: proves the sentinel check is not always true.
     test('sentinel blob absent when new file is queued for upload', async ({ page }) => {
         // Mock fetchImages to return no existing images (clean pond)

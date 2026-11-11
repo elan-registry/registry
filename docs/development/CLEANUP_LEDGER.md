@@ -212,8 +212,8 @@ after an item is written.
 
 ### `tests/playwright/car-edit-text-save.spec.js` (test-only, no estimate)
 
-- [ ] The test "comments with special characters save and reload as plain text" (~line 399) fails on every parallel run and in 2 of 4 runs with `--workers=1`. After the mocked save, `car-edit.js` goes to `details.php`, so `#comments` is not on the page and the `waitForFunction` (~line 523) times out. Read the saved comments on `details.php`, or stop the redirect in the mock (found in #2608)
-- [ ] The test "details page renders special chars as readable text" (~line 1091) fails on every run. It reads `body.textContent`, which includes inline `<script>` text such as `.replace(/&/g, '&amp;')`. Read `innerText`, or only the car text fields (found in #2608)
+- [ ] The test "comments with special characters save and reload as plain text" (~line 463) fails on every parallel run and in 2 of 4 runs with `--workers=1`. After the mocked save, `car-edit.js` goes to `details.php`, so `#comments` is not on the page and the `waitForFunction` (~line 587) times out. Read the saved comments on `details.php`, or stop the redirect in the mock (found in #2608)
+- [ ] The test "details page renders special chars as readable text" (~line 1155) fails on every run. It reads `body.textContent`, which includes inline `<script>` text such as `.replace(/&/g, '&amp;')`. Read `innerText`, or only the car text fields (found in #2608)
 - [ ] With default workers, this spec, `car-edit-get-car-id.spec.js`, and `car-edit-missing-car.spec.js` together had extra failures in 4 of 12 runs, a different set each time (timeouts, "processFiles() did not resolve"). With `--workers=1`, 4 of 4 runs had none. Update mode on a GET `car_id` now fires a real `fetchImages` in each test, which adds load. Mock `fetchImages` before each `goto`, or wait on a page condition, not a fixed 5 s timeout (found in #2608)
 
 ### `tests/playwright/local/fixtures/` + `tests/integration/database/EmailEventRekeyMigrationFixture.php`
