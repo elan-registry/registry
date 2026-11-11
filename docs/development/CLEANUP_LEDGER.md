@@ -115,6 +115,10 @@ after an item is written.
 
 - [ ] The "Back to all options" `btn-link` is about 38px high, below the 44px touch target. The `#verify-actions` target cannot take focus, so a screen reader announces nothing after the jump. Add `tabindex="-1"` and a group label (found in #2495)
 
+### `database/4-sample-data.sql` + `tests/playwright/fixtures.js`
+
+- [ ] Sample car 1 (1973, chassis `7301019999B`) now fails the 1972-1974 9-character rule, and its comment still says "Post-1970 format: YYMMBBXXXXC". `CAR_ID_OWNED_BY_ADMIN` uses car 1, so an unmocked save test on it fails on the chassis. Change the sample chassis to a 9-character value such as `73081602L`, or note the failure on the fixture constant (found in /flow:finish-milestone v2.31.2)
+
 ### `database/migrations/20260915000000_add_cars_verification_attempts_columns.php`
 
 - [ ] The `down()` comment (~L84) says "MySQL refuses to DROP a column that a trigger body still references". MySQL 8 allows the drop; the next INSERT, UPDATE or DELETE on `cars` then fails with 1054. The restore-first order is still right. Correct the reason in the comment (found in #2167)
@@ -142,6 +146,7 @@ after an item is written.
 
 ### `package.json` + `scripts/build.js` + `app/assets/js/car-edit.js` (−1 dependency)
 
+- [ ] `@versatiles/style` 9 needs Node 20 or later, but `package.json` has no `engines` field and the repo has no `.nvmrc`. Add `"engines": { "node": ">=20" }` (found in /flow:finish-milestone v2.31.2)
 - [ ] Drop `filepond-plugin-image-exif-orientation`: the package, its `<script>` tag, its `registerPlugin()` argument (car-edit.js ~29), and its copy line (build.js ~47). Current browsers apply EXIF orientation natively. **First upload one rotated phone JPEG with the plugin removed, and confirm that the stored image and the resized variants are upright.** (found in the #2208 audit)
 
 ### `scripts/render-deploy-sheet.sh`

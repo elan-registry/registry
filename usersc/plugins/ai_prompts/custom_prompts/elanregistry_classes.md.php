@@ -248,8 +248,9 @@ Validates Lotus Elan chassis and VIN formats specific to this registry.
 
 ```php
 $validator = new ChassisValidator();
-$result    = $validator->validate('26/0001');
-if (!$result->isValid()) {
-    throw new CarValidationException($result->getError());
+// validate(string $chassis, int $year, string $model, bool $allowOverride = false): array
+$result    = $validator->validate('73081602L', 1973, 'Elan+2|Standard|Coupe');
+if (!$result['valid']) {
+    throw new CarValidationException($result['error_reason']);
 }
 ```
