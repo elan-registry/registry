@@ -1,26 +1,22 @@
 # Elan Registry v2.31.2 Release Notes
 
-**Release Date:** November 8, 2026 (draft)
+**Release Date:** November 8, 2026
 **Type:** Patch Release - Correct Behavior for Owners and Visitors
 
-Real 1972-1974 chassis numbers pass, the verification email links to Update, and a car save keeps every stored photo or says why not.
-The statistics map shows every car on first load.
+This release accepts real 1972-1974 chassis numbers and adds an Update button to the verification email.
+It also keeps stored car photos on save and shows every car on the statistics map.
 
 ## User-Facing Changes
 
-- A car save with a photo that did not reach the server now stops and tells the owner why.
-- The verification email has an Update button. It opens the car's edit page, after a login if necessary.
-- Links to a car's edit page now open that car. Before, they opened a blank Add Car form. This applies to the
-  "Login and Review or Update Your Car Record" button in the verification email, the "Review & Update" link on the
-  verify page, and the "Update Your Car Record" button in the email that an admin sends to an owner.
-- A 1972-1974 car with a 9-character chassis number (for example 73081602L) now saves with no admin override.
-- Some chassis numbers that passed before now fail: 11-character chassis numbers for model years 1972-1974,
-  race cars outside model years 1963-1966, and model years outside 1963-1974. An admin must check each of these cars or set the override.
-- The statistics map shows every car on first load, on a phone too.
+- A car save with a missing photo now stops and tells the owner why. ([#2626](https://github.com/elan-registry/registry/issues/2626))
+- Editing a car that does not load now stops early and shows a correct message. ([#1975](https://github.com/elan-registry/registry/issues/1975))
+- Chassis checks accept only 9 characters for 1972-1974 and reject model years outside 1963-1974. ([#2613](https://github.com/elan-registry/registry/issues/2613))
+- The verification email has an Update button, and each car edit link now opens that car. ([#2608](https://github.com/elan-registry/registry/issues/2608))
+- The statistics map shows every car on first load. ([#2568](https://github.com/elan-registry/registry/issues/2568))
 
 ## Admin-Facing Changes
 
-- An admin tool clears the override and note on cars that now pass and lists unclear notes for hand edits.
+- A new admin script clears the chassis override on cars that now pass validation. ([#2613](https://github.com/elan-registry/registry/issues/2613))
 
 ## Issues Resolved
 
