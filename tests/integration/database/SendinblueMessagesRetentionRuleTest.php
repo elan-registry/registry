@@ -58,6 +58,7 @@ final class SendinblueMessagesRetentionRuleTest extends IntegrationTestCase
         if (SendinblueMessagesTable::createIfMissing($this->db)) {
             self::$madeTable = true;
         }
+        $this->now = new DateTimeImmutable();
         $this->deleteFixtureRows();
 
         $foreign = (int) $this->db->query('SELECT COUNT(*) AS cnt FROM plg_sendinblue_messages')->first()->cnt;
@@ -65,7 +66,6 @@ final class SendinblueMessagesRetentionRuleTest extends IntegrationTestCase
             $this->markTestSkipped('plg_sendinblue_messages holds rows that this test did not write. Exact counts would be wrong.');
         }
 
-        $this->now = new DateTimeImmutable();
         $this->ownerEmail = 'ret2384-' . uniqid() . '@example.com';
         $this->userId = $this->createTestUser(['email' => $this->ownerEmail, 'join_date' => '2000-01-01 00:00:00'], true);
         $this->setEmailAddressSinceSeen($this->userId, $this->ownerEmail, '2000-01-01 00:00:00');
