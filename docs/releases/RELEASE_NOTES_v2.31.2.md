@@ -15,10 +15,6 @@ It also keeps stored car photos on save and shows every car on the statistics ma
 - The statistics map shows every car on first load. ([#2568](https://github.com/elan-registry/registry/issues/2568))
 - A car save keeps the photo order. New photos go after the existing ones, so drag one first to make it main. ([#2642](https://github.com/elan-registry/registry/issues/2642))
 
-## Admin-Facing Changes
-
-- A new admin script clears the chassis override on cars that now pass validation. ([#2613](https://github.com/elan-registry/registry/issues/2613))
-
 ## Issues Resolved
 
 - [#2626](https://github.com/elan-registry/registry/issues/2626) — A car save with a dropped photo name tells the owner, and keeps stored photos.
