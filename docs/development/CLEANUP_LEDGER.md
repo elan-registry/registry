@@ -128,6 +128,14 @@ after an item is written.
 
 - [ ] TESTING_STRATEGY.md "Shell Tests for Git Hooks" names only `tests/hooks/lib/harness.sh`. Add `tests/hooks/lib/gh-stub.sh` and `tests/hooks/lib/workflow-extract.sh`, and list PyYAML (needed by `tests/hooks/test-review-render.sh`) in the hook-test prerequisites. ADR-020 (~L225) says a `Blocking` heading fails the build. Since #2506 a `blocking` finding in the structured output fails it (from #2512)
 
+### `docs/development/adr/ADR-018-build-at-deploy-for-frontend-vendoring.md`
+
+- [ ] The "Update 2026-11-10" note says Node 20 or later, but the original Node v18 research text below it is not marked as superseded. Mark that paragraph as superseded (found in /flow:finish-milestone v2.31.2)
+
+### `docs/reference/chassis-validation.php`
+
+- [ ] The section id `format-1971` sits on the heading "11-Character Format (1970-1971)", and the summary table links 1970 to `format-1970`. Rename the id to `format-11-char` and update its links (found in /flow:finish-milestone v2.31.2)
+
 ### `error/500.php`
 
 - [ ] Restore a unit pin: all nine status codes (400/401/403/404/405/408/500/502/504) have entries in both `$errorMessages` and `$logCategoryMap` (from #2169)
@@ -271,6 +279,11 @@ after an item is written.
 
 - [ ] Each consumer builds the `{root}{ELAN_IMAGE_DIR}{carId}/` path by hand (`Car.php` ~L75 and ~L178, `save.php` ~L41, ~L697 and ~L915, `24-Regenerate-Optimized-Thumbnails.php` ~L381, `app/owner/cars/index.php` ~L120, `details.php` ~L479, `statistics.php` ~L359). Add one helper and call it from each (from #1943)
 
+### `usersc/classes/Car/CarImageProcessor.php`
+
+- [ ] `resolveUploadOrder()` and `checkUploadOrder()` pass array shapes that only docblocks describe, and `checkUploadOrder()` returns data that the caller already holds (`missing`). Use a small readonly value object, or return only `errors`, `storedUnsafe` and `unplaced` (found in /flow:finish-milestone v2.31.2)
+- [ ] `cleanClientText()` is a general client-text helper, not image logic, and `save.php` calls it. Move it to a shared helper when a second caller appears (found in /flow:finish-milestone v2.31.2)
+
 ### `usersc/classes/Car/CarRepository.php`
 
 - [ ] `recentFlagChanges()` (~L2327) has no production caller, but tests in 15 unit and integration files read flag-change rows through it. Delete it only after those tests use a test helper (found in /finish-milestone v2.30.7)
@@ -279,6 +292,10 @@ after an item is written.
 ### `usersc/classes/Car/CarVerificationEmailComposer.php`
 
 - [ ] Photo FileError logs record user 0. The composer has no actor id, so an admin-started send is not attributed (found while working on #1894)
+
+### `usersc/classes/Car/ChassisOverrideNoteResult.php`
+
+- [ ] Two bools (`changed`, `manual`) allow a state that the named constructors forbid. Replace them with an enum (`Unchanged`, `Stripped`, `Manual`) (found in /flow:finish-milestone v2.31.2)
 
 ### `usersc/classes/Car/EffectiveEmailFlags.php`
 
@@ -314,6 +331,11 @@ after an item is written.
 ### `usersc/classes/CarView.php`
 
 - [ ] The no-photo placeholder in `displayCarousel()` is an `h5` under the `h3` Photos card, so it skips levels. Its `fa-camera` icon has no `aria-hidden="true"` (found in #2495)
+
+### `usersc/classes/ChassisValidator.php`
+
+- [ ] The `validatePost1970()` docblock says "5 characters" for 1970-1974, but the 5-character format applies only to model year 1970. Name each format with its years (found in /flow:finish-milestone v2.31.2)
+- [ ] `ruleGroup()` returns a `string` that only a docblock limits to `RULE_GROUPS` keys. A string-backed enum would remove the `RULE_GROUPS[$groupKey]` lookups in `tab-manage_cars.php` and fix script 31 (found in /flow:finish-milestone v2.31.2)
 
 ### `usersc/classes/Cron/HealthcheckPinger.php` + `usersc/classes/Cron/CurlHealthcheckTransport.php`
 
