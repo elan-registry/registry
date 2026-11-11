@@ -86,9 +86,13 @@ define('ELAN_IMAGE_DIR', 'userimages/');
 define('ELAN_IMAGE_MAX', 6);
 
 /**
- * Maximum upload file size, in MB.
+ * Maximum size of the original photo that the browser accepts, in MB.
+ *
+ * FilePond checks this limit before it resizes the photo so that its longest
+ * side is at most 2048 px. A smaller photo is posted unchanged. The server
+ * limit for each posted file is 5 MiB, in CarImageProcessor::validateFileUpload().
  */
-define('ELAN_IMAGE_UPLOAD_MAX_SIZE', 3.00);
+define('ELAN_IMAGE_UPLOAD_MAX_SIZE', 20.00);
 
 /**
  * Maximum display image width, in pixels.

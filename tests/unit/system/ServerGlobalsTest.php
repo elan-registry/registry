@@ -64,6 +64,7 @@ class ServerGlobalsTest extends TestCase
             'REQUEST_URI' => '/app/owner/cars/details.php?id=123',
             'PHP_SELF' => '/app/owner/cars/details.php',
             'REMOTE_ADDR' => '203.0.113.5',
+            'CONTENT_LENGTH' => '1048576',
         ]);
 
         $this->assertSame('elanregistry.org', $globals['host']);
@@ -71,6 +72,7 @@ class ServerGlobalsTest extends TestCase
         $this->assertSame('GET', $globals['method']);
         $this->assertSame('/app/owner/cars/details.php?id=123', $globals['request_uri']);
         $this->assertSame('203.0.113.5', $globals['remote_addr']);
+        $this->assertSame(1048576, $globals['content_length']);
         $this->assertSame('https://elanregistry.org', $globals['current_origin']);
         $this->assertSame(
             'https://elanregistry.org/app/owner/cars/details.php?id=123',
@@ -149,6 +151,7 @@ class ServerGlobalsTest extends TestCase
         $this->assertSame('', $globals['referer']);
         $this->assertSame('', $globals['user_agent']);
         $this->assertSame('', $globals['remote_addr']);
+        $this->assertSame(0, $globals['content_length']);
         $this->assertSame('http://', $globals['current_origin']);
         $this->assertSame('http:///', $globals['current_url']);
     }
@@ -293,6 +296,7 @@ class ServerGlobalsTest extends TestCase
                 'referer' => $referer,
                 'user_agent' => $user_agent,
                 'remote_addr' => $remote_addr,
+                'content_length' => $content_length,
             ]);
             PHP;
 

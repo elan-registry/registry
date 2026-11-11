@@ -574,6 +574,42 @@ call `IntegrationTestCase::saveBrevoTestKey()` to make a real send
   tests need the database, so run them in the container instead — see step 4
   below.
 
+### PHP upload and memory limits
+
+| Setting | Docker | Test and production |
+| --- | --- | --- |
+| `upload_max_filesize` | 8M | 8M (set 2026-11-11) |
+| `post_max_size` | 64M | 64M |
+| `memory_limit` | 256M | 128M |
+| `display_errors` | On | Off |
+
+**Why 8M and 64M (#2627).** The browser resizes each photo so that its
+longest side is at most 2048 px before it posts it. A smaller photo is posted
+unchanged. The app per-file cap is
+5 MiB (`CarImageProcessor::validateFileUpload()`). One save can post up to
+`ELAN_IMAGE_MAX` (6) photos, so the largest body is 6 × 5 MiB = 30 MiB. 8M and
+64M give headroom, so the app rejects a large photo with its own message, not
+PHP. `post_max_size` must stay at or above `upload_max_filesize`.
+`Issue2627RegressionTest` checks the Docker values.
+
+**Memory.** Docker uses 256M because composer needs it in the container. The
+host keeps 128M. A resized 2048 px bitmap uses about 13 MB in GD.
+
+**Body above `post_max_size`.** PHP discards `$_POST` and `$_FILES` before the
+script runs. In Docker, `display_errors = On` makes PHP print a
+"POST Content-Length ... exceeds the limit" warning before the script output.
+The warning sends the headers, so `save.php` returns HTTP 200, not 413, and
+the browser cannot parse the JSON message. Test and production have
+`display_errors = Off`, so they return 413 and the message.
+
+**Where to change them.**
+
+- Docker: `docker/php.ini-overrides.ini`. The Dockerfile copies it into the
+  image, so run `docker compose build app && docker compose up -d app`. Check
+  with `docker compose exec -u www-data app php -i | grep -E 'upload_max_filesize|post_max_size'`.
+- Test and production: cPanel, **Select PHP Version** (PHP Selector), then
+  **Options**. One Selector configuration covers both sites.
+
 ### Development Setup
 
 1. **Get Database Credentials**:

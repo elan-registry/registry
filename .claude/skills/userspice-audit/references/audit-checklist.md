@@ -52,8 +52,8 @@ For brownfield applications, do not mechanically replace raw input on an existin
 - Use `Server::get('KEY', $default)`, `Server::getClientIp($trustedProxies)`, `Server::getHost($trustedProxies)`, or `Server::getOrigin($trustedProxies)` as appropriate.
 - **Project override:** in a repository with `usersc/includes/server_globals.php`,
   the fix is the matching validated global (`$php_self`, `$is_https`, `$host`,
-  `$method`, `$request_uri`, `$current_url`, `$current_origin`, `$remote_addr`,
-  `$referer`, `$user_agent`), not a `Server::` call. `$remote_addr` is already
+  `$method`, `$content_length`, `$request_uri`, `$current_url`,
+  `$current_origin`, `$remote_addr`, `$referer`, `$user_agent`), not a `Server::` call. `$remote_addr` is already
   Cloudflare-resolved — do not recommend `Server::getClientIp()` alongside it.
 
 ## Rule 06 — Output escaping (MEDIUM)

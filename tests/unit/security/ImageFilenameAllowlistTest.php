@@ -28,7 +28,6 @@ final class ImageFilenameAllowlistTest extends TestCase
             'jpg'              => ['img_' . self::HEX32 . '.jpg'],
             'png'              => ['img_' . self::HEX32 . '.png'],
             'gif'              => ['img_' . self::HEX32 . '.gif'],
-            'webp'             => ['img_' . self::HEX32 . '.webp'],
             'all hex digits'   => ['img_0123456789abcdef0123456789abcdef.jpg'],
         ];
     }
@@ -59,6 +58,8 @@ final class ImageFilenameAllowlistTest extends TestCase
             'wrong prefix'             => ['upload_' . self::HEX32 . '.jpg'],
             'uppercase hex'            => ['img_' . strtoupper(self::HEX32) . '.jpg'],
             'unsupported extension'    => ['img_' . self::HEX32 . '.bmp'],
+            // WebP left the allowlist in #2627: Resize.php cannot decode it.
+            'webp extension'           => ['img_' . self::HEX32 . '.webp'],
             'no extension'             => ['img_' . self::HEX32],
             'empty string'             => [''],
             'plain php filename'       => ['shell.php'],
@@ -90,7 +91,6 @@ final class ImageFilenameAllowlistTest extends TestCase
             'jpeg'                    => ['photo.jpeg'],
             'png'                     => ['photo.png'],
             'gif'                     => ['photo.gif'],
-            'webp'                    => ['photo.webp'],
             'uppercase JPG'           => ['photo.JPG'],
             'uppercase JPEG'          => ['photo.JPEG'],
         ];
@@ -116,6 +116,8 @@ final class ImageFilenameAllowlistTest extends TestCase
             'script tag'            => ['<script>alert(1)</script>'],
             'null byte'             => ["photo.jpg\x00extra"],
             'unsupported extension' => ['photo.bmp'],
+            // WebP is not accepted for upload (#2627), so no stored name ends in .webp.
+            'webp extension'        => ['photo.webp'],
             'php extension'         => ['shell.php'],
             'empty string'          => [''],
         ];

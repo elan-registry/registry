@@ -7,7 +7,8 @@ An owner can add full-resolution phone photos to their car. When a photo does no
 
 ## User-Facing Changes
 
-- [Placeholder: add entries as issues complete.]
+- Owners can add phone photos up to 20 MB each. WebP photos are no longer accepted. (#2627)
+- A car save with too many large photos now says the photos are too large, with the limit. (#2647)
 
 ## Admin-Facing Changes
 
@@ -15,8 +16,8 @@ An owner can add full-resolution phone photos to their car. When a photo does no
 
 ## Issues Resolved
 
-- WIP: [#2627](https://github.com/elan-registry/registry/issues/2627) — Raise the car photo upload limit from 3 MB to at least 4.5 MB.
-- WIP: [#2647](https://github.com/elan-registry/registry/issues/2647) — Tell the owner that the photos are too large when a car save exceeds the server limit.
+- [#2627](https://github.com/elan-registry/registry/issues/2627) — Raise the car photo upload limit from 3 MB to at least 4.5 MB.
+- [#2647](https://github.com/elan-registry/registry/issues/2647) — Tell the owner that the photos are too large when a car save exceeds the server limit.
 - WIP: [#1844](https://github.com/elan-registry/registry/issues/1844) — Stop one invalid file from blocking a multi-photo car submission.
 - WIP: [#2628](https://github.com/elan-registry/registry/issues/2628) — Correct the photo-load failure banner on car edit.
 - WIP: [#2153](https://github.com/elan-registry/registry/issues/2153) — Send a verification email when an admin restores an archived account.

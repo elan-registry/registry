@@ -58,12 +58,17 @@
             // load of stored photos reversed them and each save stored that order.
             itemInsertLocation: 'after',
             maxFiles: cfg.maxFiles,
-            acceptedFileTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+            acceptedFileTypes: ['image/jpeg', 'image/png', 'image/gif'],
             maxFileSize: cfg.maxFileSize,
+            // maxFileSize is a byte count of 20 MiB; base 1024 makes the label show "20 MB", not "21 MB".
+            fileSizeBase: 1024,
             instantUpload: false,
             allowProcess: false,
             imageResizeTargetWidth: cfg.imageResizeWidth,
-            imageResizeMode: 'downscale',
+            // FilePond knows only force/cover/contain; any other mode skips the
+            // resize. 'contain' bounds the longest side, and no upscale keeps small photos.
+            imageResizeMode: 'contain',
+            imageResizeUpscale: false,
             credits: false,
             labelIdle: 'Drop photos here or <span class="filepond--label-action">Browse</span>',
             labelFileTypeNotAllowed: 'Invalid file type. Only images are allowed.',

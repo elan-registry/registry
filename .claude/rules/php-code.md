@@ -18,8 +18,9 @@ These files are the source of truth for PHP rules:
 
 - Add `declare(strict_types=1)` to new PHP files. Add type hints and PHPDoc.
 - Replace raw `$_SERVER` with the server globals: `$scheme`, `$host`,
-  `$is_https`, `$method`, `$request_uri`, `$current_url`, `$current_origin`,
-  `$php_self`, `$remote_addr`, `$referer`, and `$user_agent`.
+  `$is_https`, `$method`, `$content_length`, `$request_uri`, `$current_url`,
+  `$current_origin`, `$php_self`, `$remote_addr`, `$referer`, and
+  `$user_agent`.
 - Wrap database operations in `try` and `catch`.
 - Do not call `getUserWithProfile()`. It was removed in v2.26.2. Use
   `(new Owner($userId))->data()`.

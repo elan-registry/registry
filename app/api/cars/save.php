@@ -41,6 +41,23 @@ $cardetails = [];
 $targetFilePath = $abs_us_root . $us_url_root . ELAN_IMAGE_DIR;
 $targetURL = $us_url_root . ELAN_IMAGE_DIR;
 
+// A body above post_max_size reaches the script with $_POST and $_FILES empty,
+// so only the declared length tells it apart from a request with no data (#2647).
+$postMaxSize = (string) ini_get('post_max_size');
+if ($method === 'POST' && empty($_POST) && empty($_FILES)
+    && CarImageProcessor::exceedsPostMaxSize($content_length, $postMaxSize)
+) {
+    $postMaxMb = round(ini_parse_quantity($postMaxSize) / 1048576, 1);
+    ApiResponse::error(
+        "The photos are too large to save together. The maximum is {$postMaxMb} MB for one save. Remove some photos, then save again.",
+        413
+    )->withLogging(
+        $user->data() !== null ? (int) $user->data()->id : 0,
+        LogCategories::LOG_CATEGORY_FILE_ERROR,
+        "save.php: body of {$content_length} bytes exceeds post_max_size {$postMaxSize}"
+    )->send();
+}
+
 if ($method !== 'POST' || empty($_POST)) {
     ApiResponse::error('No data received', 400)->send();
 }

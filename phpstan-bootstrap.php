@@ -27,6 +27,7 @@ $php_self       = '';
 $is_https       = false;
 $host           = '';
 $method         = '';
+$content_length = 0;
 $request_uri    = '';
 $current_url    = '';
 $current_origin = '';

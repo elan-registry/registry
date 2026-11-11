@@ -24,7 +24,7 @@ final class BootstrapConstantsTest extends IntegrationTestCase
         return [
             'ELAN_IMAGE_DIR' => ['ELAN_IMAGE_DIR', 'userimages/'],
             'ELAN_IMAGE_MAX' => ['ELAN_IMAGE_MAX', 6],
-            'ELAN_IMAGE_UPLOAD_MAX_SIZE' => ['ELAN_IMAGE_UPLOAD_MAX_SIZE', 3.00],
+            'ELAN_IMAGE_UPLOAD_MAX_SIZE' => ['ELAN_IMAGE_UPLOAD_MAX_SIZE', 20.00],
             'ELAN_IMAGE_DISPLAY_MAX_SIZE' => ['ELAN_IMAGE_DISPLAY_MAX_SIZE', 2048],
             'ELAN_IMAGE_THUMBNAIL_SIZES' => ['ELAN_IMAGE_THUMBNAIL_SIZES', '100,300,768,1024,2048'],
             'TRANSFER_REQUEST_EXPIRY_DAYS' => ['TRANSFER_REQUEST_EXPIRY_DAYS', 30],
