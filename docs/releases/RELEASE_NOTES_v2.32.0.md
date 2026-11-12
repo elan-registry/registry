@@ -13,12 +13,12 @@ An owner can add full-resolution phone photos to their car. When a photo does no
 
 ## Admin-Facing Changes
 
-- [Placeholder: add entries as issues complete.]
+- A new Car Photos tab lets admins and editors reattach lost photos, restore reversed orders, or mark a car reviewed. (#2644)
 
 ## Issues Resolved
 
 - [#2627](https://github.com/elan-registry/registry/issues/2627) — Raise the car photo upload limit from 3 MB to at least 4.5 MB.
 - [#2647](https://github.com/elan-registry/registry/issues/2647) — Tell the owner that the photos are too large when a car save exceeds the server limit.
 - [#1844](https://github.com/elan-registry/registry/issues/1844) — Name each rejected photo and its reason in a multi-photo car save.
-- WIP: [#2644](https://github.com/elan-registry/registry/issues/2644) — Add an admin Car Photos tab to reattach photos that are on disk but not on the car.
+- [#2644](https://github.com/elan-registry/registry/issues/2644) — Add an admin Car Photos tab to reattach photos that are on disk but not on the car.
 - [#1965](https://github.com/elan-registry/registry/issues/1965) — Pin GitHub Actions to commit SHAs and add a Dependabot cooldown.

@@ -73,6 +73,10 @@ after an item is written.
 
 - [ ] The decorative icons at ~L28, ~L46 and ~L51 have no `aria-hidden="true"`. The Verification tab around them has it since #2496 (found in #2496 review)
 
+### `app/admin/index.php`
+
+- [ ] The `car_photos_apply` case is about 270 lines of parsing and message building inside the switch (~L1115). Move the parsing and the result messages into a small helper class, so that unit tests can cover them without a page request (found in #2644)
+
 ### `app/admin/scripts/maintenance/21-Fix-Page-Permissions.php` + `app/admin/scripts/maintenance/26-Reconcile-Owner-Fields.php` + `app/api/webhooks/brevo.php` + `usersc/classes/Car/CarAdministrationService.php` + `usersc/classes/Car/CarVerificationSendService.php` + `usersc/includes/custom_functions.php` + `usersc/plugins/hooker/hooks/user_form_hook.php` (logger guards)
 
 - [ ] Each file wraps a `logger()` call in `try`/`catch (\Throwable)` (21 ~L1512, 26 ~L1728, brevo.php ~L156, CarAdministrationService ~L630, CarVerificationSendService ~L531, custom_functions ~L128, user_form_hook ~L60 and ~L105). Remove the guards, or move a deliberate one into the exceptions in ERROR_HANDLING.md with its reason (found in /flow:finish-milestone v2.31.0)
@@ -180,14 +184,6 @@ after an item is written.
 
 - [ ] `testVisitorWhoIsNotLoggedInIsRefusedAndGetsNoReport` checks only that no report shows. A crash passes too. Assert exit code 0 and HTTP 302, as the editor test does (found in #2358 review)
 
-### `tests/integration/IntegrationTestCase.php` (test coverage)
-
-- [ ] `invokeEndpoint()` takes no GET parameters, so it renders only the default admin tab. A test cannot assert the Verification tab "Batch results" area after a manual send. Add a GET-params argument (found in #2572 review)
-
-### `tests/integration/IntegrationTestCase.php` + `tests/integration/RetentionPurgeJobIntegrationTest.php` + `tests/integration/database/DeletedUserAddressesBacklogRuleTest.php`
-
-- [ ] The `er_deleted_user_addresses` table-exists query is copied three times (`deleteDeletedUserAddressRows()` and the two setUps). Add one protected helper in `IntegrationTestCase` and call it from all three (found in /finish-milestone v2.30.10)
-
 ### `tests/integration/OwnerCreateUpdateTransactionRollbackTest.php`
 
 - [ ] Replace the hand-written DB proxy (~L55) with `PassThroughDatabase` (from #2169)
@@ -285,6 +281,7 @@ after an item is written.
 
 - [ ] `resolveUploadOrder()` and `checkUploadOrder()` pass array shapes that only docblocks describe, and `checkUploadOrder()` returns data that the caller already holds (`missing`). Use a small readonly value object, or return only `errors`, `storedUnsafe` and `unplaced` (found in /flow:finish-milestone v2.31.2)
 - [ ] `cleanClientText()` is a general client-text helper, not image logic, and `save.php` calls it. Move it to a shared helper when a second caller appears (found in /flow:finish-milestone v2.31.2)
+- [ ] Three callers build the `{name}-resized-{size}.{ext}` file name themselves: `CarView` (srcset), `CarVerificationEmailComposer` (~L514) and `CarPhotoRecovery::thumbnailName()`. Add one `CarImageProcessor` helper next to `isResizedVariant()` and call it from all three (found in #2644 simplify pass)
 
 ### `usersc/classes/Car/CarRepository.php`
 

@@ -323,15 +323,20 @@ abstract class IntegrationTestCase extends TestCase
      * The subprocess sets $post values after the CSRF value. Thus a 'csrf' key
      * in $post overrides $csrfMode.
      *
+     * The request is always a POST. $get adds a query string to it, as a form
+     * that posts to `page.php?tab=x` does, so a page that picks its tab or view
+     * from $_GET renders that view after the POST handler runs.
+     *
      * @param string $endpointFile Repo-relative path (e.g. 'app/api/contact/send-owner-email.php'), or an absolute path inside this repository
      * @param array<string, scalar|null|array<mixed>> $post $_POST fields; values pass through var_export(), so nested arrays of scalars and null are allowed
      * @param int|null $loggedInUserId User to log in inside the subprocess; null = logged out
      * @param string $csrfMode 'valid' (Token::generate()), 'invalid' (a well-formed token that does not match the session token), or 'omit' (no csrf key)
+     * @param array<string, scalar|null|array<mixed>> $get $_GET fields; the same value rules as $post. The subprocess also sets QUERY_STRING and REQUEST_URI from them
      * @return array{status: bool|null, message: string, httpCode: int|null, exitCode: int, raw: string, json: array<mixed>|null, flash: array{error: list<string>, success: list<string>, message: list<string>}}
-     * @throws InvalidArgumentException If $csrfMode is unknown, $endpointFile is not a file in this repository, or a $post value is not a scalar, null, or an array of those
+     * @throws InvalidArgumentException If $csrfMode is unknown, $endpointFile is not a file in this repository, or a $post or $get value is not a scalar, null, or an array of those
      * @throws RuntimeException If shell_exec() cannot run the subprocess, or the HTTP marker matched and the flash payload is missing or malformed
      */
-    protected function invokeEndpoint(string $endpointFile, array $post, ?int $loggedInUserId, string $csrfMode = 'valid'): array
+    protected function invokeEndpoint(string $endpointFile, array $post, ?int $loggedInUserId, string $csrfMode = 'valid', array $get = []): array
     {
         // Resolve the root too, so the prefix check works in a symlinked checkout.
         $projectRoot = (string) realpath(dirname(__DIR__, 2));
@@ -343,7 +348,8 @@ abstract class IntegrationTestCase extends TestCase
             throw new InvalidArgumentException("invokeEndpoint(): '{$endpointFile}' is not a file in this repository");
         }
 
-        $this->assertExportablePostValues($post);
+        $this->assertExportableValues($post, 'post');
+        $this->assertExportableValues($get, 'get');
 
         $csrfSnippet = match ($csrfMode) {
             'valid'   => '$_POST["csrf"] = \Token::generate();',
@@ -377,6 +383,19 @@ abstract class IntegrationTestCase extends TestCase
             $postSnippet .= sprintf('$_POST[%s] = %s; ', var_export($key, true), var_export($value, true));
         }
 
+        // Under CLI, Server::get() derives no QUERY_STRING or REQUEST_URI, so
+        // the subprocess sets them as a web server would.
+        $getSnippet = '';
+        if ($get !== []) {
+            $queryString = http_build_query($get);
+            $getSnippet = sprintf(
+                '$_GET = %s; $_SERVER["QUERY_STRING"] = %s; $_SERVER["REQUEST_URI"] = %s; ',
+                var_export($get, true),
+                var_export($queryString, true),
+                var_export(substr($absoluteFile, strlen($projectRoot)) . '?' . $queryString, true)
+            );
+        }
+
         // Shutdown functions also run after exit and die(), so every path
         // through the endpoint prints the marker.
         // The same function prints the session flash messages first, as
@@ -400,6 +419,7 @@ abstract class IntegrationTestCase extends TestCase
             // sees the real page.
             '$_SERVER["SCRIPT_FILENAME"] = %s; ' .
             '$_SERVER["REQUEST_METHOD"] = "POST"; ' .
+            '%s' .
             'chdir(%s); ' .
             'require_once %s; ' .
             '%s %s %s %s ' .
@@ -408,6 +428,7 @@ abstract class IntegrationTestCase extends TestCase
             var_export($projectRoot, true),
             var_export($projectRoot, true),
             var_export($absoluteFile, true),
+            $getSnippet,
             var_export(dirname($absoluteFile), true),
             var_export($projectRoot . '/users/init.php', true),
             $csrfSnippet,
@@ -479,22 +500,23 @@ abstract class IntegrationTestCase extends TestCase
     }
 
     /**
-     * Reject $post values that var_export() cannot turn into valid PHP source.
+     * Reject $post or $get values that var_export() cannot turn into valid PHP source.
      * An object exports as a __set_state() call that the subprocess cannot run.
      *
-     * @param array<mixed> $values The $post array, or a nested array inside it
+     * @param array<mixed> $values The $post or $get array, or a nested array inside it
+     * @param string $argument Argument name ('post' or 'get'), for the error message
      * @param string $path Key path of $values, for the error message
      * @throws InvalidArgumentException If a value is not a scalar, null, or an array of those
      */
-    private function assertExportablePostValues(array $values, string $path = ''): void
+    private function assertExportableValues(array $values, string $argument, string $path = ''): void
     {
         foreach ($values as $key => $value) {
             $keyPath = $path === '' ? (string) $key : "{$path}[{$key}]";
             if (is_array($value)) {
-                $this->assertExportablePostValues($value, $keyPath);
+                $this->assertExportableValues($value, $argument, $keyPath);
             } elseif (!is_scalar($value) && $value !== null) {
                 throw new InvalidArgumentException(
-                    "invokeEndpoint(): \$post['{$keyPath}'] is " . get_debug_type($value) . '. Use a scalar, null, or an array of those.'
+                    "invokeEndpoint(): \${$argument}['{$keyPath}'] is " . get_debug_type($value) . '. Use a scalar, null, or an array of those.'
                 );
             }
         }
@@ -975,6 +997,29 @@ abstract class IntegrationTestCase extends TestCase
     }
 
     /**
+     * Tell whether the er_deleted_user_addresses table exists.
+     *
+     * The table is absent in a schema that has not run migration 20261023 yet.
+     *
+     * @return bool True if the table exists in the connected database
+     * @throws RuntimeException If the information_schema query fails
+     */
+    protected function deletedUserAddressesTableExists(): bool
+    {
+        // DB::query() sets error() and does not throw, so a failed query
+        // would otherwise read as "table absent".
+        $check = $this->db->query(
+            'SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
+            ['er_deleted_user_addresses']
+        );
+        if ($check->error()) {
+            throw new RuntimeException("er_deleted_user_addresses check failed: {$check->errorString()}");
+        }
+
+        return $check->count() > 0;
+    }
+
+    /**
      * Delete the er_deleted_user_addresses holding rows that the users
      * AFTER DELETE trigger leaves behind (#2419).
      *
@@ -990,19 +1035,17 @@ abstract class IntegrationTestCase extends TestCase
             return;
         }
 
-        // DB::query() sets error() and does not throw, so each step checks it.
-        $check = $this->db->query(
-            'SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
-            ['er_deleted_user_addresses']
-        );
-        if ($check->error()) {
-            fwrite(STDERR, "NOTE: er_deleted_user_addresses check failed: {$check->errorString()}\n");
-            return;
-        }
-        if ($check->count() === 0) {
+        // Cleanup must not stop the caller's own cleanup, so a failed check is only a note.
+        try {
+            if (!$this->deletedUserAddressesTableExists()) {
+                return;
+            }
+        } catch (RuntimeException $e) {
+            fwrite(STDERR, "NOTE: {$e->getMessage()}\n");
             return;
         }
 
+        // DB::query() sets error() and does not throw, so the delete checks it.
         $delete = $this->db->query(
             'DELETE FROM er_deleted_user_addresses WHERE user_id IN (' . implode(',', array_fill(0, count($userIds), '?')) . ')',
             array_values($userIds)
