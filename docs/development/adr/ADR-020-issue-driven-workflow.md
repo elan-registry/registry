@@ -222,9 +222,10 @@ of this ADR. The how-to states the principle and not the command.
 
 #### Rule 5: CI review is a backstop
 
-The Claude review runs on every push, and a `Blocking` heading fails the
-build. It is the one CI gate with no local equivalent and with
-non-deterministic output: a new diff produces new findings, indefinitely. The
+The Claude review runs on every push, and a `blocking` finding in its
+structured output fails the build (#2506). It is the one CI gate with no
+local equivalent and with non-deterministic output: a new diff produces new
+findings, indefinitely. The
 workflow's own comments record the failure. On #1688, the same unverified
 hypothesis blocked the merge three rounds running, and the review itself said
 that it could not check the library source.

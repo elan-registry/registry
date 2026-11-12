@@ -37,6 +37,24 @@ class CarImageProcessor
     public const ALLOWED_EXTENSIONS = ['jpg', 'png', 'gif'];
 
     /**
+     * Smallest upload size in bytes that can be a real photo. A smaller file
+     * is empty or damaged. car-edit.js uses the same value for its client check.
+     */
+    public const MIN_FILE_BYTES = 100;
+
+    /** Owner message for a file smaller than MIN_FILE_BYTES. */
+    private const TOO_SMALL_MESSAGE = 'The photo file is empty or damaged. Choose a different photo.';
+
+    /** Owner message for a file type that is not an allowed photo type. */
+    private const TYPE_NOT_ALLOWED_MESSAGE = 'The file is not a JPEG, PNG or GIF photo. Choose a different photo.';
+
+    /** Owner message when the server cannot detect the file type. */
+    private const UNREADABLE_MESSAGE = 'The server could not read the photo. Upload the photo again.';
+
+    /** Owner message when the server did not receive the photo. */
+    private const NOT_RECEIVED_MESSAGE = 'The server could not receive the photo. Upload the photo again.';
+
+    /**
      * Derive the allowlist regex from ALLOWED_EXTENSIONS.
      *
      * \z is the primary end-of-string anchor (unlike $, it never matches
@@ -101,28 +119,31 @@ class CarImageProcessor
         if (function_exists('finfo_open')) {
             $finfo = finfo_open(FILEINFO_MIME_TYPE);
             if ($finfo === false) {
-                throw new ImageProcessingException("Unable to initialize file info extension");
+                throw new ImageProcessingException("Unable to initialize file info extension", 0, null, self::UNREADABLE_MESSAGE);
             }
             // @-suppressed: a missing/unreadable file throws a PHP warning here (matches the
             // @exif_imagetype()/@mime_content_type() suppression pattern below in
             // decodeAndProcessImages()) — the false return is already handled explicitly.
             $mimeType = @finfo_file($finfo, $file);
             // No finfo_close() — finfo objects are freed automatically (deprecated call as of PHP 8.5).
-            if ($mimeType === false) {
-                throw new ImageProcessingException("Unable to read file for MIME type detection (file may be unreadable or missing)");
-            }
         } elseif (function_exists('mime_content_type')) {
             $mimeType = mime_content_type($file);
-            if ($mimeType === false) {
-                throw new ImageProcessingException("Unable to read file for MIME type detection (file may be unreadable or missing)");
-            }
         } else {
-            throw new ImageProcessingException("Unable to determine file MIME type");
+            throw new ImageProcessingException("Unable to determine file MIME type", 0, null, self::UNREADABLE_MESSAGE);
+        }
+
+        if ($mimeType === false) {
+            throw new ImageProcessingException(
+                "Unable to read file for MIME type detection (file may be unreadable or missing)",
+                0,
+                null,
+                self::UNREADABLE_MESSAGE
+            );
         }
 
         // Additional validation: Check if detected MIME type is in our allowlist
         if (!array_key_exists($mimeType, self::MIME_TO_EXTENSION)) {
-            throw new ImageProcessingException("Invalid file type detected: " . $mimeType);
+            throw new ImageProcessingException("Invalid file type detected: " . $mimeType, 0, null, self::TYPE_NOT_ALLOWED_MESSAGE);
         }
 
         return $mimeType;
@@ -138,7 +159,7 @@ class CarImageProcessor
     public static function getExtension(string $mimeType): string
     {
         if (!isset(self::MIME_TO_EXTENSION[$mimeType])) {
-            throw new ImageProcessingException("Unsupported file type: " . $mimeType);
+            throw new ImageProcessingException("Unsupported file type: " . $mimeType, 0, null, self::TYPE_NOT_ALLOWED_MESSAGE);
         }
 
         return self::MIME_TO_EXTENSION[$mimeType];
@@ -164,8 +185,7 @@ class CarImageProcessor
                 UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => self::tooLargeMessage($maxSize),
                 UPLOAD_ERR_PARTIAL =>
                     'Photo upload did not complete. Upload the photo again.',
-                default =>
-                    'The server could not receive the photo. Upload the photo again.',
+                default => self::NOT_RECEIVED_MESSAGE,
             };
             throw new ImageProcessingException("File upload error: " . $file['error'], 0, null, $userMessage);
         }
@@ -180,12 +200,99 @@ class CarImageProcessor
         }
 
         if (!is_uploaded_file($file['tmp_name'])) {
-            throw new ImageProcessingException("Invalid file upload");
+            throw new ImageProcessingException("Invalid file upload", 0, null, self::NOT_RECEIVED_MESSAGE);
         }
 
-        if ($file['size'] < 100) {
-            throw new ImageProcessingException("File too small - minimum 100 bytes required");
+        if ($file['size'] < self::MIN_FILE_BYTES) {
+            throw new ImageProcessingException(
+                "File too small - minimum " . self::MIN_FILE_BYTES . " bytes required",
+                0,
+                null,
+                self::TOO_SMALL_MESSAGE
+            );
         }
+    }
+
+    /**
+     * Validate each file in a multi-file upload before any file is moved.
+     *
+     * The save stops when one file is bad, so all files are checked first.
+     * Then the owner gets one message for each bad file, and no file is
+     * written to disk for a rejected batch (#1844). An UPLOAD_ERR_NO_FILE
+     * entry is an empty file input, not a photo, so it is skipped.
+     *
+     * @param array<mixed> $files The $_FILES['file'] shape: 'name', 'tmp_name',
+     *                            'error' and 'size', each a list with the same keys.
+     *                            An empty array is an empty batch.
+     * @return array{mimeTypes: array<int|string, string>, errors: list<string>, rejected: list<array{name: string, reason: string}>}
+     *         mimeTypes: the detected MIME type of each valid file, keyed by file index.
+     *         errors: one owner message for each bad file.
+     *         rejected: the raw client name and the technical reason of each bad file, for the log.
+     * @throws ImageProcessingException If $files does not have the $_FILES shape
+     */
+    public static function validateUploadBatch(array $files): array
+    {
+        $result = ['mimeTypes' => [], 'errors' => [], 'rejected' => []];
+        if ($files === []) {
+            return $result;
+        }
+
+        $fields = ['name', 'tmp_name', 'error', 'size'];
+        foreach ($fields as $field) {
+            if (!isset($files[$field]) || !is_array($files[$field])) {
+                throw new ImageProcessingException(
+                    "Malformed upload batch: '{$field}' is missing or not a list",
+                    0,
+                    null,
+                    self::NOT_RECEIVED_MESSAGE
+                );
+            }
+        }
+
+        $keys = array_keys($files['name']);
+        foreach ($fields as $field) {
+            if (array_keys($files[$field]) !== $keys) {
+                throw new ImageProcessingException(
+                    "Malformed upload batch: '{$field}' keys do not match 'name' keys",
+                    0,
+                    null,
+                    self::NOT_RECEIVED_MESSAGE
+                );
+            }
+        }
+
+        foreach ($keys as $key) {
+            $name    = $files['name'][$key];
+            $tmpName = $files['tmp_name'][$key];
+            $error   = $files['error'][$key];
+            $size    = $files['size'][$key];
+            // A NUL byte in tmp_name makes is_uploaded_file() throw ValueError.
+            if (
+                !is_string($name) || !is_string($tmpName) || !is_int($error) || !is_int($size)
+                || str_contains($tmpName, "\0")
+            ) {
+                throw new ImageProcessingException(
+                    "Malformed upload batch: an entry has a wrong-typed field or a NUL byte in 'tmp_name'",
+                    0,
+                    null,
+                    self::NOT_RECEIVED_MESSAGE
+                );
+            }
+
+            if ($error === UPLOAD_ERR_NO_FILE) {
+                continue;
+            }
+
+            try {
+                self::validateFileUpload(['name' => $name, 'tmp_name' => $tmpName, 'error' => $error, 'size' => $size]);
+                $result['mimeTypes'][$key] = self::getMimeType($tmpName);
+            } catch (ImageProcessingException $e) {
+                $result['errors'][]   = 'File upload rejected for ' . self::cleanClientText($name, 100) . ': ' . $e->getUserMessage();
+                $result['rejected'][] = ['name' => $name, 'reason' => $e->getMessage()];
+            }
+        }
+
+        return $result;
     }
 
     /**

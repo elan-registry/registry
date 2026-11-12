@@ -203,10 +203,26 @@ class UploadPathGuardTest extends TestCase
             $earlyReturn < $stored && $stored < $resolve && $resolve < $check,
             'uploadImages() must read stored names, then resolve the order, then check it'
         );
-        // Only a new car with no files may return early. An update with no
-        // files must reach resolve and check, or a dropped or stored unsafe
-        // name leaves cars.image with no message (#2626).
-        $this->assertSame(1, substr_count($body, 'return;'), 'uploadImages() must have one early return only');
+        // Two returns are intended. The first is the no-files return for a new
+        // car. An update with no files must reach resolve and check, or a
+        // dropped or stored unsafe name leaves cars.image with no message
+        // (#2626). The second return comes after validateUploadBatch() finds
+        // a bad file, and before the first move (#1844).
+        $batchCheck = strpos($body, 'CarImageProcessor::validateUploadBatch(');
+        $firstMove  = strpos($body, 'move_uploaded_file(');
+        $this->assertNotFalse($batchCheck, 'uploadImages() must call validateUploadBatch()');
+        $this->assertNotFalse($firstMove, 'uploadImages() must call move_uploaded_file()');
+        $this->assertSame(2, substr_count($body, 'return;'), 'uploadImages() must have two early returns only');
+        $firstReturn  = (int) strpos($body, 'return;');
+        $secondReturn = (int) strpos($body, 'return;', $firstReturn + 1);
+        $this->assertLessThan($batchCheck, $firstReturn, 'the first early return is the no-files return, before the batch check');
+        $this->assertGreaterThan($batchCheck, $secondReturn, 'the second early return must come after validateUploadBatch()');
+        $this->assertLessThan($firstMove, $secondReturn, 'the second early return must come before move_uploaded_file()');
+        $this->assertStringContainsString(
+            "array_push(\$errors, ...\$batch['errors']);",
+            substr($body, $batchCheck, $firstMove - $batchCheck),
+            'uploadImages() must add the batch errors before it returns'
+        );
         $this->assertStringContainsString(
             "if (!\$hasNewFiles && empty(\$cardetails['id'])) {",
             $body,
@@ -269,6 +285,104 @@ class UploadPathGuardTest extends TestCase
             substr($content, $stop, $dbWrite - $stop),
             "$case must send an error response in the \$errors stop"
         );
+    }
+
+    /**
+     * Both upload-error stops must send the errors as a list, so that the
+     * owner sees one line for each bad photo. implode() would join them into
+     * one line (#1844).
+     */
+    #[DataProvider('saveCaseProvider')]
+    public function testUploadErrorStopPassesErrorsAsListNotImploded(string $case, string $write): void
+    {
+        $content = (string) file_get_contents(dirname(__DIR__, 3) . '/app/api/cars/save.php');
+
+        $caseStart = strpos($content, 'case "' . $case . '":');
+        $this->assertNotFalse($caseStart, "save.php must have case \"$case\"");
+        $upload = strpos($content, 'uploadImages($cardetails, $errors);', $caseStart);
+        $this->assertNotFalse($upload, "$case must call uploadImages()");
+        $stop = strpos($content, 'if (!empty($errors)) {', $upload);
+        $this->assertNotFalse($stop, "$case must check \$errors after uploadImages()");
+        $dbWrite = strpos($content, $write . '($cardetails', $upload);
+        $this->assertNotFalse($dbWrite, "$case must call $write()");
+        $branch = substr($content, $stop, $dbWrite - $stop);
+
+        $this->assertMatchesRegularExpression('/validationError\(\s*\[\'general\' => \$errors\]/', $branch);
+        $this->assertStringNotContainsString('implode(', $branch, "$case must not join the upload errors");
+    }
+
+    /**
+     * Every error stop in save.php sends errors.general as a list. A joined
+     * string makes car-edit.js show all errors on one line with a "general:"
+     * label (#1844).
+     */
+    public function testNoErrorStopJoinsTheErrors(): void
+    {
+        $content = (string) file_get_contents(dirname(__DIR__, 3) . '/app/api/cars/save.php');
+
+        $this->assertSame(5, substr_count($content, "['general' => \$errors]"), 'save.php must send each of its 5 error stops as a list');
+        $this->assertDoesNotMatchRegularExpression('/(implode|join)\([^)]*\$errors\)/', $content, 'save.php must not join $errors');
+    }
+
+    /**
+     * The batch check must run before the first file is moved, so that a
+     * rejected batch writes no file to disk (#1844).
+     */
+    public function testUploadImagesChecksTheBatchBeforeMovingAnyFile(): void
+    {
+        $content = (string) file_get_contents(dirname(__DIR__, 3) . '/app/api/cars/save.php');
+        $start = strpos($content, 'function uploadImages(');
+        $this->assertNotFalse($start, 'save.php must define uploadImages()');
+        $end = strpos($content, "\n/**", $start);
+        $this->assertNotFalse($end, 'uploadImages() must be followed by another docblock');
+        $body = substr($content, $start, $end - $start);
+
+        $batch = strpos($body, 'validateUploadBatch(');
+        $move  = strpos($body, 'move_uploaded_file(');
+        $this->assertNotFalse($batch, 'uploadImages() must call validateUploadBatch()');
+        $this->assertNotFalse($move, 'uploadImages() must call move_uploaded_file()');
+        $this->assertLessThan($move, $batch, 'validateUploadBatch() must come before move_uploaded_file()');
+    }
+
+    /**
+     * The client check in car-edit.js must use the same minimum as the
+     * server, so edit.php must put MIN_FILE_BYTES in editCarConfig.
+     */
+    public function testEditPageGivesMinFileBytesToEditCarConfig(): void
+    {
+        $content = (string) file_get_contents(dirname(__DIR__, 3) . '/app/owner/cars/edit.php');
+
+        $start = strpos($content, 'window.editCarConfig = {');
+        $this->assertNotFalse($start, 'edit.php must define window.editCarConfig');
+        $end = strpos($content, "\n};", $start);
+        $this->assertNotFalse($end, 'editCarConfig must end with a closing brace');
+
+        $this->assertStringContainsString(
+            'minFileSize: <?= (int) \\ElanRegistry\\Car\\CarImageProcessor::MIN_FILE_BYTES ?>,',
+            substr($content, $start, $end - $start),
+            'editCarConfig must set minFileSize from CarImageProcessor::MIN_FILE_BYTES'
+        );
+    }
+
+    /**
+     * The client half of the min-size rule: car-edit.js must pass the
+     * minimum to FilePond, and the submit check must block a new photo that
+     * FilePond rejected (LOAD_ERROR on an item that is not LOCAL).
+     */
+    public function testCarEditJsUsesMinFileSizeAndBlocksRejectedPhotos(): void
+    {
+        $content = (string) file_get_contents(dirname(__DIR__, 3) . '/app/assets/js/car-edit.js');
+
+        $this->assertStringContainsString('minFileSize: cfg.minFileSize', $content, 'car-edit.js must give minFileSize to FilePond');
+
+        $start = strpos($content, 'const invalidNames');
+        $this->assertNotFalse($start, 'car-edit.js must build invalidNames in the submit check');
+        $end = strpos($content, 'invalidNames.length', $start);
+        $this->assertNotFalse($end, 'the submit check must test invalidNames.length');
+        $check = substr($content, $start, $end - $start);
+
+        $this->assertStringContainsString('FilePond.FileOrigin.LOCAL', $check, 'the submit check must skip stored (LOCAL) photos');
+        $this->assertStringContainsString('FilePond.FileStatus.LOAD_ERROR', $check, 'the submit check must find LOAD_ERROR items');
     }
 
     /**

@@ -122,8 +122,9 @@ class ApiResponse
     /**
      * Create a validation error response with field-keyed errors
      *
-     * @param array<string, string> $errors Field-keyed validation errors
-     * @param string                $message Overall error message
+     * @param array<string, string|list<string>> $errors  Field-keyed validation errors. A value
+     *                                                   can be a list of messages for one field
+     * @param string                             $message Overall error message
      *
      * @return self New ApiResponse instance with errors in data
      */

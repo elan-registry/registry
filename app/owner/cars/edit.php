@@ -679,6 +679,7 @@ window.editCarConfig = {
     urlRoot: <?= json_encode((string)$us_url_root, JSON_HEX_TAG | JSON_HEX_AMP) ?>,
     maxFiles: <?= (int)$maximages ?>,
     maxFileSize: <?= (int)(ELAN_IMAGE_UPLOAD_MAX_SIZE * 1024 * 1024) ?>,
+    minFileSize: <?= (int) \ElanRegistry\Car\CarImageProcessor::MIN_FILE_BYTES ?>,
     imageResizeWidth: <?= ELAN_IMAGE_DISPLAY_MAX_SIZE ?>,
     isUpdate: <?= json_encode($action === 'updateCar') ?>,
     year: <?= $action === 'updateCar' ? (int)($cardetails['year'] ?? 0) : 0 ?>,
