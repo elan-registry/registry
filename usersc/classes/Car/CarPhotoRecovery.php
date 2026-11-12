@@ -14,45 +14,17 @@ use ElanRegistry\LogCategories;
  * CarPhotoRecovery - Find and reattach detached car photos (#2644)
  *
  * A detached photo is a file in `userimages/{carId}/` that an earlier
- * `cars_hist` list held and the current `cars.image` does not. A file that no
- * `cars_hist` list held is an orphan (#2643). This class does not show it.
+ * `cars_hist` list held and the current `cars.image` does not.
  *
  * History semantics: the `cars_update` and `cars_delete` triggers write the
  * OLD row, and `cars_insert` writes the NEW row. So each `cars_hist` row is a
  * state the car had, and the row of an update holds the list from before that
- * save, with the time of that save. The rows are read in `id` order, because
- * `id` is the insert order and the stable tie-break for rows written in the
- * same second. A row with a NULL `image` is not a state. A save made with
- * `@disable_triggers` set leaves no history row, so `leftAt` can be earlier
- * than the real drop.
- *
- * The admin tab calls findRows() on a GET, and apply(), ignore() or
- * undoIgnore() on a POST. apply() finds the row again on the server and
- * attaches a ticked name only when the row lists it as a safe detached photo,
- * so a form cannot add a file name. The tab sends the versionToken() of each
- * row's `cars.image`, and the three writes do nothing when the value changed
- * since the page loaded.
- *
- * Ignore marks a row as reviewed with no change. It writes one `logs` row
- * (CarActions, note prefix `Car Photos:`) with the token and the detached
- * names. isIgnored() is true while the newest decision for the car is that
- * ignore, the row still has the same token and detached names, and the row
- * is readable. No table holds it: when an admin clears the logs, the rows
- * show again.
- *
- * An order restore makes the `cars_update` trigger write the reversed list
- * to `cars_hist`, so the restored list is again the reverse of a history
- * list. The apply log row holds the token of the list it wrote
- * (`token_after`). While `cars.image` has that token, findRows() offers no
- * restore for the car. A later save changes the token, and the check runs
- * again.
- *
- * A car folder or photo file that the server cannot read does not stop the
- * scan. That car gets a row with `unreadable` set and no actions, and apply()
- * does not write it. A database failure still throws.
+ * save, with the time of that save. The latest row that holds a photo is the
+ * save that dropped it.
  *
  * @package ElanRegistry\Car
  * @since v2.32.0
+ * @see docs/development/CLASSES.md#carphotorecovery
  * @see https://github.com/elan-registry/registry/issues/2644
  */
 final class CarPhotoRecovery
@@ -173,15 +145,21 @@ final class CarPhotoRecovery
      * @param bool         $restoreOrder  True to restore the earlier order
      * @param int          $userId        The admin or editor, for the log row
      * @param string       $seenToken     The versionToken() of `cars.image` when the page loaded
-     * @param-out list<string> $ignoredNames
      * @param array<mixed>|null $ignoredNames Out: the ticked names that the call did not attach because the
      *                                        row does not list them as safe detached photos. The call fills it
-     *                                        only after it checks the names against a row. Empty when the
+     *                                        only after it checks the names against a row, and only for the
+     *                                        result Applied or for NothingToDo after that check. Empty when the
      *                                        result is Changed (also after a compare-and-set miss) or
      *                                        Unreadable, because the page saw other data. Also empty for
      *                                        NothingToDo when the car has no row now (for example, a detached
      *                                        file was removed from disk after the page loaded): with no row
-     *                                        to check against, a ticked name is not proven false.
+     *                                        to check against, a ticked name is not proven false. Empty when
+     *                                        the call throws.
+     * @param-out list<string> $ignoredNames
+     * @param bool|null    $restoreUnavailable Out: true when $restoreOrder is true but the row has no earlier
+     *                                         order to restore. The call fills it under the same conditions
+     *                                         as $ignoredNames, and sets false otherwise.
+     * @param-out bool $restoreUnavailable
      * @return CarPhotoRecoveryResult Applied, Changed (token mismatch, car gone or compare-and-set miss),
      *                                Unreadable or NothingToDo (also when no name is ticked and $restoreOrder is false)
      * @throws CarValidationException   If $carId is not positive, or an entry of $reattachNames is not a string
@@ -195,8 +173,10 @@ final class CarPhotoRecovery
         int $userId,
         string $seenToken,
         ?array &$ignoredNames = null,
+        ?bool &$restoreUnavailable = null,
     ): CarPhotoRecoveryResult {
-        $ignoredNames = [];
+        $ignoredNames       = [];
+        $restoreUnavailable = false;
         if ($carId <= 0) {
             throw new CarValidationException('Car Photos: the car ID must be positive');
         }
@@ -223,22 +203,26 @@ final class CarPhotoRecovery
             $newNames      = $row->earlierOrder;
             $orderRestored = true;
         }
-        $attachable   = $row->attachableNames();
-        $attached     = array_values(array_intersect($attachable, $ticked));
-        $ignoredNames = array_values(array_diff($ticked, $attachable));
-        $newNames     = array_merge($newNames, $attached);
+        $attachable    = $row->attachableNames();
+        $attached      = array_values(array_intersect($attachable, $ticked));
+        $notAttachable = array_values(array_diff($ticked, $attachable));
+        $noRestore     = $restoreOrder && !$orderRestored;
+        $newNames      = array_merge($newNames, $attached);
 
         if (!$orderRestored && $attached === []) {
+            $ignoredNames       = $notAttachable;
+            $restoreUnavailable = $noRestore;
             return CarPhotoRecoveryResult::NothingToDo;
         }
 
         $newJson = (new CarImageProcessor($this->repository))->encodeImages($newNames);
         if (!$this->repository->updateImage($carId, $newJson, $row->rawImage)) {
-            // Another save won the race, so the names were judged against
-            // data that is gone.
-            $ignoredNames = [];
+            // Another save won the race, so the out values stay empty: the
+            // names were judged against data that is gone.
             return CarPhotoRecoveryResult::Changed;
         }
+        $ignoredNames       = $notAttachable;
+        $restoreUnavailable = $noRestore;
 
         logger(
             $userId,
@@ -370,7 +354,7 @@ final class CarPhotoRecovery
      *
      * @param int    $carId    The car ID
      * @param string $filename A photo name from a CarPhotoRecoveryRow
-     * @return string The `-resized-100` copy when it exists, else $filename
+     * @return string The resized copy at THUMBNAIL_SIZE when it exists, else $filename
      */
     public function thumbnailName(int $carId, string $filename): string
     {
@@ -683,7 +667,7 @@ final class CarPhotoRecovery
      * @param list<string> $currentNames The names in `cars.image`
      * @param list<array{id: int, names: list<string>, time: string}> $states The history states, in `id` order
      * @param list<string> $unreadable   Out: the names that cannot be read, or `{carId}/` for the folder
-     * @return list<DetachedPhoto> In drop order, then in the order of the list that dropped them. Not complete when $unreadable is set.
+     * @return list<DetachedPhoto> In drop order, then in the order of the list that dropped them. Empty when $unreadable is set.
      */
     private function findDetached(int $carId, array $currentNames, array $states, array &$unreadable): array
     {
@@ -743,8 +727,11 @@ final class CarPhotoRecovery
 
         if ($byHash !== []) {
             foreach ($currentNames as $name) {
+                // Any plain file name counts, so a copy of a photo with a
+                // legacy name such as "my photo.jpg" is not offered. A name
+                // with a path part must not reach outside the car folder.
                 $path = $directory . $name;
-                if (!CarImageProcessor::isSafeFilename($name) || !is_file($path)) {
+                if (str_contains($name, '/') || $name === '.' || $name === '..' || !is_file($path)) {
                     continue;
                 }
                 $hash = $this->hashFile($path);

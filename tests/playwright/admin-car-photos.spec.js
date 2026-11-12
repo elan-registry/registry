@@ -8,7 +8,7 @@
 //   1. The nav link opens the tab, the card shows, and the page logs no
 //      console error.
 //   2. Either the form (with its Apply selected button and at least one row)
-//      or the empty state shows, never both and never neither.
+//      or the empty state shows, never both on this URL and never neither.
 //   3. When rows exist: each row has an Ignore button, a row that can be
 //      applied has an Apply button, and no checkbox is checked on load.
 //
@@ -61,7 +61,8 @@ test.describe('Admin Car Photos tab', () => {
 
         const formCount = await page.getByTestId('car-photos-form').count();
         const emptyCount = await page.getByTestId('car-photos-empty').count();
-        // Every visible row is ignored: the form then shows only the ignored table.
+        // This URL has no ignored=1, so a list with every row ignored shows
+        // the empty state.
         expect(formCount + emptyCount, 'at least one of the form and the empty state').toBeGreaterThan(0);
 
         if (emptyCount === 0) {

@@ -20,9 +20,9 @@ use Tests\Support\TestJpeg;
  * `tab=car-photos`.
  *
  * The page reads photo files from the real `userimages/{carId}/`, so the test
- * writes there. tearDown removes each directory that the test made. setUp
- * fails when a directory for a new car ID exists already, so it never writes
- * into a real car's folder.
+ * writes there. tearDown removes each directory that the test made. newCar()
+ * fails when a directory for a new car ID exists already, so the test never
+ * writes into a real car's folder.
  */
 #[Group('integration')]
 #[Group('admin')]
@@ -62,6 +62,12 @@ final class AdminCarPhotosTabAuthTest extends IntegrationTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $hidden = glob(dirname(__DIR__, 2) . '/userimages.hidden-*');
+        $this->assertSame(
+            [],
+            $hidden === false ? [] : $hidden,
+            'A previous run left the photo folder hidden. Restore it by hand: move it back to userimages/.'
+        );
         $this->requireDatabase();
         $this->initThumbnailSizes();
         $this->madeDirectories = [];
@@ -80,7 +86,9 @@ final class AdminCarPhotosTabAuthTest extends IntegrationTestCase
 
     protected function tearDown(): void
     {
-        $this->restoreImageRoot();
+        // Restore the folder first, but assert only after the rest of the
+        // cleanup: a failed assertion here would skip parent::tearDown().
+        $rootRestored = $this->restoreImageRoot();
         foreach ($this->locked as $path) {
             chmod($path, 0664);
         }
@@ -100,6 +108,7 @@ final class AdminCarPhotosTabAuthTest extends IntegrationTestCase
             }
         }
         parent::tearDown();
+        $this->assertTrue($rootRestored, 'Test cleanup: move the hidden photo folder back to userimages/. Restore it by hand.');
     }
 
     // ---- helpers ----------------------------------------------------------
@@ -794,6 +803,64 @@ final class AdminCarPhotosTabAuthTest extends IntegrationTestCase
         $this->assertSame(0, $this->countMatchingLogs('Security', 'Car Photos: invalid car id%', $this->adminId));
     }
 
+    /**
+     * @return array<string, array{Closure(int): array<string, mixed>, int, list<string>}>
+     *         [form fields for a car ID, invalid value count, Security log notes (`%` is the car ID)]
+     */
+    public static function malformedFormShapeProvider(): array
+    {
+        return [
+            'reattach as a scalar' => [
+                static fn(int $carId): array => ['reattach' => 'a.jpg'],
+                1,
+                ["Car Photos: invalid reattach field: 'a.jpg'"],
+            ],
+            'reattach[<id>] as a scalar' => [
+                static fn(int $carId): array => ['reattach' => [$carId => 'a.jpg']],
+                1,
+                ["Car Photos: invalid photo list in reattach[%]: 'a.jpg'"],
+            ],
+            'a non-string inside reattach[<id>][]' => [
+                static fn(int $carId): array => ['reattach' => [$carId => [['a.jpg']]]],
+                1,
+                ['Car Photos: non-scalar photo name in reattach[%]: array'],
+            ],
+            'invalid restore[] IDs' => [static fn(int $carId): array => ['restore' => ['abc', '0', '-1', '7x']], 4, [
+                "Car Photos: invalid car id in restore[]: 'abc'",
+                "Car Photos: invalid car id in restore[]: '0'",
+                "Car Photos: invalid car id in restore[]: '-1'",
+                "Car Photos: invalid car id in restore[]: '7x'",
+            ]],
+        ];
+    }
+
+    /**
+     * @param Closure(int): array<string, mixed> $fields
+     * @param list<string> $logNotes
+     */
+    #[DataProvider('malformedFormShapeProvider')]
+    public function testPostMalformedFormShapeWritesNothingAndLogsEachValue(Closure $fields, int $invalid, array $logNotes): void
+    {
+        $carId = $this->carWithDetachedPhoto();
+        $histBefore = $this->countCarsHistRows($carId);
+
+        $result = $this->post($this->adminId, $fields($carId) + $this->seen($carId));
+
+        $this->assertSame(0, $result['exitCode']);
+        $this->assertNoPhpError($result['raw']);
+        $this->assertSame('["b.jpg"]', $this->currentImage($carId));
+        $this->assertSame($histBefore, $this->countCarsHistRows($carId));
+        $this->assertSame([], $this->photoLogMetadata($carId));
+        $this->assertContains(
+            "{$invalid} value(s) in the form were not valid. The server did not use them.",
+            $this->messages($result['raw'], 'danger')
+        );
+        $this->assertSame($invalid, $this->countMatchingLogs('Security', 'Car Photos: %', $this->adminId), 'One Security row for each invalid value');
+        foreach ($logNotes as $note) {
+            $this->assertSame(1, $this->countMatchingLogs('Security', str_replace('%', (string) $carId, $note), $this->adminId), $note);
+        }
+    }
+
     // ---- helpers: per-row actions, Ignore, order restore ---------------------
 
     /** A car with three detached photos x1, x2, x3 (in that stored order) and the current photo keep.jpg. */
@@ -877,12 +944,19 @@ final class AdminCarPhotosTabAuthTest extends IntegrationTestCase
         $this->hiddenImageRoot = $hidden;
     }
 
-    private function restoreImageRoot(): void
+    /** @return bool False only when a hidden folder could not be moved back. */
+    private function restoreImageRoot(): bool
     {
-        if ($this->hiddenImageRoot !== null) {
-            rename($this->hiddenImageRoot, dirname(__DIR__, 2) . '/userimages');
-            $this->hiddenImageRoot = null;
+        if ($this->hiddenImageRoot === null) {
+            return true;
         }
+        $hidden = $this->hiddenImageRoot;
+        $this->hiddenImageRoot = null;
+        if (rename($hidden, dirname(__DIR__, 2) . '/userimages')) {
+            return true;
+        }
+        fwrite(STDERR, "Test cleanup: move {$hidden} back to userimages/ by hand.\n");
+        return false;
     }
 
     // ---- POST: per-row Apply, bulk Apply, per-photo choice --------------------
@@ -1081,6 +1155,46 @@ final class AdminCarPhotosTabAuthTest extends IntegrationTestCase
         );
     }
 
+    public function testPostRestoreWithNoEarlierOrderSaysSoLogsItAndCountsNoUpdate(): void
+    {
+        $carId = $this->carWithDetachedPhoto();
+        $histBefore = $this->countCarsHistRows($carId);
+
+        $result = $this->post($this->adminId, ['restore' => [(string) $carId]] + $this->seen($carId));
+
+        $this->assertSame(0, $result['exitCode']);
+        $this->assertNoPhpError($result['raw']);
+        $this->assertSame('["b.jpg"]', $this->currentImage($carId));
+        $this->assertSame($histBefore, $this->countCarsHistRows($carId));
+        $this->assertSame([], $this->photoLogMetadata($carId));
+        $this->assertSame(
+            ["Restore order for car {$carId} was not available. Reload the tab."],
+            $this->messages($result['raw'], 'danger'),
+            'One message names the car, and no nothing-to-change message repeats it'
+        );
+        $this->assertSame([], $this->messages($result['raw'], 'success'), 'The car does not count as updated');
+        $this->assertSame(
+            1,
+            $this->countMatchingLogs('Security', "Car Photos: invalid restore[] car id, no earlier order: {$carId}", $this->adminId)
+        );
+    }
+
+    public function testPostRestoreWithNoEarlierOrderBesideATickedPhotoAttachesItAndSaysTheRestoreWasNotAvailable(): void
+    {
+        $carId = $this->carWithDetachedPhoto();
+
+        $result = $this->post($this->adminId, ['reattach' => [$carId => ['a.jpg']], 'restore' => [(string) $carId]] + $this->seen($carId));
+
+        $this->assertSame(0, $result['exitCode']);
+        $this->assertSame('["b.jpg","a.jpg"]', $this->currentImage($carId));
+        $this->assertSame(['1 car(s) updated.'], $this->messages($result['raw'], 'success'));
+        $this->assertSame(
+            ["Restore order for car {$carId} was not available. Reload the tab."],
+            $this->messages($result['raw'], 'danger')
+        );
+        $this->assertFalse($this->photoLogMetadata($carId)[0]['order_restored']);
+    }
+
     // ---- POST and GET: Ignore and Undo ignore ----------------------------------
 
     public function testPostIgnoreHidesTheRowWritesOneLogRowAndChangesNoCar(): void
@@ -1245,7 +1359,7 @@ final class AdminCarPhotosTabAuthTest extends IntegrationTestCase
 
         $result = $this->render($this->adminId);
 
-        $this->restoreImageRoot();
+        $this->assertTrue($this->restoreImageRoot(), 'Test: move the hidden photo folder back to userimages/.');
         $this->assertSame(0, $result['exitCode']);
         $this->assertNoPhpError($result['raw']);
         $xpath = $this->xpath($result['raw']);
@@ -1268,7 +1382,7 @@ final class AdminCarPhotosTabAuthTest extends IntegrationTestCase
 
         $result = $this->post($this->adminId, ['reattach' => [$carId => ['a.jpg']]] + $tokens);
 
-        $this->restoreImageRoot();
+        $this->assertTrue($this->restoreImageRoot(), 'Test: move the hidden photo folder back to userimages/.');
         $this->assertSame(0, $result['exitCode']);
         $this->assertNoPhpError($result['raw']);
         $this->assertContains(
@@ -1290,7 +1404,7 @@ final class AdminCarPhotosTabAuthTest extends IntegrationTestCase
 
         $result = $this->post($this->adminId, ['ignore_car' => (string) $carId] + $tokens);
 
-        $this->restoreImageRoot();
+        $this->assertTrue($this->restoreImageRoot(), 'Test: move the hidden photo folder back to userimages/.');
         $this->assertSame(0, $result['exitCode']);
         $this->assertNoPhpError($result['raw']);
         $this->assertContains(

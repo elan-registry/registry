@@ -1046,7 +1046,6 @@ abstract class IntegrationTestCase extends TestCase
         }
 
         // DB::query() sets error() and does not throw, so the delete checks it.
-
         $delete = $this->db->query(
             'DELETE FROM er_deleted_user_addresses WHERE user_id IN (' . implode(',', array_fill(0, count($userIds), '?')) . ')',
             array_values($userIds)

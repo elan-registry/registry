@@ -1292,7 +1292,9 @@ a car. The class writes only `cars.image` and `logs`. It never deletes a file.
   - It is not a regular file, or its extension is not `jpg`, `jpeg`, `png` or `gif`.
   - No history row listed it. The file is an orphan.
   - `exif_imagetype()` does not report a real JPEG, PNG or GIF.
-  - It has the same SHA-256 hash as a safe photo in `cars.image` whose file exists.
+  - It has the same SHA-256 hash as a photo in `cars.image` whose file exists.
+    Every plain file name counts, also a legacy name such as `my photo.jpg`
+    that is not safe. A name with `/`, and `.` or `..`, is not read.
 - When two detached files have the same bytes, `findRows()` keeps one. It
   prefers a safe name, then the file that a later history row listed, then the
   lower name.
@@ -1340,7 +1342,7 @@ call the method and counts the car as `Changed`.
 
 **`apply()` steps**:
 
-`apply(int $carId, array $reattachNames, bool $restoreOrder, int $userId, string $seenToken, ?array &$ignoredNames = null)`
+`apply(int $carId, array $reattachNames, bool $restoreOrder, int $userId, string $seenToken, ?array &$ignoredNames = null, ?bool &$restoreUnavailable = null)`
 
 1. Throw `CarValidationException` when `$carId` is not positive or a name is
    not a string. Remove duplicate names.
@@ -1354,23 +1356,17 @@ call the method and counts the car as `Changed`.
    Return `Unreadable` when the row has `unreadable` set.
    In these cases, the method writes nothing and logs nothing.
 3. Use `earlierOrder` as the base list when `$restoreOrder` is true and an
-   earlier order exists. Else use the current list.
+   earlier order exists. Else use the current list. When `$restoreOrder` is
+   true and the row has no earlier order, the restore is not available.
 4. Append each ticked name that the row lists as a safe detached photo, in
-   stored order. Put each other ticked name in `$ignoredNames`. The handler
-   logs these names and reports a count. Only this step fills
-   `$ignoredNames`, after the method checks the names against a row. It is
-   empty when the result is `Changed` (also after a compare-and-set miss in
-   step 7) or `Unreadable`, because the page saw other data. It is also empty
-   for the `NothingToDo` of step 2 (no row now, for example because a
-   detached file was removed from disk after the page loaded). The handler
-   then names the car in its nothing-to-change message.
+   stored order. Each other ticked name is not attached.
 5. Return `NothingToDo` when the order is not restored and no photo is
-   attached.
+   attached. Before it returns, fill the out values (see below).
 6. Encode the list with `CarImageProcessor::encodeImages()`. Call
    `CarRepository::updateImage()` once. Pass the raw `cars.image` value that
    `findRows()` read. The write succeeds only when the value did not change.
-7. Return `Changed` when the write misses. Clear `$ignoredNames`. The method
-   writes no log row.
+7. Return `Changed` when the write misses. The method writes no log row.
+   Else fill the out values.
 8. Log one row with `LogCategories::LOG_CATEGORY_CAR_ACTIONS`. The message
    starts with `Car Photos:`. Return `Applied`. The metadata holds:
    - `action`: `car_photos_apply`
@@ -1378,6 +1374,25 @@ call the method and counts the car as `Changed`.
    - `reattached`: the list of attached names
    - `order_restored`: `true` or `false`
    - `token_after`: the `versionToken()` of the list that the call wrote
+
+**Out values of `apply()`**:
+
+- `$ignoredNames`: the ticked names that the row does not list as safe
+  detached photos.
+- `$restoreUnavailable`: `true` when `$restoreOrder` is true and the row has
+  no earlier order.
+
+The method fills them only in step 5 or after a successful write, so only
+after it checks the form against a row. They are empty and `false` when the
+result is `Changed` (also after a compare-and-set miss in step 7) or
+`Unreadable`, because the page saw other data. They are also empty and
+`false` for the `NothingToDo` of step 2 (no row now, for example because a
+detached file was removed from disk after the page loaded), and when the
+method throws. The handler logs each value to `LOG_CATEGORY_SECURITY`. It
+reports a count of the names, and the message "Restore order for car N was
+not available. Reload the tab." for a restore. A car with only an unavailable
+restore is not counted as updated, and its nothing-to-change message is not
+shown.
 
 **Ignore and Undo ignore**:
 

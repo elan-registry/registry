@@ -140,6 +140,15 @@ final class CarPhotoRecoveryTest extends TestCase
         $this->assertSame([], $this->recovery($db)->findRows());
     }
 
+    public function testFindRowsCandidateWithSameBytesAsAttachedLegacyNamedPhotoIsExcluded(): void
+    {
+        $this->photo('my photo.jpg', 1);
+        $this->photo('copy.jpg', 1);
+        $db = $this->db('["my photo.jpg"]', [[10, '["copy.jpg"]', '2026-01-01 10:00:00']]);
+
+        $this->assertSame([], $this->recovery($db)->findRows());
+    }
+
     /**
      * @return array<string, array{list<array{int, string, string}>, string}>
      */
@@ -735,6 +744,80 @@ final class CarPhotoRecoveryTest extends TestCase
         $this->assertSame(CarPhotoRecoveryResult::NothingToDo, $result);
         $this->assertNull($db->updateParams());
         $this->assertSame([], $this->logEntries());
+    }
+
+    public function testApplyRestoreWithNoEarlierOrderReportsRestoreUnavailable(): void
+    {
+        $this->photo('a.jpg', 1);
+        $this->photo('b.jpg', 2);
+        $db = $this->db('["a.jpg"]', [[10, '["a.jpg","b.jpg"]', '2026-01-01 10:00:00']]);
+
+        $result = $this->recovery($db)->apply(self::CAR, [], true, 3, $this->seen($db), $ignored, $restoreUnavailable);
+
+        $this->assertSame(CarPhotoRecoveryResult::NothingToDo, $result);
+        $this->assertTrue($restoreUnavailable);
+        $this->assertNull($db->updateParams());
+    }
+
+    public function testApplyRestoreWithNoEarlierOrderAndTickedPhotoAttachesAndReportsRestoreUnavailable(): void
+    {
+        $this->photo('a.jpg', 1);
+        $this->photo('b.jpg', 2);
+        $db = $this->db('["a.jpg"]', [[10, '["a.jpg","b.jpg"]', '2026-01-01 10:00:00']]);
+
+        $result = $this->recovery($db)->apply(self::CAR, ['b.jpg'], true, 3, $this->seen($db), $ignored, $restoreUnavailable);
+
+        $this->assertSame(CarPhotoRecoveryResult::Applied, $result);
+        $this->assertTrue($restoreUnavailable);
+        $this->assertSame(['["a.jpg","b.jpg"]', self::CAR, '["a.jpg"]'], $db->updateParams());
+        $this->assertFalse($this->logEntries()[0]['metadata']['order_restored']);
+    }
+
+    public function testApplyRestoreDoneReportsRestoreAvailable(): void
+    {
+        $this->photo('a.jpg', 1);
+        $this->photo('b.jpg', 2);
+        $db = $this->db('["b.jpg","a.jpg"]', [[10, '["a.jpg","b.jpg"]', '2026-01-01 10:00:00']]);
+
+        $result = $this->recovery($db)->apply(self::CAR, [], true, 3, $this->seen($db), $ignored, $restoreUnavailable);
+
+        $this->assertSame(CarPhotoRecoveryResult::Applied, $result);
+        $this->assertFalse($restoreUnavailable);
+    }
+
+    public function testApplyTokenMismatchOrCompareAndSetMissReportsNoUnavailableRestore(): void
+    {
+        $this->photo('a.jpg', 1);
+        $this->photo('b.jpg', 2);
+        $db = $this->db('["a.jpg"]', [[10, '["a.jpg","b.jpg"]', '2026-01-01 10:00:00']]);
+
+        $result = $this->recovery($db)->apply(self::CAR, ['b.jpg'], true, 3, CarPhotoRecovery::versionToken('["x.jpg"]'), $ignored, $restoreUnavailable);
+        $this->assertSame(CarPhotoRecoveryResult::Changed, $result);
+        $this->assertFalse($restoreUnavailable);
+
+        $db->updateCount = 0;
+        $result = $this->recovery($db)->apply(self::CAR, ['b.jpg'], true, 3, $this->seen($db), $ignored, $restoreUnavailable);
+        $this->assertSame(CarPhotoRecoveryResult::Changed, $result);
+        $this->assertFalse($restoreUnavailable, 'The restore was judged against data that another save replaced');
+    }
+
+    public function testApplyEncodeFailureReportsNoIgnoredNames(): void
+    {
+        $this->photo('b.jpg', 2);
+        // Invalid UTF-8 does not decode as JSON, so the legacy comma split
+        // keeps it as a name, and json_encode() of the new list fails.
+        $db = $this->db("[\"\xff.jpg\"]", [[10, '["b.jpg"]', '2026-01-01 10:00:00']]);
+        $ignored            = ['stale'];
+        $restoreUnavailable = true;
+
+        try {
+            $this->recovery($db)->apply(self::CAR, ['b.jpg', 'evil.jpg'], true, 3, $this->seen($db), $ignored, $restoreUnavailable);
+            $this->fail('apply() encoded a list that holds invalid UTF-8');
+        } catch (ImageProcessingException) {
+        }
+        $this->assertSame([], $ignored, 'No name was used, so no forged-name warning is due');
+        $this->assertFalse($restoreUnavailable);
+        $this->assertNull($db->updateParams());
     }
 
     public function testApplyCarWithNothingToShowReturnsNothingToDo(): void

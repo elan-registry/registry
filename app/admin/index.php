@@ -1278,6 +1278,7 @@ if (ElanInput::existsPost()) {
 
                     $carPhotoResults     = [];
                     $carPhotoNotAttached = 0;
+                    $carPhotoNoRestore   = [];
                     $carPhotoFailedCar   = null;
                     foreach ($carPhotoCarIds as $carPhotoCarId) {
                         $carPhotoToken = $carPhotoTokenOf($carPhotoCarId);
@@ -1285,7 +1286,8 @@ if (ElanInput::existsPost()) {
                             $carPhotoResults[$carPhotoCarId] = CarPhotoRecoveryResult::Changed;
                             continue;
                         }
-                        $carPhotoIgnored = [];
+                        $carPhotoIgnored     = [];
+                        $carPhotoRestoreGone = false;
                         try {
                             $carPhotoResults[$carPhotoCarId] = $carPhotoRecovery->apply(
                                 $carPhotoCarId,
@@ -1293,7 +1295,8 @@ if (ElanInput::existsPost()) {
                                 in_array($carPhotoCarId, $carPhotoRestoreIds, true),
                                 $currentUserId,
                                 $carPhotoToken,
-                                $carPhotoIgnored
+                                $carPhotoIgnored,
+                                $carPhotoRestoreGone
                             );
                         } catch (ImageProcessingException $e) {
                             // The image root or the list encoding failed. An
@@ -1309,16 +1312,24 @@ if (ElanInput::existsPost()) {
                             $carPhotoFailedCar = $carPhotoCarId;
                             break;
                         }
-                        // apply() fills the list only when it checked the names
-                        // against the row as the page saw it. After Changed
-                        // (also a compare-and-set miss), Unreadable, or
-                        // NothingToDo because the car has no row now, it is
-                        // empty, so no forged-name warning is logged. The
-                        // nothing-to-change message names such a car.
+                        // apply() fills the two out values only when it checked
+                        // the form against the row as the page saw it. After
+                        // Changed (also a compare-and-set miss), Unreadable, or
+                        // NothingToDo because the car has no row now, the list
+                        // is empty and the flag is false, so no warning is
+                        // logged. The nothing-to-change message names such a car.
                         foreach ($carPhotoIgnored as $carPhotoIgnoredName) {
                             $carPhotoLogRejected("photo name for car {$carPhotoCarId}, not a detached photo", $carPhotoIgnoredName);
                             $carPhotoNotAttached++;
                         }
+                        if ($carPhotoRestoreGone) {
+                            $carPhotoLogRejected('restore[] car id, no earlier order', $carPhotoCarId);
+                            $carPhotoNoRestore[] = $carPhotoCarId;
+                        }
+                    }
+
+                    foreach ($carPhotoNoRestore as $carPhotoNoRestoreId) {
+                        $errors[] = "Restore order for car {$carPhotoNoRestoreId} was not available. Reload the tab.";
                     }
 
                     if ($carPhotoNotAttached > 0) {
@@ -1328,7 +1339,12 @@ if (ElanInput::existsPost()) {
                         $carPhotoUpdated    = array_keys($carPhotoResults, CarPhotoRecoveryResult::Applied, true);
                         $carPhotoChanged    = array_keys($carPhotoResults, CarPhotoRecoveryResult::Changed, true);
                         $carPhotoUnreadable = array_keys($carPhotoResults, CarPhotoRecoveryResult::Unreadable, true);
-                        $carPhotoNothing    = array_keys($carPhotoResults, CarPhotoRecoveryResult::NothingToDo, true);
+                        // The restore message already names a car whose only
+                        // selection was the restore.
+                        $carPhotoNothing    = array_values(array_diff(
+                            array_keys($carPhotoResults, CarPhotoRecoveryResult::NothingToDo, true),
+                            $carPhotoNoRestore
+                        ));
                         if ($carPhotoUpdated !== []) {
                             $successes[] = $carPhotoTarget !== null
                                 ? "Car {$carPhotoTarget} updated."

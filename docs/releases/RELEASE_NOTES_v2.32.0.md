@@ -13,7 +13,7 @@ An owner can add full-resolution phone photos to their car. When a photo does no
 
 ## Admin-Facing Changes
 
-- A new Car Photos tab lets admins and editors reattach chosen lost photos, restore reversed orders, or mark a car reviewed. (#2644)
+- A new Car Photos tab lets admins and editors reattach lost photos, restore reversed orders, or mark a car reviewed. (#2644)
 
 ## Issues Resolved
 
