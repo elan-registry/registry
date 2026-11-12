@@ -581,19 +581,45 @@ call `IntegrationTestCase::saveBrevoTestKey()` to make a real send
 | `upload_max_filesize` | 8M | 8M (set 2026-11-11) |
 | `post_max_size` | 64M | 64M |
 | `memory_limit` | 256M | 128M |
+| `max_file_uploads` | 20 | Not recorded. Check it in cPanel |
 | `display_errors` | On | Off |
+
+**App limits.** These are in `usersc/includes/config.php`. `config.php` cannot
+set the PHP limits below. PHP applies them before any script runs.
+
+| Constant | Value | Meaning |
+| --- | --- | --- |
+| `ELAN_IMAGE_UPLOAD_MAX_SIZE` | 20 MB | Largest original photo that the browser accepts |
+| `ELAN_IMAGE_SERVER_MAX_SIZE` | 5 MB | Largest posted photo that the server accepts, after the browser resize |
+| `ELAN_IMAGE_MAX` | 6 | Most photos for one car, and so in one save |
+
+1 MB = 1,048,576 bytes in these constants.
+
+**Minimum server values.** Each server (Docker, test, production) must meet
+these values. If a server is below them, PHP rejects the upload before the app
+can, and the owner gets no clear message.
+
+| Setting | Minimum | With the current constants |
+| --- | --- | --- |
+| `upload_max_filesize` | `ELAN_IMAGE_SERVER_MAX_SIZE` | 5M |
+| `post_max_size` | `ELAN_IMAGE_MAX` × `ELAN_IMAGE_SERVER_MAX_SIZE`, plus the form fields | 30M plus a margin |
+| `post_max_size` | not below `upload_max_filesize` | — |
+| `max_file_uploads` | `ELAN_IMAGE_MAX` | 6 |
+| `memory_limit` | 128M (`Resize.php` loads the full bitmap; a 2048 px bitmap uses about 13 MB in GD) | 128M |
+
+Keep `ELAN_IMAGE_SERVER_MAX_SIZE` at or below `ELAN_IMAGE_UPLOAD_MAX_SIZE`.
+If you change a constant, change the PHP values on all three servers in the
+same release. `Issue2627RegressionTest` checks the Docker values against the
+constants in `config.php`. Nothing checks test and production automatically, so check them
+after each change (see "Where to change them").
 
 **Why 8M and 64M (#2627).** The browser resizes each photo so that its
 longest side is at most 2048 px before it posts it. A smaller photo is posted
-unchanged. The app per-file cap is
-5 MiB (`CarImageProcessor::validateFileUpload()`). One save can post up to
-`ELAN_IMAGE_MAX` (6) photos, so the largest body is 6 × 5 MiB = 30 MiB. 8M and
-64M give headroom, so the app rejects a large photo with its own message, not
-PHP. `post_max_size` must stay at or above `upload_max_filesize`.
-`Issue2627RegressionTest` checks the Docker values.
+unchanged. So the largest body is 6 × 5 MB = 30 MB. 8M and 64M give headroom
+above the minimums.
 
 **Memory.** Docker uses 256M because composer needs it in the container. The
-host keeps 128M. A resized 2048 px bitmap uses about 13 MB in GD.
+host keeps 128M.
 
 **Body above `post_max_size`.** PHP discards `$_POST` and `$_FILES` before the
 script runs. In Docker, `display_errors = On` makes PHP print a
@@ -606,7 +632,7 @@ the browser cannot parse the JSON message. Test and production have
 
 - Docker: `docker/php.ini-overrides.ini`. The Dockerfile copies it into the
   image, so run `docker compose build app && docker compose up -d app`. Check
-  with `docker compose exec -u www-data app php -i | grep -E 'upload_max_filesize|post_max_size'`.
+  with `docker compose exec -u www-data app php -i | grep -E 'upload_max_filesize|post_max_size|max_file_uploads|memory_limit'`.
 - Test and production: cPanel, **Select PHP Version** (PHP Selector), then
   **Options**. One Selector configuration covers both sites.
 

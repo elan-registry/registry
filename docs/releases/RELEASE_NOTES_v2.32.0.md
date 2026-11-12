@@ -7,7 +7,7 @@ An owner can add full-resolution phone photos to their car. When a photo does no
 
 ## User-Facing Changes
 
-- Owners can add phone photos up to 20 MB each. WebP photos are no longer accepted. (#2627)
+- Owners can add phone photos up to 20 MB each. The browser shrinks each photo before it saves. WebP photos are no longer accepted. (#2627)
 - A car save with too many large photos now says the photos are too large, with the limit. (#2647)
 
 ## Admin-Facing Changes

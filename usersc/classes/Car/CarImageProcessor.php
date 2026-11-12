@@ -152,11 +152,13 @@ class CarImageProcessor
      * again (#2626).
      *
      * @param array $file File upload array from $_FILES
-     * @param int $maxSize Maximum file size in bytes (default 5MB)
+     * @param int|null $maxSize Maximum file size in bytes. Null uses serverMaxBytes().
      * @throws ImageProcessingException If validation fails
      */
-    public static function validateFileUpload(array $file, int $maxSize = 5242880): void // Default 5MB
+    public static function validateFileUpload(array $file, ?int $maxSize = null): void
     {
+        $maxSize ??= self::serverMaxBytes();
+
         if ($file['error'] !== UPLOAD_ERR_OK) {
             $userMessage = match ($file['error']) {
                 UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => self::tooLargeMessage($maxSize),
@@ -187,14 +189,25 @@ class CarImageProcessor
     }
 
     /**
+     * Get the server limit for each posted photo, in bytes.
+     *
+     * @return int ELAN_IMAGE_SERVER_MAX_SIZE (MB) in bytes, 1 MB = 1,048,576 bytes
+     */
+    public static function serverMaxBytes(): int
+    {
+        return (int) round(ELAN_IMAGE_SERVER_MAX_SIZE * 1048576);
+    }
+
+    /**
      * Build the owner message for a photo above the size limit.
      *
      * @param int $maxSize Maximum file size in bytes
-     * @return string Message with the limit in MB (1 MB = 1,048,576 bytes), for example "5 MB"
+     * @return string Message with the limit in MB (1 MB = 1,048,576 bytes), for example "5 MB", and what to do
      */
     private static function tooLargeMessage(int $maxSize): string
     {
-        return 'Photo is too large. The maximum size is ' . round($maxSize / 1048576, 1) . ' MB.';
+        return 'Photo is too large. The maximum size is ' . round($maxSize / 1048576, 1)
+            . ' MB. Make the photo smaller, then upload it again.';
     }
 
     /**

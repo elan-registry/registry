@@ -60,7 +60,8 @@
             maxFiles: cfg.maxFiles,
             acceptedFileTypes: ['image/jpeg', 'image/png', 'image/gif'],
             maxFileSize: cfg.maxFileSize,
-            // maxFileSize is a byte count of 20 MiB; base 1024 makes the label show "20 MB", not "21 MB".
+            // maxFileSize is the config MiB value in bytes; base 1024 makes the label show the
+            // config number (20 MB), not the larger decimal value (21 MB).
             fileSizeBase: 1024,
             instantUpload: false,
             allowProcess: false,

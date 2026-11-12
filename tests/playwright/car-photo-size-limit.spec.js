@@ -155,6 +155,24 @@ test.describe('Photo size limit in the car edit form', () => {
         await expect(page.locator('.filepond--file-status-sub')).not.toContainText('Maximum size');
     });
 
+    test('accepts a 4.6 MB photo on the add-car page', async ({ page }) => {
+        await page.goto('app/owner/cars/edit.php', { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(
+            () => typeof window.FilePond !== 'undefined' && document.querySelector('.filepond--root') !== null,
+            { timeout: 15000 }
+        );
+        const photo = padJpeg(await makeJpeg(page, 640, 480), 4.6 * 1000 * 1000);
+
+        await page.locator('.filepond--browser').setInputFiles({
+            name: 'padded-4-6mb.jpg',
+            mimeType: 'image/jpeg',
+            buffer: photo
+        });
+
+        await expect(page.locator('.filepond--item')).toHaveCount(1);
+        await expect(page.locator('.filepond--item')).toHaveAttribute('data-filepond-item-state', 'idle');
+    });
+
     test('rejects a 21 MB photo with the size labels', async ({ page }) => {
         const photo = padJpeg(await makeJpeg(page, 640, 480), 21 * MIB);
 

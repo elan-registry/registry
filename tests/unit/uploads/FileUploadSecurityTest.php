@@ -184,7 +184,7 @@ class FileUploadSecurityTest extends TestCase
             ]);
             $this->fail('validateFileUpload() must throw for a file above the maximum size');
         } catch (ImageProcessingException $e) {
-            $this->assertSame('Photo is too large. The maximum size is 5 MB.', $e->getUserMessage());
+            $this->assertSame('Photo is too large. The maximum size is 5 MB. Make the photo smaller, then upload it again.', $e->getUserMessage());
             $this->assertStringStartsWith('File too large', $e->getMessage());
         }
     }
@@ -270,7 +270,7 @@ class FileUploadSecurityTest extends TestCase
      */
     public static function uploadErrorUserMessageProvider(): array
     {
-        $tooLarge = 'Photo is too large. The maximum size is 5 MB.';
+        $tooLarge = 'Photo is too large. The maximum size is 5 MB. Make the photo smaller, then upload it again.';
         $other    = 'The server could not receive the photo. Upload the photo again.';
 
         return [
@@ -320,6 +320,7 @@ class FileUploadSecurityTest extends TestCase
             'below byte limit'       => [1023, '1024', false],
             // PHP treats post_max_size 0 as no limit.
             'zero means no limit'    => [PHP_INT_MAX, '0', false],
+            'negative means no limit' => [PHP_INT_MAX, '-1', false],
             'above 64M shorthand'    => [64 * 1024 * 1024 + 1, '64M', true],
             'equal to 64M shorthand' => [64 * 1024 * 1024, '64M', false],
             'above 1G shorthand'     => [1024 * 1024 * 1024 + 1, '1G', true],

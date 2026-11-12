@@ -41,6 +41,7 @@ if (!defined('ELAN_IMAGE_DIR')) {
     define('ELAN_IMAGE_DIR', 'userimages/');
     define('ELAN_IMAGE_MAX', 6);
     define('ELAN_IMAGE_UPLOAD_MAX_SIZE', 20.00);
+    define('ELAN_IMAGE_SERVER_MAX_SIZE', 5.00);
     define('ELAN_IMAGE_DISPLAY_MAX_SIZE', 2048);
     define('ELAN_IMAGE_THUMBNAIL_SIZES', '100,300,768,1024,2048');
     define('TRANSFER_REQUEST_EXPIRY_DAYS', 30);
