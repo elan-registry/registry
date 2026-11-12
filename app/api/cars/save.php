@@ -741,8 +741,9 @@ function uploadImages(array &$cardetails, array &$errors): void
             }
         }
 
-        // Check every file before any move. One bad file stops the save, so
-        // no file of a rejected batch is written to disk (#1844).
+        // Check every file before any move. One bad file stops the save, so a
+        // batch that fails validation moves no file (#1844). A later move or
+        // resize failure can still leave the files already moved.
         $batch = CarImageProcessor::validateUploadBatch($_FILES['file']);
         if ($batch['errors'] !== []) {
             foreach ($batch['rejected'] as $rejected) {

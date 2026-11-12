@@ -217,8 +217,8 @@ class CarImageProcessor
      * Validate each file in a multi-file upload before any file is moved.
      *
      * The save stops when one file is bad, so all files are checked first.
-     * Then the owner gets one message for each bad file, and no file is
-     * written to disk for a rejected batch (#1844). An UPLOAD_ERR_NO_FILE
+     * Then the owner gets one message for each bad file, and a batch that
+     * fails validation moves no file (#1844). An UPLOAD_ERR_NO_FILE
      * entry is an empty file input, not a photo, so it is skipped.
      *
      * @param array<mixed> $files The $_FILES['file'] shape: 'name', 'tmp_name',
