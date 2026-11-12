@@ -117,7 +117,6 @@ class FileUploadSecurityTest extends TestCase
         $this->assertEquals('jpg', CarImageProcessor::getExtension('image/jpeg'));
         $this->assertEquals('png', CarImageProcessor::getExtension('image/png'));
         $this->assertEquals('gif', CarImageProcessor::getExtension('image/gif'));
-        $this->assertEquals('webp', CarImageProcessor::getExtension('image/webp'));
     }
 
     /**
@@ -140,6 +139,8 @@ class FileUploadSecurityTest extends TestCase
             'php mime' => ['application/x-php'],
             'text mime' => ['text/plain'],
             'javascript mime' => ['application/javascript'],
+            // Resize.php cannot decode WebP, so the upload allowlist excludes it (#2627).
+            'webp mime' => ['image/webp'],
         ];
     }
 
@@ -167,6 +168,25 @@ class FileUploadSecurityTest extends TestCase
         $this->expectException(ImageProcessingException::class);
         $this->expectExceptionMessage('File too large');
         CarImageProcessor::validateFileUpload($largeFile);
+    }
+
+    /**
+     * A photo above the size limit gives the owner the limit, not the generic
+     * exception text (#2627). The technical message stays for the log.
+     */
+    public function testValidateFileUploadGivesOwnerMessageWithLimitForOversizeFile(): void
+    {
+        try {
+            CarImageProcessor::validateFileUpload([
+                'error' => UPLOAD_ERR_OK,
+                'size' => 5242881, // 1 byte above the default 5 MiB maximum
+                'tmp_name' => $this->createTestFile('over.jpg', 'dummy'),
+            ]);
+            $this->fail('validateFileUpload() must throw for a file above the maximum size');
+        } catch (ImageProcessingException $e) {
+            $this->assertSame('Photo is too large. The maximum size is 5 MB. Make the photo smaller, then upload it again.', $e->getUserMessage());
+            $this->assertStringStartsWith('File too large', $e->getMessage());
+        }
     }
 
     /**
@@ -250,7 +270,7 @@ class FileUploadSecurityTest extends TestCase
      */
     public static function uploadErrorUserMessageProvider(): array
     {
-        $tooLarge = 'Photo is too large for the server. Make the photo smaller, then upload it again.';
+        $tooLarge = 'Photo is too large. The maximum size is 5 MB. Make the photo smaller, then upload it again.';
         $other    = 'The server could not receive the photo. Upload the photo again.';
 
         return [
@@ -276,6 +296,35 @@ class FileUploadSecurityTest extends TestCase
             'NO_TMP_DIR' => [UPLOAD_ERR_NO_TMP_DIR],
             'CANT_WRITE' => [UPLOAD_ERR_CANT_WRITE],
             'EXTENSION' => [UPLOAD_ERR_EXTENSION],
+        ];
+    }
+
+    /**
+     * A body above post_max_size makes PHP discard $_POST and $_FILES, so
+     * save.php must tell that case apart from a request with no data (#2647).
+     */
+    #[DataProvider('postMaxSizeProvider')]
+    public function testExceedsPostMaxSizeComparesContentLengthWithLimit(int $contentLength, string $postMaxSize, bool $expected): void
+    {
+        $this->assertSame($expected, CarImageProcessor::exceedsPostMaxSize($contentLength, $postMaxSize));
+    }
+
+    /**
+     * @return array<string, array{int, string, bool}>
+     */
+    public static function postMaxSizeProvider(): array
+    {
+        return [
+            'above byte limit'       => [1025, '1024', true],
+            'equal to byte limit'    => [1024, '1024', false],
+            'below byte limit'       => [1023, '1024', false],
+            // PHP treats post_max_size 0 as no limit.
+            'zero means no limit'    => [PHP_INT_MAX, '0', false],
+            'negative means no limit' => [PHP_INT_MAX, '-1', false],
+            'above 64M shorthand'    => [64 * 1024 * 1024 + 1, '64M', true],
+            'equal to 64M shorthand' => [64 * 1024 * 1024, '64M', false],
+            'above 1G shorthand'     => [1024 * 1024 * 1024 + 1, '1G', true],
+            'below 1G shorthand'     => [1024 * 1024 * 1024 - 1, '1G', false],
         ];
     }
 

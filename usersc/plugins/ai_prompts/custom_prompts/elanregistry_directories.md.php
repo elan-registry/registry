@@ -159,6 +159,7 @@ $scheme       // 'http' or 'https'
 $is_https     // bool
 $host         // validated HTTP_HOST
 $method       // 'GET', 'POST', etc.
+$content_length // int request body size from CONTENT_LENGTH, 0 when missing
 $request_uri  // sanitized REQUEST_URI
 $current_url  // full URL of the current request
 $php_self     // validated PHP_SELF — use in securePage($php_self)

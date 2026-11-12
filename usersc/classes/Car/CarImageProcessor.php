@@ -34,7 +34,7 @@ class CarImageProcessor
      *
      * @var list<string>
      */
-    public const ALLOWED_EXTENSIONS = ['jpg', 'png', 'gif', 'webp'];
+    public const ALLOWED_EXTENSIONS = ['jpg', 'png', 'gif'];
 
     /**
      * Derive the allowlist regex from ALLOWED_EXTENSIONS.
@@ -85,7 +85,6 @@ class CarImageProcessor
         'image/jpg' => 'jpg',
         'image/png' => 'png',
         'image/gif' => 'gif',
-        'image/webp' => 'webp',
     ];
 
     /**
@@ -153,15 +152,16 @@ class CarImageProcessor
      * again (#2626).
      *
      * @param array $file File upload array from $_FILES
-     * @param int $maxSize Maximum file size in bytes (default 5MB)
+     * @param int|null $maxSize Maximum file size in bytes. Null uses serverMaxBytes().
      * @throws ImageProcessingException If validation fails
      */
-    public static function validateFileUpload(array $file, int $maxSize = 5242880): void // Default 5MB
+    public static function validateFileUpload(array $file, ?int $maxSize = null): void
     {
+        $maxSize ??= self::serverMaxBytes();
+
         if ($file['error'] !== UPLOAD_ERR_OK) {
             $userMessage = match ($file['error']) {
-                UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE =>
-                    'Photo is too large for the server. Make the photo smaller, then upload it again.',
+                UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => self::tooLargeMessage($maxSize),
                 UPLOAD_ERR_PARTIAL =>
                     'Photo upload did not complete. Upload the photo again.',
                 default =>
@@ -171,7 +171,12 @@ class CarImageProcessor
         }
 
         if ($file['size'] > $maxSize) {
-            throw new ImageProcessingException("File too large. Maximum size: " . ($maxSize / 1024 / 1024) . "MB");
+            throw new ImageProcessingException(
+                "File too large: {$file['size']} bytes. Maximum size: " . ($maxSize / 1024 / 1024) . "MB",
+                0,
+                null,
+                self::tooLargeMessage($maxSize)
+            );
         }
 
         if (!is_uploaded_file($file['tmp_name'])) {
@@ -181,6 +186,53 @@ class CarImageProcessor
         if ($file['size'] < 100) {
             throw new ImageProcessingException("File too small - minimum 100 bytes required");
         }
+    }
+
+    /**
+     * Get the server limit for each posted photo, in bytes.
+     *
+     * @return int ELAN_IMAGE_SERVER_MAX_SIZE (MB) in bytes, 1 MB = 1,048,576 bytes
+     */
+    public static function serverMaxBytes(): int
+    {
+        return (int) round(ELAN_IMAGE_SERVER_MAX_SIZE * 1048576);
+    }
+
+    /**
+     * Build the owner message for a photo above the size limit.
+     *
+     * @param int $maxSize Maximum file size in bytes
+     * @return string Message with the limit in MB (1 MB = 1,048,576 bytes), for example "5 MB", and what to do
+     */
+    private static function tooLargeMessage(int $maxSize): string
+    {
+        return 'Photo is too large. The maximum size is ' . round($maxSize / 1048576, 1)
+            . ' MB. Make the photo smaller, then upload it again.';
+    }
+
+    /**
+     * Check whether a request body is larger than the PHP post_max_size limit.
+     *
+     * When the body is larger than post_max_size, PHP discards $_POST and
+     * $_FILES before the script runs (#2647). The caller uses this check to
+     * tell that case apart from a request with no data.
+     *
+     * ini_parse_quantity() is the parser PHP uses for post_max_size, so a
+     * malformed value gives the same limit that PHP enforces. A limit of 0 or
+     * less means no limit, as in PHP.
+     *
+     * @param int    $contentLength Request body size in bytes (CONTENT_LENGTH)
+     * @param string $postMaxSize   post_max_size value, for example "64M"
+     * @return bool True when the body is larger than a set limit
+     */
+    public static function exceedsPostMaxSize(int $contentLength, string $postMaxSize): bool
+    {
+        $limit = ini_parse_quantity($postMaxSize);
+        if ($limit <= 0) {
+            return false;
+        }
+
+        return $contentLength > $limit;
     }
 
     /**

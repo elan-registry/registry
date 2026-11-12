@@ -81,6 +81,7 @@ after an item is written.
 ### `app/api/cars/save.php`
 
 - [ ] `uploadImages()` (~L778) `arrayReplaceValue()` replaces the first match. If a new upload has the same browser file name as a stored photo, the new photo takes the stored photo's place (it can become the primary photo). Send a unique placeholder from `car-edit.js`, or replace only a name that is not stored (found in #2609)
+- [ ] (test coverage) No automated test checks the oversize-body 413 status with `display_errors` Off (the test and production setting). Docker gives 200 with a warning prefix. Add an integration test that starts `php -S` with `-d display_errors=0` and a small `post_max_size`, and asserts 413, JSON, and the log row (found in #2627)
 
 ### `app/assets/js/location-picker.js`
 

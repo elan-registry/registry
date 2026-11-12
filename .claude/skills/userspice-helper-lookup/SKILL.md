@@ -282,8 +282,8 @@ The curated mapping of common tasks to helpers, grouped by area. **Verify each e
 - "get any \$_SERVER value" → `Server::get('KEY', $default)`
 
 **In this repository**, a project may set validated globals
-(`$php_self`, `$is_https`, `$host`, `$method`, `$request_uri`, `$remote_addr`,
-`$referer`, `$user_agent`) on every request instead of using `Server::` calls
+(`$php_self`, `$is_https`, `$host`, `$method`, `$content_length`, `$request_uri`,
+`$remote_addr`, `$referer`, `$user_agent`) on every request instead of using `Server::` calls
 directly. Check for `usersc/includes/server_globals.php` and prefer the
 matching global when it exists — see the project overrides file.
 
