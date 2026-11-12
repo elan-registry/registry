@@ -597,18 +597,17 @@ After the deploy, check on the target database:
   `car_id`.
 
 Then update the Brevo webhook subscription on each host (#2359). The webhook
-now accepts only delivery events, and the registration script no longer
-subscribes to `opened`. An existing subscription keeps `opened` until you
-change it, and each open then writes one `logs` row. Remove `opened`,
-`uniqueOpened` and `click`, if present.
+now accepts only delivery events. An existing subscription keeps `opened`
+until you change it, and each open then writes one `logs` row. Remove
+`opened`, `uniqueOpened` and `click`, if present.
 
 - **Production:** edit the subscription in the Brevo dashboard, or delete it
-  and register it again with `--create --allow-prod`. See the steps below.
-- **Test:** edit it in the dashboard, or delete it and create it again with
-  the script's `--create`. Without `--allow-prod`, `--create` accepts only a
-  URL that starts with `https://test.`.
+  and create it again. See the steps below.
+- **Test:** edit the subscription in the Brevo dashboard, or delete it and
+  create it again.
 
-List the webhooks with `--list-webhooks` to confirm.
+The dashboard screens are in the wiki page
+[Brevo Webhook Configuration](https://github.com/elan-registry/registry/wiki/Brevo-Webhook-Configuration).
 
 To register the production webhook, follow these steps. Brevo has no
 setting that turns off click-tracking for transactional email, so this
@@ -619,25 +618,22 @@ procedure has no tracking step. See
    differ from the test value. See
    [ENVIRONMENT.md](ENVIRONMENT.md#brevo-webhook-authentication).
 2. Set `BREVO_WEBHOOK_TOKEN` to the new value in the production `.env`.
-3. Run the script with `--list-webhooks`. The deploy removes `scripts/`
-   from the server (`.deployignore`), so run each script command in these
-   steps from a local checkout, with `--env=<dir>` pointing at a `.env`
-   that reaches the production database. To reach it over an SSH tunnel,
-   also pass `--host`. `--host` replaces only `DB_HOST`, so it does not
-   replace `--env`. If a webhook for the production URL exists, delete it
-   with `--delete --id=<id>`. `--create` does not check for an existing
-   webhook, so a second one sends each event twice.
-4. Run the script with `--create --allow-prod`. The URL rules and the
-   command are in
-   [scripts/README.md](../../scripts/README.md#spike-1888brevo-register-webhookphp).
-5. Run the script with `--list-webhooks`.
-6. Check the `events=` list in the output. It must be the script's
-   `CREATE_EVENTS` list: `delivered`, `softBounce`, `hardBounce`, `blocked`,
-   `invalid`, `spam` and `unsubscribed`. It has no open or click event.
-   Brevo sends these events with snake_case names (`softBounce` arrives as
-   `soft_bounce`). The receiver accepts the names in
+3. In the Brevo dashboard, find the webhook list. If a webhook for the
+   production URL exists, delete it. If you keep it, Brevo sends each event
+   two times.
+4. Create the webhook with the wizard in
+   [Brevo Webhook Configuration](https://github.com/elan-registry/registry/wiki/Brevo-Webhook-Configuration#where).
+   Use these values:
+   - URL: exactly `https://elanregistry.org/app/api/webhooks/brevo.php`.
+   - Authentication: **Token**, with the value of `BREVO_WEBHOOK_TOKEN`.
+   - Events: only the delivery events in the event table of the wiki page.
+     No open or click event may stay on.
+5. Open the new webhook in the list. Compare its URL with the URL in step 4,
+   character for character. Check that its event list has only the delivery
+   events. Brevo sends these events with snake_case names. The receiver
+   accepts the names in
    [Brevo Webhook Receiver](EMAIL_SYSTEM.md#brevo-webhook-receiver-1887).
-7. Wait for one real event. Check that it creates an `er_email_events` row.
+6. Wait for one real event. Check that it creates an `er_email_events` row.
 
 Then run `app/admin/scripts/maintenance/21-Fix-Page-Permissions.php` on test
 and verify. After that, run it on production. The script sets the permissions
@@ -797,7 +793,10 @@ based only on when that specific remote last received a push.
 
 **Development:**
 
-Run `./scripts/update-version.sh` to generate VERSION file locally after creating tags.
+The git hooks in `.githooks/` (`post-checkout`, `post-commit` and
+`post-merge`) write `VERSION` locally with `git describe --tags --always`.
+The hooks run only after `./scripts/setup-git-hooks.sh` sets
+`core.hooksPath` to `.githooks`.
 
 **Version Display:**
 
