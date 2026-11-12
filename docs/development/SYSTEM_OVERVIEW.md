@@ -177,6 +177,16 @@ split *is* the permission boundary:
   and permanently deleting car records.
 - **Manage cars** — data-quality triage; find incomplete or suspect records and
   contact the owner about them.
+- **Car Photos** — administrators and editors. The tab lists cars with detached
+  photos or a reversed photo order. Cars with an earlier order come first. Tick
+  **Reattach** for each detached photo, and **Restore order** for the car. Click
+  **Apply** in a row to change that car, or **Apply selected** to change all
+  ticked cars. Click **Ignore** to hide a car that needs no change. **Show
+  ignored cars** lists the hidden cars, and **Undo ignore** shows a car again.
+  The tab writes only `cars.image` and `logs`; the `cars_update` trigger
+  writes `cars_hist`. It deletes no file. Ignore decisions live in `logs`, so
+  clearing the logs shows ignored cars again. See
+  [CLASSES.md § CarPhotoRecovery](CLASSES.md#carphotorecovery).
 - **Owner management** — search owners, edit profiles, re-sync a profile's
   location to the cars it owns.
 - **Account cleanup** — the page is reachable by editors, but the delete and

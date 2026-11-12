@@ -2,6 +2,8 @@
 declare(strict_types=1);
 
 use ElanRegistry\Car\Car;
+use ElanRegistry\Car\CarPhotoRecovery;
+use ElanRegistry\Car\CarPhotoRecoveryResult;
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationEmailComposer;
 use ElanRegistry\Car\CarVerificationManager;
@@ -20,6 +22,7 @@ use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\Exceptions\ElanRegistryException;
 use ElanRegistry\Exceptions\ExceptionLogSummary;
+use ElanRegistry\Exceptions\ImageProcessingException;
 use ElanRegistry\Input as ElanInput;
 use ElanRegistry\LogCategories;
 use ElanRegistry\Owner;
@@ -46,6 +49,7 @@ $validTabs = [
     'owner-mgmt' => 'Manage Owners',
     'account-cleanup' => 'Account Cleanup',
     'verification' => 'Verification System',
+    'car-photos' => 'Car Photos',
     'email-delivery' => 'Email Delivery',
 ];
 
@@ -1108,6 +1112,268 @@ if (ElanInput::existsPost()) {
                     }
                     break;
 
+                // Car Photos tab (#2644): reattach ticked detached photos,
+                // restore an earlier photo order, or ignore a row. No other
+                // command uses hasPerm([2, 3]); the admin-only commands use
+                // hasPerm([2]). securePage() admits whichever roles the page
+                // maps to, and an admin can map more, so this write names its
+                // roles itself. The form sends car IDs, ticked photo names and
+                // a seen token for each row. CarPhotoRecovery finds each row
+                // again on the server and attaches only the names it lists.
+                case "car_photos_apply":
+                    if (!hasPerm([2, 3], $currentUserId)) {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_SECURITY,
+                            "Car Photos: user without the admin or editor role attempted command '{$command}'");
+                        $errors[] = 'Administrator or editor access is required for this action.';
+                        break;
+                    }
+
+                    // The value comes from the form, so it is cut to a fixed length and its
+                    // control characters are removed: a CR/LF must not forge a log line.
+                    $carPhotoLogRejected = static function (string $what, mixed $value) use ($currentUserId): void {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_SECURITY, is_scalar($value)
+                            ? "Car Photos: invalid {$what}: "
+                                . mb_substr((string) preg_replace('/[\x00-\x1F\x7F]/', '', var_export($value, true)), 0, 64)
+                            : "Car Photos: non-scalar {$what}: " . get_debug_type($value));
+                    };
+                    $carPhotoRejected = 0;
+
+                    $carPhotoSeen = ElanInput::get('seen', true, false, []);
+                    $carPhotoSeen = is_array($carPhotoSeen) ? $carPhotoSeen : [];
+                    // A missing or malformed token cannot prove the page saw
+                    // the current photos, so the car counts as changed.
+                    $carPhotoTokenOf = static function (int $carId) use ($carPhotoSeen): ?string {
+                        $token = $carPhotoSeen[$carId] ?? null;
+                        return is_string($token) && CarPhotoRecovery::isValidToken($token) ? $token : null;
+                    };
+
+                    // A per-row button names one car. A form posts only the
+                    // button that was clicked; Apply selected has no name.
+                    $carPhotoAction = 'apply_all';
+                    $carPhotoTarget = null;
+                    foreach (['unignore_car', 'ignore_car', 'apply_car'] as $carPhotoButton) {
+                        $carPhotoButtonValue = ElanInput::get($carPhotoButton, true, false, null);
+                        if ($carPhotoButtonValue === null) {
+                            continue;
+                        }
+                        $carPhotoAction   = $carPhotoButton;
+                        $carPhotoFiltered = VerificationBatchSender::filterCarIds([$carPhotoButtonValue]);
+                        if ($carPhotoFiltered['ids'] === []) {
+                            $carPhotoLogRejected("car id in {$carPhotoButton}", $carPhotoButtonValue);
+                        } else {
+                            $carPhotoTarget = $carPhotoFiltered['ids'][0];
+                        }
+                        break;
+                    }
+                    if ($carPhotoAction !== 'apply_all' && $carPhotoTarget === null) {
+                        $errors[] = 'The car reference of that button was not valid. Nothing was changed.';
+                        break;
+                    }
+
+                    $carPhotoRecovery = new CarPhotoRecovery(dbi());
+
+                    if ($carPhotoTarget !== null && $carPhotoAction !== 'apply_car') {
+                        $carPhotoIsIgnore = $carPhotoAction === 'ignore_car';
+                        $carPhotoToken    = $carPhotoTokenOf($carPhotoTarget);
+                        try {
+                            $carPhotoResult = match (true) {
+                                $carPhotoToken === null => CarPhotoRecoveryResult::Changed,
+                                $carPhotoIsIgnore       => $carPhotoRecovery->ignore($carPhotoTarget, $currentUserId, $carPhotoToken),
+                                default                 => $carPhotoRecovery->undoIgnore($carPhotoTarget, $currentUserId, $carPhotoToken),
+                            };
+                        } catch (ImageProcessingException $e) {
+                            logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_ERRORS, sprintf(
+                                'Car Photos: %s of car %d failed: %s',
+                                $carPhotoIsIgnore ? 'ignore' : 'undo ignore',
+                                $carPhotoTarget,
+                                ExceptionLogSummary::of($e)
+                            ));
+                            $carPhotoVerb = $carPhotoIsIgnore ? 'ignored' : 'shown again';
+                            $errors[] = "Car {$carPhotoTarget} not {$carPhotoVerb} because the server could not check its photos. Check the logs.";
+                            break;
+                        }
+                        $carPhotoVerb = $carPhotoIsIgnore ? 'ignored' : 'shown again';
+                        $carPhotoMessage = match ($carPhotoResult) {
+                            CarPhotoRecoveryResult::Applied => $carPhotoIsIgnore
+                                ? "Car {$carPhotoTarget} ignored. The tab shows it again when its photos change."
+                                : "Car {$carPhotoTarget} shown again.",
+                            CarPhotoRecoveryResult::Changed =>
+                                "Car {$carPhotoTarget} not {$carPhotoVerb} because the photos changed since the page loaded. Check it again.",
+                            CarPhotoRecoveryResult::Unreadable =>
+                                "Car {$carPhotoTarget} not {$carPhotoVerb} because the server could not read the photos. Check the file permissions.",
+                            CarPhotoRecoveryResult::NothingToDo => $carPhotoIsIgnore
+                                ? "Car {$carPhotoTarget} not ignored: it has nothing to show, or it is already ignored."
+                                : "Car {$carPhotoTarget} not shown again: it has nothing to show, or it is not ignored.",
+                        };
+                        if ($carPhotoResult === CarPhotoRecoveryResult::Applied) {
+                            $successes[] = $carPhotoMessage;
+                        } else {
+                            $errors[] = $carPhotoMessage;
+                        }
+                        break;
+                    }
+
+                    // The default [] keeps an absent field from becoming a
+                    // rejected '' value. reattach[<carId>][] holds file names.
+                    $carPhotoReattachField = ElanInput::get('reattach', true, false, []);
+                    if (!is_array($carPhotoReattachField)) {
+                        $carPhotoLogRejected('reattach field', $carPhotoReattachField);
+                        $carPhotoRejected++;
+                        $carPhotoReattachField = [];
+                    }
+                    $carPhotoNames = [];
+                    foreach ($carPhotoReattachField as $carPhotoKey => $carPhotoList) {
+                        $carPhotoFiltered = VerificationBatchSender::filterCarIds([$carPhotoKey]);
+                        if ($carPhotoFiltered['ids'] === []) {
+                            $carPhotoLogRejected('car id in reattach[]', $carPhotoKey);
+                            $carPhotoRejected++;
+                            continue;
+                        }
+                        $carPhotoKeyId = $carPhotoFiltered['ids'][0];
+                        if (!is_array($carPhotoList)) {
+                            $carPhotoLogRejected("photo list in reattach[{$carPhotoKeyId}]", $carPhotoList);
+                            $carPhotoRejected++;
+                            continue;
+                        }
+                        foreach ($carPhotoList as $carPhotoName) {
+                            if (!is_string($carPhotoName)) {
+                                $carPhotoLogRejected("photo name in reattach[{$carPhotoKeyId}]", $carPhotoName);
+                                $carPhotoRejected++;
+                                continue;
+                            }
+                            $carPhotoNames[$carPhotoKeyId][] = $carPhotoName;
+                        }
+                    }
+                    $carPhotoRestoreFiltered = VerificationBatchSender::filterCarIds((array) ElanInput::get('restore', true, false, []));
+                    foreach ($carPhotoRestoreFiltered['rejected'] as $carPhotoRejectedId) {
+                        $carPhotoLogRejected('car id in restore[]', $carPhotoRejectedId);
+                        $carPhotoRejected++;
+                    }
+                    $carPhotoRestoreIds = $carPhotoRestoreFiltered['ids'];
+                    if ($carPhotoRejected > 0) {
+                        $errors[] = "{$carPhotoRejected} value(s) in the form were not valid. The server did not use them.";
+                    }
+
+                    $carPhotoCarIds = array_values(array_unique(array_merge(array_keys($carPhotoNames), $carPhotoRestoreIds)));
+                    sort($carPhotoCarIds);
+                    // A per-row Apply uses only the selections of its own row.
+                    // The admin must know that the other selections were lost.
+                    $carPhotoOthers = [];
+                    if ($carPhotoTarget !== null) {
+                        $carPhotoOthers = array_values(array_diff($carPhotoCarIds, [$carPhotoTarget]));
+                        $carPhotoCarIds = in_array($carPhotoTarget, $carPhotoCarIds, true) ? [$carPhotoTarget] : [];
+                    }
+                    if ($carPhotoCarIds === []) {
+                        $errors[] = $carPhotoTarget !== null
+                            ? "Select a photo to reattach or Restore order for car {$carPhotoTarget}, then click Apply."
+                            : 'Select a photo to reattach or Restore order for at least one car, then click Apply selected.';
+                        if ($carPhotoOthers !== []) {
+                            usWarning(sprintf(
+                                'Your selections for car(s) %s were not applied. Select them again.',
+                                implode(', ', $carPhotoOthers)
+                            ));
+                        }
+                        break;
+                    }
+
+                    $carPhotoResults     = [];
+                    $carPhotoNotAttached = 0;
+                    $carPhotoFailedCar   = null;
+                    foreach ($carPhotoCarIds as $carPhotoCarId) {
+                        $carPhotoToken = $carPhotoTokenOf($carPhotoCarId);
+                        if ($carPhotoToken === null) {
+                            $carPhotoResults[$carPhotoCarId] = CarPhotoRecoveryResult::Changed;
+                            continue;
+                        }
+                        $carPhotoIgnored = [];
+                        try {
+                            $carPhotoResults[$carPhotoCarId] = $carPhotoRecovery->apply(
+                                $carPhotoCarId,
+                                $carPhotoNames[$carPhotoCarId] ?? [],
+                                in_array($carPhotoCarId, $carPhotoRestoreIds, true),
+                                $currentUserId,
+                                $carPhotoToken,
+                                $carPhotoIgnored
+                            );
+                        } catch (ImageProcessingException $e) {
+                            // The image root or the list encoding failed. An
+                            // unreadable image root fails every later car the
+                            // same way, so stop here. An encoding failure is
+                            // for this car only, but the loop stops for it too,
+                            // and the message names the car where it stopped.
+                            logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_ERRORS, sprintf(
+                                'Car Photos: apply for car %d failed: %s',
+                                $carPhotoCarId,
+                                ExceptionLogSummary::of($e)
+                            ));
+                            $carPhotoFailedCar = $carPhotoCarId;
+                            break;
+                        }
+                        // apply() fills the list only when it checked the names
+                        // against the row as the page saw it. After Changed
+                        // (also a compare-and-set miss), Unreadable, or
+                        // NothingToDo because the car has no row now, it is
+                        // empty, so no forged-name warning is logged. The
+                        // nothing-to-change message names such a car.
+                        foreach ($carPhotoIgnored as $carPhotoIgnoredName) {
+                            $carPhotoLogRejected("photo name for car {$carPhotoCarId}, not a detached photo", $carPhotoIgnoredName);
+                            $carPhotoNotAttached++;
+                        }
+                    }
+
+                    if ($carPhotoNotAttached > 0) {
+                        $errors[] = "{$carPhotoNotAttached} photo name(s) in the form were not detached photos of the car and were not attached.";
+                    }
+                    if ($carPhotoResults !== []) {
+                        $carPhotoUpdated    = array_keys($carPhotoResults, CarPhotoRecoveryResult::Applied, true);
+                        $carPhotoChanged    = array_keys($carPhotoResults, CarPhotoRecoveryResult::Changed, true);
+                        $carPhotoUnreadable = array_keys($carPhotoResults, CarPhotoRecoveryResult::Unreadable, true);
+                        $carPhotoNothing    = array_keys($carPhotoResults, CarPhotoRecoveryResult::NothingToDo, true);
+                        if ($carPhotoUpdated !== []) {
+                            $successes[] = $carPhotoTarget !== null
+                                ? "Car {$carPhotoTarget} updated."
+                                : sprintf('%d car(s) updated.', count($carPhotoUpdated));
+                        }
+                        if ($carPhotoChanged !== []) {
+                            $errors[] = sprintf(
+                                '%d car(s) not updated because the photos changed since the page loaded: car(s) %s. Check them again.',
+                                count($carPhotoChanged),
+                                implode(', ', $carPhotoChanged)
+                            );
+                        }
+                        if ($carPhotoUnreadable !== []) {
+                            $errors[] = sprintf(
+                                '%d car(s) not updated because the server could not read the photos: car(s) %s. Check the file permissions.',
+                                count($carPhotoUnreadable),
+                                implode(', ', $carPhotoUnreadable)
+                            );
+                        }
+                        if ($carPhotoNothing !== []) {
+                            $errors[] = sprintf(
+                                '%d car(s) not updated because nothing is left to change: car(s) %s. Reload the tab.',
+                                count($carPhotoNothing),
+                                implode(', ', $carPhotoNothing)
+                            );
+                        }
+                    }
+                    if ($carPhotoOthers !== []) {
+                        usWarning(sprintf(
+                            '%sYour selections for car(s) %s were not applied. Select them again.',
+                            $carPhotoTarget !== null && ($carPhotoResults[$carPhotoTarget] ?? null) === CarPhotoRecoveryResult::Applied
+                                ? "Only car {$carPhotoTarget} was changed. "
+                                : '',
+                            implode(', ', $carPhotoOthers)
+                        ));
+                    }
+                    if ($carPhotoFailedCar !== null) {
+                        $errors[] = sprintf(
+                            '%d car(s) not updated because the server could not check the photos, from car %d on. Check the logs.',
+                            count($carPhotoCarIds) - count($carPhotoResults),
+                            $carPhotoFailedCar
+                        );
+                    }
+                    break;
+
                 // A form from a page loaded before a deploy can post a command
                 // that no longer exists (for example `clear_suppression`).
                 // Without this arm the page reloads with no message.
@@ -1278,6 +1544,14 @@ if (ElanInput::existsPost()) {
                                                 <span class="visually-hidden">Verification needs attention</span>
                                             </span>
                                         <?php } ?>
+                                    </a>
+                                </li>
+
+                                <!-- Car Photos Tab -->
+                                <li class="nav-item">
+                                    <a class="nav-link <?= $activeTab === 'car-photos' ? 'active' : '' ?>"
+                                       href="?tab=car-photos" role="tab">
+                                        <i class="fas fa-images" aria-hidden="true"></i> Car Photos
                                     </a>
                                 </li>
 
