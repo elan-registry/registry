@@ -6,14 +6,14 @@ namespace ElanRegistry\Car;
 
 /**
  * Namespace-scoped override for is_uploaded_file(), used only by
- * FileUploadSecurityTest to exercise the real
- * CarImageProcessor::validateFileUpload() (#1444) outside of an actual HTTP
- * file upload request.
+ * FileUploadSecurityTest and CarImageProcessorBatchTest to exercise the real
+ * CarImageProcessor::validateFileUpload() (#1444) and validateUploadBatch()
+ * (#1844) outside of an actual HTTP file upload request.
  *
  * is_uploaded_file() only ever returns true for files PHP itself moved into
  * a temp location during multipart/form-data processing — it always returns
  * false for a plain file created with file_put_contents(), which is how
- * this test builds its fixtures. Without this override, every call into
+ * these tests build their fixtures. Without this override, every call into
  * validateFileUpload() would fail at that check regardless of the size/error
  * conditions the test is actually trying to exercise.
  *

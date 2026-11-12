@@ -419,6 +419,113 @@ class FileUploadSecurityTest extends TestCase
         }
     }
 
+    /**
+     * The owner sees getUserMessage(), never the technical message. One test
+     * for each owner message (#1844).
+     */
+    public function testTooSmallFileGivesEmptyOrDamagedOwnerMessage(): void
+    {
+        try {
+            CarImageProcessor::validateFileUpload([
+                'error' => UPLOAD_ERR_OK,
+                'size' => 50,
+                'tmp_name' => $this->createTestFile('tiny.jpg', str_repeat('x', 50)),
+            ]);
+            $this->fail('A 50-byte file must be rejected');
+        } catch (ImageProcessingException $e) {
+            $this->assertSame('The photo file is empty or damaged. Choose a different photo.', $e->getUserMessage());
+            $this->assertStringContainsString('File too small', $e->getMessage());
+        }
+    }
+
+    /**
+     * Test that a path that is not an upload gives the not-received owner message
+     */
+    public function testNotAnUploadedFileGivesNotReceivedOwnerMessage(): void
+    {
+        try {
+            CarImageProcessor::validateFileUpload([
+                'error' => UPLOAD_ERR_OK,
+                'size' => 1024,
+                'tmp_name' => $this->tempDir . '/does-not-exist.jpg',
+            ]);
+            $this->fail('A path that is not an upload must be rejected');
+        } catch (ImageProcessingException $e) {
+            $this->assertSame('The server could not receive the photo. Upload the photo again.', $e->getUserMessage());
+            $this->assertStringContainsString('Invalid file upload', $e->getMessage());
+        }
+    }
+
+    /**
+     * Test that a disallowed file type gives the type owner message without the MIME string
+     */
+    public function testDisallowedFileTypeGivesTypeOwnerMessageWithoutMimeString(): void
+    {
+        $file = $this->createTestFile('notes.jpg', 'plain text content');
+
+        try {
+            CarImageProcessor::getMimeType($file);
+            $this->fail('A text file must be rejected');
+        } catch (ImageProcessingException $e) {
+            $this->assertSame('The file is not a JPEG, PNG or GIF photo. Choose a different photo.', $e->getUserMessage());
+            // The technical MIME string is for the log only.
+            $this->assertStringContainsString('text/plain', $e->getMessage());
+            $this->assertStringNotContainsString('text/plain', $e->getUserMessage());
+        }
+    }
+
+    /**
+     * Test that getExtension() gives the type owner message for an unsupported MIME type
+     */
+    public function testGetExtensionForUnsupportedTypeGivesTypeOwnerMessage(): void
+    {
+        try {
+            CarImageProcessor::getExtension('text/plain');
+            $this->fail('An unsupported MIME type must be rejected');
+        } catch (ImageProcessingException $e) {
+            $this->assertSame('The file is not a JPEG, PNG or GIF photo. Choose a different photo.', $e->getUserMessage());
+        }
+    }
+
+    /**
+     * Test that a file the server cannot read gives the unreadable owner message
+     */
+    public function testUnreadableFileGivesUnreadableOwnerMessage(): void
+    {
+        try {
+            CarImageProcessor::getMimeType($this->tempDir . '/does-not-exist.jpg');
+            $this->fail('A missing file must be rejected');
+        } catch (ImageProcessingException $e) {
+            $this->assertSame('The server could not read the photo. Upload the photo again.', $e->getUserMessage());
+            $this->assertStringContainsString('Unable to read file for MIME type detection', $e->getMessage());
+        }
+    }
+
+    /**
+     * 99 bytes are rejected and 100 pass. Literal values, not the constant,
+     * so a change to MIN_FILE_BYTES fails the test (the client check in
+     * car-edit.js reads the same value).
+     */
+    public function testMinFileBytesBoundary(): void
+    {
+        $atMin = [
+            'error' => UPLOAD_ERR_OK,
+            'size' => 100,
+            'tmp_name' => $this->createTestFile('at-min.jpg', str_repeat('x', 100)),
+        ];
+        CarImageProcessor::validateFileUpload($atMin);
+        $this->addToAssertionCount(1);
+
+        $belowMin = [
+            'error' => UPLOAD_ERR_OK,
+            'size' => 99,
+            'tmp_name' => $this->createTestFile('below-min.jpg', str_repeat('x', 99)),
+        ];
+        $this->expectException(ImageProcessingException::class);
+        $this->expectExceptionMessage('File too small');
+        CarImageProcessor::validateFileUpload($belowMin);
+    }
+
     // Helper methods
 
     private function createTestFile(string $filename, string $content): string

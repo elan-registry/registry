@@ -85,7 +85,7 @@ switch ($action) {
 
             if (!empty($errors)) {
                 ApiResponse::validationError(
-                    ['general' => implode('; ', $errors)],
+                    ['general' => $errors],
                     'Cannot add car: validation errors'
                 )->withData('cardetails', $cardetails)
                 ->withLogging(
@@ -99,7 +99,7 @@ switch ($action) {
 
             if (!empty($errors)) {
                 ApiResponse::validationError(
-                    ['general' => implode('; ', $errors)],
+                    ['general' => $errors],
                     'Cannot add car: image upload failed'
                 )->withData('cardetails', $cardetails)
                 ->withLogging(
@@ -172,7 +172,7 @@ switch ($action) {
 
             if (!empty($errors)) {
                 ApiResponse::validationError(
-                    ['general' => implode('; ', $errors)],
+                    ['general' => $errors],
                     'Cannot update car: validation errors'
                 )->withData('cardetails', $cardetails)
                 ->withLogging(
@@ -186,7 +186,7 @@ switch ($action) {
 
             if (!empty($errors)) {
                 ApiResponse::validationError(
-                    ['general' => implode('; ', $errors)],
+                    ['general' => $errors],
                     'Cannot update car: image upload failed'
                 )->withData('cardetails', $cardetails)
                 ->withLogging(
@@ -200,7 +200,7 @@ switch ($action) {
 
             if (!empty($errors)) {
                 ApiResponse::validationError(
-                    ['general' => implode('; ', $errors)],
+                    ['general' => $errors],
                     'Cannot save car: update operation failed'
                 )->withData('cardetails', $cardetails)
                 ->withLogging(
@@ -666,13 +666,17 @@ function updateComments(array &$cardetails): void
  * files. Each name in the requested order that cannot go into the list adds
  * an owner error, so the caller stops the save before the database write and
  * cars.image does not change (#2626). A stored name that the request leaves
- * out is removed with no error.
+ * out is removed with no error. When a new file fails validation, the function
+ * adds one owner error for each bad file. It then returns before it moves a
+ * file, and does not change 'image'.
  *
- * @param array $cardetails Car details. 'image' is set to the JSON image list
+ * @param array $cardetails Car details. 'image' does not change when a new
+ *                          file fails validation
  * @param array $errors     Errors array passed by reference — appended to on failure
  * @return void
  * @throws ImageProcessingException If the car ID or the upload path is not valid,
- *                                  or the upload directory cannot be made
+ *                                  the upload directory cannot be made, or
+ *                                  $_FILES['file'] does not have the upload shape
  */
 function uploadImages(array &$cardetails, array &$errors): void
 {
@@ -737,32 +741,33 @@ function uploadImages(array &$cardetails, array &$errors): void
             }
         }
 
-        //  $_FILES['file']['tmp_name'] is an array so have to use loop
-        foreach ($_FILES['file']['tmp_name'] as $key => $tempFile) {
-            // An empty file input is not a photo. Each other error code goes
-            // to validateFileUpload(): PHP leaves tmp_name empty for a failed
-            // upload, and the owner needs to know which photo failed.
-            if ($_FILES['file']['error'][$key] === UPLOAD_ERR_NO_FILE) {
-                continue;
+        // Check every file before any move. One bad file stops the save, so a
+        // batch that fails validation moves no file (#1844). A later move or
+        // resize failure can still leave the files already moved.
+        $batch = CarImageProcessor::validateUploadBatch($_FILES['file']);
+        if ($batch['errors'] !== []) {
+            foreach ($batch['rejected'] as $rejected) {
+                logger(
+                    $user->data()->id,
+                    LogCategories::LOG_CATEGORY_FILE_ERROR,
+                    // No SECURITY: prefix — most rejections are owner mistakes
+                    // (too small, wrong type), not attacks.
+                    "File upload rejected for carId: " .
+                        $carId . " File: " . clientLogText($rejected['name'], 100) . " Reason: " . $rejected['reason']
+                );
             }
+            array_push($errors, ...$batch['errors']);
+            return;
+        }
+
+        // mimeTypes has an entry for each file to store. Empty file inputs are not in it.
+        foreach ($batch['mimeTypes'] as $key => $mimeType) {
+            $tempFile    = (string) $_FILES['file']['tmp_name'][$key];
             $name        = (string) $_FILES['file']['name'][$key];
             $displayName = CarImageProcessor::cleanClientText($name, 100);
             $logName     = clientLogText($name, 100);
 
             try {
-                // Create file info array for validation
-                $fileInfo = [
-                    'name' => $name,
-                    'tmp_name' => $tempFile,
-                    'error' => $_FILES['file']['error'][$key],
-                    'size' => $_FILES['file']['size'][$key]
-                ];
-
-                // Validate file upload security constraints
-                CarImageProcessor::validateFileUpload($fileInfo);
-
-                // Get and validate MIME type
-                $mimeType = CarImageProcessor::getMimeType($tempFile);
                 $extension = CarImageProcessor::getExtension($mimeType);
 
                 // Generate cryptographically secure filename

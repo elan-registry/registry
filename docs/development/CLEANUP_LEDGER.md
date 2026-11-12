@@ -35,6 +35,10 @@ after an item is written.
 
 ## Items
 
+### `.claude/rules/php-code.md`
+
+- [ ] "When you review error handling" names only the last-resort fallback as an allowed `\Throwable` catch. `ERROR_HANDLING.md` also documents the page-section fault-domain catch (`VerificationTabStatus::read()`, `tab-verification.php`, #2364) as a deliberate exception. Add it to the rule, so reviewers do not flag those files (found in #1844)
+
 ### `app/admin/includes/account-cleanup-helpers.php`
 
 - [ ] Replace 8 × `throw new RuntimeException` with a typed `AccountCleanupException extends ElanRegistryException`. Handle it in `app/api/admin/account-cleanup-data.php` with `ApiResponse` and `LogCategories` (from #1637)
@@ -80,8 +84,9 @@ after an item is written.
 
 ### `app/api/cars/save.php`
 
-- [ ] `uploadImages()` (~L778) `arrayReplaceValue()` replaces the first match. If a new upload has the same browser file name as a stored photo, the new photo takes the stored photo's place (it can become the primary photo). Send a unique placeholder from `car-edit.js`, or replace only a name that is not stored (found in #2609)
+- [ ] `uploadImages()` (~L801) `arrayReplaceValue()` replaces the first match. If a new upload has the same browser file name as a stored photo, the new photo takes the stored photo's place (it can become the primary photo). Send a unique placeholder from `car-edit.js`, or replace only a name that is not stored (found in #2609)
 - [ ] (test coverage) No automated test checks the oversize-body 413 status with `display_errors` Off (the test and production setting). Docker gives 200 with a warning prefix. Add an integration test that starts `php -S` with `-d display_errors=0` and a small `post_max_size`, and asserts 413, JSON, and the log row (found in #2627)
+- [ ] `uploadImages()` checks the whole batch with `validateUploadBatch()` before it moves any file. So a rejected photo leaves no file on disk. But when a later error stops the save (a move or resize failure, or an upload-order error from `checkUploadOrder()`), the files that the request already wrote (and their `-resized-` variants) stay on disk: `userimages/temp/` for an add, `userimages/{carId}/` for an edit. Nothing references or removes them. Delete the files this request wrote before the 422 is sent (found in #1844)
 
 ### `app/assets/js/location-picker.js`
 
@@ -123,15 +128,6 @@ after an item is written.
 ### `database/migrations/20260915000000_add_cars_verification_attempts_columns.php`
 
 - [ ] The `down()` comment (~L84) says "MySQL refuses to DROP a column that a trigger body still references". MySQL 8 allows the drop; the next INSERT, UPDATE or DELETE on `cars` then fails with 1054. The restore-first order is still right. Correct the reason in the comment (found in #2167)
-
-### `docs/development/ERROR_HANDLING.md`
-
-- [ ] The exception table (~L127-157) lists `AdminVerificationException`, which has no file in `usersc/classes/Exceptions/`, and omits `VerificationConfigException`. Check the table against the directory and correct the count in the heading (found in /finish-milestone v2.30.10)
-- [ ] The doc names only the last-resort fallback, and says "no guards around database calls". It does not name the page-section fault-domain catch (catch `\Throwable` around one repository read, log `ExceptionLogSummary::of($e)`, show the section as Unavailable) that `tab-verification.php` and `VerificationTabStatus::read()` use (#2364). Add one paragraph (found in #2458)
-
-### `docs/development/TESTING_STRATEGY.md` + `docs/development/adr/ADR-020-issue-driven-workflow.md`
-
-- [ ] TESTING_STRATEGY.md "Shell Tests for Git Hooks" names only `tests/hooks/lib/harness.sh`. Add `tests/hooks/lib/gh-stub.sh` and `tests/hooks/lib/workflow-extract.sh`, and list PyYAML (needed by `tests/hooks/test-review-render.sh`) in the hook-test prerequisites. ADR-020 (~L225) says a `Blocking` heading fails the build. Since #2506 a `blocking` finding in the structured output fails it (from #2512)
 
 ### `docs/development/adr/ADR-018-build-at-deploy-for-frontend-vendoring.md`
 

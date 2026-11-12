@@ -3,7 +3,9 @@
 //
 // Fix (#755): Per-file .catch() in the hydration chain absorbs individual load
 // errors, shows a non-blocking banner, and preserves submit button state. The
-// submit handler no longer blocks on LOAD_ERROR (only PROCESSING_ERROR blocks).
+// submit handler does not block on a LOCAL (stored) item with LOAD_ERROR. It
+// blocks on PROCESSING_ERROR, and on a new (non-LOCAL) item with LOAD_ERROR,
+// which FilePond sets when a validation plugin rejects the file (#1844).
 //
 // Fix (#1031): fetchImages API-level failures (success:false response or network
 // rejection) now show the same warning banner and disable submit, and network
