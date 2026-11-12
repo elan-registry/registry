@@ -1,6 +1,7 @@
 # All ecosystems run Monday 04:00 Pacific so PRs are open before the Monday dashboard email.
-# The 7-day cooldown skips a release until it is a week old. A bad release is
-# usually found and removed in that time.
+# Every ecosystem has a 7-day cooldown: a version update waits until the release
+# is 7 days old, which gives time for a bad release to be found before we take it.
+# Security updates ignore the cooldown.
 version: 2
 updates:
   - package-ecosystem: "composer"
