@@ -133,6 +133,14 @@ after an item is written.
 
 - [ ] The `down()` comment (~L84) says "MySQL refuses to DROP a column that a trigger body still references". MySQL 8 allows the drop; the next INSERT, UPDATE or DELETE on `cars` then fails with 1054. The restore-first order is still right. Correct the reason in the comment (found in #2167)
 
+### `docs/development/CLASSES.md`
+
+- [ ] The `CarPhotoRecovery` section repeats the PHPDoc: Common Usage, "Used By" and the step list of `apply()`. Keep the behaviour that is not obvious (token and history meaning). Link to the PHPDoc for the rest, as `.claude/rules/php-code.md` says (found in /flow:finish-milestone v2.32.0)
+
+### `docs/development/ENVIRONMENT.md`
+
+- [ ] In "PHP upload and memory limits", the sentence "Nothing checks test and production automatically, so check them after each change" (~L613) wraps wider than the paragraph. Rewrap it. The cell "8M (set 2026-11-11)" (~L581) is a dated fact that will age. Say "Check in cPanel" and keep the date in the release notes (found in /flow:finish-milestone v2.32.0)
+
 ### `docs/development/adr/ADR-018-build-at-deploy-for-frontend-vendoring.md`
 
 - [ ] The "Update 2026-11-10" note says Node 20 or later, but the original Node v18 research text below it is not marked as superseded. Mark that paragraph as superseded (found in /flow:finish-milestone v2.31.2)
@@ -273,6 +281,10 @@ after an item is written.
 - [ ] No test proves the `phpstan.neon` wiring of the path-based rules. A typo in a `files:` or `exemptPages:` entry, or a different working directory for `projectRoot`, makes the rule silently check nothing. Add a smoke test that runs PHPStan with the real config on one known violation per rule. (found in #2327)
 - [ ] `PageMetadataBeforeInitRule` does not report an `exemptPages` entry whose file was deleted or moved, or no longer calls `securePage()`. Report it as a stale exemption. (found in #2327)
 
+### `tests/unit/uploads/FileUploadSecurityTest.php` (test quality)
+
+- [ ] The expected text "The maximum size is 5 MB" (~L187, ~L273) and the size `5242880 // exactly the default 5MB maximum` (~L228) are fixed values. The test passes with the old default and breaks when someone raises `ELAN_IMAGE_SERVER_MAX_SIZE`. Build the text from `ELAN_IMAGE_SERVER_MAX_SIZE` and the size from `CarImageProcessor::serverMaxBytes()` (found in /flow:finish-milestone v2.32.0)
+
 ### `usersc/classes/Car/Car.php` + `app/api/cars/save.php`
 
 - [ ] Each consumer builds the `{root}{ELAN_IMAGE_DIR}{carId}/` path by hand (`Car.php` ~L75 and ~L178, `save.php` ~L41, ~L697 and ~L915, `24-Regenerate-Optimized-Thumbnails.php` ~L381, `app/owner/cars/index.php` ~L120, `details.php` ~L479, `statistics.php` ~L359). Add one helper and call it from each (from #1943)
@@ -282,6 +294,16 @@ after an item is written.
 - [ ] `resolveUploadOrder()` and `checkUploadOrder()` pass array shapes that only docblocks describe, and `checkUploadOrder()` returns data that the caller already holds (`missing`). Use a small readonly value object, or return only `errors`, `storedUnsafe` and `unplaced` (found in /flow:finish-milestone v2.31.2)
 - [ ] `cleanClientText()` is a general client-text helper, not image logic, and `save.php` calls it. Move it to a shared helper when a second caller appears (found in /flow:finish-milestone v2.31.2)
 - [ ] Three callers build the `{name}-resized-{size}.{ext}` file name themselves: `CarView` (srcset), `CarVerificationEmailComposer` (~L514) and `CarPhotoRecovery::thumbnailName()`. Add one `CarImageProcessor` helper next to `isResizedVariant()` and call it from all three (found in #2644 simplify pass)
+
+### `usersc/classes/Car/CarPhotoRecovery.php` + `usersc/classes/Car/CarPhotoRecoveryRow.php` + `usersc/classes/Car/CarPhotoRecoveryResult.php` + `usersc/classes/Car/DetachedPhoto.php` + `usersc/classes/Car/DetachedHow.php`
+
+- [ ] The decision-log array shape is written out three times as an untyped array (`CarPhotoRecovery` ~L63, ~L456, ~L474). Add a small `CarPhotoDecision` value object. It also removes the `is_*` checks at ~L493-525 (found in /flow:finish-milestone v2.32.0)
+- [ ] `CarPhotoRecovery` is about 860 lines and does four jobs: scan, apply, decision log, tokens. Move the decision log and the token helpers (`versionToken()`, `isValidToken()`) to their own classes (found in /flow:finish-milestone v2.32.0)
+- [ ] `@exif_imagetype` (~L690) conflicts with the rule in `.claude/rules/php-code.md` to flag `@`. Add a comment that links the same case in `decodeAndProcessImages()` (found in /flow:finish-milestone v2.32.0)
+- [ ] `DetachedPhoto` takes `$safe` as an argument, but `CarImageProcessor::isSafeFilename()` gives it from `$name`. Compute it in the constructor. Also reject a `$name` with `/` or `..` and an empty `$leftAt` (found in /flow:finish-milestone v2.32.0)
+- [ ] `CarPhotoRecoveryRow` does not check its `list<>` properties with `array_is_list()`. It also does not check `rawImage` against `currentNames`, or `earlierOrder` as the reverse of `currentNames`. Only `buildRow()` keeps those rules (found in /flow:finish-milestone v2.32.0)
+- [ ] `DetachedHow` uses the display text `'partly removed'` as its backed value. Use a key such as `'partly_removed'` and add a `label()` method. Check first whether the value is in a log row (found in /flow:finish-milestone v2.32.0)
+- [ ] `CarPhotoRecoveryResult::Applied` covers three writes: `cars.image`, the ignore log row, and the undo log row. If a caller must tell them apart, add the write kind to `CarPhotoRecoveryOutcome` (found in /flow:finish-milestone v2.32.0)
 
 ### `usersc/classes/Car/CarRepository.php`
 
