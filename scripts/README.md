@@ -77,17 +77,6 @@ Exit codes: 0 written; 1 usage error or the folder does not exist; 2 a `gh`
 call failed or returned an unexpected shape (nothing written). The hermetic
 test is `tests/hooks/test-project-health.sh`.
 
-## Version Management
-
-### update-version.sh
-
-Updates the `VERSION` file in a development environment from the current git tags.
-Run after creating a new tag locally.
-
-```bash
-./scripts/update-version.sh
-```
-
 ## Deployment
 
 ### purge-cloudflare-cache.sh
@@ -216,25 +205,6 @@ to inspect a specific directory.
 ```bash
 php scripts/check-coding-standards.php app/
 ```
-
-## Plugin Updates
-
-### check-plugin-updates.sh
-
-Weekly cron script that compares installed UserSpice plugin versions against the
-upstream `mudmin/usplugins` repository and opens a GitHub issue if any are
-outdated. Run once to set up, then forget.
-
-**Cron setup (run once):**
-
-```bash
-crontab -e
-# Add:
-0 9 * * 1 /path/to/repo/scripts/check-plugin-updates.sh >> /tmp/plugin-update-check.log 2>&1
-```
-
-Requires `gh` CLI authenticated (`gh auth status`). Creates at most one open
-`plugin-update` issue at a time to avoid duplicates.
 
 ## Cleanup ledger
 
@@ -431,82 +401,6 @@ node scripts/playwright-auth-setup.js <test|prod> <admin|nonadmin>
 node scripts/playwright-auth-setup.js test admin
 node scripts/playwright-auth-setup.js prod nonadmin
 ```
-
-## Brevo Webhook Setup (#1888)
-
-Scripts for configuring and verifying the Brevo webhook that feeds the
-bounce-detection endpoint (`app/api/webhooks/brevo.php`, #1887). The capture
-endpoint is test-environment-only. The registration script registers test
-URLs by default, and the production receiver only with `--allow-prod`.
-
-See `docs/releases/RELEASE_NOTES_v2.30.2.md`'s
-"Required Actions After Deployment" for the full post-deployment runbook
-these scripts support, and `docs/development/EMAIL_SYSTEM.md` § "Brevo
-Webhooks — Verified Behaviour (#1871)" for the underlying payload/event facts
-(these scripts don't re-derive those).
-
-### spike-1888/brevo-webhook-capture.php
-
-Temporary capture endpoint deployed by hand to test.elanregistry.org to
-verify a Brevo webhook registration is configured correctly — URL reachable,
-the real `BREVO_WEBHOOK_TOKEN` `Authorization: Bearer` header arrives intact,
-and the subscribed events fire — before the real endpoint's code is deployed
-there. Logs redacted request details to a JSONL file outside the web root.
-Not shipped by the deploy hook (`scripts/` is removed on deploy); reaches a
-server only via manual `scp` and is deleted from the server once
-verification is complete.
-
-Edit `CAPTURE_FILE`'s `<cpanel-account>` placeholder before copying. Requires
-`BREVO_WEBHOOK_TOKEN` to already be set in that server's `.env` (see
-`docs/development/ENVIRONMENT.md` — Brevo Webhook Authentication).
-
-**Deploy path matters:** `REPO_ROOT` is hardcoded as `__DIR__ . '/../..'`, so
-the file must land exactly two directories below the directory holding
-`vendor/autoload.php` and `.env` (the site root) — e.g.
-`~/test.elanregistry.org/scripts/spike-1888/capture.php`, preserving this
-repo's own `scripts/spike-1888/` subpath under the site root. One directory
-level too shallow and `is_file($autoloader)` fails silently into the same
-404 the auth-failure path returns, with no way to tell the two apart from
-the outside.
-
-### spike-1888/brevo-register-webhook.php
-
-CLI script that registers, lists, and deletes Brevo transactional webhooks
-via Brevo's REST API — the checked-in, scriptable alternative to manual
-dashboard clicks that #1888's acceptance criteria require.
-
-The script checks `--url` before it reads `.env` or calls Brevo. A bad URL
-exits with code 2:
-
-- Without `--allow-prod`, the URL must start with `https://test.`.
-- With `--allow-prod` (#2088), the URL must be exactly
-  `https://elanregistry.org/app/api/webhooks/brevo.php`. The flag accepts no
-  other host, path, query, or scheme, and it does not accept test URLs.
-
-```bash
-# Register the test receiver
-php scripts/spike-1888/brevo-register-webhook.php \
-  --create --url='https://test.elanregistry.org/app/api/webhooks/brevo.php' \
-  --token=<same value as that server's BREVO_WEBHOOK_TOKEN>
-
-# Register the production receiver
-php scripts/spike-1888/brevo-register-webhook.php \
-  --create --allow-prod --url='https://elanregistry.org/app/api/webhooks/brevo.php' \
-  --token=<same value as production's BREVO_WEBHOOK_TOKEN> \
-  --description='Elan Registry production'
-
-# List existing transactional webhooks
-php scripts/spike-1888/brevo-register-webhook.php --list-webhooks
-
-# Delete a webhook by id
-php scripts/spike-1888/brevo-register-webhook.php --delete --id=123
-```
-
-Reuses `scripts/spike-1871/brevo-send-test.php`'s proven Brevo API helpers
-(config loading from `plg_sendinblue`, the curl wrapper, redaction) rather
-than duplicating logic ad hoc — see that file for the shared security
-rationale. `scripts/spike-1871/` itself is retained separately and still
-used for sending Mailtrap bounce fixtures during verification.
 
 ## Server Hooks
 

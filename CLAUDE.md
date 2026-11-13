@@ -52,8 +52,8 @@ Shell tests: `bash tests/hooks/test-*.sh`.
 - Docker is the only local environment. Start it with `docker compose up -d`.
   `DB_HOST=db` resolves only inside the Compose network, so run each command
   that needs the database in the app container:
-  `docker compose exec -u www-data app <command>`. The container has no Node.js
-  or git, so npm and git-hooks setup run on the host. Setup and ports:
+  `docker compose exec -u www-data app <command>`. The container has no Node.js,
+  so npm runs on the host. Git-hooks setup also runs on the host. Setup and ports:
   `ENVIRONMENT.md` "Docker Dev Environment".
 - Integration tests need the sendinblue plugin set up as in `ENVIRONMENT.md`,
   "Brevo Plugin Local Setup". Without it, the Brevo tests fail.

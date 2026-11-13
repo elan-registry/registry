@@ -162,11 +162,6 @@ after an item is written.
 
 - [ ] ~L143 `grep -qx '.env.example'` reads `.` as any character. Use `grep -Fxq '.env.example'`, so only the literal file name matches (found in #2233)
 
-### `scripts/spike-1871/` (est. −960)
-
-- [ ] Delete the directory (capture receiver, send-test CLI, README). Its README says it stays "until #1887 ships its own fixtures". #1887 is closed, and the Brevo payload fixtures now live in `BrevoWebhookEventProcessorTest.php` and `EmailEventApplierTest.php`. `scripts/spike-1888/brevo-webhook-capture.php` covers the same capture job. (found in the #2208 audit)
-- [ ] Update the pointers in the same PR: `docs/development/EMAIL_SYSTEM.md` (~L2268, ~L2336), `scripts/README.md` (~L464-467), the comments in `scripts/spike-1888/*.php`, and the wiki page `Brevo-Webhook-Configuration`. (found in the #2208 audit)
-
 ### `tests/Support/BrevoOverrideStub.php` + `tests/Support/BrevoSiteRoot.php` (test-only)
 
 - [ ] `BrevoOverrideStub` writes `"<?php\n"` and `sweep()` deletes any file with that exact content. Add a unique marker comment to the stub content (found in /finish-milestone v2.30.7)

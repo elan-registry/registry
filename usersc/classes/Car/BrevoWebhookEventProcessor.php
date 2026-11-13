@@ -141,10 +141,11 @@ final class BrevoWebhookEventProcessor
         }
 
         if (!in_array($event, self::DELIVERY_EVENTS, true)) {
-            // The webhook subscribes only to delivery events
-            // (scripts/spike-1888/brevo-register-webhook.php). Another name
-            // shows that Brevo added or renamed an event type, and a renamed
-            // bounce event would otherwise stop bounce detection with no sign.
+            // The webhook subscribes only to delivery events (the Brevo
+            // webhook subscription in docs/development/DEPLOYMENT.md).
+            // Another name shows that Brevo added or renamed an event type,
+            // and a renamed bounce event would otherwise stop bounce
+            // detection with no sign.
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
                 'Brevo webhook: ignored event "%s", which is not a delivery event.'
                 . ' Brevo may have added or renamed an event type.',

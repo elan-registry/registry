@@ -8,9 +8,10 @@ use Tests\Support\RobotsTxtGroups;
 
 /**
  * #1542: compare the robots.txt that test.elanregistry.org serves with this
- * repo's robots-test.txt. RobotsTxtPolicyTest reads only the file on disk, so
- * it cannot see a group that an edge layer injects (#1537, #1541: Cloudflare
- * "Managed robots.txt", a dashboard toggle that no code review can see).
+ * repo's deploy/test-overrides/robots-test.txt. RobotsTxtPolicyTest reads
+ * only the file on disk, so it cannot see a group that an edge layer injects
+ * (#1537, #1541: Cloudflare "Managed robots.txt", a dashboard toggle that no
+ * code review can see).
  *
  * The Test host is the most sensitive canary: its whole policy is one
  * `Disallow: /`. Residual gap: a production-only re-enable is not detected.
@@ -19,8 +20,9 @@ use Tests\Support\RobotsTxtGroups;
  * phpunit-integration.xml. Run it with:
  *   vendor/bin/phpunit -c phpunit-integration.xml --group live-network
  *
- * A failure can also mean that a local robots-test.txt edit is not yet
- * deployed, or that the Test host's post-receive robots.txt swap failed.
+ * A failure can also mean that a local deploy/test-overrides/robots-test.txt
+ * edit is not yet deployed, or that the Test host's post-receive robots.txt
+ * swap failed.
  *
  * Evaluator logic is pinned in tests/unit/system/RobotsTxtGroupsTest.php.
  *
@@ -31,7 +33,7 @@ use Tests\Support\RobotsTxtGroups;
 final class RobotsTxtAsServedTest extends TestCase
 {
     private const LIVE_URL = 'https://test.elanregistry.org/robots.txt';
-    private const LOCAL_BASELINE_FILE = 'robots-test.txt';
+    private const LOCAL_BASELINE_FILE = 'deploy/test-overrides/robots-test.txt';
 
     /** @var array<int, RobotsGroup> */
     private static array $liveGroups = [];

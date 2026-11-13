@@ -16,9 +16,9 @@ use PHPUnit\Framework\TestCase;
 class RobotsTxtPolicyTest extends TestCase
 {
     private const ROBOTS_FILE = 'robots.txt';
-    private const ROBOTS_TEST_FILE = 'robots-test.txt';
+    private const ROBOTS_TEST_FILE = 'deploy/test-overrides/robots-test.txt';
     private const LLMS_FILE = 'llms.txt';
-    private const LLMS_TEST_FILE = 'llms-test.txt';
+    private const LLMS_TEST_FILE = 'deploy/test-overrides/llms-test.txt';
 
     /** Represents every crawler in the AI-bot group. */
     private const AI_BOT = 'GPTBot';
