@@ -27,8 +27,8 @@ HTML output with no further escaping. In a file that imports
 **Server values.** Never read `$_SERVER` or call `Server::get()` /
 `Server::getClientIp()` in application code. `usersc/includes/server_globals.php`
 sets validated globals on every request: `$php_self`, `$is_https`, `$host`,
-`$method`, `$request_uri`, `$current_url`, `$current_origin`, `$remote_addr`
-(already Cloudflare-resolved), `$referer`, `$user_agent`. Use
+`$method`, `$content_length`, `$request_uri`, `$current_url`, `$current_origin`,
+`$remote_addr` (already Cloudflare-resolved), `$referer`, `$user_agent`. Use
 `securePage($php_self)`, not `securePage(Server::get('PHP_SELF'))` or
 `securePage($_SERVER['PHP_SELF'])`.
 

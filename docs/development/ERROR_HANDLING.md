@@ -59,7 +59,7 @@ All API responses follow this structure:
 | --- | --- | --- |
 | `success()` | 200 | Successful operation |
 | `error()` | 400 | Generic error (customizable) |
-| `validationError()` | 422 | Field validation failures |
+| `validationError()` | 422 | Field validation failures. Each value is a string or a list of strings. `save.php` sends its errors as a list in `errors.general`. For upload errors, the list has one entry for each rejected photo |
 | `unauthorized()` | 401 | Authentication required |
 | `forbidden()` | 403 | User lacks permissions |
 | `notFound()` | 404 | Resource not found |
@@ -127,19 +127,23 @@ handling and logging.
   - HTTP status code (for API responses)
 - **Autoloading**: PSR-4 autoload via composer.json
 
-**Exception Types** (24 total):
+**Exception Types** (26 total, plus the abstract base `ElanRegistryException`):
+
+A class with no own HTTP code or category gets them from its parent. The base
+class gives 500 and `SystemError`.
 
 | Exception | HTTP | Category | Purpose |
 | --- | --- | --- | --- |
 | **CarException** (abstract) | 500 | CarErrors | Base for all car exceptions |
 | CarCreationException | 500 | CarCreation | Car creation |
 | CarDatabaseException | 500 | DatabaseError | Car database operations |
-| ProfileFlagValueException | 500 | DatabaseError | Stored profile flag value not 0 or 1 (the webhook maps it to a 400 response; cron jobs skip) |
+| CarConcurrentModificationException | 500 | CarErrors | A compare-and-swap write found a changed stored value (extends `CarDatabaseException`). The caller can try again |
+| ProfileFlagValueException | 500 | DatabaseError | Stored profile flag value not 0 or 1 (extends `CarDatabaseException`). The webhook maps it to a 400 response. Cron jobs skip the row |
 | CarDeletionException | 500 | CarDeletion | Car deletion |
 | CarMergeException | 500 | CarMerge | Car merge operation |
 | CarNotFoundException | 404 | CarErrors | Car not found |
 | CarPermissionException | 403 | AccessDenied | Car permission denied *(no production throw site post-v2.28.0; retained for hierarchy)* |
-| CarTransferException | 500 | CarTransferError | Ownership transfer |
+| CarTransferException | 409 | CarTransferError | Ownership transfer conflict, for example two approvals at the same time |
 | CarValidationException | 422 | ValidationError | Car data validation |
 | **OwnerException** (abstract) | 500 | OwnerActions | Base for all owner exceptions |
 | OwnerCreationException | 500 | OwnerActions | Owner creation |
@@ -148,13 +152,14 @@ handling and logging.
 | OwnerValidationException | 422 | ValidationError | Owner data validation |
 | OwnerSearchException | 500 | OwnerActions | Owner search |
 | ValidationException | 422 | ValidationError | Generic validation |
-| LocationServiceException | 400 | LocationService | Location API |
-| ImageProcessingException | 500 | ImageRemoval | Image resize/upload |
-| BackupException | 500 | BackupManager | Backup operations |
-| AdminOperationException | 500 | AdminActions | Admin operations |
-| AdminContactException | 500 | AdminContact | Admin contact form |
-| AdminVerificationException | 500 | AdminVerification | Admin verification |
+| LocationServiceException | 500 | SystemError | Location API |
+| ImageProcessingException | 500 | FileError | Photo upload check, move and resize. When `validateUploadBatch()` rejects a photo, `save.php` returns the owner message with a 422 through `validationError()`. A thrown exception (invalid car ID, path guard, failed mkdir, or malformed `$_FILES` shape) goes to the action's `catch (ElanRegistryException)`, which returns the owner message with a 500 through `serverError()` |
+| BackupException | 500 | BackupError | Backup operations |
+| AdminOperationException | 500 | SystemError | Admin operations |
+| AdminContactException | 500 | CarActions | Admin contact form |
+| VerificationConfigException | 422 | VerificationConfigWarning | Verification cannot be enabled, because the Brevo email integration is not ready |
 | RetentionPurgeException | 500 | RetentionPurge | A retention rule failed in the daily purge job |
+| SessionTimeZoneException | 500 | DatabaseError | The MySQL session `time_zone` cannot be set to the PHP named zone |
 
 **Usage Pattern**:
 
@@ -420,6 +425,15 @@ each with its reason in the code:
 Older guards remain in other files. The cleanup ledger lists each file for
 removal. Do not copy them into new code.
 
+**Page-section fault domain**: this is a deliberate exception to the no-guards
+rule above. A failed read in one page section must not stop the other
+sections. So the page catches `\Throwable` around that one
+repository read, logs `ExceptionLogSummary::of($e)`, and shows the section as
+not available. `VerificationTabStatus::read()` runs each status probe of the
+Verification tab in its own catch, and the panel shows "Unavailable", not a
+guessed value. `tab-verification.php` does the same for the eligible car
+preview and shows a "could not be loaded" message (#2364).
+
 ### Exceptions
 
 **Choose appropriate exception type**: Use specific exceptions (CarValidationException, OwnerValidationException) not generic Exception.
@@ -573,7 +587,7 @@ const result = await api.post('endpoint', data);
 
 - `/usersc/classes/ApiResponse.php` - API response class
 - `/usersc/classes/Exceptions/ElanRegistryException.php` - Base exception (namespace: `ElanRegistry\Exceptions`)
-- `/usersc/classes/Exceptions/` - All exception classes (22 total)
+- `/usersc/classes/Exceptions/` - All exception classes (27 total, with the base class) and `ExceptionLogSummary`
 - `/usersc/classes/LogCategories.php` - Log category constants
 - `/usersc/includes/custom_functions.php` - Global helpers: `dbInt()`, `currentUserId()`, `isRegistryAdmin()`, `requireAdminAjax()`, `getBaseUrl()`
 - `/usersc/js/elan-registry-api.js` - Frontend API client

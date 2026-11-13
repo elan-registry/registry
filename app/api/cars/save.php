@@ -41,6 +41,23 @@ $cardetails = [];
 $targetFilePath = $abs_us_root . $us_url_root . ELAN_IMAGE_DIR;
 $targetURL = $us_url_root . ELAN_IMAGE_DIR;
 
+// A body above post_max_size reaches the script with $_POST and $_FILES empty,
+// so only the declared length tells it apart from a request with no data (#2647).
+$postMaxSize = (string) ini_get('post_max_size');
+if ($method === 'POST' && empty($_POST) && empty($_FILES)
+    && CarImageProcessor::exceedsPostMaxSize($content_length, $postMaxSize)
+) {
+    $postMaxMb = round(ini_parse_quantity($postMaxSize) / 1048576, 1);
+    ApiResponse::error(
+        "The photos are too large to save together. The maximum is {$postMaxMb} MB for one save. Remove some photos, then save again.",
+        413
+    )->withLogging(
+        $user->data() !== null ? (int) $user->data()->id : 0,
+        LogCategories::LOG_CATEGORY_FILE_ERROR,
+        "save.php: body of {$content_length} bytes exceeds post_max_size {$postMaxSize}"
+    )->send();
+}
+
 if ($method !== 'POST' || empty($_POST)) {
     ApiResponse::error('No data received', 400)->send();
 }
@@ -68,7 +85,7 @@ switch ($action) {
 
             if (!empty($errors)) {
                 ApiResponse::validationError(
-                    ['general' => implode('; ', $errors)],
+                    ['general' => $errors],
                     'Cannot add car: validation errors'
                 )->withData('cardetails', $cardetails)
                 ->withLogging(
@@ -82,7 +99,7 @@ switch ($action) {
 
             if (!empty($errors)) {
                 ApiResponse::validationError(
-                    ['general' => implode('; ', $errors)],
+                    ['general' => $errors],
                     'Cannot add car: image upload failed'
                 )->withData('cardetails', $cardetails)
                 ->withLogging(
@@ -93,6 +110,29 @@ switch ($action) {
             }
 
             addCar($cardetails, $errors);
+
+            // addCar() catches its own exceptions and appends to $errors. Check
+            // here, before mvTmpImages(), so a failed create is not reported as
+            // "Car saved but images could not be moved" (#2655). addCar() has
+            // already logged the failure. uploadImages() has already written
+            // the photos to temp storage, and no car row will claim them, so
+            // delete them here. Otherwise each retry leaves another set.
+            if (!empty($errors)) {
+                $removedTmpImages = removeTmpImages($cardetails);
+                $response = ApiResponse::validationError(
+                    ['general' => $errors],
+                    'Cannot add car: validation errors'
+                )->withData('cardetails', $cardetails);
+                if ($removedTmpImages !== []) {
+                    $response = $response->withLogging(
+                        $user->data()->id,
+                        LogCategories::LOG_CATEGORY_CAR_ACTIONS,
+                        'Car add failed: removed temp photos: ' . implode(', ', $removedTmpImages)
+                    );
+                }
+                $response->send();
+            }
+
             mvTmpImages($cardetails, $errors);
 
             if (!empty($errors)) {
@@ -155,7 +195,7 @@ switch ($action) {
 
             if (!empty($errors)) {
                 ApiResponse::validationError(
-                    ['general' => implode('; ', $errors)],
+                    ['general' => $errors],
                     'Cannot update car: validation errors'
                 )->withData('cardetails', $cardetails)
                 ->withLogging(
@@ -169,7 +209,7 @@ switch ($action) {
 
             if (!empty($errors)) {
                 ApiResponse::validationError(
-                    ['general' => implode('; ', $errors)],
+                    ['general' => $errors],
                     'Cannot update car: image upload failed'
                 )->withData('cardetails', $cardetails)
                 ->withLogging(
@@ -183,7 +223,7 @@ switch ($action) {
 
             if (!empty($errors)) {
                 ApiResponse::validationError(
-                    ['general' => implode('; ', $errors)],
+                    ['general' => $errors],
                     'Cannot save car: update operation failed'
                 )->withData('cardetails', $cardetails)
                 ->withLogging(
@@ -318,7 +358,16 @@ function addCar(array &$cardetails, array &$errors): void
         $car->create($cardetails);
         $cardetails['id'] = $car->data()->id;
     } catch (CarValidationException $e) {
-        logger($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Car Creation Validation Error: ' . $e->getMessage());
+        // The two dates are logged because the message alone does not show what
+        // the member entered. updatePurchasedate()/updateSolddate() set each as
+        // a Y-m-d string or null. "none" means the member left the date empty.
+        logger(
+            $user->data()->id,
+            LogCategories::LOG_CATEGORY_VALIDATION_ERROR,
+            'Car Creation Validation Error: ' . $e->getMessage()
+                . ' (purchasedate=' . ($cardetails['purchasedate'] ?? 'none')
+                . ', solddate=' . ($cardetails['solddate'] ?? 'none') . ')'
+        );
         $errors[] = $e->getUserMessage();
     } catch (ElanRegistryException $e) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS, 'Car Creation Error: ' . $e->getMessage());
@@ -649,13 +698,17 @@ function updateComments(array &$cardetails): void
  * files. Each name in the requested order that cannot go into the list adds
  * an owner error, so the caller stops the save before the database write and
  * cars.image does not change (#2626). A stored name that the request leaves
- * out is removed with no error.
+ * out is removed with no error. When a new file fails validation, the function
+ * adds one owner error for each bad file. It then returns before it moves a
+ * file, and does not change 'image'.
  *
- * @param array $cardetails Car details. 'image' is set to the JSON image list
+ * @param array $cardetails Car details. 'image' does not change when a new
+ *                          file fails validation
  * @param array $errors     Errors array passed by reference — appended to on failure
  * @return void
  * @throws ImageProcessingException If the car ID or the upload path is not valid,
- *                                  or the upload directory cannot be made
+ *                                  the upload directory cannot be made, or
+ *                                  $_FILES['file'] does not have the upload shape
  */
 function uploadImages(array &$cardetails, array &$errors): void
 {
@@ -720,32 +773,33 @@ function uploadImages(array &$cardetails, array &$errors): void
             }
         }
 
-        //  $_FILES['file']['tmp_name'] is an array so have to use loop
-        foreach ($_FILES['file']['tmp_name'] as $key => $tempFile) {
-            // An empty file input is not a photo. Each other error code goes
-            // to validateFileUpload(): PHP leaves tmp_name empty for a failed
-            // upload, and the owner needs to know which photo failed.
-            if ($_FILES['file']['error'][$key] === UPLOAD_ERR_NO_FILE) {
-                continue;
+        // Check every file before any move. One bad file stops the save, so a
+        // batch that fails validation moves no file (#1844). A later move or
+        // resize failure can still leave the files already moved.
+        $batch = CarImageProcessor::validateUploadBatch($_FILES['file']);
+        if ($batch['errors'] !== []) {
+            foreach ($batch['rejected'] as $rejected) {
+                logger(
+                    $user->data()->id,
+                    LogCategories::LOG_CATEGORY_FILE_ERROR,
+                    // No SECURITY: prefix — most rejections are owner mistakes
+                    // (too small, wrong type), not attacks.
+                    "File upload rejected for carId: " .
+                        $carId . " File: " . clientLogText($rejected['name'], 100) . " Reason: " . $rejected['reason']
+                );
             }
+            array_push($errors, ...$batch['errors']);
+            return;
+        }
+
+        // mimeTypes has an entry for each file to store. Empty file inputs are not in it.
+        foreach ($batch['mimeTypes'] as $key => $mimeType) {
+            $tempFile    = (string) $_FILES['file']['tmp_name'][$key];
             $name        = (string) $_FILES['file']['name'][$key];
             $displayName = CarImageProcessor::cleanClientText($name, 100);
             $logName     = clientLogText($name, 100);
 
             try {
-                // Create file info array for validation
-                $fileInfo = [
-                    'name' => $name,
-                    'tmp_name' => $tempFile,
-                    'error' => $_FILES['file']['error'][$key],
-                    'size' => $_FILES['file']['size'][$key]
-                ];
-
-                // Validate file upload security constraints
-                CarImageProcessor::validateFileUpload($fileInfo);
-
-                // Get and validate MIME type
-                $mimeType = CarImageProcessor::getMimeType($tempFile);
                 $extension = CarImageProcessor::getExtension($mimeType);
 
                 // Generate cryptographically secure filename
@@ -894,7 +948,8 @@ function fetchImages(int $car_id): void
 /**
  * Move temporary images to permanent car directory
  *
- * Only called from the addCar path (after uploadImages() runs), so every
+ * Only called from the addCar path after addCar() succeeded (the caller stops
+ * on any addCar() error first, #2655), so the car row exists. Every
  * filename in $cardetails['image'] has already been through uploadImages()'s
  * resolveUploadOrder() filter. A new car has no stored names, so only names
  * that pass isValidFilename() stay (or, for a no-upload addCar, the list is
@@ -1018,6 +1073,49 @@ function mvTmpImages(array &$cardetails, array &$errors): void
                 . $cardetails['id'] . ' [' . get_class($e) . ']: ' . $e->getMessage());
         }
     }
+}
+
+/**
+ * Delete the temp files for the photos of a car that was not created.
+ *
+ * Deletes the base file and every "-resized-*" copy that uploadImages() wrote
+ * to userimages/temp/ for each name in $cardetails['image']. A name that
+ * fails isValidFilename() is skipped, because uploadImages() only generates
+ * valid names and the name goes into a glob pattern.
+ *
+ * @param array $cardetails Car details. 'image' is the JSON list from uploadImages()
+ * @return list<string> File names (no directory) of the files deleted, including resized copies
+ */
+function removeTmpImages(array $cardetails): array
+{
+    global $targetFilePath;
+    global $user;
+
+    $tempPath = $targetFilePath . 'temp' . '/';
+    $removed  = [];
+
+    foreach (CarImageProcessor::storedImageFilenames($cardetails['image'] ?? null) as $carimage) {
+        if (!CarImageProcessor::isValidFilename($carimage)) {
+            continue;
+        }
+        $parts = pathinfo($carimage);
+        $files = glob($tempPath . $parts['filename'] . '-resized-*.' . ($parts['extension'] ?? '')) ?: [];
+        $files[] = $tempPath . $carimage;
+
+        foreach ($files as $file) {
+            if (!is_file($file)) {
+                continue;
+            }
+            if (unlink($file)) {
+                $removed[] = basename($file);
+            } else {
+                logger((int) $user->data()->id, LogCategories::LOG_CATEGORY_FILE_ERROR,
+                    "removeTmpImages: failed to delete temp file {$file}");
+            }
+        }
+    }
+
+    return $removed;
 }
 
 /**

@@ -551,4 +551,89 @@ final class CarActionsSaveWiringTest extends TestCase
             '#1975: the $errors guard must end the request with ->send() before uploadImages().'
         );
     }
+
+    /**
+     * In the `case "addCar"` branch, a 422 guard must run after addCar() and
+     * before mvTmpImages(). addCar() catches its own exceptions into $errors,
+     * and the check after mvTmpImages() reports every $errors entry as an
+     * image-move failure with a FileError row.
+     *
+     * @see https://github.com/elan-registry/registry/issues/2655
+     */
+    public function testAddCarChecksErrorsBeforeMovingTempImages(): void
+    {
+        $content = $this->withoutComments($this->readEndpointSource(self::SAVE_ENDPOINT));
+
+        $caseStart = strpos($content, 'case "addCar":');
+        $this->assertIsInt($caseStart, 'Could not locate the addCar case');
+
+        $addPos = strpos($content, 'addCar(', $caseStart);
+        $this->assertIsInt($addPos, 'addCar case must call addCar()');
+
+        $movePos = strpos($content, 'mvTmpImages(', $addPos);
+        $this->assertIsInt($movePos, 'addCar case must call mvTmpImages()');
+
+        $between = substr($content, $addPos, $movePos - $addPos);
+
+        $this->assertStringContainsString('if (!empty($errors))', $between, '#2655: no $errors guard between addCar() and mvTmpImages().');
+        $this->assertStringContainsString('ApiResponse::validationError(', $between, '#2655: the guard must return 422.');
+        $this->assertStringContainsString('->send();', $between, '#2655: the guard must end the request.');
+        $this->assertStringNotContainsString(
+            'LOG_CATEGORY_FILE_ERROR',
+            $between,
+            '#2655: a failed create must not write a FileError row.'
+        );
+    }
+
+    /**
+     * A real image-move failure keeps its 500 response and FileError row, and
+     * both come after mvTmpImages() (#2655).
+     */
+    public function testAddCarImageMoveFailureStillReturnsServerError(): void
+    {
+        $content = $this->withoutComments($this->readEndpointSource(self::SAVE_ENDPOINT));
+
+        $movePos = strpos($content, 'mvTmpImages($cardetails, $errors);', (int) strpos($content, 'case "addCar":'));
+        $this->assertIsInt($movePos, 'addCar case must call mvTmpImages()');
+
+        $after = substr($content, $movePos, 600);
+
+        $guardPos = strpos($after, 'if (!empty($errors))');
+        $this->assertIsInt($guardPos, 'The $errors guard must follow mvTmpImages().');
+
+        // The 500 and the FileError row must sit behind that guard, so a refactor
+        // that drops or merges it fails here.
+        $afterGuard = substr($after, $guardPos);
+        $this->assertStringContainsString(
+            "ApiResponse::serverError('Car saved but images could not be moved",
+            $afterGuard
+        );
+        $this->assertStringContainsString('LOG_CATEGORY_FILE_ERROR', $afterGuard);
+    }
+
+    /**
+     * The ValidationError log line from addCar() records the submitted dates,
+     * so the log shows what a member entered (#2655).
+     */
+    public function testAddCarValidationLogRecordsSubmittedDates(): void
+    {
+        $content = $this->withoutComments($this->readEndpointSource(self::SAVE_ENDPOINT));
+
+        $start = strpos($content, 'function addCar(');
+        $this->assertIsInt($start, 'Could not locate addCar()');
+        $end = strpos($content, 'function ', $start + 10);
+        $this->assertIsInt($end);
+        $body = substr($content, $start, $end - $start);
+
+        $catch = strpos($body, 'catch (CarValidationException');
+        $this->assertIsInt($catch, 'addCar() must catch CarValidationException');
+        $nextCatch = strpos($body, 'catch (ElanRegistryException');
+        $this->assertIsInt($nextCatch, 'addCar() must catch ElanRegistryException');
+        $this->assertLessThan($nextCatch, $catch, 'The CarValidationException catch must come first');
+        $logged = substr($body, $catch, $nextCatch - $catch);
+
+        $this->assertStringContainsString('LOG_CATEGORY_VALIDATION_ERROR', $logged);
+        $this->assertStringContainsString("\$cardetails['purchasedate']", $logged);
+        $this->assertStringContainsString("\$cardetails['solddate']", $logged);
+    }
 }

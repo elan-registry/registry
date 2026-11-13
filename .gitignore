@@ -73,6 +73,8 @@ docs/stories/.htaccess
 userimages/*/*.*
 userimages/*
 !userimages/.htaccess
+# A test that hides userimages/ moves it here for the test run
+userimages.hidden-*/
 
 ########################################
 # Userspice Base & Extensions

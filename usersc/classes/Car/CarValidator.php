@@ -24,6 +24,22 @@ class CarValidator
     public const MIN_CAR_DATE = '1957-01-01';
 
     /**
+     * Latest date a member may enter for a purchase or sale.
+     *
+     * The server date plus one day. The server zone is set in users/init.php
+     * (America/Los_Angeles, UTC-8 in winter). The member zone farthest ahead is
+     * UTC+14, at most 22 hours ahead of the server. So a member's local date is
+     * never more than one day ahead of the server date, and a member who enters
+     * their own local date must not be rejected.
+     *
+     * @return DateTime Midnight of the latest allowed date
+     */
+    public static function maxCarDate(): DateTime
+    {
+        return new DateTime('tomorrow');
+    }
+
+    /**
      * Injected model-reference lookup, or null to resolve one lazily on first use.
      */
     private ?CarModel $carModel;
@@ -171,7 +187,7 @@ class CarValidator
                         }
                         $date->setTime(0, 0, 0);
                         $min = new DateTime(self::MIN_CAR_DATE);
-                        $max = new DateTime('today');
+                        $max = self::maxCarDate();
                         if ($date < $min || $date > $max) {
                             $label = ($key === 'purchasedate') ? 'Purchase date' : 'Sold date';
                             throw new CarValidationException(

@@ -86,9 +86,23 @@ define('ELAN_IMAGE_DIR', 'userimages/');
 define('ELAN_IMAGE_MAX', 6);
 
 /**
- * Maximum upload file size, in MB.
+ * Maximum size of the original photo that the browser accepts, in MB.
+ *
+ * FilePond checks this limit before it resizes the photo so that its longest
+ * side is at most 2048 px. A smaller photo is posted unchanged, so the server
+ * limit (ELAN_IMAGE_SERVER_MAX_SIZE) also applies.
  */
-define('ELAN_IMAGE_UPLOAD_MAX_SIZE', 3.00);
+define('ELAN_IMAGE_UPLOAD_MAX_SIZE', 20.00);
+
+/**
+ * Maximum size of each photo that the server accepts, in MB (1 MB = 1,048,576 bytes).
+ *
+ * CarImageProcessor::validateFileUpload() checks each posted file against this
+ * limit, after the browser resize. If you raise it, also raise the PHP limits
+ * on Docker, test, and production. The minimum values are in
+ * docs/development/ENVIRONMENT.md, "PHP upload and memory limits".
+ */
+define('ELAN_IMAGE_SERVER_MAX_SIZE', 5.00);
 
 /**
  * Maximum display image width, in pixels.

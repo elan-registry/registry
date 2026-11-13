@@ -190,6 +190,27 @@ final class ApiResponseTest extends TestCase
     }
 
     /**
+     * A field can carry a list of messages (save.php sends one message for
+     * each rejected photo, #1844). The body must serialize the list as a JSON
+     * array, not as an object and not as a joined string.
+     *
+     * @return void
+     */
+    #[Group('fast')]
+    public function testValidationErrorSerializesListValueAsJsonList(): void
+    {
+        $response = ApiResponse::validationError(['general' => ['a', 'b']]);
+
+        $json = $this->invokeBuildAndEmitHeaders($response);
+
+        $this->assertStringContainsString('"errors":{"general":["a","b"]}', $json);
+        $decoded = json_decode($json, true);
+        $this->assertIsArray($decoded);
+        $this->assertSame(['a', 'b'], $decoded['errors']['general']);
+        $this->assertSame(422, $response->getStatusCode());
+    }
+
+    /**
      * Test validationError factory method with custom message
      *
      * @return void

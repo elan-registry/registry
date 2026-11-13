@@ -31,12 +31,7 @@ final class DeletedUserAddressesBacklogRuleTest extends IntegrationTestCase
         parent::setUp();
         $this->requireDatabase();
 
-        $tableCheck = $this->db->query(
-            'SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
-            ['er_deleted_user_addresses']
-        );
-        $this->assertFalse($this->db->error(), 'Table check failed: ' . $this->db->errorString());
-        if ($tableCheck->count() === 0) {
+        if (!$this->deletedUserAddressesTableExists()) {
             $this->markTestSkipped('er_deleted_user_addresses does not exist. Run: composer migrate (20261023)');
         }
 

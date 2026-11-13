@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use ElanRegistry\Car\CarImageProcessor;
 use ElanRegistry\Resize;
+use Tests\Support\TestJpeg;
 
 /**
  * Filesystem fixture helpers for car-image integration tests. Helpers take the
@@ -57,20 +58,7 @@ trait CarImageFixtureTrait
      */
     private function makeTestJpeg(string $path, int $width = 40, int $height = 30): void
     {
-        $img = imagecreatetruecolor($width, $height);
-        if ($img === false) {
-            $this->fail('GD could not create a truecolor image canvas');
-        }
-
-        $color = imagecolorallocate($img, 200, 30, 30);
-        if ($color === false) {
-            $this->fail('GD could not allocate a colour for the test image');
-        }
-
-        imagefill($img, 0, 0, $color);
-        if (!imagejpeg($img, $path, 80)) {
-            $this->fail("GD could not write the test JPEG to {$path}");
-        }
+        TestJpeg::write($path, $width, $height);
     }
 
     /**

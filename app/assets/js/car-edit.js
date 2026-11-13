@@ -58,18 +58,27 @@
             // load of stored photos reversed them and each save stored that order.
             itemInsertLocation: 'after',
             maxFiles: cfg.maxFiles,
-            acceptedFileTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+            acceptedFileTypes: ['image/jpeg', 'image/png', 'image/gif'],
             maxFileSize: cfg.maxFileSize,
+            minFileSize: cfg.minFileSize,
+            // maxFileSize is the config MiB value in bytes; base 1024 makes the label show the
+            // config number (20 MB), not the larger decimal value (21 MB).
+            fileSizeBase: 1024,
             instantUpload: false,
             allowProcess: false,
             imageResizeTargetWidth: cfg.imageResizeWidth,
-            imageResizeMode: 'downscale',
+            // FilePond knows only force/cover/contain; any other mode skips the
+            // resize. 'contain' bounds the longest side, and no upscale keeps small photos.
+            imageResizeMode: 'contain',
+            imageResizeUpscale: false,
             credits: false,
             labelIdle: 'Drop photos here or <span class="filepond--label-action">Browse</span>',
             labelFileTypeNotAllowed: 'Invalid file type. Only images are allowed.',
             fileValidateTypeLabelExpectedTypes: 'Expects {allTypes}',
             labelMaxFileSizeExceeded: 'Photo is too large',
             labelMaxFileSize: 'Maximum size is {filesize}',
+            labelMinFileSizeExceeded: 'Photo is empty or damaged',
+            labelMinFileSize: 'Minimum size is {filesize}',
             labelMaxTotalFileSizeExceeded: 'Maximum total size exceeded',
             server: {
                 process: (fieldName, file, metadata, load, error, progress, abort) => {
@@ -206,6 +215,21 @@
 
             if (pondHasProcessingErrors) {
                 $('#message').removeClass('d-none').html('<div class="alert alert-danger">Error: One or more photos failed to upload. Please remove them and try again.</div>');
+                return;
+            }
+
+            // FilePond 4 has no separate invalid status: a validation plugin
+            // rejection sets LOAD_ERROR. A LOCAL item with LOAD_ERROR is a stored
+            // photo that failed to load, which must not block the save.
+            const invalidNames = pond.getFiles()
+                .filter(function(item) {
+                    return item.origin !== FilePond.FileOrigin.LOCAL
+                        && item.status === FilePond.FileStatus.LOAD_ERROR;
+                })
+                .map(function(item) { return NotificationHelper.escapeHtml(item.filename); });
+
+            if (invalidNames.length > 0) {
+                $('#message').removeClass('d-none').html('<div class="alert alert-danger">Remove these photos, then save again: ' + invalidNames.join(', ') + '</div>');
                 return;
             }
 

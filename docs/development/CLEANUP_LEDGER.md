@@ -35,6 +35,10 @@ after an item is written.
 
 ## Items
 
+### `.claude/rules/php-code.md`
+
+- [ ] "When you review error handling" names only the last-resort fallback as an allowed `\Throwable` catch. `ERROR_HANDLING.md` also documents the page-section fault-domain catch (`VerificationTabStatus::read()`, `tab-verification.php`, #2364) as a deliberate exception. Add it to the rule, so reviewers do not flag those files (found in #1844)
+
 ### `app/admin/includes/account-cleanup-helpers.php`
 
 - [ ] Replace 8 × `throw new RuntimeException` with a typed `AccountCleanupException extends ElanRegistryException`. Handle it in `app/api/admin/account-cleanup-data.php` with `ApiResponse` and `LogCategories` (from #1637)
@@ -69,6 +73,10 @@ after an item is written.
 
 - [ ] The decorative icons at ~L28, ~L46 and ~L51 have no `aria-hidden="true"`. The Verification tab around them has it since #2496 (found in #2496 review)
 
+### `app/admin/index.php`
+
+- [ ] The `car_photos_apply` case is about 270 lines of parsing and message building inside the switch (~L1115). Move the parsing and the result messages into a small helper class, so that unit tests can cover them without a page request (found in #2644)
+
 ### `app/admin/scripts/maintenance/21-Fix-Page-Permissions.php` + `app/admin/scripts/maintenance/26-Reconcile-Owner-Fields.php` + `app/api/webhooks/brevo.php` + `usersc/classes/Car/CarAdministrationService.php` + `usersc/classes/Car/CarVerificationSendService.php` + `usersc/includes/custom_functions.php` + `usersc/plugins/hooker/hooks/user_form_hook.php` (logger guards)
 
 - [ ] Each file wraps a `logger()` call in `try`/`catch (\Throwable)` (21 ~L1512, 26 ~L1728, brevo.php ~L156, CarAdministrationService ~L630, CarVerificationSendService ~L531, custom_functions ~L128, user_form_hook ~L60 and ~L105). Remove the guards, or move a deliberate one into the exceptions in ERROR_HANDLING.md with its reason (found in /flow:finish-milestone v2.31.0)
@@ -80,7 +88,11 @@ after an item is written.
 
 ### `app/api/cars/save.php`
 
-- [ ] `uploadImages()` (~L778) `arrayReplaceValue()` replaces the first match. If a new upload has the same browser file name as a stored photo, the new photo takes the stored photo's place (it can become the primary photo). Send a unique placeholder from `car-edit.js`, or replace only a name that is not stored (found in #2609)
+- [ ] The chassis error at ~L582 holds the literal `<strong>ERROR:</strong>`. `errors.general` is a list now, and `car-edit.js` escapes each item, so the tag shows as text. Remove the markup from the message (found in /flow:finish-milestone v2.32.0)
+- [ ] `uploadImages()` (~L713) `arrayReplaceValue()` (~L1207) replaces the first match. If a new upload has the same browser file name as a stored photo, the new photo takes the stored photo's place (it can become the primary photo). Send a unique placeholder from `car-edit.js`, or replace only a name that is not stored (found in #2609)
+- [ ] The oversize-body 413 branch (~L44) calls `withLogging()` before `isLoggedIn()` and `Token::check()`. An anonymous request with a large `Content-Length` writes a `logs` row each time. Send a plain `ApiResponse::error()` without the log, or move the check after the login test (found in /flow:finish-milestone v2.32.0)
+- [ ] (test coverage) No automated test checks the oversize-body 413 status with `display_errors` Off (the test and production setting). Docker gives 200 with a warning prefix. Add an integration test that starts `php -S` with `-d display_errors=0` and a small `post_max_size`, and asserts 413, JSON, and the log row (found in #2627)
+- [ ] `uploadImages()` checks the whole batch with `validateUploadBatch()` before it moves any file. So a rejected photo leaves no file on disk. But when a later error stops the save (a move or resize failure, or an upload-order error from `checkUploadOrder()`), the files that the request already wrote (and their `-resized-` variants) stay on disk: `userimages/temp/` for an add, `userimages/{carId}/` for an edit. Nothing references or removes them. Delete the files this request wrote before the 422 is sent (found in #1844)
 
 ### `app/assets/js/location-picker.js`
 
@@ -123,14 +135,15 @@ after an item is written.
 
 - [ ] The `down()` comment (~L84) says "MySQL refuses to DROP a column that a trigger body still references". MySQL 8 allows the drop; the next INSERT, UPDATE or DELETE on `cars` then fails with 1054. The restore-first order is still right. Correct the reason in the comment (found in #2167)
 
-### `docs/development/ERROR_HANDLING.md`
+### `docs/development/CLASSES.md`
 
-- [ ] The exception table (~L127-157) lists `AdminVerificationException`, which has no file in `usersc/classes/Exceptions/`, and omits `VerificationConfigException`. Check the table against the directory and correct the count in the heading (found in /finish-milestone v2.30.10)
-- [ ] The doc names only the last-resort fallback, and says "no guards around database calls". It does not name the page-section fault-domain catch (catch `\Throwable` around one repository read, log `ExceptionLogSummary::of($e)`, show the section as Unavailable) that `tab-verification.php` and `VerificationTabStatus::read()` use (#2364). Add one paragraph (found in #2458)
+- [ ] The `CarPhotoRecovery` section repeats the PHPDoc: Common Usage, "Used By" and the step list of `apply()`. Keep the behaviour that is not obvious (token and history meaning). Link to the PHPDoc for the rest, as `.claude/rules/php-code.md` says (found in /flow:finish-milestone v2.32.0)
+- [ ] The "Ignore and Undo ignore" bullet says `undoIgnore()` returns `NothingToDo` "when the row is not ignored". The PHPDoc also says "or the car has no row". Add the second case (found in /flow:finish-milestone v2.32.0)
 
-### `docs/development/TESTING_STRATEGY.md` + `docs/development/adr/ADR-020-issue-driven-workflow.md`
+### `docs/development/ENVIRONMENT.md`
 
-- [ ] TESTING_STRATEGY.md "Shell Tests for Git Hooks" names only `tests/hooks/lib/harness.sh`. Add `tests/hooks/lib/gh-stub.sh` and `tests/hooks/lib/workflow-extract.sh`, and list PyYAML (needed by `tests/hooks/test-review-render.sh`) in the hook-test prerequisites. ADR-020 (~L225) says a `Blocking` heading fails the build. Since #2506 a `blocking` finding in the structured output fails it (from #2512)
+- [ ] In "PHP upload and memory limits", the sentence "Nothing checks test and production automatically, so check them after each change" (~L613) wraps wider than the paragraph. Rewrap it. The cell "8M (set 2026-11-11)" (~L581) is a dated fact that will age. Say "Check in cPanel" and keep the date in the release notes (found in /flow:finish-milestone v2.32.0)
+- [ ] In the minimum-values table, the `memory_limit` row says a 2048 px bitmap uses "about 13 MB" in GD. That holds for a 4:3 frame. A 2048x2048 bitmap is about 16 MB. Say "about 13 to 17 MB". The "Why 8M and 64M" text and the `ELAN_IMAGE_UPLOAD_MAX_SIZE` comment in `config.php` imply that the resize keeps files under 5 MB. Say that the server limit applies to a photo posted unchanged (found in /flow:finish-milestone v2.32.0)
 
 ### `docs/development/adr/ADR-018-build-at-deploy-for-frontend-vendoring.md`
 
@@ -148,6 +161,10 @@ after an item is written.
 
 - [ ] `@versatiles/style` 9 needs Node 20 or later, but `package.json` has no `engines` field and the repo has no `.nvmrc`. Add `"engines": { "node": ">=20" }` (found in /flow:finish-milestone v2.31.2)
 - [ ] Drop `filepond-plugin-image-exif-orientation`: the package, its `<script>` tag, its `registerPlugin()` argument (car-edit.js ~29), and its copy line (build.js ~47). Current browsers apply EXIF orientation natively. **First upload one rotated phone JPEG with the plugin removed, and confirm that the stored image and the resized variants are upright.** (found in the #2208 audit)
+
+### `scripts/server-hooks/post-receive`
+
+- [ ] The comment at ~L53 says "Remove the fallback when no rollback target predates #2190". It names no issue, and nothing tracks it. Open an issue for the removal and name it in the comment (found in /flow:finish-milestone v2.32.0)
 
 ### `scripts/render-deploy-sheet.sh`
 
@@ -177,14 +194,6 @@ after an item is written.
 ### `tests/integration/EmailEventRekeyReportAuthTest.php` (test coverage)
 
 - [ ] `testVisitorWhoIsNotLoggedInIsRefusedAndGetsNoReport` checks only that no report shows. A crash passes too. Assert exit code 0 and HTTP 302, as the editor test does (found in #2358 review)
-
-### `tests/integration/IntegrationTestCase.php` (test coverage)
-
-- [ ] `invokeEndpoint()` takes no GET parameters, so it renders only the default admin tab. A test cannot assert the Verification tab "Batch results" area after a manual send. Add a GET-params argument (found in #2572 review)
-
-### `tests/integration/IntegrationTestCase.php` + `tests/integration/RetentionPurgeJobIntegrationTest.php` + `tests/integration/database/DeletedUserAddressesBacklogRuleTest.php`
-
-- [ ] The `er_deleted_user_addresses` table-exists query is copied three times (`deleteDeletedUserAddressRows()` and the two setUps). Add one protected helper in `IntegrationTestCase` and call it from all three (found in /finish-milestone v2.30.10)
 
 ### `tests/integration/OwnerCreateUpdateTransactionRollbackTest.php`
 
@@ -217,6 +226,12 @@ after an item is written.
 ### `tests/playwright/admin-verification-dashboard.spec.js` (test coverage)
 
 - [ ] No test covers the queue and activity forms binding when the switch is absent (#2457). The probe-failure path needs a failing DB (see the note at L267) (found in /flow:finish-milestone v2.31.0)
+
+### `tests/playwright/car-add-invalid-purchasedate.spec.js` + `tests/unit/cars/CarActionsSaveWiringTest.php` (test quality)
+
+- [ ] The photo test (~L181) passes when `uploadImages()` never saw the file, because the "no leftover temp file" check holds with no file written. Also assert that `cardetails.image` holds one stored `img_<hex>.jpg` name (found in /flow:finish-milestone v2.32.0)
+- [ ] The wiring test (~L581) and the spec header say "a failed create writes no FileError row". `removeTmpImages()` writes one when `unlink()` fails. Change the text to "no image-move FileError row" (found in /flow:finish-milestone v2.32.0)
+- [ ] `CarActionsSaveWiringTest` checks `save.php` source text with `strpos`: `testAddCarChecksErrorsBeforeMovingTempImages`, `testAddCarImageMoveFailureStillReturnsServerError`, `testAddCarValidationLogRecordsSubmittedDates`. A correct refactor fails them, and a wrong guard with the same text passes. Delete the first two (the Playwright spec proves the 422, no car row, and no temp file). Replace the third with a check that the ValidationError log row holds `purchasedate=` (found in /flow:finish-milestone v2.32.0)
 
 ### `tests/playwright/car-edit-text-save.spec.js` (test-only, no estimate)
 
@@ -275,14 +290,31 @@ after an item is written.
 - [ ] No test proves the `phpstan.neon` wiring of the path-based rules. A typo in a `files:` or `exemptPages:` entry, or a different working directory for `projectRoot`, makes the rule silently check nothing. Add a smoke test that runs PHPStan with the real config on one known violation per rule. (found in #2327)
 - [ ] `PageMetadataBeforeInitRule` does not report an `exemptPages` entry whose file was deleted or moved, or no longer calls `securePage()`. Report it as a stale exemption. (found in #2327)
 
+### `tests/unit/uploads/FileUploadSecurityTest.php` (test quality)
+
+- [ ] The expected text "The maximum size is 5 MB" (~L187, ~L273) and the size `5242880 // exactly the default 5MB maximum` (~L228) are fixed values. The test passes with the old default and breaks when someone raises `ELAN_IMAGE_SERVER_MAX_SIZE`. Build the text from `ELAN_IMAGE_SERVER_MAX_SIZE` and the size from `CarImageProcessor::serverMaxBytes()` (found in /flow:finish-milestone v2.32.0)
+
 ### `usersc/classes/Car/Car.php` + `app/api/cars/save.php`
 
+- [ ] `removeTmpImages()` skips a name that fails `isValidFilename()` with no log, and treats `glob() === false` as "no resized copies". Log a `LOG_CATEGORY_FILE_ERROR` row before `continue`, and check `glob()` for `false` before the `[]` fallback (found in /flow:finish-milestone v2.32.0)
 - [ ] Each consumer builds the `{root}{ELAN_IMAGE_DIR}{carId}/` path by hand (`Car.php` ~L75 and ~L178, `save.php` ~L41, ~L697 and ~L915, `24-Regenerate-Optimized-Thumbnails.php` ~L381, `app/owner/cars/index.php` ~L120, `details.php` ~L479, `statistics.php` ~L359). Add one helper and call it from each (from #1943)
 
 ### `usersc/classes/Car/CarImageProcessor.php`
 
 - [ ] `resolveUploadOrder()` and `checkUploadOrder()` pass array shapes that only docblocks describe, and `checkUploadOrder()` returns data that the caller already holds (`missing`). Use a small readonly value object, or return only `errors`, `storedUnsafe` and `unplaced` (found in /flow:finish-milestone v2.31.2)
 - [ ] `cleanClientText()` is a general client-text helper, not image logic, and `save.php` calls it. Move it to a shared helper when a second caller appears (found in /flow:finish-milestone v2.31.2)
+- [ ] Three callers build the `{name}-resized-{size}.{ext}` file name themselves: `CarView` (srcset), `CarVerificationEmailComposer` (~L514) and `CarPhotoRecovery::thumbnailName()`. Add one `CarImageProcessor` helper next to `isResizedVariant()` and call it from all three (found in #2644 simplify pass)
+
+### `usersc/classes/Car/CarPhotoRecovery.php` + `usersc/classes/Car/CarPhotoRecoveryRow.php` + `usersc/classes/Car/CarPhotoRecoveryResult.php` + `usersc/classes/Car/DetachedPhoto.php` + `usersc/classes/Car/DetachedHow.php`
+
+- [ ] The decision-log array shape is written out three times as an untyped array (`CarPhotoRecovery` ~L63, ~L435, ~L453). Add a small `CarPhotoDecision` value object. It also removes the `is_*` checks at ~L493-525 (found in /flow:finish-milestone v2.32.0)
+- [ ] `CarPhotoRecovery` is about 840 lines and does four jobs: scan, apply, decision log, tokens. Move the decision log and the token helpers (`versionToken()`, `isValidToken()`) to their own classes (found in /flow:finish-milestone v2.32.0)
+- [ ] `@exif_imagetype` (~L690) conflicts with the rule in `.claude/rules/php-code.md` to flag `@`. Add a comment that links the same case in `decodeAndProcessImages()` (found in /flow:finish-milestone v2.32.0)
+- [ ] `DetachedPhoto` takes `$safe` as an argument, but `CarImageProcessor::isSafeFilename()` gives it from `$name`. Compute it in the constructor. Also reject a `$name` with `/` or `..` and an empty `$leftAt` (found in /flow:finish-milestone v2.32.0)
+- [ ] `CarPhotoRecoveryRow` does not check its `list<>` properties with `array_is_list()`. It also does not check `rawImage` against `currentNames`, or `earlierOrder` as the reverse of `currentNames`. Only `buildRow()` keeps those rules (found in /flow:finish-milestone v2.32.0)
+- [ ] `CarPhotoRecoveryRow::$unreadable` marks an unreadable car folder with the string `{carId}/`, which can be confused with a photo name. Use a `bool $folderUnreadable`. `DetachedPhoto::$leftAt` and `CarPhotoRecoveryRow::$earlierOrderAt` also accept an empty string (found in /flow:finish-milestone v2.32.0)
+- [ ] `DetachedHow` uses the display text `'partly removed'` as its backed value. Use a key such as `'partly_removed'` and add a `label()` method. Check first whether the value is in a log row (found in /flow:finish-milestone v2.32.0)
+- [ ] `CarPhotoRecoveryResult::Applied` covers three writes: `cars.image`, the ignore log row, and the undo log row. If a caller must tell them apart, add the write kind to `CarPhotoRecoveryOutcome` (found in /flow:finish-milestone v2.32.0)
 
 ### `usersc/classes/Car/CarRepository.php`
 

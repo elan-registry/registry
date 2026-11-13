@@ -22,6 +22,8 @@ declare(strict_types=1);
  * - $host          Domain name (no port). Only hosts this application serves
  *                  are kept; a missing or untrusted host is ''
  * - $method        HTTP request method (GET, POST, etc.)
+ * - $content_length Request body size in bytes from the Content-Length
+ *                   header (int). 0 when the header is missing or invalid
  * - $request_uri   Request URI (sanitized)
  * - $current_url   Full URL (scheme://host[:port]/path?query)
  * - $current_origin Origin only (scheme://host[:port]). The port is added only
@@ -108,6 +110,9 @@ unset($server_port, $forwarded_proto);
 // REQUEST_URI includes path and query string (/path?query=value)
 // PHP_SELF is the script path (/index.php or /app/owner/cars/details.php)
 $method = Server::get('REQUEST_METHOD', 'GET');
+// PHP empties $_POST and $_FILES when the body is larger than post_max_size,
+// so the declared body size is the only sign of that case.
+$content_length = Server::get('CONTENT_LENGTH', 0);
 $request_uri = Server::get('REQUEST_URI', '/');
 $php_self = Server::get('PHP_SELF', '/');
 

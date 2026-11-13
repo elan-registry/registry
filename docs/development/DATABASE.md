@@ -148,6 +148,15 @@ rows are the audit trail. See `DeliverabilityFlagLog` in
 [CLASSES.md](CLASSES.md). The migration is in
 `database/migrations/20261012000000_move_deliverability_flags_to_profiles.php`.
 
+The admin Car Photos tab (#2644) writes its decisions as `logs` rows with
+`logtype` `CarActions` and a `lognote` that starts with `Car Photos:`. The
+`logs.metadata` JSON holds `action` (`car_photos_apply`, `car_photos_ignore`
+or `car_photos_unignore`) and `car_id`. An Ignore or Undo ignore row also
+holds `token` and `detached`. An apply row also holds `reattached`,
+`order_restored` and `token_after`. Each row holds the `user_id` and the `ip`
+of the admin or editor. No table holds these decisions, so clearing the logs
+removes them. See `CarPhotoRecovery` in [CLASSES.md](CLASSES.md).
+
 ### Car Registry
 
 #### `cars` - Vehicle records

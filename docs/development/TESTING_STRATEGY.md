@@ -81,13 +81,14 @@ Three tiers, each with a distinct purpose and a hard boundary:
   `tests/unit/uploads/_is_uploaded_file_namespace_overrides.php` relaxes
   `ElanRegistry\Car\is_uploaded_file()` (via PHP's namespace-scoped function
   resolution) so `CarImageProcessor::validateFileUpload()` is testable
-  without a real HTTP upload. Because PHP has no per-file function scoping,
-  once `FileUploadSecurityTest.php` requires it, the relaxed check is
+  without a real HTTP upload. `FileUploadSecurityTest.php` and
+  `CarImageProcessorBatchTest.php` require it. Because PHP has no per-file
+  function scoping, once either test requires it, the relaxed check is
   declared for the rest of that PHPUnit process (`processIsolation="false"`).
   If you add a new test elsewhere that exercises `validateFileUpload()`'s
   `is_uploaded_file()` branch, be aware a file merely on disk
-  (`file_exists()`) will pass that check too — it isn't isolated to
-  `FileUploadSecurityTest.php`.
+  (`file_exists()`) will pass that check too — it isn't isolated to those
+  two test files.
 
   When a test needs a bare global-namespace double for a real UserSpice class
   (not a namespaced project class) to satisfy a type hint the production code

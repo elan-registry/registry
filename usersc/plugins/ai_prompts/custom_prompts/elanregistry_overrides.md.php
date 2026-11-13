@@ -78,6 +78,7 @@ sanitized versions of the most-used server values as plain globals.
 | `$_SERVER['HTTPS']` | `$is_https` / `$scheme` |
 | `$_SERVER['HTTP_HOST']` | `$host` |
 | `$_SERVER['REQUEST_METHOD']` | `$method` |
+| `$_SERVER['CONTENT_LENGTH']` | `$content_length` (int, 0 when missing) |
 | `$_SERVER['REQUEST_URI']` | `$request_uri` |
 | `$_SERVER['REMOTE_ADDR']` | `$remote_addr` (Cloudflare-aware) |
 | `$_SERVER['HTTP_REFERER']` | `$referer` |

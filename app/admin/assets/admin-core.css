@@ -352,3 +352,13 @@
         font-size: 0.7rem;
     }
 }
+
+/* Car Photos tab (#2644): each row is one car, so a heavier rule separates
+   cars and a light rule separates the columns inside a row. */
+.car-photos-table > tbody > tr > td {
+    border-bottom: 3px solid var(--bs-secondary-border-subtle);
+}
+
+.car-photos-table > :not(caption) > tr > :not(:first-child) {
+    border-left: 1px solid var(--bs-border-color-translucent);
+}

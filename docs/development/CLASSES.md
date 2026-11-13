@@ -29,10 +29,14 @@ Use this table to choose the right class for your task:
 | Read the filenames stored in `cars.image` | CarImageProcessor | Static, no DB. Reads a JSON array first. Reads a comma-separated list if the value is not JSON (old rows). Keeps non-empty strings only. Returns `[]` for `null` or `''`. Does not check names. The caller checks each name with `isSafeFilename()` | `CarImageProcessor::storedImageFilenames($car->image)` |
 | Decide which names a save keeps in `cars.image` | CarImageProcessor | Static, no DB. Keeps names this request generated (`isValidFilename()`) and names already stored for the car (`isSafeFilename()`), in the requested order. Returns the other names as `dropped` for the caller to log. Returns a stored name that fails `isSafeFilename()` as `storedUnsafe`, not as `dropped`. Result keys: `kept`, `dropped`, `storedUnsafe` | `CarImageProcessor::resolveUploadOrder($order, $newNames, $storedNames)` |
 | Find the problems that must stop an upload save | CarImageProcessor | Static, no DB. Takes the `resolveUploadOrder()` result, the generated names, and the client names of uploads that already failed with a message. Returns `missing`, `storedUnsafe`, `unplaced`, and `errors`. `errors` holds owner messages. The save can continue only if `errors` is empty | `CarImageProcessor::checkUploadOrder($result, $newNames, $failedNames)` |
-| Check one uploaded file | CarImageProcessor | Static. Throws `ImageProcessingException`. For each `UPLOAD_ERR_*` code, it sets an owner message (`getUserMessage()`). The technical message stays `File upload error: N` | `CarImageProcessor::validateFileUpload($file)` |
+| Check one uploaded file | CarImageProcessor | Static. Throws `ImageProcessingException`. For each `UPLOAD_ERR_*` code, it sets an owner message (`getUserMessage()`). The technical message stays `File upload error: N`. A file above `ELAN_IMAGE_SERVER_MAX_SIZE` (5 MB) gets "Photo is too large. The maximum size is 5 MB. Make the photo smaller, then upload it again." A file below `MIN_FILE_BYTES` (100 bytes) gets "The photo file is empty or damaged. Choose a different photo." A file that `is_uploaded_file()` rejects gets "The server could not receive the photo. Upload the photo again." The technical messages (`File too small`, `Invalid file upload`) stay for the log | `CarImageProcessor::validateFileUpload($file)` |
+| Check all uploaded photos before the save moves any file | CarImageProcessor | Static. Takes the `$_FILES['file']` shape. Skips `UPLOAD_ERR_NO_FILE` entries. Runs `validateFileUpload()` and `getMimeType()` on each other entry. Returns `mimeTypes` (keyed by file index), `errors` (one owner message for each bad file, with the cleaned file name) and `rejected` (the raw name and the technical message, for the log). Throws `ImageProcessingException` on a malformed shape. `save.php` stops the save and moves no file when `errors` is not empty | `CarImageProcessor::validateUploadBatch($_FILES['file'])` |
+| Server limit for each photo, in bytes | CarImageProcessor | Static. `ELAN_IMAGE_SERVER_MAX_SIZE` × 1,048,576. | `CarImageProcessor::serverMaxBytes()` |
+| Check whether a request body is above `post_max_size` | CarImageProcessor | Static. Parses the limit with `ini_parse_quantity()`. A limit of 0 or less means no limit. `save.php` uses it to tell an oversize body (PHP empties `$_POST` and `$_FILES`) from a request with no data | `CarImageProcessor::exceedsPostMaxSize($content_length, ini_get('post_max_size'))` |
 | Remove one image from a car | Car / CarImageProcessor | CAS-guarded single-filename removal; throws on concurrent modification. Pass `true` when the owner removes it, to reset `owner_last_updated` | `$car->removeImage($filename, $isOwnerInitiated)` |
 | Remove multiple images from a car | Car / CarImageProcessor | CAS-guarded bulk removal; returns `['updated' => bool, 'casConflict' => bool]` instead of throwing, for callers (e.g. `mvTmpImages()`'s move-failure cleanup) that already have their own error-reporting path | `$car->removeImages($filenames)` |
 | Decide which status badges (Sold, Verified, New) a car shows | CarBadges | One definition of the badges and the rule that picks them, for the account page and the cars list | `CarBadges::forCar($car->data())` |
+| Find cars with detached photos or a reversed photo order, and reattach, restore or ignore them | CarPhotoRecovery | Admin Car Photos tab. `findRows()` reads only. `apply()` recomputes the names on the server, writes `cars.image` once with compare-and-set, and logs the change. `ignore()` and `undoIgnore()` write only `logs` | `(new CarPhotoRecovery(dbi()))->findRows()` |
 | Query car models by year/series | CarModel | Reference data for model filtering | `$models = (new CarModel())->getAvailableInYear(1970)` |
 
 ---
@@ -1246,6 +1250,333 @@ committed.
 - [ERROR_HANDLING.md](ERROR_HANDLING.md) - Exception patterns
 - `CarImageProcessor` - Filename validation and secure generation
 - [DATABASE.md](DATABASE.md) - `cars.image` JSON column
+
+---
+
+### CarPhotoRecovery
+
+**Location**: `/usersc/classes/Car/CarPhotoRecovery.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: Backs the admin Car Photos tab ([#2644](https://github.com/elan-registry/registry/issues/2644)).
+It finds cars with detached photos or a reversed photo order. An admin or
+editor can reattach each detached photo, restore the earlier order, or ignore
+a car. The class writes only `cars.image` and `logs`. It never deletes a file.
+
+**Terms**:
+
+- **Detached photo**: a file in `userimages/{carId}/` that a `cars_hist` row
+  listed in `cars.image`, and that `cars.image` does not list now.
+- **Orphan**: a file in `userimages/{carId}/` that no `cars_hist` row listed.
+  The tab does not show orphans ([#2643](https://github.com/elan-registry/registry/issues/2643)).
+- **Ignore**: a decision that a car needs no change. It is a `logs` row. It
+  does not change `cars.image`.
+
+**How it works**:
+
+- `findRows()` reads `cars.image` for cars that have a non-NULL history
+  list. It reads the non-NULL
+  `cars_hist.image` values in `id` order. A history row with a NULL `image` is
+  not a state, so the class skips it.
+- The `cars_update` and `cars_delete` triggers write the OLD row. So each
+  history row holds a list from before a save, and its `timestamp` is the time
+  of that save. A save made with `@disable_triggers` set leaves no history
+  row, so `leftAt` can be earlier than the real drop.
+- The class reads history rows in `id` order, not `timestamp` order. `id` is
+  the insert order and the stable tie-break for rows written in the same
+  second.
+- `findRows()` skips a file when any of these is true:
+  - Its name is already in `cars.image`.
+  - Its name is a `-resized-N` copy.
+  - It is not a regular file, or its extension is not `jpg`, `jpeg`, `png` or `gif`.
+  - No history row listed it. The file is an orphan.
+  - `exif_imagetype()` does not report a real JPEG, PNG or GIF.
+  - It has the same SHA-256 hash as a photo in `cars.image` whose file exists.
+    Every plain file name counts, also a legacy name such as `my photo.jpg`
+    that is not safe. A name with `/`, and `.` or `..`, is not read.
+- When two detached files have the same bytes, `findRows()` keeps one. It
+  prefers a safe name, then the file that a later history row listed, then the
+  lower name.
+- `findRows()` returns no row for a car that has no detached photo, no
+  earlier order and no unreadable file.
+- **Sort order**: rows with an earlier order come first, because the admin
+  compares those thumbnails side by side. The other rows follow. Each group is
+  in car ID order.
+- **Read failures**: when the server cannot read a car folder or a photo file
+  (no read access, or `scandir()` or `hash_file()` returns `false`),
+  `findRows()` does not throw. That car gets a row with `unreadable` set, no
+  detached photos and no earlier order, so the tab shows no action for it.
+  The other cars are not affected. This path writes no log row. The class
+  checks the history before it checks read access, so an orphan that the
+  server cannot read does not block its car. A car with no folder has no
+  detached photos, but it can still get a row with an earlier order. A
+  database failure still throws.
+- **Image root**: `findRows()` throws `ImageProcessingException` when the
+  image root is not a readable directory. Without this check, a wrong root
+  shows no car folders, and the tab says that no car has detached photos.
+- **Dropping save**: for each detached photo, the class finds the latest
+  history row that listed it. That row holds the list before the save that
+  dropped the photo. Its `timestamp` is `leftAt`.
+- **`howLeft`**: the class compares the dropping list with the next list, or
+  with `cars.image` when no later row exists. The result is a
+  [`DetachedHow`](#detachedhow-enum) case.
+- **Restore order**: the class finds the reverse of `cars.image` in the
+  history, when the car has two or more photos. The latest matching row sets
+  `earlierOrder` and `earlierOrderAt`.
+- **No restore after a restore**: an order restore makes the `cars_update`
+  trigger write the reversed list to `cars_hist`. So the restored list is
+  again the reverse of a history list. To stop an endless offer, `findRows()`
+  offers no restore while the token of `cars.image` equals the `token_after` of
+  the newest restore log row of the car. A later save changes the token, and
+  the check runs again. If an admin saves the exact restored list again by
+  hand, the token is the same, so the restore offer stays hidden.
+
+**Version token**: `CarPhotoRecovery::versionToken(?string $rawImage)` returns
+the SHA-256 hash (64 lowercase hex characters) of a raw `cars.image` value.
+NULL and `''` give different tokens. The tab puts the token of each row with an
+action in a hidden `seen[<carId>]` field. The `car_photos_apply` handler
+passes it to `apply()`, `ignore()` or `undoIgnore()` as `$seenToken`. When the
+field is missing, or is not 64 lowercase hex characters, the handler does not
+call the method and counts the car as `Changed`.
+
+**`apply()` steps**:
+
+`apply(int $carId, array $reattachNames, bool $restoreOrder, int $userId, string $seenToken): CarPhotoRecoveryOutcome`
+
+The method returns a [`CarPhotoRecoveryOutcome`](#carphotorecoveryoutcome).
+Each "Return" in these steps names the `result` of that outcome.
+
+1. Throw `CarValidationException` when `$carId` is not positive or a name is
+   not a string. Remove duplicate names.
+   Return `NothingToDo` when no name is ticked and `$restoreOrder` is false.
+2. Return `Changed` when `$seenToken` is not 64 lowercase hex characters.
+   Call `findRows([$carId])`. The names come from the server, not from the form.
+   Return `Changed` when the `versionToken()` of the row's `rawImage` is not
+   `$seenToken`: `cars.image` changed since the page loaded. Return `Changed`
+   also when the car is gone.
+   Return `NothingToDo` when `findRows()` returns no row and the token matches.
+   Return `Unreadable` when the row has `unreadable` set.
+   In these cases, the method writes nothing and logs nothing.
+3. Use `earlierOrder` as the base list when `$restoreOrder` is true and an
+   earlier order exists. Else use the current list. When `$restoreOrder` is
+   true and the row has no earlier order, the restore is not available.
+4. Append each ticked name that the row lists as a safe detached photo, in
+   stored order. Each other ticked name is not attached.
+5. Return `NothingToDo` when the order is not restored and no photo is
+   attached. The outcome reports the ignored names and an unavailable
+   restore.
+6. Encode the list with `CarImageProcessor::encodeImages()`. Call
+   `CarRepository::updateImage()` once. Pass the raw `cars.image` value that
+   `findRows()` read. The write succeeds only when the value did not change.
+7. Return `Changed` when the write misses. The method writes no log row.
+   The outcome reports no ignored names and no unavailable restore.
+8. Log one row with `LogCategories::LOG_CATEGORY_CAR_ACTIONS`. The message
+   starts with `Car Photos:`. Return `Applied`. The outcome reports the
+   ignored names and an unavailable restore. The metadata holds:
+   - `action`: `car_photos_apply`
+   - `car_id`
+   - `reattached`: the list of attached names
+   - `order_restored`: `true` or `false`
+   - `token_after`: the `versionToken()` of the list that the call wrote
+
+The handler logs each ignored name and each unavailable restore of the
+outcome to `LOG_CATEGORY_SECURITY`. It reports a count of the names, and the
+message "Restore order for car N was not available. Reload the tab." for a
+restore. A car with only an unavailable restore is not counted as updated, and
+its nothing-to-change message is not shown. When `apply()` throws, the handler
+gets no outcome, so it logs no such warning for that car.
+
+**Ignore and Undo ignore**:
+
+- `ignore(int $carId, int $userId, string $seenToken)` writes one `logs` row
+  and does not change `cars.image`. It returns `Applied`, `Changed`,
+  `Unreadable`, or `NothingToDo` (no row, or the row is already ignored).
+- `undoIgnore(...)` takes the same arguments. It writes a newer `logs` row that
+  cancels the ignore. It returns `NothingToDo` when the row is not ignored.
+- Both rows use the CarActions category and a `Car Photos:` message prefix.
+  The metadata holds `action` (`car_photos_ignore` or `car_photos_unignore`),
+  `car_id`, `token` (the `versionToken()` of `cars.image`) and `detached` (the
+  detached names).
+- `isIgnored(CarPhotoRecoveryRow $row): bool` is true when the newest
+  decision of the car is an ignore, the row still has the same token and the
+  same detached names, and the row is readable. Any change to `cars.image` or
+  to the detached names makes the row show again. A row with `unreadable` set
+  is never ignored, so the tab shows it with its banner.
+- `ignoredBy(CarPhotoRecoveryRow $row): ?array` returns `['userId' => int,
+  'at' => string]` (the user and the `logs.logdate` of the ignore), or `null`
+  when `isIgnored()` is false.
+- The class keeps decisions in `logs` only. There is no new table. When an
+  admin clears the logs, the ignored rows show again, and a restore that was
+  done can be offered again.
+- The class reads the decisions with one query, from rows whose message starts
+  with `Car Photos:` (the private `NOTE_PREFIX` constant, which every log row
+  of the class also uses). A later row wins. It skips a row whose metadata does not
+  decode or lacks a key, so the car shows. An apply row counts only when it
+  restored the order.
+
+**Common Usage**:
+
+```php
+use ElanRegistry\Car\CarPhotoRecovery;
+use ElanRegistry\Car\CarPhotoRecoveryResult;
+
+$recovery = new CarPhotoRecovery(dbi());
+
+// Read only. Returns one row for each car with something to show.
+$rows = $recovery->findRows();
+
+// Write. Reattach two ticked photos of car 123 and restore its order.
+// $seenToken is CarPhotoRecovery::versionToken($row->rawImage) from the page load.
+$outcome = $recovery->apply(
+    123,
+    ['photo-a.jpg', 'photo-b.jpg'],
+    restoreOrder: true,
+    userId: $currentUserId,
+    seenToken: $seenToken,
+);
+// $outcome->ignoredNames: ticked names that the row does not list as safe detached photos.
+
+if ($outcome->result === CarPhotoRecoveryResult::Changed) {
+    // cars.image changed since the page loaded, or during the call. Ask the admin to check the car again.
+}
+
+// Hide a car that needs no change, and show it again.
+$recovery->ignore(123, $currentUserId, $seenToken);
+$recovery->undoIgnore(123, $currentUserId, $seenToken);
+```
+
+Pass `$imageRoot` to the constructor in tests. The default is the real
+`userimages/` directory. Pass `$repository` to replace the default
+`CarRepository`.
+
+**Exceptions**:
+
+- `CarValidationException` - A car ID is not a positive int, or an entry of
+  `$reattachNames` is not a string.
+- `CarDatabaseException` - A query fails, or a row has an unexpected shape.
+- `ImageProcessingException` - The image root is not a readable directory, or
+  `apply()` cannot encode the list. A car file or folder that cannot be read
+  does not throw. See "Read failures".
+
+The tab catches only `ImageProcessingException`, from `findRows()`. It shows an
+alert and writes no log row. The tab does not catch the other two exceptions.
+The `car_photos_apply` handler catches `ImageProcessingException` from
+`apply()`, `ignore()` and `undoIgnore()`. It logs the failure to
+`LOG_CATEGORY_CAR_ERRORS` and shows an error message.
+
+**Used By**:
+
+- `app/admin/includes/tab-car_photos.php` - `findRows()` on each render of
+  the tab, `ignoredBy()` to split the rows, `versionToken()` for the `seen`
+  fields, and `thumbnailName()` for the thumbnails
+- `app/admin/index.php`, command `car_photos_apply` - `apply()` for each
+  selected car (**Apply selected** or the per-row **Apply**), `ignore()` and
+  `undoIgnore()` for one car. The handler accepts the form only for admins
+  and editors.
+
+**See Also**:
+
+- [CarPhotoRecoveryRow](#carphotorecoveryrow) - One car in the tab
+- [DetachedPhoto](#detachedphoto) - One detached photo of a row
+- [DetachedHow](#detachedhow-enum) - How a photo left `cars.image`
+- [CarPhotoRecoveryOutcome](#carphotorecoveryoutcome) - The return value of `apply()`
+- [CarPhotoRecoveryResult](#carphotorecoveryresult-enum) - The outcome of `apply()`, `ignore()` and `undoIgnore()`
+- `CarImageProcessor` - Filename checks, hashing rules and encoding
+- `CarRepository::updateImage()` - The compare-and-set write
+- [DATABASE.md](DATABASE.md) - `cars.image` and `cars_hist`
+- Unit tests: `tests/unit/cars/services/CarPhotoRecoveryTest.php`
+
+#### CarPhotoRecoveryRow
+
+**Location**: `/usersc/classes/Car/CarPhotoRecoveryRow.php`
+
+A `final readonly` value object. `findRows()` returns one for each car.
+
+- `carId`, `rawImage`, `currentNames`: the car and its `cars.image` value.
+- `detached`: a list of [`DetachedPhoto`](#detachedphoto) objects.
+- `earlierOrder`, `earlierOrderAt`: the order to restore and its `cars_hist`
+  time, or `null` for both.
+- `unreadable`: the photo names that the server cannot read, or `{carId}/`
+  when it cannot read the car folder. Empty when all reads succeed. When it is
+  not empty, `detached` is empty and `earlierOrder` is `null`.
+- `attachableNames()`: the safe detached names, in attach order.
+- `detachedNames()`: all detached names, safe or not, in attach order.
+
+The constructor throws `CarValidationException` when:
+
+- `carId` is not positive.
+- `unreadable` is set together with detached photos or an earlier order.
+- Only one of `earlierOrder` and `earlierOrderAt` is set.
+
+#### DetachedPhoto
+
+**Location**: `/usersc/classes/Car/DetachedPhoto.php`
+
+A `final readonly` value object. One detached photo of a row.
+
+- `name`: the file name in the car directory.
+- `safe`: the result of `CarImageProcessor::isSafeFilename()`. `apply()` does
+  not attach a photo whose name is not safe.
+- `howLeft`: a [`DetachedHow`](#detachedhow-enum) case.
+- `leftAt`: the `cars_hist.timestamp` of the save that dropped the photo.
+
+#### CarPhotoRecoveryOutcome
+
+**Location**: `/usersc/classes/Car/CarPhotoRecoveryOutcome.php`
+
+A `final readonly` value object. `apply()` returns one for each call.
+
+- `result`: a [`CarPhotoRecoveryResult`](#carphotorecoveryresult-enum) case.
+- `ignoredNames`: the ticked names that the row does not list as safe
+  detached photos. The call did not attach them.
+- `restoreUnavailable`: `true` when the call was asked to restore the order
+  and the row has no earlier order.
+
+`apply()` sets `ignoredNames` and `restoreUnavailable` only after it checks
+the form against the row as the page saw it. That is, only for `Applied`, or
+for the `NothingToDo` of step 5. They are empty and `false` in these cases:
+
+- `Changed` (also after a compare-and-set miss in step 7) and `Unreadable`,
+  because the page saw other data.
+- The `NothingToDo` of step 2: no row now, for example because a detached
+  file was removed from disk after the page loaded. With no row to check
+  against, a ticked name is not proven false.
+- The `NothingToDo` of step 1: no name is ticked and no restore is asked.
+
+The constructor throws `CarValidationException` when `ignoredNames` is not
+empty or `restoreUnavailable` is `true` for the result `Changed` or
+`Unreadable`.
+
+#### DetachedHow (enum)
+
+**Location**: `/usersc/classes/Car/DetachedHow.php`
+
+How the save that dropped a photo changed the list. The backed value is the
+text that the tab shows:
+
+- `Removed` (`removed`): the next list had no photos.
+- `Replaced` (`replaced`): the next list had photos, but none of the earlier
+  ones.
+- `PartlyRemoved` (`partly removed`): the next list kept some of the earlier
+  photos, but not this one.
+
+#### CarPhotoRecoveryResult (enum)
+
+**Location**: `/usersc/classes/Car/CarPhotoRecoveryResult.php`
+
+The outcome of `apply()`, `ignore()` or `undoIgnore()`:
+
+- `Applied`: `apply()` wrote `cars.image` and one log row. `ignore()` or
+  `undoIgnore()` wrote one log row.
+- `Changed`: `cars.image` changed since the page loaded (token mismatch) or
+  during the call (compare-and-set miss), or the car is gone. The call wrote
+  nothing.
+- `NothingToDo`: the selected actions change nothing, or the car has no row.
+  The call wrote nothing.
+- `Unreadable`: the car folder or a photo file cannot be read. The call wrote
+  nothing and logged nothing. The `car_photos_apply` handler names these cars
+  by ID in an error message.
 
 ---
 
