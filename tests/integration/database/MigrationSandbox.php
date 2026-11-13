@@ -24,8 +24,7 @@ use Symfony\Component\Console\Output\BufferedOutput;
  * `elanregi_migtest_<unixtime>_<rand>` names and never the shared DB_NAME.
  * The `elanregi_` prefix is what the container user's grant covers.
  *
- * This class has no PHPUnit dependency, so the harness self-tests can call it
- * directly.
+ * This class has no PHPUnit dependency, so code outside a test case can use it.
  */
 final class MigrationSandbox
 {
@@ -49,24 +48,9 @@ final class MigrationSandbox
 
     private const DEFAULT_MAX_AGE_SECONDS = 3600;
 
-    /** @var \Closure(?string): \PDO */
-    private \Closure $pdoFactory;
-
     private ?string $name = null;
 
     private ?\PDO $sandboxPdo = null;
-
-    /**
-     * @param (callable(?string): \PDO)|null $pdoFactory Returns a connection to the named
-     *        schema, or a server connection without a schema for null. Null uses
-     *        defaultPdoFactory(). A self-test injects one that fails.
-     */
-    public function __construct(?callable $pdoFactory = null)
-    {
-        $this->pdoFactory = $pdoFactory === null
-            ? self::defaultPdoFactory()
-            : \Closure::fromCallable($pdoFactory);
-    }
 
     /**
      * The PDO factory that connects with the DB_* values of the integration environment.
@@ -112,7 +96,7 @@ final class MigrationSandbox
         $this->assertSandboxName($name);
 
         // Outside the try: a connection error has its own message, and the grant hint would mislead.
-        $server = $this->connect(null);
+        $server = self::connect(null);
         try {
             $server->exec("CREATE DATABASE `{$name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
         } catch (\PDOException $e) {
@@ -310,7 +294,7 @@ final class MigrationSandbox
     public function pdo(): \PDO
     {
         if ($this->sandboxPdo === null) {
-            $this->sandboxPdo = $this->connect($this->name());
+            $this->sandboxPdo = self::connect($this->name());
         }
 
         return $this->sandboxPdo;
@@ -338,7 +322,7 @@ final class MigrationSandbox
     public function dropSchema(string $schema): void
     {
         $this->assertSandboxName($schema);
-        $this->connect(null)->exec("DROP DATABASE IF EXISTS `{$schema}`");
+        self::connect(null)->exec("DROP DATABASE IF EXISTS `{$schema}`");
     }
 
     /**
@@ -350,7 +334,7 @@ final class MigrationSandbox
      */
     public function sweepStale(int $maxAgeSeconds = self::DEFAULT_MAX_AGE_SECONDS): array
     {
-        $statement = $this->connect(null)->prepare(
+        $statement = self::connect(null)->prepare(
             'SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME LIKE ?'
         );
         $statement->execute([str_replace('_', '\\_', self::NAME_PREFIX) . '%']);
@@ -420,7 +404,7 @@ final class MigrationSandbox
             throw new \RuntimeException('Cannot fingerprint a schema with an empty name.');
         }
 
-        $pdo = (new self())->connect(null);
+        $pdo = self::connect(null);
 
         $columns = $pdo->prepare(
             'SELECT TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, COLUMN_TYPE, IS_NULLABLE,
@@ -450,22 +434,11 @@ final class MigrationSandbox
     }
 
     /**
-     * Call the PDO factory. An injected factory can return anything and can leave
-     * errors silent, so every call checks the type and forces exceptions.
-     *
-     * @throws \UnexpectedValueException When the factory does not return a PDO.
+     * Connect to the named schema, or to the server without a schema for null.
      */
-    private function connect(?string $db): \PDO
+    private static function connect(?string $db): \PDO
     {
-        $pdo = ($this->pdoFactory)($db);
-        if (!$pdo instanceof \PDO) {
-            throw new \UnexpectedValueException(
-                'The PDO factory returned ' . get_debug_type($pdo) . ', not a PDO.'
-            );
-        }
-        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
-
-        return $pdo;
+        return (self::defaultPdoFactory())($db);
     }
 
     /**
@@ -482,7 +455,7 @@ final class MigrationSandbox
             throw new \RuntimeException('Could not read ' . self::VENDOR_SQL);
         }
 
-        $statement = $this->connect($this->name())->query($sql);
+        $statement = self::connect($this->name())->query($sql);
         if ($statement === false) {
             throw new \RuntimeException('The vendor schema query returned no statement.');
         }
