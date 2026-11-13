@@ -96,7 +96,7 @@ audit.
 - `database/` - schema and migration tests. `MigrationSandbox` and
   `MigrationSandboxTestCase` run a migration's `up()` and `down()` against a
   throwaway `elanregi_migtest_*` schema. `MigrationSandboxTest` tests the
-  harness. See
+  name guard that stops a sandbox run from dropping the shared schema. See
   [`database/migrations/README.md`, "Testing"](../database/migrations/README.md#testing).
 
 `RobotsTxtAsServedTest.php` in this directory is the one exception to the
