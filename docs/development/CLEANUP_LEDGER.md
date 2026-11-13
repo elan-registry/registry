@@ -224,6 +224,11 @@ after an item is written.
 
 - [ ] No test covers the queue and activity forms binding when the switch is absent (#2457). The probe-failure path needs a failing DB (see the note at L267) (found in /flow:finish-milestone v2.31.0)
 
+### `tests/playwright/car-add-invalid-purchasedate.spec.js` + `tests/unit/cars/CarActionsSaveWiringTest.php` (test quality)
+
+- [ ] The photo test (~L181) passes when `uploadImages()` never saw the file, because the "no leftover temp file" check holds with no file written. Also assert that `cardetails.image` holds one stored `img_<hex>.jpg` name (found in /flow:finish-milestone v2.32.0)
+- [ ] The wiring test (~L581) and the spec header say "a failed create writes no FileError row". `removeTmpImages()` writes one when `unlink()` fails. Change the text to "no image-move FileError row" (found in /flow:finish-milestone v2.32.0)
+
 ### `tests/playwright/car-edit-text-save.spec.js` (test-only, no estimate)
 
 - [ ] The test "comments with special characters save and reload as plain text" (~line 463) fails on every parallel run and in 2 of 4 runs with `--workers=1`. After the mocked save, `car-edit.js` goes to `details.php`, so `#comments` is not on the page and the `waitForFunction` (~line 587) times out. Read the saved comments on `details.php`, or stop the redirect in the mock (found in #2608)
@@ -287,6 +292,7 @@ after an item is written.
 
 ### `usersc/classes/Car/Car.php` + `app/api/cars/save.php`
 
+- [ ] `removeTmpImages()` skips a name that fails `isValidFilename()` with no log, and treats `glob() === false` as "no resized copies". Log a `LOG_CATEGORY_FILE_ERROR` row before `continue`, and check `glob()` for `false` before the `[]` fallback (found in /flow:finish-milestone v2.32.0)
 - [ ] Each consumer builds the `{root}{ELAN_IMAGE_DIR}{carId}/` path by hand (`Car.php` ~L75 and ~L178, `save.php` ~L41, ~L697 and ~L915, `24-Regenerate-Optimized-Thumbnails.php` ~L381, `app/owner/cars/index.php` ~L120, `details.php` ~L479, `statistics.php` ~L359). Add one helper and call it from each (from #1943)
 
 ### `usersc/classes/Car/CarImageProcessor.php`
