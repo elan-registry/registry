@@ -16,6 +16,12 @@ Header always set Referrer-Policy "strict-origin-when-cross-origin"
 Header always set Permissions-Policy "geolocation=(self), camera=(), microphone=(), payment=()"
 Header always set X-XSS-Protection "0"
 
+# Test host only (#2246). Disallow stops the crawl but leaves known URLs in
+# the index, so Test allows crawl and sends noindex on every response.
+# See DEPLOYMENT.md, "Test host indexing block".
+SetEnvIfNoCase Host ^test\.elanregistry\.org$ ER_TEST_HOST
+Header always set X-Robots-Tag "noindex, nofollow" env=ER_TEST_HOST
+
 <Files "*.env*">
     Require all denied
 </Files>

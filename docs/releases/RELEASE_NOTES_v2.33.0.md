@@ -11,11 +11,13 @@ A search visitor lands on the correct production page, not a 404, a test-site pa
 
 ## Admin-Facing Changes
 
+- `test.elanregistry.org` now tells search engines not to index its pages. Deploy steps: `DEPLOYMENT.md`, "Test host indexing block".
+
 ## Issues Resolved
 
 - [#2668](https://github.com/elan-registry/registry/issues/2668) — Remove ledger items that duplicate an issue or change behavior.
 - [#2247](https://github.com/elan-registry/registry/issues/2247) — Redirect legacy `/stats.php` and `/stories` URLs that return 404.
-- WIP: [#2246](https://github.com/elan-registry/registry/issues/2246) — Stop Google from indexing the test site.
+- WIP: [#2246](https://github.com/elan-registry/registry/issues/2246) — Keep `test.elanregistry.org` pages out of Google search results.
 - WIP: [#1960](https://github.com/elan-registry/registry/issues/1960) — Build the canonical URL from a clean path, not the raw request URI.
 - WIP: [#1528](https://github.com/elan-registry/registry/issues/1528) — Give each car detail page its own title and description.
 - WIP: [#2505](https://github.com/elan-registry/registry/issues/2505) — Fix the contact-owner form 500 error for cars owned by the `noowner` account.

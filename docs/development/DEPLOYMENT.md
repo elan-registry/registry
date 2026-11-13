@@ -740,6 +740,8 @@ Test and production servers have a single shared post-receive hook
    `llms-test.txt` exist there. If one is missing, the hook uses the root
    `robots-test.txt` and `llms-test.txt` instead. This happens for an older
    tag that predates the move, and the deploy log names the fallback.
+   `robots-test.txt` allows crawl. The `.htaccess` header keeps Test out of
+   the index. See "Test host indexing block (#2246)".
 3. Run `git describe --tags` and write VERSION file
 4. Run `composer install --no-dev --optimize-autoloader`
 5. Run `php vendor/bin/phinx migrate` (halts deployment on failure)
@@ -977,6 +979,55 @@ fallback works.
 
 5. Check the swap in the push output. Compare the `robots.txt` and `llms.txt`
    hashes with the saved hashes.
+
+#### Test host indexing block (#2246)
+
+`test.elanregistry.org` has no basic auth. Two parts keep it out of search
+results:
+
+1. `.htaccess` sends `X-Robots-Tag: noindex, nofollow` on every response when
+   the `Host` header is `test.elanregistry.org`. A `SetEnvIfNoCase Host` line
+   sets `ER_TEST_HOST`, and `Header always set ... env=ER_TEST_HOST` adds the
+   header. `always` covers error pages and `RewriteRule` redirects too.
+   LiteSpeed on Test does not add the header to `Redirect` and
+   `RedirectMatch` (mod_alias) responses. A probe folder on Test showed this
+   on 2026-11-13. Production runs the same server. Apache in Docker does add
+   the header. Google does
+   not index a redirect. It indexes the target, which has the header.
+   Production never matches the host, so it never sends the header.
+2. `deploy/test-overrides/robots-test.txt` allows crawl (`Allow: /`). The
+   post-receive hook copies it over `robots.txt` on Test.
+
+Why `Disallow: /` alone is not enough:
+
+- `Disallow` stops the crawl. It does not remove a URL that Google already
+  knows. Google can still show that URL in results, with no snippet.
+- Google cannot crawl a disallowed page, so it never sees a `noindex` on it.
+  A `Disallow: /` on Test hides the header. Do not add one back.
+
+To remove URLs that Google indexed before the header, use Search Console
+(domain property `sc-domain:elanregistry.org`): Indexing → Removals → New
+request → Temporarily remove URL → "Remove all URLs with this prefix". Submit
+`https://test.elanregistry.org/` and `http://test.elanregistry.org/`. A
+temporary removal lasts about 6 months. The header must be live on Test
+before it expires.
+
+On the first Test deploy of #2246, purge the whole Test host in the
+Cloudflare dashboard (Caching → Purge by hostname, `test.elanregistry.org`).
+The edge keeps cached copies of static files, PDFs among them, from before
+the header existed. Those copies have no header. After a later deploy that
+changes `robots-test.txt`, purge `https://test.elanregistry.org/robots.txt`
+by URL. `RobotsTxtAsServedTest` fails until the new `robots.txt` is live on
+Test.
+
+Check both hosts after a deploy:
+
+```bash
+curl -sI https://test.elanregistry.org/ | grep -i '^x-robots-tag'  # noindex, nofollow
+curl -sI https://elanregistry.org/ | grep -i '^x-robots-tag'       # no output
+curl -sI 'https://test.elanregistry.org/docs/reference/assets/2014%20Jul%20Elan%20Gearknobs.pdf' \
+  | grep -i '^x-robots-tag'                                       # noindex, nofollow
+```
 
 ## ✅ Post-Deployment Configuration Requirements
 
@@ -1423,6 +1474,8 @@ After each deployment, verify:
 - [ ] New pages have appropriate UserSpice permission levels
 - [ ] Contact forms send to correct email addresses
 - [ ] VERSION file exists on server (created by deployment hook)
+- [ ] Test sends `X-Robots-Tag: noindex, nofollow`, and production sends no
+      `X-Robots-Tag`. Commands: "Test host indexing block (#2246)".
 - [ ] Deployment hooks executed successfully (check server logs)
 - [ ] Test critical user workflows (car registration, editing, contact forms)
 - [ ] Database connectivity and functionality

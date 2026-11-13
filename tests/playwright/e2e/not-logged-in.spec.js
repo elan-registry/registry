@@ -1246,3 +1246,23 @@ test.describe('Location picker city disambiguation (#1400)', () => {
     }).toPass({ timeout: 15000 });
   });
 });
+
+test.describe('Issue #2246 — X-Robots-Tag noindex on the Test host only', () => {
+  test.beforeEach(async ({ }, testInfo) => {
+    if (testInfo.project.name !== 'not-logged-in') {
+      testInfo.skip(true, 'Only runs under the not-logged-in project');
+    }
+  });
+
+  test('GET / sends noindex only when the base URL host is test.elanregistry.org', async ({ request, baseURL }) => {
+    const response = await request.get('', { maxRedirects: 0 });
+    expect(response.status()).toBe(200);
+
+    const robotsTag = response.headers()['x-robots-tag'];
+    if (new URL(baseURL).hostname === 'test.elanregistry.org') {
+      expect(robotsTag, 'Test host must send noindex (#2246)').toContain('noindex');
+    } else {
+      expect(robotsTag, 'Only the Test host sends X-Robots-Tag').toBeUndefined();
+    }
+  });
+});

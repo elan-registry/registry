@@ -45,9 +45,9 @@ final class RobotsTxtGroupsTest extends TestCase
     public static function mergeScenariosProvider(): array
     {
         return [
-            // Equal prefix length: Allow wins the tie, so the Test host is crawlable.
-            'exact tie: injected Allow beats our Disallow (#1537)' => [
-                'deploy/test-overrides/robots-test.txt', '*', [['type' => 'allow', 'path' => '/']], '/', true,
+            // Equal prefix length: Allow wins the tie, so an injected Disallow: / cannot block our Allow: / (#2246).
+            'exact tie: our Allow beats an injected Disallow (#1537, #2246)' => [
+                'deploy/test-overrides/robots-test.txt', '*', [['type' => 'disallow', 'path' => '/']], '/', true,
             ],
             // Accepted outcome per #1541: our longer Allow: /docs/ wins over any blanket Disallow: /.
             'non-tie: our longer Allow beats a shorter injected Disallow (#1541)' => [
