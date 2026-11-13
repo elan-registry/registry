@@ -94,9 +94,10 @@ output of `git rev-parse --show-toplevel` in place of REPO_ROOT:
 > - TRIM — useful, but has copies of one case (same shape for each field,
 >   near-identical data rows, the same check at two layers).
 > - CUT — checks no app behavior. Examples: reads source text and matches
->   a string; tests the test's own regex or fixture; tests PHP, MySQL, or
->   framework behavior; type or `instanceof` checks only; an exact copy of
->   another test; an edge case with no real trigger.
+>   a string (with no docblock reason); tests the test's own regex or
+>   fixture; tests PHP, MySQL, or framework behavior; type or `instanceof`
+>   checks only; an exact copy of another test; an edge case with no real
+>   trigger.
 > - MERGE — overlaps strongly with a named file.
 >
 > Rules:
@@ -110,11 +111,17 @@ output of `git rev-parse --show-toplevel` in place of REPO_ROOT:
 > - Deploy and release safety scripts in `tests/hooks/` keep their depth.
 > - For each CUT, name the test that covers the same behavior, or write
 >   "no coverage needed" and the reason.
+> - Read `docs/development/TESTING_STRATEGY.md`, "Writing a Test That Earns
+>   Its Place". A test that breaks one of its rules is TRIM (copied cases, or
+>   extra malformed-input cases in a dev-only tool test) or CUT (checks no app
+>   behavior, or a migration sandbox test past its release that tests no code
+>   still in use). The security-test and security-gate rules above win: they
+>   make a test KEEP or REPLACE. Name the rule in the reason.
 >
 > Also report these patterns: tests that read source text; tests of the
 > test itself; the same check copied for each field; tests in the wrong
 > tier (for example a Playwright spec that sends only HTTP requests);
-> migration tests for migrations that already deployed; tests bigger than
+> migration sandbox tests past their release; tests bigger than
 > the dev tool they test.
 >
 > Return: a table (file | lines | tests | verdict | reason) grouped by
