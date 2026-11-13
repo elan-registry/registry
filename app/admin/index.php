@@ -1286,17 +1286,13 @@ if (ElanInput::existsPost()) {
                             $carPhotoResults[$carPhotoCarId] = CarPhotoRecoveryResult::Changed;
                             continue;
                         }
-                        $carPhotoIgnored     = [];
-                        $carPhotoRestoreGone = false;
                         try {
-                            $carPhotoResults[$carPhotoCarId] = $carPhotoRecovery->apply(
+                            $carPhotoOutcome = $carPhotoRecovery->apply(
                                 $carPhotoCarId,
                                 $carPhotoNames[$carPhotoCarId] ?? [],
                                 in_array($carPhotoCarId, $carPhotoRestoreIds, true),
                                 $currentUserId,
-                                $carPhotoToken,
-                                $carPhotoIgnored,
-                                $carPhotoRestoreGone
+                                $carPhotoToken
                             );
                         } catch (ImageProcessingException $e) {
                             // The image root or the list encoding failed. An
@@ -1312,17 +1308,18 @@ if (ElanInput::existsPost()) {
                             $carPhotoFailedCar = $carPhotoCarId;
                             break;
                         }
-                        // apply() fills the two out values only when it checked
-                        // the form against the row as the page saw it. After
-                        // Changed (also a compare-and-set miss), Unreadable, or
-                        // NothingToDo because the car has no row now, the list
-                        // is empty and the flag is false, so no warning is
+                        $carPhotoResults[$carPhotoCarId] = $carPhotoOutcome->result;
+                        // The outcome reports ignored names and an unavailable
+                        // restore only when apply() checked the form against
+                        // the row as the page saw it. After Changed (also a
+                        // compare-and-set miss), Unreadable, or NothingToDo
+                        // because the car has no row now, no warning is
                         // logged. The nothing-to-change message names such a car.
-                        foreach ($carPhotoIgnored as $carPhotoIgnoredName) {
+                        foreach ($carPhotoOutcome->ignoredNames as $carPhotoIgnoredName) {
                             $carPhotoLogRejected("photo name for car {$carPhotoCarId}, not a detached photo", $carPhotoIgnoredName);
                             $carPhotoNotAttached++;
                         }
-                        if ($carPhotoRestoreGone) {
+                        if ($carPhotoOutcome->restoreUnavailable) {
                             $carPhotoLogRejected('restore[] car id, no earlier order', $carPhotoCarId);
                             $carPhotoNoRestore[] = $carPhotoCarId;
                         }

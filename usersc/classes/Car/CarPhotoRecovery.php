@@ -131,37 +131,24 @@ final class CarPhotoRecovery
      * Restore the earlier order and/or reattach ticked detached photos of one car.
      *
      * The call finds the row again on the server. It attaches a ticked name
-     * only when the row lists it as a safe detached photo, and puts it in
-     * $ignoredNames otherwise. When the `cars.image` value that the call reads
+     * only when the row lists it as a safe detached photo, and reports it as
+     * ignored otherwise. When the `cars.image` value that the call reads
      * now does not match $seenToken, the car changed since the page loaded,
      * and the call writes nothing. This is also true when the car has no row
      * now. The order restore runs first, then the ticked photos go after the
-     * existing ones, in their stored order. The write is one compare-and-set
-     * against the `cars.image` value that the call read, so the `cars_update`
-     * trigger writes one history row.
+     * existing ones, in their stored order. The write is a compare-and-set
+     * against the `cars.image` value that the call read. So a concurrent save
+     * makes it fail, and the `cars_update` trigger writes one history row.
      *
      * @param int          $carId         The car to change
      * @param array<mixed> $reattachNames The ticked photo names. Each entry must be a string.
      * @param bool         $restoreOrder  True to restore the earlier order
      * @param int          $userId        The admin or editor, for the log row
      * @param string       $seenToken     The versionToken() of `cars.image` when the page loaded
-     * @param array<mixed>|null $ignoredNames Out: the ticked names that the call did not attach because the
-     *                                        row does not list them as safe detached photos. The call fills it
-     *                                        only after it checks the names against a row, and only for the
-     *                                        result Applied or for NothingToDo after that check. Empty when the
-     *                                        result is Changed (also after a compare-and-set miss) or
-     *                                        Unreadable, because the page saw other data. Also empty for
-     *                                        NothingToDo when the car has no row now (for example, a detached
-     *                                        file was removed from disk after the page loaded): with no row
-     *                                        to check against, a ticked name is not proven false. Empty when
-     *                                        the call throws.
-     * @param-out list<string> $ignoredNames
-     * @param bool|null    $restoreUnavailable Out: true when $restoreOrder is true but the row has no earlier
-     *                                         order to restore. The call fills it under the same conditions
-     *                                         as $ignoredNames, and sets false otherwise.
-     * @param-out bool $restoreUnavailable
-     * @return CarPhotoRecoveryResult Applied, Changed (token mismatch, car gone or compare-and-set miss),
-     *                                Unreadable or NothingToDo (also when no name is ticked and $restoreOrder is false)
+     * @return CarPhotoRecoveryOutcome The result: Applied, Changed (token mismatch, car gone or compare-and-set
+     *                                 miss), Unreadable or NothingToDo (also when no name is ticked and
+     *                                 $restoreOrder is false). See the class for when it reports ignored
+     *                                 names and an unavailable restore.
      * @throws CarValidationException   If $carId is not positive, or an entry of $reattachNames is not a string
      * @throws CarDatabaseException     If a query fails
      * @throws ImageProcessingException If the image root is not readable, or the list cannot be encoded
@@ -172,11 +159,7 @@ final class CarPhotoRecovery
         bool $restoreOrder,
         int $userId,
         string $seenToken,
-        ?array &$ignoredNames = null,
-        ?bool &$restoreUnavailable = null,
-    ): CarPhotoRecoveryResult {
-        $ignoredNames       = [];
-        $restoreUnavailable = false;
+    ): CarPhotoRecoveryOutcome {
         if ($carId <= 0) {
             throw new CarValidationException('Car Photos: the car ID must be positive');
         }
@@ -189,12 +172,12 @@ final class CarPhotoRecovery
         }
         $ticked = array_values(array_unique($ticked));
         if ($ticked === [] && !$restoreOrder) {
-            return CarPhotoRecoveryResult::NothingToDo;
+            return new CarPhotoRecoveryOutcome(CarPhotoRecoveryResult::NothingToDo);
         }
 
         $row = $this->rowAsSeen($carId, $seenToken);
         if ($row instanceof CarPhotoRecoveryResult) {
-            return $row;
+            return new CarPhotoRecoveryOutcome($row);
         }
 
         $newNames      = $row->currentNames;
@@ -210,19 +193,15 @@ final class CarPhotoRecovery
         $newNames      = array_merge($newNames, $attached);
 
         if (!$orderRestored && $attached === []) {
-            $ignoredNames       = $notAttachable;
-            $restoreUnavailable = $noRestore;
-            return CarPhotoRecoveryResult::NothingToDo;
+            return new CarPhotoRecoveryOutcome(CarPhotoRecoveryResult::NothingToDo, $notAttachable, $noRestore);
         }
 
         $newJson = (new CarImageProcessor($this->repository))->encodeImages($newNames);
         if (!$this->repository->updateImage($carId, $newJson, $row->rawImage)) {
-            // Another save won the race, so the out values stay empty: the
-            // names were judged against data that is gone.
-            return CarPhotoRecoveryResult::Changed;
+            // Another save won the race, so the outcome reports no ignored
+            // names: they were judged against data that is gone.
+            return new CarPhotoRecoveryOutcome(CarPhotoRecoveryResult::Changed);
         }
-        $ignoredNames       = $notAttachable;
-        $restoreUnavailable = $noRestore;
 
         logger(
             $userId,
@@ -243,7 +222,7 @@ final class CarPhotoRecovery
         );
         $this->decisionLog = null;
 
-        return CarPhotoRecoveryResult::Applied;
+        return new CarPhotoRecoveryOutcome(CarPhotoRecoveryResult::Applied, $notAttachable, $noRestore);
     }
 
     /**

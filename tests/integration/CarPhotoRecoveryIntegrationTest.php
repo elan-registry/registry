@@ -394,7 +394,7 @@ final class CarPhotoRecoveryIntegrationTest extends IntegrationTestCase
         $histBefore = count($this->history($carId));
         $this->assertSame(0, $this->actionLogCount($carId));
 
-        $result = $this->recovery->apply($carId, ['a.jpg'], false, $this->userId, $this->seen($carId));
+        $result = $this->recovery->apply($carId, ['a.jpg'], false, $this->userId, $this->seen($carId))->result;
 
         $this->assertSame(CarPhotoRecoveryResult::Applied, $result);
         $this->assertSame('["b.jpg","a.jpg"]', $this->currentImage($carId));
@@ -415,7 +415,7 @@ final class CarPhotoRecoveryIntegrationTest extends IntegrationTestCase
         $this->setImage($carId, ['a.jpg', 'b.jpg', 'c.jpg']);
         $this->setImage($carId, ['b.jpg', 'a.jpg']);
 
-        $result = $this->recovery->apply($carId, ['c.jpg'], true, $this->userId, $this->seen($carId));
+        $result = $this->recovery->apply($carId, ['c.jpg'], true, $this->userId, $this->seen($carId))->result;
 
         $this->assertSame(CarPhotoRecoveryResult::Applied, $result);
         $this->assertSame('["a.jpg","b.jpg","c.jpg"]', $this->currentImage($carId));
@@ -430,7 +430,7 @@ final class CarPhotoRecoveryIntegrationTest extends IntegrationTestCase
         $this->setImage($carId, ['a.jpg', 'b.jpg']);
         $this->setImage($carId, ['b.jpg', 'a.jpg']);
 
-        $this->assertSame(CarPhotoRecoveryResult::Applied, $this->recovery->apply($carId, [], true, $this->userId, $this->seen($carId)));
+        $this->assertSame(CarPhotoRecoveryResult::Applied, $this->recovery->apply($carId, [], true, $this->userId, $this->seen($carId))->result);
         $this->assertSame('["a.jpg","b.jpg"]', $this->currentImage($carId));
     }
 
@@ -443,7 +443,7 @@ final class CarPhotoRecoveryIntegrationTest extends IntegrationTestCase
         $this->setImage($carId, ['b.jpg']);
         $histBefore = count($this->history($carId));
 
-        $result = $this->recovery->apply($carId, [], false, $this->userId, $this->seen($carId));
+        $result = $this->recovery->apply($carId, [], false, $this->userId, $this->seen($carId))->result;
 
         $this->assertSame(CarPhotoRecoveryResult::NothingToDo, $result);
         $this->assertSame('["b.jpg"]', $this->currentImage($carId));
@@ -458,7 +458,7 @@ final class CarPhotoRecoveryIntegrationTest extends IntegrationTestCase
         $this->setImage($carId, ['a.jpg']);
         $histBefore = count($this->history($carId));
 
-        $this->assertSame(CarPhotoRecoveryResult::NothingToDo, $this->recovery->apply($carId, ['a.jpg'], true, $this->userId, $this->seen($carId)));
+        $this->assertSame(CarPhotoRecoveryResult::NothingToDo, $this->recovery->apply($carId, ['a.jpg'], true, $this->userId, $this->seen($carId))->result);
         $this->assertCount($histBefore, $this->history($carId));
         $this->assertSame(0, $this->actionLogCount($carId));
     }
@@ -476,7 +476,7 @@ final class CarPhotoRecoveryIntegrationTest extends IntegrationTestCase
         $this->assertSame(['my photo.jpg'], $this->detachedNames($row));
         $this->assertFalse($row->detached[0]->safe);
 
-        $this->assertSame(CarPhotoRecoveryResult::NothingToDo, $this->recovery->apply($carId, ['my photo.jpg'], false, $this->userId, $this->seen($carId)));
+        $this->assertSame(CarPhotoRecoveryResult::NothingToDo, $this->recovery->apply($carId, ['my photo.jpg'], false, $this->userId, $this->seen($carId))->result);
         $this->assertSame('["b.jpg"]', $this->currentImage($carId));
         $this->assertCount($histBefore, $this->history($carId));
     }
@@ -488,7 +488,7 @@ final class CarPhotoRecoveryIntegrationTest extends IntegrationTestCase
         $this->setImage($carId, ['a.jpg']);
         $this->setImage($carId, null);
 
-        $this->assertSame(CarPhotoRecoveryResult::Applied, $this->recovery->apply($carId, ['a.jpg'], false, $this->userId, $this->seen($carId)));
+        $this->assertSame(CarPhotoRecoveryResult::Applied, $this->recovery->apply($carId, ['a.jpg'], false, $this->userId, $this->seen($carId))->result);
         $this->assertSame('["a.jpg"]', $this->currentImage($carId));
     }
 
@@ -518,7 +518,7 @@ final class CarPhotoRecoveryIntegrationTest extends IntegrationTestCase
         };
         $recovery = new CarPhotoRecovery($this->db, $this->root, $racingRepository);
 
-        $result = $recovery->apply($carId, ['a.jpg'], false, $this->userId, $this->seen($carId));
+        $result = $recovery->apply($carId, ['a.jpg'], false, $this->userId, $this->seen($carId))->result;
 
         $this->assertSame(CarPhotoRecoveryResult::Changed, $result);
         $this->assertSame('["c.jpg"]', $this->currentImage($carId), 'The competing value stays');
@@ -590,11 +590,11 @@ final class CarPhotoRecoveryIntegrationTest extends IntegrationTestCase
     {
         $carId = $this->carWithThreeDetached();
 
-        $result = $this->recovery->apply($carId, ['x3.jpg', 'x1.jpg'], false, $this->userId, $this->seen($carId), $ignored);
+        $outcome = $this->recovery->apply($carId, ['x3.jpg', 'x1.jpg'], false, $this->userId, $this->seen($carId));
 
-        $this->assertSame(CarPhotoRecoveryResult::Applied, $result);
+        $this->assertSame(CarPhotoRecoveryResult::Applied, $outcome->result);
         $this->assertSame('["keep.jpg","x1.jpg","x3.jpg"]', $this->currentImage($carId), 'Stored order, not tick order');
-        $this->assertSame([], $ignored);
+        $this->assertSame([], $outcome->ignoredNames);
         $this->assertSame(['x2.jpg'], $this->detachedNames($this->onlyRow($carId)), 'The unticked photo stays detached');
     }
 
@@ -607,11 +607,11 @@ final class CarPhotoRecoveryIntegrationTest extends IntegrationTestCase
         $this->setImage($carId, ['my photo.jpg', 'a.jpg']);
         $this->setImage($carId, ['b.jpg']);
 
-        $result = $this->recovery->apply($carId, ['a.jpg', 'evil.jpg', 'my photo.jpg', 'a.jpg'], false, $this->userId, $this->seen($carId), $ignored);
+        $outcome = $this->recovery->apply($carId, ['a.jpg', 'evil.jpg', 'my photo.jpg', 'a.jpg'], false, $this->userId, $this->seen($carId));
 
-        $this->assertSame(CarPhotoRecoveryResult::Applied, $result);
+        $this->assertSame(CarPhotoRecoveryResult::Applied, $outcome->result);
         $this->assertSame('["b.jpg","a.jpg"]', $this->currentImage($carId));
-        $this->assertSame(['evil.jpg', 'my photo.jpg'], $ignored);
+        $this->assertSame(['evil.jpg', 'my photo.jpg'], $outcome->ignoredNames);
     }
 
     public function testApplyChangedReturnsNoIgnoredNamesAndWritesNothing(): void
@@ -621,10 +621,10 @@ final class CarPhotoRecoveryIntegrationTest extends IntegrationTestCase
         $this->setImage($carId, ['b.jpg', 'x.jpg']);
         $histBefore = count($this->history($carId));
 
-        $result = $this->recovery->apply($carId, ['a.jpg', 'evil.jpg'], false, $this->userId, $staleToken, $ignored);
+        $outcome = $this->recovery->apply($carId, ['a.jpg', 'evil.jpg'], false, $this->userId, $staleToken);
 
-        $this->assertSame(CarPhotoRecoveryResult::Changed, $result);
-        $this->assertSame([], $ignored, 'The page saw other data, so no name is judged');
+        $this->assertSame(CarPhotoRecoveryResult::Changed, $outcome->result);
+        $this->assertSame([], $outcome->ignoredNames, 'The page saw other data, so no name is judged');
         $this->assertCount($histBefore, $this->history($carId));
         $this->assertSame(0, $this->actionLogCount($carId));
     }
@@ -637,7 +637,7 @@ final class CarPhotoRecoveryIntegrationTest extends IntegrationTestCase
         $this->setImage($carId, ['b.jpg', 'a.jpg']);
         $this->assertSame([], $this->recovery->findRows([$carId]), 'Test setup: no row now');
 
-        $this->assertSame(CarPhotoRecoveryResult::Changed, $this->recovery->apply($carId, ['a.jpg'], false, $this->userId, $staleToken));
+        $this->assertSame(CarPhotoRecoveryResult::Changed, $this->recovery->apply($carId, ['a.jpg'], false, $this->userId, $staleToken)->result);
         $this->assertSame('["b.jpg","a.jpg"]', $this->currentImage($carId));
         $this->assertSame(0, $this->actionLogCount($carId));
     }
@@ -648,10 +648,10 @@ final class CarPhotoRecoveryIntegrationTest extends IntegrationTestCase
         $this->photo($carId, 'a.jpg', 1);
         $this->setImage($carId, ['a.jpg']);
 
-        $result = $this->recovery->apply($carId, ['evil.jpg'], false, $this->userId, $this->seen($carId), $ignored);
+        $outcome = $this->recovery->apply($carId, ['evil.jpg'], false, $this->userId, $this->seen($carId));
 
-        $this->assertSame(CarPhotoRecoveryResult::NothingToDo, $result);
-        $this->assertSame([], $ignored, 'No row was checked, so no ticked name is proven false');
+        $this->assertSame(CarPhotoRecoveryResult::NothingToDo, $outcome->result);
+        $this->assertSame([], $outcome->ignoredNames, 'No row was checked, so no ticked name is proven false');
     }
 
     // ---- apply log row and the token_after rule ---------------------------
@@ -660,7 +660,7 @@ final class CarPhotoRecoveryIntegrationTest extends IntegrationTestCase
     {
         $carId = $this->carWithOneDetached();
 
-        $this->assertSame(CarPhotoRecoveryResult::Applied, $this->recovery->apply($carId, ['a.jpg'], false, $this->userId, $this->seen($carId)));
+        $this->assertSame(CarPhotoRecoveryResult::Applied, $this->recovery->apply($carId, ['a.jpg'], false, $this->userId, $this->seen($carId))->result);
 
         $metadata = $this->decisionMetadata($carId);
         $this->assertCount(1, $metadata);
@@ -676,7 +676,7 @@ final class CarPhotoRecoveryIntegrationTest extends IntegrationTestCase
         $carId = $this->carWithReversedOrder();
         $this->assertNotNull($this->onlyRow($carId)->earlierOrder, 'Test setup: a restore is offered');
 
-        $this->assertSame(CarPhotoRecoveryResult::Applied, $this->recovery->apply($carId, [], true, $this->userId, $this->seen($carId)));
+        $this->assertSame(CarPhotoRecoveryResult::Applied, $this->recovery->apply($carId, [], true, $this->userId, $this->seen($carId))->result);
 
         // The cars_update trigger wrote [b, a], so the list [a, b] is again the reverse of a history list.
         $history = $this->history($carId);
@@ -701,7 +701,7 @@ final class CarPhotoRecoveryIntegrationTest extends IntegrationTestCase
         $this->assertSame(['c.jpg'], $this->detachedNames($row), 'Test setup: c.jpg is detached');
         $this->assertSame(['a.jpg', 'b.jpg'], $row->earlierOrder, 'Test setup: a restore is offered');
 
-        $this->assertSame(CarPhotoRecoveryResult::Applied, $this->recovery->apply($carId, ['c.jpg'], false, $this->userId, $this->seen($carId)));
+        $this->assertSame(CarPhotoRecoveryResult::Applied, $this->recovery->apply($carId, ['c.jpg'], false, $this->userId, $this->seen($carId))->result);
 
         // Current [b, a, c]: the reverse [c, a, b] is a history list, and no restore wrote this list.
         $this->assertSame(['c.jpg', 'a.jpg', 'b.jpg'], $this->onlyRow($carId)->earlierOrder);

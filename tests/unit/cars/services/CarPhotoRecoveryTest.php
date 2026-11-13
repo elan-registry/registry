@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\Car\CarPhotoRecovery;
+use ElanRegistry\Car\CarPhotoRecoveryOutcome;
 use ElanRegistry\Car\CarPhotoRecoveryResult;
 use ElanRegistry\Car\CarPhotoRecoveryRow;
 use ElanRegistry\Car\CarRepository;
@@ -546,7 +547,7 @@ final class CarPhotoRecoveryTest extends TestCase
             [11, '["a.jpg","b.jpg"]', '2026-01-02 10:00:00'],
         ]);
 
-        $result = $this->recovery($db)->apply(self::CAR, ['c.jpg'], true, 3, $this->seen($db));
+        $result = $this->recovery($db)->apply(self::CAR, ['c.jpg'], true, 3, $this->seen($db))->result;
 
         $this->assertSame(CarPhotoRecoveryResult::Unreadable, $result);
         $this->assertNull($db->updateParams());
@@ -569,7 +570,7 @@ final class CarPhotoRecoveryTest extends TestCase
         $this->assertNull($rows[0]->earlierOrder);
         $this->assertSame([], $rows[0]->attachableNames());
 
-        $result = $this->recovery($db)->apply(self::CAR, ['b.jpg'], true, 3, $this->seen($db));
+        $result = $this->recovery($db)->apply(self::CAR, ['b.jpg'], true, 3, $this->seen($db))->result;
 
         $this->assertSame(CarPhotoRecoveryResult::Unreadable, $result);
         $this->assertNull($db->updateParams());
@@ -638,7 +639,7 @@ final class CarPhotoRecoveryTest extends TestCase
         $this->photo('b.jpg', 2);
         $db = $this->db('[]', [[10, '["b.jpg"]', '2026-01-01 10:00:00']]);
 
-        $result = $this->recovery($db)->apply(self::CAR, ['b.jpg'], false, 3, CarPhotoRecovery::versionToken('["x.jpg"]'));
+        $result = $this->recovery($db)->apply(self::CAR, ['b.jpg'], false, 3, CarPhotoRecovery::versionToken('["x.jpg"]'))->result;
 
         $this->assertSame(CarPhotoRecoveryResult::Changed, $result);
         $this->assertNull($db->updateParams());
@@ -652,7 +653,7 @@ final class CarPhotoRecoveryTest extends TestCase
         $this->photo('b.jpg', 2);
         $db = $this->db('["c.jpg","a.jpg"]', [[10, '["c.jpg","a.jpg","b.jpg"]', '2026-01-01 10:00:00']]);
 
-        $result = $this->recovery($db)->apply(self::CAR, ['b.jpg'], false, 3, $this->seen($db));
+        $result = $this->recovery($db)->apply(self::CAR, ['b.jpg'], false, 3, $this->seen($db))->result;
 
         $this->assertSame(CarPhotoRecoveryResult::Applied, $result);
         $this->assertSame(['["c.jpg","a.jpg","b.jpg"]', self::CAR, '["c.jpg","a.jpg"]'], $db->updateParams());
@@ -669,7 +670,7 @@ final class CarPhotoRecoveryTest extends TestCase
             [11, '["a.jpg","b.jpg"]', '2026-01-02 10:00:00'],
         ]);
 
-        $result = $this->recovery($db)->apply(self::CAR, ['b.jpg', 'c.jpg'], false, 3, $this->seen($db));
+        $result = $this->recovery($db)->apply(self::CAR, ['b.jpg', 'c.jpg'], false, 3, $this->seen($db))->result;
 
         $this->assertSame(CarPhotoRecoveryResult::Applied, $result);
         $this->assertSame(['["a.jpg","c.jpg","b.jpg"]', self::CAR, '["a.jpg"]'], $db->updateParams());
@@ -685,7 +686,7 @@ final class CarPhotoRecoveryTest extends TestCase
             [11, '["a.jpg","b.jpg"]', '2026-01-02 10:00:00'],
         ]);
 
-        $result = $this->recovery($db)->apply(self::CAR, ['d.jpg'], true, 3, $this->seen($db));
+        $result = $this->recovery($db)->apply(self::CAR, ['d.jpg'], true, 3, $this->seen($db))->result;
 
         $this->assertSame(CarPhotoRecoveryResult::Applied, $result);
         $this->assertSame(['["a.jpg","b.jpg","d.jpg"]', self::CAR, '["b.jpg","a.jpg"]'], $db->updateParams());
@@ -711,7 +712,7 @@ final class CarPhotoRecoveryTest extends TestCase
         $this->photo('bad name.jpg', 4);
         $db = $this->db('[]', [[10, '["bad name.jpg"]', '2026-01-01 10:00:00']]);
 
-        $result = $this->recovery($db)->apply(self::CAR, ['bad name.jpg'], true, 3, $this->seen($db));
+        $result = $this->recovery($db)->apply(self::CAR, ['bad name.jpg'], true, 3, $this->seen($db))->result;
 
         $this->assertSame(CarPhotoRecoveryResult::NothingToDo, $result);
         $this->assertNull($db->updateParams());
@@ -739,7 +740,7 @@ final class CarPhotoRecoveryTest extends TestCase
         $this->photo('b.jpg', 2);
         $db = $this->db('["a.jpg"]', [[10, '["a.jpg","b.jpg"]', '2026-01-01 10:00:00']]);
 
-        $result = $this->recovery($db)->apply(self::CAR, $reattachNames, $restore, 3, $this->seen($db));
+        $result = $this->recovery($db)->apply(self::CAR, $reattachNames, $restore, 3, $this->seen($db))->result;
 
         $this->assertSame(CarPhotoRecoveryResult::NothingToDo, $result);
         $this->assertNull($db->updateParams());
@@ -752,10 +753,10 @@ final class CarPhotoRecoveryTest extends TestCase
         $this->photo('b.jpg', 2);
         $db = $this->db('["a.jpg"]', [[10, '["a.jpg","b.jpg"]', '2026-01-01 10:00:00']]);
 
-        $result = $this->recovery($db)->apply(self::CAR, [], true, 3, $this->seen($db), $ignored, $restoreUnavailable);
+        $outcome = $this->recovery($db)->apply(self::CAR, [], true, 3, $this->seen($db));
 
-        $this->assertSame(CarPhotoRecoveryResult::NothingToDo, $result);
-        $this->assertTrue($restoreUnavailable);
+        $this->assertSame(CarPhotoRecoveryResult::NothingToDo, $outcome->result);
+        $this->assertTrue($outcome->restoreUnavailable);
         $this->assertNull($db->updateParams());
     }
 
@@ -765,10 +766,10 @@ final class CarPhotoRecoveryTest extends TestCase
         $this->photo('b.jpg', 2);
         $db = $this->db('["a.jpg"]', [[10, '["a.jpg","b.jpg"]', '2026-01-01 10:00:00']]);
 
-        $result = $this->recovery($db)->apply(self::CAR, ['b.jpg'], true, 3, $this->seen($db), $ignored, $restoreUnavailable);
+        $outcome = $this->recovery($db)->apply(self::CAR, ['b.jpg'], true, 3, $this->seen($db));
 
-        $this->assertSame(CarPhotoRecoveryResult::Applied, $result);
-        $this->assertTrue($restoreUnavailable);
+        $this->assertSame(CarPhotoRecoveryResult::Applied, $outcome->result);
+        $this->assertTrue($outcome->restoreUnavailable);
         $this->assertSame(['["a.jpg","b.jpg"]', self::CAR, '["a.jpg"]'], $db->updateParams());
         $this->assertFalse($this->logEntries()[0]['metadata']['order_restored']);
     }
@@ -779,10 +780,10 @@ final class CarPhotoRecoveryTest extends TestCase
         $this->photo('b.jpg', 2);
         $db = $this->db('["b.jpg","a.jpg"]', [[10, '["a.jpg","b.jpg"]', '2026-01-01 10:00:00']]);
 
-        $result = $this->recovery($db)->apply(self::CAR, [], true, 3, $this->seen($db), $ignored, $restoreUnavailable);
+        $outcome = $this->recovery($db)->apply(self::CAR, [], true, 3, $this->seen($db));
 
-        $this->assertSame(CarPhotoRecoveryResult::Applied, $result);
-        $this->assertFalse($restoreUnavailable);
+        $this->assertSame(CarPhotoRecoveryResult::Applied, $outcome->result);
+        $this->assertFalse($outcome->restoreUnavailable);
     }
 
     public function testApplyTokenMismatchOrCompareAndSetMissReportsNoUnavailableRestore(): void
@@ -791,40 +792,39 @@ final class CarPhotoRecoveryTest extends TestCase
         $this->photo('b.jpg', 2);
         $db = $this->db('["a.jpg"]', [[10, '["a.jpg","b.jpg"]', '2026-01-01 10:00:00']]);
 
-        $result = $this->recovery($db)->apply(self::CAR, ['b.jpg'], true, 3, CarPhotoRecovery::versionToken('["x.jpg"]'), $ignored, $restoreUnavailable);
-        $this->assertSame(CarPhotoRecoveryResult::Changed, $result);
-        $this->assertFalse($restoreUnavailable);
+        $outcome = $this->recovery($db)->apply(self::CAR, ['b.jpg'], true, 3, CarPhotoRecovery::versionToken('["x.jpg"]'));
+        $this->assertSame(CarPhotoRecoveryResult::Changed, $outcome->result);
+        $this->assertFalse($outcome->restoreUnavailable);
 
         $db->updateCount = 0;
-        $result = $this->recovery($db)->apply(self::CAR, ['b.jpg'], true, 3, $this->seen($db), $ignored, $restoreUnavailable);
-        $this->assertSame(CarPhotoRecoveryResult::Changed, $result);
-        $this->assertFalse($restoreUnavailable, 'The restore was judged against data that another save replaced');
+        $outcome = $this->recovery($db)->apply(self::CAR, ['b.jpg'], true, 3, $this->seen($db));
+        $this->assertSame(CarPhotoRecoveryResult::Changed, $outcome->result);
+        $this->assertFalse($outcome->restoreUnavailable, 'The restore was judged against data that another save replaced');
     }
 
-    public function testApplyEncodeFailureReportsNoIgnoredNames(): void
+    public function testApplyEncodeFailureThrowsAndWritesNothing(): void
     {
         $this->photo('b.jpg', 2);
         // Invalid UTF-8 does not decode as JSON, so the legacy comma split
         // keeps it as a name, and json_encode() of the new list fails.
         $db = $this->db("[\"\xff.jpg\"]", [[10, '["b.jpg"]', '2026-01-01 10:00:00']]);
-        $ignored            = ['stale'];
-        $restoreUnavailable = true;
 
+        // The throw gives the caller no outcome, so no forged-name warning
+        // or unavailable-restore message can follow.
         try {
-            $this->recovery($db)->apply(self::CAR, ['b.jpg', 'evil.jpg'], true, 3, $this->seen($db), $ignored, $restoreUnavailable);
+            $this->recovery($db)->apply(self::CAR, ['b.jpg', 'evil.jpg'], true, 3, $this->seen($db));
             $this->fail('apply() encoded a list that holds invalid UTF-8');
         } catch (ImageProcessingException) {
         }
-        $this->assertSame([], $ignored, 'No name was used, so no forged-name warning is due');
-        $this->assertFalse($restoreUnavailable);
         $this->assertNull($db->updateParams());
+        $this->assertSame([], $this->logEntries());
     }
 
     public function testApplyCarWithNothingToShowReturnsNothingToDo(): void
     {
         $db = $this->db('["a.jpg"]', [[10, '["a.jpg"]', '2026-01-01 10:00:00']]);
 
-        $this->assertSame(CarPhotoRecoveryResult::NothingToDo, $this->recovery($db)->apply(self::CAR, ['a.jpg'], true, 3, $this->seen($db)));
+        $this->assertSame(CarPhotoRecoveryResult::NothingToDo, $this->recovery($db)->apply(self::CAR, ['a.jpg'], true, 3, $this->seen($db))->result);
         $this->assertNull($db->updateParams());
     }
 
@@ -834,7 +834,7 @@ final class CarPhotoRecoveryTest extends TestCase
         $db = $this->db('[]', [[10, '["b.jpg"]', '2026-01-01 10:00:00']]);
         $db->updateCount = 0;
 
-        $result = $this->recovery($db)->apply(self::CAR, ['b.jpg'], false, 3, $this->seen($db));
+        $result = $this->recovery($db)->apply(self::CAR, ['b.jpg'], false, 3, $this->seen($db))->result;
 
         $this->assertSame(CarPhotoRecoveryResult::Changed, $result);
         $this->assertSame([], $this->logEntries());
@@ -846,10 +846,10 @@ final class CarPhotoRecoveryTest extends TestCase
         $db = $this->db('[]', [[10, '["b.jpg"]', '2026-01-01 10:00:00']]);
         $db->updateCount = 0;
 
-        $result = $this->recovery($db)->apply(self::CAR, ['b.jpg', 'evil.jpg'], false, 3, $this->seen($db), $ignored);
+        $outcome = $this->recovery($db)->apply(self::CAR, ['b.jpg', 'evil.jpg'], false, 3, $this->seen($db));
 
-        $this->assertSame(CarPhotoRecoveryResult::Changed, $result);
-        $this->assertSame([], $ignored, 'The names were judged against data that another save replaced');
+        $this->assertSame(CarPhotoRecoveryResult::Changed, $outcome->result);
+        $this->assertSame([], $outcome->ignoredNames, 'The names were judged against data that another save replaced');
     }
 
     public function testApplyMalformedSeenTokenReturnsChangedWithoutAQuery(): void
@@ -857,10 +857,10 @@ final class CarPhotoRecoveryTest extends TestCase
         $this->photo('b.jpg', 2);
         $db = $this->db('[]', [[10, '["b.jpg"]', '2026-01-01 10:00:00']]);
 
-        $result = $this->recovery($db)->apply(self::CAR, ['b.jpg'], false, 3, 'not-a-token', $ignored);
+        $outcome = $this->recovery($db)->apply(self::CAR, ['b.jpg'], false, 3, 'not-a-token');
 
-        $this->assertSame(CarPhotoRecoveryResult::Changed, $result);
-        $this->assertSame([], $ignored);
+        $this->assertSame(CarPhotoRecoveryResult::Changed, $outcome->result);
+        $this->assertSame([], $outcome->ignoredNames);
         $this->assertSame([], $db->queries, 'A malformed token stops the call before it reads the car');
     }
 
@@ -916,11 +916,11 @@ final class CarPhotoRecoveryTest extends TestCase
         $this->photo('c.jpg', 3);
         $db = $this->db('["a.jpg"]', [[10, '["a.jpg","b.jpg","c.jpg"]', '2026-01-01 10:00:00']]);
 
-        $result = $this->recovery($db)->apply(self::CAR, ['c.jpg'], false, 3, $this->seen($db), $ignored);
+        $outcome = $this->recovery($db)->apply(self::CAR, ['c.jpg'], false, 3, $this->seen($db));
 
-        $this->assertSame(CarPhotoRecoveryResult::Applied, $result);
+        $this->assertSame(CarPhotoRecoveryResult::Applied, $outcome->result);
         $this->assertSame(['["a.jpg","c.jpg"]', self::CAR, '["a.jpg"]'], $db->updateParams());
-        $this->assertSame([], $ignored);
+        $this->assertSame([], $outcome->ignoredNames);
         $this->assertSame(['c.jpg'], $this->logEntries()[0]['metadata']['reattached']);
     }
 
@@ -945,11 +945,11 @@ final class CarPhotoRecoveryTest extends TestCase
         $this->photo('bad name.jpg', 4);
         $db = $this->db('["a.jpg"]', [[10, '["a.jpg","b.jpg","bad name.jpg"]', '2026-01-01 10:00:00']]);
 
-        $result = $this->recovery($db)->apply(self::CAR, [$name, 'b.jpg'], false, 3, $this->seen($db), $ignored);
+        $outcome = $this->recovery($db)->apply(self::CAR, [$name, 'b.jpg'], false, 3, $this->seen($db));
 
-        $this->assertSame(CarPhotoRecoveryResult::Applied, $result);
+        $this->assertSame(CarPhotoRecoveryResult::Applied, $outcome->result);
         $this->assertSame(['["a.jpg","b.jpg"]', self::CAR, '["a.jpg"]'], $db->updateParams());
-        $this->assertSame([$name], $ignored);
+        $this->assertSame([$name], $outcome->ignoredNames);
     }
 
     public function testApplyOnlyNotAttachableNamesReturnsNothingToDoAndReportsThem(): void
@@ -957,11 +957,11 @@ final class CarPhotoRecoveryTest extends TestCase
         $this->photo('b.jpg', 2);
         $db = $this->db('[]', [[10, '["b.jpg"]', '2026-01-01 10:00:00']]);
 
-        $result = $this->recovery($db)->apply(self::CAR, ['evil.jpg', 'evil.jpg'], false, 3, $this->seen($db), $ignored);
+        $outcome = $this->recovery($db)->apply(self::CAR, ['evil.jpg', 'evil.jpg'], false, 3, $this->seen($db));
 
-        $this->assertSame(CarPhotoRecoveryResult::NothingToDo, $result);
+        $this->assertSame(CarPhotoRecoveryResult::NothingToDo, $outcome->result);
         $this->assertNull($db->updateParams());
-        $this->assertSame(['evil.jpg'], $ignored);
+        $this->assertSame(['evil.jpg'], $outcome->ignoredNames);
         $this->assertSame([], $this->logEntries());
     }
 
@@ -970,10 +970,10 @@ final class CarPhotoRecoveryTest extends TestCase
         $this->photo('b.jpg', 2);
         $db = $this->db('[]', [[10, '["b.jpg"]', '2026-01-01 10:00:00']]);
 
-        $result = $this->recovery($db)->apply(self::CAR, ['evil.jpg'], false, 3, CarPhotoRecovery::versionToken('["x.jpg"]'), $ignored);
+        $outcome = $this->recovery($db)->apply(self::CAR, ['evil.jpg'], false, 3, CarPhotoRecovery::versionToken('["x.jpg"]'));
 
-        $this->assertSame(CarPhotoRecoveryResult::Changed, $result);
-        $this->assertSame([], $ignored);
+        $this->assertSame(CarPhotoRecoveryResult::Changed, $outcome->result);
+        $this->assertSame([], $outcome->ignoredNames);
     }
 
     /**
@@ -1014,10 +1014,10 @@ final class CarPhotoRecoveryTest extends TestCase
     {
         $db = $this->db('["a.jpg"]', [[10, '["a.jpg"]', '2026-01-01 10:00:00']]);
 
-        $result = $this->recovery($db)->apply(self::CAR, ['b.jpg'], false, 3, CarPhotoRecovery::versionToken('["a.jpg","b.jpg"]'), $ignored);
+        $outcome = $this->recovery($db)->apply(self::CAR, ['b.jpg'], false, 3, CarPhotoRecovery::versionToken('["a.jpg","b.jpg"]'));
 
-        $this->assertSame(CarPhotoRecoveryResult::Changed, $result);
-        $this->assertSame([], $ignored);
+        $this->assertSame(CarPhotoRecoveryResult::Changed, $outcome->result);
+        $this->assertSame([], $outcome->ignoredNames);
         $this->assertNull($db->updateParams());
     }
 
@@ -1025,10 +1025,10 @@ final class CarPhotoRecoveryTest extends TestCase
     {
         $db = $this->db('["a.jpg"]', [[10, '["a.jpg"]', '2026-01-01 10:00:00']]);
 
-        $result = $this->recovery($db)->apply(self::CAR, ['b.jpg'], true, 3, $this->seen($db), $ignored);
+        $outcome = $this->recovery($db)->apply(self::CAR, ['b.jpg'], true, 3, $this->seen($db));
 
-        $this->assertSame(CarPhotoRecoveryResult::NothingToDo, $result);
-        $this->assertSame([], $ignored, 'No row was checked, so no ticked name is proven false');
+        $this->assertSame(CarPhotoRecoveryResult::NothingToDo, $outcome->result);
+        $this->assertSame([], $outcome->ignoredNames, 'No row was checked, so no ticked name is proven false');
         $this->assertNull($db->updateParams());
     }
 
@@ -1036,7 +1036,7 @@ final class CarPhotoRecoveryTest extends TestCase
     {
         $db = new CarPhotoRecoveryFakeDatabase([], []);
 
-        $result = $this->recovery($db)->apply(self::CAR, ['b.jpg'], false, 3, CarPhotoRecovery::versionToken('[]'));
+        $result = $this->recovery($db)->apply(self::CAR, ['b.jpg'], false, 3, CarPhotoRecovery::versionToken('[]'))->result;
 
         $this->assertSame(CarPhotoRecoveryResult::Changed, $result);
         $this->assertNull($db->updateParams());
@@ -1306,7 +1306,7 @@ final class CarPhotoRecoveryTest extends TestCase
         $this->photo('a.jpg', 1);
         $this->photo('b.jpg', 2);
         $db = $this->db('["b.jpg","a.jpg"]', [[10, '["a.jpg","b.jpg"]', '2026-01-01 10:00:00']]);
-        $this->assertSame(CarPhotoRecoveryResult::Applied, $this->recovery($db)->apply(self::CAR, [], true, 3, $this->seen($db)));
+        $this->assertSame(CarPhotoRecoveryResult::Applied, $this->recovery($db)->apply(self::CAR, [], true, 3, $this->seen($db))->result);
         $this->assertSame(CarPhotoRecovery::versionToken('["a.jpg","b.jpg"]'), $this->logEntries()[0]['metadata']['token_after']);
         $this->assertTrue($this->logEntries()[0]['metadata']['order_restored']);
         // What the database holds after the write: the restored list, and the
@@ -1374,7 +1374,7 @@ final class CarPhotoRecoveryTest extends TestCase
         ]);
         $db->logRows = [$this->restoreRow(1, '["a.jpg","b.jpg"]')];
 
-        $result = $this->recovery($db)->apply(self::CAR, [], true, 3, $this->seen($db));
+        $result = $this->recovery($db)->apply(self::CAR, [], true, 3, $this->seen($db))->result;
 
         $this->assertSame(CarPhotoRecoveryResult::NothingToDo, $result);
         $this->assertNull($db->updateParams());
@@ -1471,6 +1471,55 @@ final class CarPhotoRecoveryTest extends TestCase
 
         $this->assertSame(['c.jpg', 'b.jpg'], $row->attachableNames());
         $this->assertSame(['c.jpg', 'bad name.jpg', 'b.jpg'], $row->detachedNames());
+    }
+
+    // ------------------------------------------------------------------
+    // CarPhotoRecoveryOutcome invariant
+    // ------------------------------------------------------------------
+
+    /**
+     * @return array<string, array{CarPhotoRecoveryResult, list<string>, bool}>
+     */
+    public static function uncheckedOutcomeWithReportProvider(): array
+    {
+        return [
+            'Changed with ignored names'          => [CarPhotoRecoveryResult::Changed, ['evil.jpg'], false],
+            'Changed with restore unavailable'    => [CarPhotoRecoveryResult::Changed, [], true],
+            'Unreadable with ignored names'       => [CarPhotoRecoveryResult::Unreadable, ['evil.jpg'], false],
+            'Unreadable with restore unavailable' => [CarPhotoRecoveryResult::Unreadable, [], true],
+        ];
+    }
+
+    /**
+     * @param list<string> $ignoredNames
+     */
+    #[DataProvider('uncheckedOutcomeWithReportProvider')]
+    public function testOutcomeChangedOrUnreadableWithReportThrowsValidationException(
+        CarPhotoRecoveryResult $result,
+        array $ignoredNames,
+        bool $restoreUnavailable,
+    ): void {
+        $this->expectException(CarValidationException::class);
+        $this->expectExceptionMessage("the result {$result->name} cannot report");
+
+        new CarPhotoRecoveryOutcome($result, $ignoredNames, $restoreUnavailable);
+    }
+
+    /**
+     * @return array<string, array{CarPhotoRecoveryResult}>
+     */
+    public static function checkedResultProvider(): array
+    {
+        return ['Applied' => [CarPhotoRecoveryResult::Applied], 'NothingToDo' => [CarPhotoRecoveryResult::NothingToDo]];
+    }
+
+    #[DataProvider('checkedResultProvider')]
+    public function testOutcomeAppliedOrNothingToDoKeepsTheReport(CarPhotoRecoveryResult $result): void
+    {
+        $outcome = new CarPhotoRecoveryOutcome($result, ['evil.jpg'], true);
+
+        $this->assertSame(['evil.jpg'], $outcome->ignoredNames);
+        $this->assertTrue($outcome->restoreUnavailable);
     }
 
     // ------------------------------------------------------------------
