@@ -88,7 +88,7 @@ class ScriptedRetentionFakeDatabase extends FakeDatabase
  * integration test checks the SQL against the real tables.
  */
 #[Group('fast')]
-final class SendinblueMessagesRetentionRuleTest extends TestCase
+final class SendinblueMessagesRetentionRuleUnitTest extends TestCase
 {
     private const TABLE_PRESENT = ['count' => 1, 'row' => ['cnt' => 1]];
 
