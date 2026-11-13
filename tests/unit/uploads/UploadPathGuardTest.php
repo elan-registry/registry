@@ -320,7 +320,7 @@ class UploadPathGuardTest extends TestCase
     {
         $content = (string) file_get_contents(dirname(__DIR__, 3) . '/app/api/cars/save.php');
 
-        $this->assertSame(5, substr_count($content, "['general' => \$errors]"), 'save.php must send each of its 5 error stops as a list');
+        $this->assertSame(6, substr_count($content, "['general' => \$errors]"), 'save.php must send each of its 6 error stops as a list');
         $this->assertDoesNotMatchRegularExpression('/(implode|join)\([^)]*\$errors\)/', $content, 'save.php must not join $errors');
     }
 
