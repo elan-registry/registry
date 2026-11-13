@@ -2565,10 +2565,11 @@ Logs include timestamps, recipient addresses, and any API error messages returne
 ## Brevo Webhooks — Verified Behaviour (#1871)
 
 Observed live on 2026-09-03 against `test.elanregistry.org` (A2 Hosting, LiteSpeed,
-behind Cloudflare) with the tooling in `scripts/spike-1871/` (see its `README.md` to
-re-run; kept until #1887 ships its own fixtures). Every fact below comes from a captured request, not from
-Brevo's documentation. The bounce-detection endpoint (#1887) must be designed
-against this section; where the docs disagree, this section wins until re-verified.
+behind Cloudflare) with spike tooling. #2650 removed that tooling. Git history
+before #2650 holds it under `scripts/spike-1871/`. Every fact below comes from
+a captured request, not from Brevo's documentation. Design the bounce-detection
+endpoint (#1887) against this section. If Brevo's documentation disagrees with
+this section, this section wins until a new capture verifies it again.
 
 ### Transport
 
@@ -2633,8 +2634,8 @@ requests and the docs; treat them as unverified.
   `hard_bounce` again, vary the local part (`…+1871b@…`, `…+1871c@…`).
 - **Suppression list is queryable and reversible:** `GET /v3/smtp/blockedContacts` lists
   every suppressed address with `blockedAt` and a `reason.code` (`hardBounce`,
-  `contactFlaggedAsSpam`, `unsubscribedViaEmail`); `scripts/spike-1871/brevo-send-test.php
-  --list-blocked` prints it. On 2026-09-03 the account held 9 entries dating back to
+  `contactFlaggedAsSpam`, `unsubscribedViaEmail`). On 2026-09-03 the account held 9
+  entries dating back to
   2025-12 — historical bounce evidence that predates any webhook (see #1922). A spam
   report suppresses the complainant's address the same way a hard bounce does, but scoped
   to the sender identity (`From sender: registrar@elanregistry.org`), whereas a hard bounce
@@ -2758,11 +2759,13 @@ passed.
 
 ## Updating the Plugin
 
-`scripts/check-plugin-updates/` runs weekly and opens a GitHub issue labeled
-`plugin-update` when a newer version is published upstream. It only detects
-drift — it does not apply the update. Plugin files under `usersc/plugins/sendinblue/`
-are gitignored, so there is no git diff to review; the update is a manual
-file-replacement performed once per environment (local dev, test, prod).
+No automated check finds a newer plugin version. Before an update, compare
+the installed version with the upstream version. The `<version>` element in
+`usersc/plugins/sendinblue/info.xml` records the installed version. The
+upstream UserSpice plugin repository (`mudmin/usplugins`) and Spice Shaker show
+the newest version. Plugin files under `usersc/plugins/sendinblue/`
+are gitignored, so git shows no diff to review. You replace the files by
+hand, one time in each environment (local dev, test, prod).
 
 1. **Back up the current plugin directory** before updating:
 

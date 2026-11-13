@@ -231,11 +231,6 @@ monitoring/
 ########################################
 private/
 
-########################################
-# Local script configuration (machine-specific)
-########################################
-scripts/check-plugin-updates/*.conf
-
 
 # Temporary local scratch copy of production userimages (exploration only)
 /prod_images/
