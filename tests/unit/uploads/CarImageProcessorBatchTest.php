@@ -68,6 +68,35 @@ class CarImageProcessorBatchTest extends TestCase
     }
 
     /**
+     * Test that a batch with one good file and one file one byte above the
+     * server limit names only the large file, with the "too large" text
+     */
+    public function testBatchOfOneValidAndOneTooLargeFileNamesOnlyTheLargeFile(): void
+    {
+        $largeBytes = CarImageProcessor::serverMaxBytes() + 1;
+        $good  = $this->makeFile('good.jpg', $this->jpegData());
+        $large = $this->makeFile('large.jpg', str_pad($this->jpegData(), $largeBytes, "\0"));
+        $this->assertSame($largeBytes, filesize($large), 'Precondition: the large file is one byte above the limit');
+
+        $result = CarImageProcessor::validateUploadBatch($this->batch([
+            ['good-photo.jpg', $good, UPLOAD_ERR_OK, (int) filesize($good)],
+            ['large-photo.jpg', $large, UPLOAD_ERR_OK, $largeBytes],
+        ]));
+
+        $this->assertCount(1, $result['errors']);
+        $this->assertStringContainsString('large-photo.jpg', $result['errors'][0]);
+        $this->assertStringNotContainsString('good-photo.jpg', $result['errors'][0]);
+        $this->assertStringContainsString(
+            'Photo is too large. The maximum size is ' . round(ELAN_IMAGE_SERVER_MAX_SIZE, 1) . ' MB.',
+            $result['errors'][0]
+        );
+        $this->assertSame([0 => 'image/jpeg'], $result['mimeTypes']);
+        $this->assertArrayNotHasKey(1, $result['mimeTypes']);
+        $this->assertCount(1, $result['rejected']);
+        $this->assertSame('large-photo.jpg', $result['rejected'][0]['name']);
+    }
+
+    /**
      * Test that a batch with two bad files gives one error for each file
      */
     public function testBatchOfTwoInvalidFilesReturnsOneErrorPerFile(): void

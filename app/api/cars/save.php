@@ -114,12 +114,23 @@ switch ($action) {
             // addCar() catches its own exceptions and appends to $errors. Check
             // here, before mvTmpImages(), so a failed create is not reported as
             // "Car saved but images could not be moved" (#2655). addCar() has
-            // already logged the failure.
+            // already logged the failure. uploadImages() has already written
+            // the photos to temp storage, and no car row will claim them, so
+            // delete them here. Otherwise each retry leaves another set.
             if (!empty($errors)) {
-                ApiResponse::validationError(
+                $removedTmpImages = removeTmpImages($cardetails);
+                $response = ApiResponse::validationError(
                     ['general' => $errors],
                     'Cannot add car: validation errors'
-                )->withData('cardetails', $cardetails)->send();
+                )->withData('cardetails', $cardetails);
+                if ($removedTmpImages !== []) {
+                    $response = $response->withLogging(
+                        $user->data()->id,
+                        LogCategories::LOG_CATEGORY_CAR_ACTIONS,
+                        'Car add failed: removed temp photos: ' . implode(', ', $removedTmpImages)
+                    );
+                }
+                $response->send();
             }
 
             mvTmpImages($cardetails, $errors);
@@ -1062,6 +1073,49 @@ function mvTmpImages(array &$cardetails, array &$errors): void
                 . $cardetails['id'] . ' [' . get_class($e) . ']: ' . $e->getMessage());
         }
     }
+}
+
+/**
+ * Delete the temp files for the photos of a car that was not created.
+ *
+ * Deletes the base file and every "-resized-*" copy that uploadImages() wrote
+ * to userimages/temp/ for each name in $cardetails['image']. A name that
+ * fails isValidFilename() is skipped, because uploadImages() only generates
+ * valid names and the name goes into a glob pattern.
+ *
+ * @param array $cardetails Car details. 'image' is the JSON list from uploadImages()
+ * @return list<string> File names (no directory) of the files deleted, including resized copies
+ */
+function removeTmpImages(array $cardetails): array
+{
+    global $targetFilePath;
+    global $user;
+
+    $tempPath = $targetFilePath . 'temp' . '/';
+    $removed  = [];
+
+    foreach (CarImageProcessor::storedImageFilenames($cardetails['image'] ?? null) as $carimage) {
+        if (!CarImageProcessor::isValidFilename($carimage)) {
+            continue;
+        }
+        $parts = pathinfo($carimage);
+        $files = glob($tempPath . $parts['filename'] . '-resized-*.' . ($parts['extension'] ?? '')) ?: [];
+        $files[] = $tempPath . $carimage;
+
+        foreach ($files as $file) {
+            if (!is_file($file)) {
+                continue;
+            }
+            if (unlink($file)) {
+                $removed[] = basename($file);
+            } else {
+                logger((int) $user->data()->id, LogCategories::LOG_CATEGORY_FILE_ERROR,
+                    "removeTmpImages: failed to delete temp file {$file}");
+            }
+        }
+    }
+
+    return $removed;
 }
 
 /**
