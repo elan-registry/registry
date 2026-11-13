@@ -289,13 +289,13 @@ rules as its TRIM and CUT criteria.
   test is possible. Its docblock then says why. Prefer a PHPStan rule (see
   "PHPStan Rule Tests"). A source test checks only the files it names.
 - **Do not test the test.** A test of the test's own regex or fixture checks
-  no app behavior. The six `testNegativeControl*` methods in
+  no app behavior. On 2026-11-13, the six `testNegativeControl*` methods in
   `tests/unit/regression/Issue2101DeliverabilityFlagsSourceRegressionTest.php`
-  are an example.
+  were an example.
 - **Use a data provider when three or more tests have the same shape.** One
   test method for each field or view with the same assertions is a copy, not
-  more coverage. `tests/unit/classes/EmailTemplateTest.php` (1,491 lines, 107
-  tests for a 535-line class) repeats a renders / contains / escapes triplet
+  more coverage. `tests/unit/classes/EmailTemplateTest.php` (on 2026-11-13,
+  1,491 lines and 107 tests for a 535-line class) repeats a renders / contains / escapes triplet
   for each view. Keep each case as a provider row. A data provider removes
   the copied code, not the cases.
 - **An edge case needs a real trigger.** Test an input or state that a user,
@@ -384,7 +384,8 @@ The rule does not cover these tests:
   shared class or a script. Example: `EmailEventRekeyQueriesTest.php` tests
   `EmailEventRekeyQueries`, which
   `app/admin/scripts/maintenance/29-Report-Email-Event-Rekey.php` also uses.
-  Keep it, or move its tests before you delete the sandbox base class.
+  Keep it. Before you delete its sandbox base class, move its tests to
+  `IntegrationTestCase`.
 - A migration test that extends `IntegrationTestCase`, such as
   `AddElanregistryBaselineMigrationTest.php`.
 
