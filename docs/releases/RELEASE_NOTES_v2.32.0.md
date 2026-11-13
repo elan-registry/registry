@@ -7,7 +7,7 @@ An owner can add full-resolution phone photos to their car. When a photo does no
 
 ## User-Facing Changes
 
-- Owners can add phone photos up to 20 MB (the browser shrinks them first), but WebP is no longer accepted. ([#2627](https://github.com/elan-registry/registry/issues/2627))
+- Owners can add large phone photos. The browser shrinks them first, and the server limit is 5 MB. WebP is no longer accepted. ([#2627](https://github.com/elan-registry/registry/issues/2627))
 - A car save with photos over the size limit now tells the owner the photos are too large. ([#2647](https://github.com/elan-registry/registry/issues/2647))
 - When a car save rejects photos, the message names each bad photo and gives the reason. ([#1844](https://github.com/elan-registry/registry/issues/1844))
 - A new car with an invalid date now shows the date error, and dates one day ahead are allowed. ([#2655](https://github.com/elan-registry/registry/issues/2655))

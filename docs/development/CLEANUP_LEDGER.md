@@ -89,7 +89,7 @@ after an item is written.
 ### `app/api/cars/save.php`
 
 - [ ] The chassis error at ~L582 holds the literal `<strong>ERROR:</strong>`. `errors.general` is a list now, and `car-edit.js` escapes each item, so the tag shows as text. Remove the markup from the message (found in /flow:finish-milestone v2.32.0)
-- [ ] `uploadImages()` (~L713) `arrayReplaceValue()` (~L837) replaces the first match. If a new upload has the same browser file name as a stored photo, the new photo takes the stored photo's place (it can become the primary photo). Send a unique placeholder from `car-edit.js`, or replace only a name that is not stored (found in #2609)
+- [ ] `uploadImages()` (~L713) `arrayReplaceValue()` (~L1207) replaces the first match. If a new upload has the same browser file name as a stored photo, the new photo takes the stored photo's place (it can become the primary photo). Send a unique placeholder from `car-edit.js`, or replace only a name that is not stored (found in #2609)
 - [ ] (test coverage) No automated test checks the oversize-body 413 status with `display_errors` Off (the test and production setting). Docker gives 200 with a warning prefix. Add an integration test that starts `php -S` with `-d display_errors=0` and a small `post_max_size`, and asserts 413, JSON, and the log row (found in #2627)
 - [ ] `uploadImages()` checks the whole batch with `validateUploadBatch()` before it moves any file. So a rejected photo leaves no file on disk. But when a later error stops the save (a move or resize failure, or an upload-order error from `checkUploadOrder()`), the files that the request already wrote (and their `-resized-` variants) stay on disk: `userimages/temp/` for an add, `userimages/{carId}/` for an edit. Nothing references or removes them. Delete the files this request wrote before the 422 is sent (found in #1844)
 
@@ -137,10 +137,12 @@ after an item is written.
 ### `docs/development/CLASSES.md`
 
 - [ ] The `CarPhotoRecovery` section repeats the PHPDoc: Common Usage, "Used By" and the step list of `apply()`. Keep the behaviour that is not obvious (token and history meaning). Link to the PHPDoc for the rest, as `.claude/rules/php-code.md` says (found in /flow:finish-milestone v2.32.0)
+- [ ] The "Ignore and Undo ignore" bullet says `undoIgnore()` returns `NothingToDo` "when the row is not ignored". The PHPDoc also says "or the car has no row". Add the second case (found in /flow:finish-milestone v2.32.0)
 
 ### `docs/development/ENVIRONMENT.md`
 
 - [ ] In "PHP upload and memory limits", the sentence "Nothing checks test and production automatically, so check them after each change" (~L613) wraps wider than the paragraph. Rewrap it. The cell "8M (set 2026-11-11)" (~L581) is a dated fact that will age. Say "Check in cPanel" and keep the date in the release notes (found in /flow:finish-milestone v2.32.0)
+- [ ] In the minimum-values table, the `memory_limit` row says a 2048 px bitmap uses "about 13 MB" in GD. That holds for a 4:3 frame. A 2048x2048 bitmap is about 16 MB. Say "about 13 to 17 MB". The "Why 8M and 64M" text and the `ELAN_IMAGE_UPLOAD_MAX_SIZE` comment in `config.php` imply that the resize keeps files under 5 MB. Say that the server limit applies to a photo posted unchanged (found in /flow:finish-milestone v2.32.0)
 
 ### `docs/development/adr/ADR-018-build-at-deploy-for-frontend-vendoring.md`
 
@@ -304,11 +306,12 @@ after an item is written.
 
 ### `usersc/classes/Car/CarPhotoRecovery.php` + `usersc/classes/Car/CarPhotoRecoveryRow.php` + `usersc/classes/Car/CarPhotoRecoveryResult.php` + `usersc/classes/Car/DetachedPhoto.php` + `usersc/classes/Car/DetachedHow.php`
 
-- [ ] The decision-log array shape is written out three times as an untyped array (`CarPhotoRecovery` ~L63, ~L456, ~L474). Add a small `CarPhotoDecision` value object. It also removes the `is_*` checks at ~L493-525 (found in /flow:finish-milestone v2.32.0)
-- [ ] `CarPhotoRecovery` is about 860 lines and does four jobs: scan, apply, decision log, tokens. Move the decision log and the token helpers (`versionToken()`, `isValidToken()`) to their own classes (found in /flow:finish-milestone v2.32.0)
+- [ ] The decision-log array shape is written out three times as an untyped array (`CarPhotoRecovery` ~L63, ~L435, ~L453). Add a small `CarPhotoDecision` value object. It also removes the `is_*` checks at ~L493-525 (found in /flow:finish-milestone v2.32.0)
+- [ ] `CarPhotoRecovery` is about 840 lines and does four jobs: scan, apply, decision log, tokens. Move the decision log and the token helpers (`versionToken()`, `isValidToken()`) to their own classes (found in /flow:finish-milestone v2.32.0)
 - [ ] `@exif_imagetype` (~L690) conflicts with the rule in `.claude/rules/php-code.md` to flag `@`. Add a comment that links the same case in `decodeAndProcessImages()` (found in /flow:finish-milestone v2.32.0)
 - [ ] `DetachedPhoto` takes `$safe` as an argument, but `CarImageProcessor::isSafeFilename()` gives it from `$name`. Compute it in the constructor. Also reject a `$name` with `/` or `..` and an empty `$leftAt` (found in /flow:finish-milestone v2.32.0)
 - [ ] `CarPhotoRecoveryRow` does not check its `list<>` properties with `array_is_list()`. It also does not check `rawImage` against `currentNames`, or `earlierOrder` as the reverse of `currentNames`. Only `buildRow()` keeps those rules (found in /flow:finish-milestone v2.32.0)
+- [ ] `CarPhotoRecoveryRow::$unreadable` marks an unreadable car folder with the string `{carId}/`, which can be confused with a photo name. Use a `bool $folderUnreadable`. `DetachedPhoto::$leftAt` and `CarPhotoRecoveryRow::$earlierOrderAt` also accept an empty string (found in /flow:finish-milestone v2.32.0)
 - [ ] `DetachedHow` uses the display text `'partly removed'` as its backed value. Use a key such as `'partly_removed'` and add a `label()` method. Check first whether the value is in a log row (found in /flow:finish-milestone v2.32.0)
 - [ ] `CarPhotoRecoveryResult::Applied` covers three writes: `cars.image`, the ignore log row, and the undo log row. If a caller must tell them apart, add the write kind to `CarPhotoRecoveryOutcome` (found in /flow:finish-milestone v2.32.0)
 
