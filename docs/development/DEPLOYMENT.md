@@ -989,12 +989,13 @@ results:
    the `Host` header is `test.elanregistry.org`. A `SetEnvIfNoCase Host` line
    sets `ER_TEST_HOST`, and `Header always set ... env=ER_TEST_HOST` adds the
    header. `always` covers error pages and `RewriteRule` redirects too.
-   LiteSpeed on Test does not add the header to `Redirect` and
-   `RedirectMatch` (mod_alias) responses. A probe folder on Test showed this
-   on 2026-11-13. Production runs the same server. Apache in Docker does add
-   the header. Google does
-   not index a redirect. It indexes the target, which has the header.
    Production never matches the host, so it never sends the header.
+
+   LiteSpeed does not add the header to `Redirect` and `RedirectMatch`
+   (mod_alias) responses. A probe folder on Test showed this on 2026-11-13.
+   Production also runs LiteSpeed. Apache in Docker does add the header, so
+   only Test can show this gap. The gap is acceptable: Google does not index
+   a redirect. It indexes the target, which has the header.
 2. `deploy/test-overrides/robots-test.txt` allows crawl (`Allow: /`). The
    post-receive hook copies it over `robots.txt` on Test.
 

@@ -1254,15 +1254,26 @@ test.describe('Issue #2246 — X-Robots-Tag noindex on the Test host only', () =
     }
   });
 
-  test('GET / sends noindex only when the base URL host is test.elanregistry.org', async ({ request, baseURL }) => {
-    const response = await request.get('', { maxRedirects: 0 });
-    expect(response.status()).toBe(200);
+  // The live hosts run LiteSpeed, not the Docker Apache, so check each
+  // response type there too. stories/x is a RewriteRule 301.
+  const cases = [
+    { path: '', status: 200 },
+    { path: 'robots.txt', status: 200 },
+    { path: 'stories/x', status: 301 },
+    { path: 'no-such-page-2246', status: 404 },
+  ];
 
-    const robotsTag = response.headers()['x-robots-tag'];
-    if (new URL(baseURL).hostname === 'test.elanregistry.org') {
-      expect(robotsTag, 'Test host must send noindex (#2246)').toContain('noindex');
-    } else {
-      expect(robotsTag, 'Only the Test host sends X-Robots-Tag').toBeUndefined();
-    }
-  });
+  for (const { path, status } of cases) {
+    test(`GET /${path} (${status}) sends noindex only on test.elanregistry.org`, async ({ request, baseURL }) => {
+      const response = await request.get(path, { maxRedirects: 0 });
+      expect(response.status()).toBe(status);
+
+      const robotsTag = response.headers()['x-robots-tag'];
+      if (new URL(baseURL).hostname === 'test.elanregistry.org') {
+        expect(robotsTag, 'Test host must send noindex (#2246)').toContain('noindex');
+      } else {
+        expect(robotsTag, 'Only the Test host sends X-Robots-Tag').toBeUndefined();
+      }
+    });
+  }
 });

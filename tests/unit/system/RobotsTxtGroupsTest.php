@@ -62,6 +62,19 @@ final class RobotsTxtGroupsTest extends TestCase
     }
 
     /**
+     * The merge scenarios list Allow first, so a "first rule wins a tie"
+     * evaluator would also pass them. Pin the tie in both orders (#1537).
+     */
+    public function testEqualLengthTieIsAllowedInEitherOrder(): void
+    {
+        $allow = ['type' => 'allow', 'path' => '/'];
+        $disallow = ['type' => 'disallow', 'path' => '/'];
+
+        $this->assertTrue(RobotsTxtGroups::resolve([$allow, $disallow], '/'), 'Allow listed first');
+        $this->assertTrue(RobotsTxtGroups::resolve([$disallow, $allow], '/'), 'Disallow listed first');
+    }
+
+    /**
      * @param array<int, RobotsGroup> $liveGroups
      * @param array<int, RobotsGroup> $localGroups
      * @param list<RobotsGroup> $expectedForeign
@@ -80,6 +93,7 @@ final class RobotsTxtGroupsTest extends TestCase
      */
     public static function foreignGroupsScenariosProvider(): array
     {
+        // Synthetic groups for the diff logic. They do not mirror robots-test.txt.
         $localWildcard = ['agents' => ['*'], 'rules' => [['type' => 'disallow', 'path' => '/']]];
         $injectedBotGroup = ['agents' => ['GPTBot'], 'rules' => [['type' => 'disallow', 'path' => '/']]];
         $injectedPermissiveWildcard = ['agents' => ['*'], 'rules' => [['type' => 'allow', 'path' => '/']]];

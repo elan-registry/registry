@@ -21,6 +21,9 @@ final class TestHostNoindexHeaderTest extends TestCase
 
     private static ?string $unreachableReason = null;
 
+    /** The cURL error of the last failed request(), for failure messages. */
+    private static string $lastError = '';
+
     public static function setUpBeforeClass(): void
     {
         parent::setUpBeforeClass();
@@ -32,7 +35,7 @@ final class TestHostNoindexHeaderTest extends TestCase
 
         $probe = self::request('/', 'localhost');
         if ($probe === null) {
-            self::$unreachableReason = 'Apache at ' . self::BASE . '/ is not reachable';
+            self::$unreachableReason = 'Apache at ' . self::BASE . '/ is not reachable: ' . self::$lastError;
         }
     }
 
@@ -43,6 +46,7 @@ final class TestHostNoindexHeaderTest extends TestCase
     {
         $ch = curl_init(self::BASE . $path);
         if ($ch === false) {
+            self::$lastError = 'curl_init() failed';
             return null;
         }
 
@@ -56,6 +60,7 @@ final class TestHostNoindexHeaderTest extends TestCase
 
         $raw = curl_exec($ch);
         if (!is_string($raw)) {
+            self::$lastError = sprintf('cURL error (%d) %s', curl_errno($ch), curl_error($ch));
             return null;
         }
 
@@ -103,7 +108,7 @@ final class TestHostNoindexHeaderTest extends TestCase
         }
 
         $response = self::request($path, $host);
-        $this->assertNotNull($response, "Request to {$path} with Host {$host} failed");
+        $this->assertNotNull($response, "Request to {$path} with Host {$host} failed: " . self::$lastError);
         $this->assertSame($expectedStatus, $response['status'], "Status for {$host}{$path}");
 
         if ($expectNoindex) {

@@ -13,10 +13,11 @@ use Tests\Support\RobotsTxtGroups;
  * (#1537, #1541: Cloudflare "Managed robots.txt", a dashboard toggle that no
  * code review can see).
  *
- * The Test host is the most sensitive canary: its whole policy is one
- * `Allow: /`. Test must allow crawl so that Google sees the X-Robots-Tag
- * noindex header from .htaccess (#2246). Residual gap: a production-only
- * re-enable is not detected.
+ * Test must allow crawl so that Google sees the X-Robots-Tag noindex header
+ * from .htaccess (#2246). An injected agent group, for example
+ * `User-agent: Googlebot` with `Disallow: /`, hides that header.
+ * testNoForeignGroupsPresentInLiveRobotsTxt catches it. Residual gap: a
+ * production-only robots.txt change is not detected.
  *
  * Needs outbound network. The `live-network` group is excluded from
  * phpunit-integration.xml. Run it with:
