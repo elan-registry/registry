@@ -37,6 +37,15 @@ class CarView
     ];
     private const VARIANTS_WITHOUT_VEHICLE_CONFIGURATION = ['FHC', 'DHC', 'Roadster'];
 
+    // Per-car page title and description (#1528). Upstream header1_must_include.php
+    // echoes $pageTitle without escaping, so each part must match a closed
+    // character set, and the final string is filtered again.
+    private const TITLE_YEAR_MIN = 1963;
+    private const TITLE_YEAR_MAX = 1974;
+    private const TITLE_CHASSIS_PATTERN = '~^[A-Za-z0-9/ .-]{3,15}\z~';
+    private const TITLE_MODEL_PART_PATTERN = '~^[A-Za-z0-9+/ .-]{1,20}\z~';
+    private const TITLE_UNSAFE_CHARACTERS = '~[^A-Za-z0-9 /.+,()#:-]~';
+
     /**
      * Load and display a car picture with responsive image sizing
      *
@@ -103,8 +112,10 @@ class CarView
         if ($count === 0 || $carImages[0] == '') {
             // No images or image name is blank - display placeholder
             $html .= '<div class="photo-placeholder text-center py-5 rounded d-flex flex-column justify-content-center">';
-            $html .= '<i class="fas fa-camera text-muted mb-3" style="font-size: 4rem;"></i>';
-            $html .= '<h5 class="text-muted mb-2">No Photos Available</h5>';
+            $html .= '<i class="fas fa-camera text-muted mb-3" style="font-size: 4rem;" aria-hidden="true"></i>';
+            // Not a heading: callers put the carousel under h2, h3 or h4, so any
+            // fixed level would skip a level on some page.
+            $html .= '<p class="h5 text-muted mb-2">No Photos Available</p>';
             $html .= '<p class="text-muted small mb-0">Photos for this car have not been uploaded yet.</p>';
             $html .= '</div>';
             $html .= '<!--End displayCarousel -->';
@@ -191,9 +202,7 @@ class CarView
         $normalizedColor = trim($carData->color ?? '');
         $normalizedSeries = trim($carData->series ?? '');
 
-        $isPlus2 = str_starts_with($normalizedSeries, '+2');
-        $model = $isPlus2 ? 'Elan Plus 2' : 'Elan';
-        $seriesForName = $isPlus2 ? trim(substr($normalizedSeries, 2)) : $normalizedSeries;
+        ['model' => $model, 'series' => $seriesForName] = self::modelAndSeries($normalizedSeries);
 
         $bodyType = self::BODY_TYPE_MAP[$normalizedVariant] ?? null;
         $vehicleConfiguration = (
@@ -232,5 +241,151 @@ class CarView
         }
 
         return $carSchema;
+    }
+
+    /**
+     * Build the per-car page title for details.php (#1528).
+     *
+     * Examples: "1967 Lotus Elan S3 SE, Chassis 26/1234", and with a variant
+     * "1969 Lotus Elan S4 (DHC), Chassis 36/7890". The upstream header
+     * adds the site name. A car with no valid chassis gets "Registry car #<id>"
+     * instead, so that two cars do not share a title.
+     *
+     * The output contains only letters, digits, space and / . - + , ( ) # :
+     * It never contains < > " ' or &, so it is safe in <title> and in an attribute.
+     *
+     * @param object $carData   Car data object (id, year, series, variant, chassis)
+     * @param bool   $modelKnown True when CarModel::exists() accepts the series and variant.
+     *                          When false, the title leaves them out.
+     * @return string Page title, without the site name
+     */
+    public static function buildPageTitle(object $carData, bool $modelKnown): string
+    {
+        $parts = self::pageTitleParts($carData, $modelKnown);
+
+        return self::stripUnsafeTitleCharacters($parts['car'] . self::carReference($parts, 'Chassis'));
+    }
+
+    /**
+     * Build the per-car meta description for details.php (#1528).
+     *
+     * Example: "Registry record for a 1967 Lotus Elan S3 SE, chassis 26/1234:
+     * ownership history, factory build data and photos." With a variant, the
+     * car part is "1969 Lotus Elan S4 (DHC)". It uses the same
+     * validated parts and the same character set as buildPageTitle().
+     *
+     * @param object $carData   Car data object (id, year, series, variant, chassis)
+     * @param bool   $modelKnown True when CarModel::exists() accepts the series and variant
+     * @return string Meta description
+     */
+    public static function buildPageDescription(object $carData, bool $modelKnown): string
+    {
+        $parts = self::pageTitleParts($carData, $modelKnown);
+        $description = 'Registry record for a ' . $parts['car'] . self::carReference($parts, 'chassis')
+            . ': ownership history, factory build data and photos.';
+
+        return self::stripUnsafeTitleCharacters($description);
+    }
+
+    /**
+     * The chassis tells cars apart. When it is not valid, the registry ID
+     * does that, so two cars never share a title.
+     *
+     * @param array{car: string, chassis: ?string, id: ?int} $parts
+     * @param string $chassisLabel 'Chassis' in the title, 'chassis' in the description
+     */
+    private static function carReference(array $parts, string $chassisLabel): string
+    {
+        if ($parts['chassis'] !== null) {
+            return ', ' . $chassisLabel . ' ' . $parts['chassis'];
+        }
+
+        return $parts['id'] !== null ? ', Registry car #' . $parts['id'] : '';
+    }
+
+    /**
+     * Pick the model line from the series. See buildCarSchema() for why a
+     * "+2" series prefix means the Elan Plus 2.
+     *
+     * @param string $normalizedSeries Trimmed series value
+     * @return array{model: string, series: string} Model name, and the series without the "+2" prefix
+     */
+    private static function modelAndSeries(string $normalizedSeries): array
+    {
+        $isPlus2 = str_starts_with($normalizedSeries, '+2');
+
+        return [
+            'model' => $isPlus2 ? 'Elan Plus 2' : 'Elan',
+            'series' => $isPlus2 ? trim(substr($normalizedSeries, 2)) : $normalizedSeries,
+        ];
+    }
+
+    /**
+     * Validate each car field for the page title and description. A field
+     * with the wrong type or an unsafe value is left out, not escaped.
+     *
+     * @return array{car: string, chassis: ?string, id: ?int}
+     */
+    private static function pageTitleParts(object $carData, bool $modelKnown): array
+    {
+        $year = $carData->year ?? null;
+        $series = $carData->series ?? null;
+        $variant = $carData->variant ?? null;
+        $chassis = $carData->chassis ?? null;
+        $id = $carData->id ?? null;
+
+        // The model line comes from a closed set of two names, so an unknown
+        // series can still pick it.
+        ['model' => $model, 'series' => $seriesForName] = self::modelAndSeries(
+            is_string($series) ? trim($series) : ''
+        );
+        $variant = is_string($variant) ? trim($variant) : '';
+
+        $carParts = [];
+        $year = self::positiveIntOrNull($year);
+        if ($year !== null && $year >= self::TITLE_YEAR_MIN && $year <= self::TITLE_YEAR_MAX) {
+            $carParts[] = (string) $year;
+        }
+        $carParts[] = 'Lotus ' . $model;
+        if ($modelKnown && preg_match(self::TITLE_MODEL_PART_PATTERN, $seriesForName) === 1) {
+            $carParts[] = $seriesForName;
+        }
+        if ($modelKnown && preg_match(self::TITLE_MODEL_PART_PATTERN, $variant) === 1) {
+            $carParts[] = '(' . $variant . ')';
+        }
+
+        $chassis = is_string($chassis) ? trim($chassis) : '';
+
+        return [
+            'car' => implode(' ', $carParts),
+            'chassis' => preg_match(self::TITLE_CHASSIS_PATTERN, $chassis) === 1 ? $chassis : null,
+            'id' => self::positiveIntOrNull($id),
+        ];
+    }
+
+    /**
+     * The UserSpice DB class returns integer columns as strings, so a string
+     * of digits with no leading zero is also an integer here. Any other type
+     * or format gives null.
+     */
+    private static function positiveIntOrNull(mixed $value): ?int
+    {
+        if (is_int($value)) {
+            return $value > 0 ? $value : null;
+        }
+        if (is_string($value) && preg_match('/^[1-9][0-9]{0,9}\z/', $value) === 1) {
+            return (int) $value;
+        }
+
+        return null;
+    }
+
+    /**
+     * Last check after validation of each part: remove any character outside
+     * the safe set, so a later change to a part cannot add markup.
+     */
+    private static function stripUnsafeTitleCharacters(string $text): string
+    {
+        return (string) preg_replace(self::TITLE_UNSAFE_CHARACTERS, '', $text);
     }
 }

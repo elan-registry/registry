@@ -128,11 +128,6 @@ after an item is written.
 
 - [ ] The `down()` comment (~L84) says "MySQL refuses to DROP a column that a trigger body still references". MySQL 8 allows the drop; the next INSERT, UPDATE or DELETE on `cars` then fails with 1054. The restore-first order is still right. Correct the reason in the comment (found in #2167)
 
-### `docs/development/CLASSES.md`
-
-- [ ] The `CarPhotoRecovery` section repeats the PHPDoc: Common Usage, "Used By" and the step list of `apply()`. Keep the behaviour that is not obvious (token and history meaning). Link to the PHPDoc for the rest, as `.claude/rules/php-code.md` says (found in /flow:finish-milestone v2.32.0)
-- [ ] The "Ignore and Undo ignore" bullet says `undoIgnore()` returns `NothingToDo` "when the row is not ignored". The PHPDoc also says "or the car has no row". Add the second case (found in /flow:finish-milestone v2.32.0)
-
 ### `docs/development/ENVIRONMENT.md`
 
 - [ ] In "PHP upload and memory limits", the sentence "Nothing checks test and production automatically, so check them after each change" (~L613) wraps wider than the paragraph. Rewrap it. The cell "8M (set 2026-11-11)" (~L581) is a dated fact that will age. Say "Check in cPanel" and keep the date in the release notes (found in /flow:finish-milestone v2.32.0)
@@ -141,6 +136,11 @@ after an item is written.
 ### `docs/development/adr/ADR-018-build-at-deploy-for-frontend-vendoring.md`
 
 - [ ] The "Update 2026-11-10" note says Node 20 or later, but the original Node v18 research text below it is not marked as superseded. Mark that paragraph as superseded (found in /flow:finish-milestone v2.31.2)
+
+### `docs/pdf-viewer.php`
+
+- [ ] The `$is_servable_doc` closure (sets `$pageCanonicalUrl` before the header renders) repeats the subdir allowlist, the doc checks and the extension list of the later validation block, and uses `is_file()` where the block uses `file_exists()`. Define the lists once above both and share the checks (found in #1960)
+- [ ] The comment above `$provisional_doc_metadata` says the legacy-alias 301 runs "before any title would be sent". The head renders first. Output buffering (`header1_must_include.php` `ob_start()`) is what lets the 301 work. Correct the comment (found in #1960)
 
 ### `docs/reference/chassis-validation.php`
 
@@ -183,6 +183,10 @@ after an item is written.
 ### `tests/integration/EmailEventRekeyReportAuthTest.php` (test coverage)
 
 - [ ] `testVisitorWhoIsNotLoggedInIsRefusedAndGetsNoReport` checks only that no report shows. A crash passes too. Assert exit code 0 and HTTP 302, as the editor test does (found in #2358 review)
+
+### `tests/integration/HeadTagsCanonicalRenderTest.php` + `tests/integration/VerifyCarLandingPageTest.php` + `tests/Support/UserscPageClient.php` (test-only)
+
+- [ ] Each file repeats the DB env propagation to the `php -S` process, the router bootstrap (autoload, Dotenv `.env.test.local`, chdir, require) and a curl wrapper that splits headers and reads `Location`. Move them to one `tests/Support` helper Also use `trackNewRateLimitRows()` in place of the blanket `us_rate_limits` delete in both test classes (found in #1960)
 
 ### `tests/integration/OwnerCreateUpdateTransactionRollbackTest.php`
 
@@ -346,10 +350,6 @@ after an item is written.
 
 - [ ] `blockedCauseLabel()` treats a whitespace-only `email_blocked_cause` as a cause and shows a blank-looking reason. Only manual SQL can write one. Trim before the empty check (found in #2458 review)
 - [ ] The `MISSING` job-row `detail` names `er_cron_job_runs` as plain text, so the panel cannot put it in `<code>`, as it does for the `advice` segments. Give `detail` the same `{text, code}` segments or move the name into `advice` (found in #2458 review)
-
-### `usersc/classes/CarView.php`
-
-- [ ] The no-photo placeholder in `displayCarousel()` is an `h5` under the `h3` Photos card, so it skips levels. Its `fa-camera` icon has no `aria-hidden="true"` (found in #2495)
 
 ### `usersc/classes/ChassisValidator.php`
 

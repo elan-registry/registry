@@ -108,6 +108,31 @@ class PageRobotsTest extends TestCase
         );
     }
 
+    /**
+     * #1960: head_tags.php builds the canonical with no query string, so
+     * verify_car.php no longer overrides $current_url to keep the vericode
+     * out of it. A new override would hide a head_tags.php regression.
+     */
+    public function testVerifyCarDoesNotAssignCurrentUrlAndStaysNoindex(): void
+    {
+        $relativePath = 'app/verify/verify_car.php';
+        $filePath = $this->rootDir . '/' . $relativePath;
+        $this->assertFileExists($filePath, "$relativePath must exist (Issue #1960)");
+
+        $content = (string)file_get_contents($filePath);
+
+        $this->assertDoesNotMatchRegularExpression(
+            '/\$current_url\s*=[^=]/',
+            $content,
+            "$relativePath must not assign \$current_url; head_tags.php builds the canonical (Issue #1960)"
+        );
+        $this->assertSame(
+            1,
+            preg_match('/\$pageRobots\s*=\s*[\'"]noindex,\s*follow[\'"]/', $content),
+            "$relativePath must stay 'noindex, follow' (Issue #1960)"
+        );
+    }
+
     public static function pagesProvider(): array
     {
         $data = [];

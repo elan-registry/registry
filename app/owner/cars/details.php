@@ -16,14 +16,15 @@ $pageTitle = 'Car Details';
 $pageDescription = 'Detailed registry record for a Lotus Elan or Elan Plus 2, including chassis number, ownership history, and factory build data.';
 
 require_once '../../../users/init.php';
-require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
+use ElanRegistry\CanonicalUrl;
 use ElanRegistry\Car\Car;
 use ElanRegistry\Car\CarBadges;
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\CarView;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\LogCategories;
+use ElanRegistry\Reference\CarModel;
 
 if (!securePage($php_self)) {
     die();
@@ -85,12 +86,35 @@ if (!empty($_GET)) {
     exit;
 }
 
-// $current_url is 'https:///…' when the request's host is not trusted
-// (server_globals.php), so build the schema URL from getBaseUrl() in that case.
-$schemaUrl = !empty($host)
-    ? ($current_url ?? '')
-    : getBaseUrl() . '/app/owner/cars/details.php?car_id=' . (int) $carID;
-$carSchema = CarView::buildCarSchema($carData, $schemaUrl);
+// The car loads before elanregistry_prep.php for two reasons: the page head
+// (header1_must_include.php and head_tags.php) reads $pageTitle,
+// $pageDescription and $pageCanonicalUrl, and the
+// not-found redirect above must run before any output to send a real 302.
+// The title shows series and variant only when car_models knows the pair
+// (#1528). No try/catch: a failed lookup is a serious error.
+$modelKnown = (new CarModel())->exists(
+    (string) ($carData->series ?? ''),
+    (string) ($carData->variant ?? ''),
+    (string) ($carData->type ?? '')
+);
+// buildPageTitle() outputs only safe characters. The upstream header echoes
+// $pageTitle without escaping, so escape it here as a second defence.
+$pageTitle = htmlspecialchars(CarView::buildPageTitle($carData, $modelKnown), ENT_QUOTES, 'UTF-8');
+$pageDescription = CarView::buildPageDescription($carData, $modelKnown);
+
+// The canonical keeps only the validated car ID, so a crafted suffix, a padded
+// ID or a tracking parameter does not reach it (#1960). $host is empty when
+// the request's host is not trusted (server_globals.php), so use getBaseUrl()
+// in that case.
+$pageCanonicalUrl = CanonicalUrl::build(
+    !empty($host) ? $current_origin : getBaseUrl(),
+    $php_self,
+    ['car_id' => (int) $carID]
+);
+
+require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
+
+$carSchema = CarView::buildCarSchema($carData, $pageCanonicalUrl);
 $carSchemaJson = json_encode(
     $carSchema,
     JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES

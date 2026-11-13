@@ -11,11 +11,10 @@ use PHPUnit\Framework\Attributes\Group;
  *
  * app/owner/cars/details.php embeds a Schema.org `Car` JSON-LD block to help
  * search engines and AI crawlers understand car detail pages. The block is
- * placed in the page body (NOT `<head>`) — deliberately, right after the
- * `$carData = $car->data();` data-loading block and before
- * `<div class="page-wrapper">` — because the car ID used to build it isn't
- * resolved until the data-loading block runs; placing it any earlier would
- * either 404 on a bad car_id or reference an undefined `$carData`.
+ * placed in the page body (NOT `<head>`), after `elanregistry_prep.php` and
+ * before `<div class="page-wrapper">`. The car loads before prep (#1960,
+ * #1528), so the not-found redirect is a real 302 and the template header can
+ * read the per-car `$pageTitle`, `$pageDescription` and `$pageCanonicalUrl`.
  *
  * The actual JSON-LD payload construction (bodyType mapping, the
  * Federal/Race → vehicleConfiguration exclusion, whitespace defense) lives in
@@ -106,6 +105,76 @@ class CarDetailsJsonLdTest extends TestCase
             $scriptTagPosition,
             self::DETAILS_PAGE . ' JSON-LD block must appear AFTER $carData is loaded — the car ID is not '
             . 'resolved before that point (Issue #1371)'
+        );
+    }
+
+    public function testJsonLdBlockFollowsElanregistryPrep(): void
+    {
+        // The JSON-LD block is body output. Before prep it would print ahead
+        // of <html>, and the not-found redirect could not send a header.
+        $prepPosition = strpos($this->content, 'elanregistry_prep.php');
+        $scriptTagPosition = strpos($this->content, '<script type="application/ld+json">');
+        $this->assertNotFalse($prepPosition, self::DETAILS_PAGE . ' must require elanregistry_prep.php');
+        $this->assertNotFalse($scriptTagPosition, self::DETAILS_PAGE . ' must contain the JSON-LD <script> block');
+        $this->assertGreaterThan(
+            $prepPosition,
+            $scriptTagPosition,
+            self::DETAILS_PAGE . ' JSON-LD block must print after elanregistry_prep.php (#1960)'
+        );
+    }
+
+    public function testCarLoadsAndBuildsMetadataBetweenSecurePageAndPrep(): void
+    {
+        // #1960, #1528: the template header reads the per-car title,
+        // description and canonical, so they must be set before prep, and
+        // securePage() must still run before the car loads.
+        $needles = [
+            "users/init.php'",
+            'securePage(',
+            'new Car(',
+            'CarView::buildPageTitle(',
+            'CanonicalUrl::build(',
+            "'usersc/includes/elanregistry_prep.php'",
+        ];
+
+        $previous = -1;
+        $previousNeedle = '(start of file)';
+        foreach ($needles as $needle) {
+            $position = strpos($this->content, $needle);
+            $this->assertNotFalse($position, self::DETAILS_PAGE . " must contain {$needle}");
+            $this->assertGreaterThan(
+                $previous,
+                $position,
+                self::DETAILS_PAGE . " must contain {$needle} after {$previousNeedle} (#1960, #1528)"
+            );
+            $previous = $position;
+            $previousNeedle = $needle;
+        }
+    }
+
+    public function testNotFoundRedirectComesBeforePerCarTitle(): void
+    {
+        // #1528: a car that does not load keeps the redirect and gets no
+        // per-car title.
+        $redirectPosition = strpos($this->content, "Redirect::to(\$us_url_root . 'app/owner/cars/index.php')");
+        $titlePosition = strpos($this->content, '$pageTitle = htmlspecialchars(CarView::buildPageTitle(');
+        $this->assertNotFalse($redirectPosition, self::DETAILS_PAGE . ' must redirect a car that does not load');
+        $this->assertNotFalse($titlePosition, self::DETAILS_PAGE . ' must set the per-car $pageTitle');
+        $this->assertGreaterThan(
+            $redirectPosition,
+            $titlePosition,
+            self::DETAILS_PAGE . ' must redirect before it sets the per-car $pageTitle (#1528)'
+        );
+    }
+
+    public function testBuildCarSchemaUsesPageCanonicalUrl(): void
+    {
+        // #1960: the JSON-LD url must equal rel=canonical, which head_tags.php
+        // reads from $pageCanonicalUrl.
+        $this->assertMatchesRegularExpression(
+            '/CarView::buildCarSchema\(\s*\$carData\s*,\s*\$pageCanonicalUrl\s*\)/',
+            $this->content,
+            self::DETAILS_PAGE . ' must pass $pageCanonicalUrl to CarView::buildCarSchema() (#1960)'
         );
     }
 
