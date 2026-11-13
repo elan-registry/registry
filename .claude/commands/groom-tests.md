@@ -110,6 +110,11 @@ output of `git rev-parse --show-toplevel` in place of REPO_ROOT:
 > - Deploy and release safety scripts in `tests/hooks/` keep their depth.
 > - For each CUT, name the test that covers the same behavior, or write
 >   "no coverage needed" and the reason.
+> - Read `docs/development/TESTING_STRATEGY.md`, "Writing a Test That Earns
+>   Its Place". A test that breaks one of its rules is TRIM (copied cases, or
+>   extra malformed-input cases in a dev-only tool test) or CUT (checks no app
+>   behavior, or a migration sandbox test past its release), unless a rule above makes it KEEP or
+>   REPLACE. Name the rule in the reason.
 >
 > Also report these patterns: tests that read source text; tests of the
 > test itself; the same check copied for each field; tests in the wrong

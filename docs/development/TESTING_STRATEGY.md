@@ -276,6 +276,41 @@ Related helpers in `IntegrationTestCase`:
 - `countMatchingLogs($logtype, $lognote, ?int $userId)` — counts `logs` rows.
   Pass `$userId` to count only the rows of one user.
 
+## Writing a Test That Earns Its Place
+
+A test costs time at each run and each change. Write a test only when it
+checks a real behavior: a business branch, an auth or permission decision, a
+data write, or a past bug that can occur again. #2327 removed tests that broke
+these rules, and the same patterns came back. `/groom-tests` applies these
+rules as its TRIM and CUT criteria.
+
+- **Test behavior, not source text.** Do not write a new test that reads app
+  source with `file_get_contents()` and matches a string, unless no behavior
+  test is possible. Its docblock then says why. Prefer a PHPStan rule (see
+  "PHPStan Rule Tests"). A source test checks only the files it names.
+- **Do not test the test.** A test of the test's own regex or fixture checks
+  no app behavior. The six `testNegativeControl*` methods in
+  `tests/unit/regression/Issue2101DeliverabilityFlagsSourceRegressionTest.php`
+  are an example.
+- **Use a data provider when three or more tests have the same shape.** One
+  test method for each field or view with the same assertions is a copy, not
+  more coverage. `tests/unit/classes/EmailTemplateTest.php` (1,491 lines, 107
+  tests for a 535-line class) repeats a renders / contains / escapes triplet
+  for each view. Keep each case as a provider row. A data provider removes
+  the copied code, not the cases.
+- **An edge case needs a real trigger.** Test an input or state that a user,
+  an operator, a cron job, or an outside service can cause. Do not test an
+  input that no caller can send. Do not test PHP, MySQL, or UserSpice
+  behavior, and do not write a test that checks only a type or `instanceof`.
+- **Keep tests of dev-only tooling thin.** A test of a script in `scripts/`,
+  a git hook, or a test helper covers the happy path and the failures that
+  matter. It does not cover each malformed input. Deploy and release safety
+  scripts are the exception and keep their depth.
+- **Security tests keep their depth.** Tests of CSRF, XSS escaping, auth, SQL
+  injection, upload validation, and path traversal stay, unless another test
+  covers the same case.
+- **A migration sandbox test is temporary.** See "Migration Tests".
+
 ## UserSpice `DB` Class Conventions
 
 UserSpice ships no test suite and no testing conventions of its own — the
@@ -334,6 +369,24 @@ A test that runs a migration's `up()` or `down()` uses its own throwaway
 schema, not the shared test schema. Extend `MigrationSandboxTestCase` in
 `tests/integration/database/`. The rules and an example are in
 [`database/migrations/README.md`, "Testing"](../../database/migrations/README.md#testing).
+
+A migration sandbox test is temporary. A migration sandbox test is a class
+that extends `MigrationSandboxTestCase`, directly or through a subclass. It
+proves that the migration works before the migration runs in production.
+One release after the migration deploys to production, delete the migration's
+sandbox classes (its `up()`, `down()`, dry-run and rerun tests) and each base
+class or fixture that only those classes use. After that, the production schema
+is the proof, and each sandbox class adds about 3 s to each gated push (#2395).
+
+The rule does not cover these tests:
+
+- A sandbox class that tests code still in use after the migration, such as a
+  shared class or a script. Example: `EmailEventRekeyQueriesTest.php` tests
+  `EmailEventRekeyQueries`, which
+  `app/admin/scripts/maintenance/29-Report-Email-Event-Rekey.php` also uses.
+  Keep it, or move its tests before you delete the sandbox base class.
+- A migration test that extends `IntegrationTestCase`, such as
+  `AddElanregistryBaselineMigrationTest.php`.
 
 ## PHPStan Rule Tests
 
