@@ -598,11 +598,17 @@ final class CarActionsSaveWiringTest extends TestCase
 
         $after = substr($content, $movePos, 600);
 
+        $guardPos = strpos($after, 'if (!empty($errors))');
+        $this->assertIsInt($guardPos, 'The $errors guard must follow mvTmpImages().');
+
+        // The 500 and the FileError row must sit behind that guard, so a refactor
+        // that drops or merges it fails here.
+        $afterGuard = substr($after, $guardPos);
         $this->assertStringContainsString(
             "ApiResponse::serverError('Car saved but images could not be moved",
-            $after
+            $afterGuard
         );
-        $this->assertStringContainsString('LOG_CATEGORY_FILE_ERROR', $after);
+        $this->assertStringContainsString('LOG_CATEGORY_FILE_ERROR', $afterGuard);
     }
 
     /**

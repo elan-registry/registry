@@ -2,8 +2,9 @@
 // answer 422, name the purchase date, and create no car.
 //
 // The case posts with page.request and needs a logged-in account. It skips
-// without E2E_DEV_ADMIN_*. CarActionsSaveWiringTest checks only that the guard
-// sits between addCar() and mvTmpImages().
+// without E2E_DEV_ADMIN_*. CarActionsSaveWiringTest scans the save.php source:
+// the guard sits between addCar() and mvTmpImages(), sends 422, and writes no
+// FileError row. This case checks the live response.
 
 const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn } = require('./auth-helper.js');
