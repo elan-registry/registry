@@ -110,6 +110,8 @@ RewriteRule ^embed\.php$ /docs/pdf-viewer.php?subdir=reference&doc=%1 [R=301,L,N
 
 # /stories/* moved to /docs/stories/ — redirect was missing until #1369
 RewriteRule ^stories/(.+)$ /docs/stories/$1 [R=301,L]
+# (.+) above does not match /stories or /stories/. Anchored $ leaves /stories/<slug> to the rule above (#2247)
+RedirectMatch 301 ^/stories/?$ /docs/car-stories.php
 
 # Indexed slug was a typo'd domain name; actual story directory is type26register.com (#1409)
 Redirect 301 /docs/stories/type26registry/ /docs/stories/type26register.com/
@@ -164,6 +166,8 @@ Redirect 301 /app/list_cars.php /app/owner/cars/index.php
 Redirect 301 /app/list_factory.php /app/owner/cars/factory.php
 Redirect 301 /list_cars.php /app/owner/cars/index.php
 Redirect 301 /guide.php /docs/
+# Legacy root statistics page, missed by #1369 (#2247)
+Redirect 301 /stats.php /app/owner/reports/statistics.php
 # @slug: /app/cars/ prefix redirect fires first → /app/owner/cars/@the_elan_sprint_diary → this rule
 Redirect 301 /app/owner/cars/@the_elan_sprint_diary /docs/car-stories.php
 # Duplicate PDF path: /docs/assets/ renamed to /docs/reference/assets/ in #715
