@@ -94,9 +94,10 @@ output of `git rev-parse --show-toplevel` in place of REPO_ROOT:
 > - TRIM — useful, but has copies of one case (same shape for each field,
 >   near-identical data rows, the same check at two layers).
 > - CUT — checks no app behavior. Examples: reads source text and matches
->   a string (with no docblock reason); tests the test's own regex or fixture; tests PHP, MySQL, or
->   framework behavior; type or `instanceof` checks only; an exact copy of
->   another test; an edge case with no real trigger.
+>   a string (with no docblock reason); tests the test's own regex or
+>   fixture; tests PHP, MySQL, or framework behavior; type or `instanceof`
+>   checks only; an exact copy of another test; an edge case with no real
+>   trigger.
 > - MERGE — overlaps strongly with a named file.
 >
 > Rules:

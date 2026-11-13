@@ -154,7 +154,8 @@ Rules:
 - Declare `#[Group('integration')]` and `#[Group('migration')]` on the class.
   PHPUnit does not inherit groups from the base class.
 - The test is temporary. Delete it one release after the migration deploys to
-  production. See `docs/development/TESTING_STRATEGY.md`, "Migration Tests".
+  production, unless it tests code still in use. See
+  `docs/development/TESTING_STRATEGY.md`, "Migration Tests".
 
 ```php
 <?php

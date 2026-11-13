@@ -289,15 +289,15 @@ rules as its TRIM and CUT criteria.
   test is possible. Its docblock then says why. Prefer a PHPStan rule (see
   "PHPStan Rule Tests"). A source test checks only the files it names.
 - **Do not test the test.** A test of the test's own regex or fixture checks
-  no app behavior. On 2026-11-13, the six `testNegativeControl*` methods in
+  no app behavior. The six `testNegativeControl*` methods in
   `tests/unit/regression/Issue2101DeliverabilityFlagsSourceRegressionTest.php`
-  were an example.
+  are an example (on 2026-11-13).
 - **Use a data provider when three or more tests have the same shape.** One
   test method for each field or view with the same assertions is a copy, not
   more coverage. `tests/unit/classes/EmailTemplateTest.php` (on 2026-11-13,
-  1,491 lines and 107 tests for a 535-line class) repeats a renders / contains / escapes triplet
-  for each view. Keep each case as a provider row. A data provider removes
-  the copied code, not the cases.
+  1,491 lines and 107 tests for a 535-line class) repeats a renders /
+  contains / escapes triplet for each view. Keep each case as a provider
+  row. A data provider removes the copied code, not the cases.
 - **An edge case needs a real trigger.** Test an input or state that a user,
   an operator, a cron job, or an outside service can cause. Do not test an
   input that no caller can send. Do not test PHP, MySQL, or UserSpice
@@ -376,8 +376,9 @@ proves that the migration works before the migration runs in production.
 One release after the migration deploys to production, delete the migration's
 sandbox classes (its `up()`, `down()`, dry-run and rerun tests) and each base
 class or fixture that only those classes use. Do not delete
-`MigrationSandboxTestCase`. New migrations extend it. After that, the production schema
-is the proof, and each sandbox class adds about 3 s to each gated push (#2395).
+`MigrationSandboxTestCase`. New migrations extend it. After that, the
+production schema is the proof, and each sandbox class adds about 3 s to
+each gated push (#2395).
 
 The rule does not cover these tests:
 
