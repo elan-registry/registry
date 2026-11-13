@@ -1,5 +1,5 @@
 <!-- markdownlint-disable MD013 -->
-<!-- Each item stays on one line, because scripts/ledger-items-for-files.sh reads one line per item. -->
+<!-- Each item stays on one line, because flow-ledger-items-for-files reads one line per item. -->
 
 # Cleanup Ledger
 
@@ -31,7 +31,7 @@ after an item is written.
   `composer check:docs` fails when a heading names a path that does not
   exist.
 - **Find the items for a change.** Run
-  `git diff --name-only <base>..HEAD | scripts/ledger-items-for-files.sh`.
+  `git diff --name-only <base>..HEAD | flow-ledger-items-for-files`.
 
 ## Items
 
