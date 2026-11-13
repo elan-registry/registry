@@ -51,8 +51,8 @@ Test locations: `tests/unit/`, `tests/integration/`, `tests/playwright/`.
   - Delete a migration sandbox test (a class that extends
     `MigrationSandboxTestCase`, directly or through a subclass) one release
     after the migration deploys to production. Also delete each base class or
-    fixture that only those tests use. Keep a class that tests code still in
-    use after the migration.
+    fixture that only those tests use, but not `MigrationSandboxTestCase`.
+    Keep a class that tests code still in use after the migration.
 - Verify audit logging where the code writes audit records.
 - Use a live test database to check SQL, triggers, and `*_hist` audit rows.
 - Do not write a tautological test. It repeats the code under test.

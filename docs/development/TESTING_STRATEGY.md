@@ -375,7 +375,8 @@ that extends `MigrationSandboxTestCase`, directly or through a subclass. It
 proves that the migration works before the migration runs in production.
 One release after the migration deploys to production, delete the migration's
 sandbox classes (its `up()`, `down()`, dry-run and rerun tests) and each base
-class or fixture that only those classes use. After that, the production schema
+class or fixture that only those classes use. Do not delete
+`MigrationSandboxTestCase`. New migrations extend it. After that, the production schema
 is the proof, and each sandbox class adds about 3 s to each gated push (#2395).
 
 The rule does not cover these tests:
@@ -384,8 +385,8 @@ The rule does not cover these tests:
   shared class or a script. Example: `EmailEventRekeyQueriesTest.php` tests
   `EmailEventRekeyQueries`, which
   `app/admin/scripts/maintenance/29-Report-Email-Event-Rekey.php` also uses.
-  Keep it. Before you delete its sandbox base class, move its tests to
-  `IntegrationTestCase`.
+  Keep it, and keep its sandbox base class. To delete the base class, first
+  move the test to `IntegrationTestCase` with its own fixture rows.
 - A migration test that extends `IntegrationTestCase`, such as
   `AddElanregistryBaselineMigrationTest.php`.
 
