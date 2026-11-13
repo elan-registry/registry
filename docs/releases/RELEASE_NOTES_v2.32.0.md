@@ -10,6 +10,7 @@ An owner can add full-resolution phone photos to their car. When a photo does no
 - Owners can add phone photos up to 20 MB each. The browser shrinks each photo before it saves. WebP photos are no longer accepted. (#2627)
 - A car save with too many large photos now says the photos are too large, with the limit. (#2647)
 - When a car save rejects photos, the message names each bad photo and gives the reason. (#1844)
+- A new car with an invalid purchase date now shows the date error. Purchase and sold dates may be one day ahead of the server date, for time zones. (#2655)
 
 ## Admin-Facing Changes
 
@@ -22,3 +23,4 @@ An owner can add full-resolution phone photos to their car. When a photo does no
 - [#1844](https://github.com/elan-registry/registry/issues/1844) — Name each rejected photo and its reason in a multi-photo car save.
 - [#2644](https://github.com/elan-registry/registry/issues/2644) — Add an admin Car Photos tab to reattach photos that are on disk but not on the car.
 - [#1965](https://github.com/elan-registry/registry/issues/1965) — Pin GitHub Actions to commit SHAs and add a Dependabot cooldown.
+- [#2655](https://github.com/elan-registry/registry/issues/2655) — Return 422 with the date error for a car create with an invalid purchase date, log the submitted dates, and allow dates one day ahead for member time zones.

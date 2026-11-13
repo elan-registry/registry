@@ -159,14 +159,29 @@ final class CarValidatorTest extends TestCase
      */
     public static function dateOutOfRangeProvider(): array
     {
-        $tomorrow = (new \DateTime('tomorrow'))->format('Y-m-d');
+        // Tomorrow is allowed (member time zones, #2655); the day after is not.
+        $dayAfterTomorrow = (new \DateTime('tomorrow +1 day'))->format('Y-m-d');
 
         return [
-            'purchasedate before min'  => [['purchasedate' => '1956-12-31'], '/Purchase date must be between/'],
-            'purchasedate in future'   => [['purchasedate' => $tomorrow],    '/Purchase date must be between/'],
-            'solddate before min'      => [['solddate'     => '1900-01-01'], '/Sold date must be between/'],
-            'solddate in future'       => [['solddate'     => $tomorrow],    '/Sold date must be between/'],
+            'purchasedate before min'  => [['purchasedate' => '1956-12-31'],     '/Purchase date must be between/'],
+            'purchasedate in future'   => [['purchasedate' => $dayAfterTomorrow], '/Purchase date must be between/'],
+            'solddate before min'      => [['solddate'     => '1900-01-01'],     '/Sold date must be between/'],
+            'solddate in future'       => [['solddate'     => $dayAfterTomorrow], '/Sold date must be between/'],
         ];
+    }
+
+    public function testPurchasedateTomorrowIsAccepted(): void
+    {
+        $tomorrow = (new \DateTime('tomorrow'))->format('Y-m-d');
+        $result = $this->validator->validateAndSanitizeFields(['purchasedate' => $tomorrow], false);
+        $this->assertEquals($tomorrow, $result['purchasedate']);
+    }
+
+    public function testSolddateTomorrowIsAccepted(): void
+    {
+        $tomorrow = (new \DateTime('tomorrow'))->format('Y-m-d');
+        $result = $this->validator->validateAndSanitizeFields(['solddate' => $tomorrow], false);
+        $this->assertEquals($tomorrow, $result['solddate']);
     }
 
     public function testMinBoundaryDateIsAccepted(): void

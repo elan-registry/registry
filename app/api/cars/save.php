@@ -110,6 +110,18 @@ switch ($action) {
             }
 
             addCar($cardetails, $errors);
+
+            // addCar() catches its own exceptions and appends to $errors. Check
+            // here, before mvTmpImages(), so a failed create is not reported as
+            // "Car saved but images could not be moved" (#2655). addCar() has
+            // already logged the failure.
+            if (!empty($errors)) {
+                ApiResponse::validationError(
+                    ['general' => $errors],
+                    'Cannot add car: validation errors'
+                )->withData('cardetails', $cardetails)->send();
+            }
+
             mvTmpImages($cardetails, $errors);
 
             if (!empty($errors)) {
@@ -335,7 +347,16 @@ function addCar(array &$cardetails, array &$errors): void
         $car->create($cardetails);
         $cardetails['id'] = $car->data()->id;
     } catch (CarValidationException $e) {
-        logger($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Car Creation Validation Error: ' . $e->getMessage());
+        // The two dates are logged because the message alone does not show what
+        // the member entered. updatePurchasedate()/updateSolddate() set each as
+        // a Y-m-d string or null. "none" means the member left the date empty.
+        logger(
+            $user->data()->id,
+            LogCategories::LOG_CATEGORY_VALIDATION_ERROR,
+            'Car Creation Validation Error: ' . $e->getMessage()
+                . ' (purchasedate=' . ($cardetails['purchasedate'] ?? 'none')
+                . ', solddate=' . ($cardetails['solddate'] ?? 'none') . ')'
+        );
         $errors[] = $e->getUserMessage();
     } catch (ElanRegistryException $e) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS, 'Car Creation Error: ' . $e->getMessage());
@@ -916,7 +937,8 @@ function fetchImages(int $car_id): void
 /**
  * Move temporary images to permanent car directory
  *
- * Only called from the addCar path (after uploadImages() runs), so every
+ * Only called from the addCar path after addCar() succeeded (the caller stops
+ * on any addCar() error first, #2655), so the car row exists. Every
  * filename in $cardetails['image'] has already been through uploadImages()'s
  * resolveUploadOrder() filter. A new car has no stored names, so only names
  * that pass isValidFilename() stay (or, for a no-upload addCar, the list is

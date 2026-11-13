@@ -17,6 +17,7 @@ require_once '../../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
 use ElanRegistry\Car\Car;
+use ElanRegistry\Car\CarValidator;
 use ElanRegistry\Documentation\DocumentPortalTemplate;
 use ElanRegistry\Input;
 use ElanRegistry\LogCategories;
@@ -360,7 +361,7 @@ function updateCarDetails(array &$car, bool $logoutOnDenied = true): void
                     <div class='col-12 col-md-9'>
                         <div class='input-group'>
                             <span class='input-group-text'><i aria-hidden='true' class='fas fa-calendar'></i></span>
-                            <input class='form-control' name='purchasedate' id='purchasedate' value='<?= htmlspecialchars((string)($cardetails['purchasedate'] ?? ''), ENT_QUOTES, 'UTF-8') ?>' type='date' min='1957-01-01' max='<?= date('Y-m-d') ?>' aria-describedby='purchasedateHelp' />
+                            <input class='form-control' name='purchasedate' id='purchasedate' value='<?= htmlspecialchars((string)($cardetails['purchasedate'] ?? ''), ENT_QUOTES, 'UTF-8') ?>' type='date' min='1957-01-01' max='<?= CarValidator::maxCarDate()->format('Y-m-d') ?>' aria-describedby='purchasedateHelp' />
                         </div>
                         <small id='purchasedateHelp' class='form-text text-muted'>Approximate date you purchased the car.</small>
                     </div>
@@ -383,7 +384,7 @@ function updateCarDetails(array &$car, bool $logoutOnDenied = true): void
                     <div class='col-12 col-md-9'>
                         <div class='input-group'>
                             <span class='input-group-text'><i aria-hidden='true' class='fas fa-calendar'></i></span>
-                            <input class='form-control' name='solddate' id='solddate' value='<?= htmlspecialchars((string)($cardetails['solddate'] ?? ''), ENT_QUOTES, 'UTF-8') ?>' type='date' min='1957-01-01' max='<?= date('Y-m-d') ?>' aria-describedby='solddateHelp' />
+                            <input class='form-control' name='solddate' id='solddate' value='<?= htmlspecialchars((string)($cardetails['solddate'] ?? ''), ENT_QUOTES, 'UTF-8') ?>' type='date' min='1957-01-01' max='<?= CarValidator::maxCarDate()->format('Y-m-d') ?>' aria-describedby='solddateHelp' />
                         </div>
                         <small id='solddateHelp' class='form-text text-muted'>Approximate date you sold the car.</small>
                     </div>
