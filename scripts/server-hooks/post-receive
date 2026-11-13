@@ -50,18 +50,37 @@ do
     # Cloudflare fetches robots.txt directly from origin, bypassing Apache rewrites.
     # Override with the blocking version on test so crawlers are never admitted.
     if [ "$ENV_NAME" = "Test" ]; then
-        cp "$WORK_TREE/robots-test.txt" "$WORK_TREE/robots.txt"
+        # Tags before #2190 keep the override files at the repo root. Fall
+        # back to them so a rollback deploy of an older tag still swaps.
+        # Remove the fallback when no rollback target predates #2190.
+        # Require both files, not only the directory, so a partial
+        # deploy/test-overrides/ never wins over a complete root set.
+        OVERRIDE_DIR="$WORK_TREE/deploy/test-overrides"
+        if [ -f "$OVERRIDE_DIR/robots-test.txt" ] && [ -f "$OVERRIDE_DIR/llms-test.txt" ]; then
+            echo "Test environment: override files read from deploy/test-overrides/."
+        else
+            OVERRIDE_DIR="$WORK_TREE"
+            echo "Test environment: deploy/test-overrides/ incomplete or missing — using root override files (older tag)."
+        fi
+
+        # Fails loudly: no .htaccess rewrite backs up this swap (#2190), so a
+        # silent failure would leave Test serving the permissive production
+        # robots.txt.
+        cp "$OVERRIDE_DIR/robots-test.txt" "$WORK_TREE/robots.txt" || {
+            echo "ERROR: robots-test.txt swap failed — deployment halted. Test now serves the production robots.txt. Fix the override file and redeploy now."
+            exit 1
+        }
         echo "Test environment: robots.txt replaced with robots-test.txt (crawler block)."
 
         # llms.txt (#1413) is a second crawler-facing policy file that some AI
         # tools consult directly (on-demand fetch/RAG) without also checking
         # robots.txt — override it here too so test.elanregistry.org, which has
         # no basic auth and relies solely on this swap, never advertises itself
-        # as open to indexing. Fails loudly (unlike the robots.txt swap above)
+        # as open to indexing. Fails loudly, like the robots.txt swap above,
         # since a silent failure here would leave the un-authenticated Test
         # host serving the permissive production llms.txt.
-        cp "$WORK_TREE/llms-test.txt" "$WORK_TREE/llms.txt" || {
-            echo "ERROR: llms-test.txt swap failed — deployment halted."
+        cp "$OVERRIDE_DIR/llms-test.txt" "$WORK_TREE/llms.txt" || {
+            echo "ERROR: llms-test.txt swap failed — deployment halted. Test now serves the production llms.txt. Fix the override file and redeploy now."
             exit 1
         }
         echo "Test environment: llms.txt replaced with llms-test.txt (crawler block)."

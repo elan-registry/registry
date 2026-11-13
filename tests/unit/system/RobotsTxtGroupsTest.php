@@ -47,7 +47,7 @@ final class RobotsTxtGroupsTest extends TestCase
         return [
             // Equal prefix length: Allow wins the tie, so the Test host is crawlable.
             'exact tie: injected Allow beats our Disallow (#1537)' => [
-                'robots-test.txt', '*', [['type' => 'allow', 'path' => '/']], '/', true,
+                'deploy/test-overrides/robots-test.txt', '*', [['type' => 'allow', 'path' => '/']], '/', true,
             ],
             // Accepted outcome per #1541: our longer Allow: /docs/ wins over any blanket Disallow: /.
             'non-tie: our longer Allow beats a shorter injected Disallow (#1541)' => [

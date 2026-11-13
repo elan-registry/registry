@@ -94,14 +94,6 @@ RewriteRule ^backups/ - [F,L]
 # LiteSpeed) is also blocking this path.
 RewriteRule (^|/)\.git(/|$) - [F,L]
 
-# Test subdomain: serve a blocking robots.txt without affecting production (#1369)
-# NOTE: Cloudflare fetches robots.txt directly from origin, bypassing Apache rewrites.
-# The test server must have robots-test.txt deployed as robots.txt directly.
-# This rule is retained for environments not behind Cloudflare.
-RewriteCond %{HTTP_HOST} ^test\.elanregistry\.org [NC,OR]
-RewriteCond %{SERVER_NAME} ^test\.elanregistry\.org [NC]
-RewriteRule ^robots\.txt$ /robots-test.txt [L]
-
 # Public sitemap.xml for search engine discovery (#1373)
 # Internal rewrite (no redirect) - crawler-visible URL stays /sitemap.xml
 RewriteRule ^sitemap\.xml$ /app/api/shared/sitemap.php [L]
