@@ -626,8 +626,11 @@ procedure has no tracking step. See
    Use these values:
    - URL: exactly `https://elanregistry.org/app/api/webhooks/brevo.php`.
    - Authentication: **Token**, with the value of `BREVO_WEBHOOK_TOKEN`.
-   - Events: only the delivery events in the event table of the wiki page.
-     No open or click event may stay on.
+   - Events: in the **Transactional email** category, turn on only these 7
+     events: Delivered, Soft bounced, Hard bounced, Blocked, Invalid,
+     Complaint and Unsubscribed. Turn every other event off. No open or click
+     event may stay on. The receiver accepts the payload names in
+     `BrevoWebhookEventProcessor::DELIVERY_EVENTS`.
 5. Open the new webhook in the list. Compare its URL with the URL in step 4,
    character for character. Check that its event list has only the delivery
    events. Brevo sends these events with snake_case names. The receiver
