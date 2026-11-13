@@ -409,7 +409,7 @@ function updateCarDetails(array &$car, bool $logoutOnDenied = true): void
                             <summary class="text-muted small" style="cursor:pointer">Photo requirements</summary>
                             <ul class="small text-muted mt-1 mb-0">
                                 <li>Maximum of <?= ELAN_IMAGE_MAX ?> photos</li>
-                                <li>Maximum size <?= ELAN_IMAGE_UPLOAD_MAX_SIZE ?> MB each</li>
+                                <li>Maximum size <?= ELAN_IMAGE_UPLOAD_MAX_SIZE ?> MB each before the resize, <?= ELAN_IMAGE_SERVER_MAX_SIZE ?> MB after</li>
                                 <li>Photos only</li>
                                 <li>Tap and hold to reorder &bull; Drag on desktop</li>
                             </ul>
