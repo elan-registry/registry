@@ -45,9 +45,9 @@ final class RobotsTxtGroupsTest extends TestCase
     public static function mergeScenariosProvider(): array
     {
         return [
-            // Equal prefix length: Allow wins the tie, so the Test host is crawlable.
-            'exact tie: injected Allow beats our Disallow (#1537)' => [
-                'deploy/test-overrides/robots-test.txt', '*', [['type' => 'allow', 'path' => '/']], '/', true,
+            // Equal prefix length: Allow wins the tie, so an injected Disallow: / cannot block our Allow: / (#2246).
+            'exact tie: our Allow beats an injected Disallow (#1537, #2246)' => [
+                'deploy/test-overrides/robots-test.txt', '*', [['type' => 'disallow', 'path' => '/']], '/', true,
             ],
             // Accepted outcome per #1541: our longer Allow: /docs/ wins over any blanket Disallow: /.
             'non-tie: our longer Allow beats a shorter injected Disallow (#1541)' => [
@@ -59,6 +59,19 @@ final class RobotsTxtGroupsTest extends TestCase
                 '/docs/unlisted-subpage', false,
             ],
         ];
+    }
+
+    /**
+     * The merge scenarios list Allow first, so a "first rule wins a tie"
+     * evaluator would also pass them. Pin the tie in both orders (#1537).
+     */
+    public function testEqualLengthTieIsAllowedInEitherOrder(): void
+    {
+        $allow = ['type' => 'allow', 'path' => '/'];
+        $disallow = ['type' => 'disallow', 'path' => '/'];
+
+        $this->assertTrue(RobotsTxtGroups::resolve([$allow, $disallow], '/'), 'Allow listed first');
+        $this->assertTrue(RobotsTxtGroups::resolve([$disallow, $allow], '/'), 'Disallow listed first');
     }
 
     /**
@@ -80,6 +93,7 @@ final class RobotsTxtGroupsTest extends TestCase
      */
     public static function foreignGroupsScenariosProvider(): array
     {
+        // Synthetic groups for the diff logic. They do not mirror robots-test.txt.
         $localWildcard = ['agents' => ['*'], 'rules' => [['type' => 'disallow', 'path' => '/']]];
         $injectedBotGroup = ['agents' => ['GPTBot'], 'rules' => [['type' => 'disallow', 'path' => '/']]];
         $injectedPermissiveWildcard = ['agents' => ['*'], 'rules' => [['type' => 'allow', 'path' => '/']]];

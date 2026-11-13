@@ -155,10 +155,6 @@ after an item is written.
 - [ ] `@versatiles/style` 9 needs Node 20 or later, but `package.json` has no `engines` field and the repo has no `.nvmrc`. Add `"engines": { "node": ">=20" }` (found in /flow:finish-milestone v2.31.2)
 - [ ] Drop `filepond-plugin-image-exif-orientation`: the package, its `<script>` tag, its `registerPlugin()` argument (car-edit.js ~29), and its copy line (build.js ~47). Current browsers apply EXIF orientation natively. **First upload one rotated phone JPEG with the plugin removed, and confirm that the stored image and the resized variants are upright.** (found in the #2208 audit)
 
-### `scripts/server-hooks/post-receive`
-
-- [ ] The comment at ~L53 says "Remove the fallback when no rollback target predates #2190". It names no issue, and nothing tracks it. Open an issue for the removal and name it in the comment (found in /flow:finish-milestone v2.32.0)
-
 ### `scripts/render-deploy-sheet.sh`
 
 - [ ] ~L143 `grep -qx '.env.example'` reads `.` as any character. Use `grep -Fxq '.env.example'`, so only the literal file name matches (found in #2233)
@@ -276,6 +272,10 @@ after an item is written.
 
 - [ ] No test proves the `phpstan.neon` wiring of the path-based rules. A typo in a `files:` or `exemptPages:` entry, or a different working directory for `projectRoot`, makes the rule silently check nothing. Add a smoke test that runs PHPStan with the real config on one known violation per rule. (found in #2327)
 - [ ] `PageMetadataBeforeInitRule` does not report an `exemptPages` entry whose file was deleted or moved, or no longer calls `securePage()`. Report it as a stale exemption. (found in #2327)
+
+### `tests/unit/system/RobotsTxtPolicyTest.php`
+
+- [ ] The `testTestEnvironmentLockdownFilesExist` docblock (~L133) says the Test override files stop indexing. Since #2246, `robots-test.txt` allows crawl and the `.htaccess` `X-Robots-Tag` header stops indexing. Reword the docblock and the method name (found in #2246)
 
 ### `tests/unit/uploads/FileUploadSecurityTest.php` (test quality)
 
