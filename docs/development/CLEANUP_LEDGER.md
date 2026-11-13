@@ -88,6 +88,7 @@ after an item is written.
 
 ### `app/api/cars/save.php`
 
+- [ ] The chassis error at ~L582 holds the literal `<strong>ERROR:</strong>`. `errors.general` is a list now, and `car-edit.js` escapes each item, so the tag shows as text. Remove the markup from the message (found in /flow:finish-milestone v2.32.0)
 - [ ] `uploadImages()` (~L713) `arrayReplaceValue()` (~L837) replaces the first match. If a new upload has the same browser file name as a stored photo, the new photo takes the stored photo's place (it can become the primary photo). Send a unique placeholder from `car-edit.js`, or replace only a name that is not stored (found in #2609)
 - [ ] (test coverage) No automated test checks the oversize-body 413 status with `display_errors` Off (the test and production setting). Docker gives 200 with a warning prefix. Add an integration test that starts `php -S` with `-d display_errors=0` and a small `post_max_size`, and asserts 413, JSON, and the log row (found in #2627)
 - [ ] `uploadImages()` checks the whole batch with `validateUploadBatch()` before it moves any file. So a rejected photo leaves no file on disk. But when a later error stops the save (a move or resize failure, or an upload-order error from `checkUploadOrder()`), the files that the request already wrote (and their `-resized-` variants) stay on disk: `userimages/temp/` for an add, `userimages/{carId}/` for an edit. Nothing references or removes them. Delete the files this request wrote before the 422 is sent (found in #1844)
@@ -158,6 +159,10 @@ after an item is written.
 - [ ] `@versatiles/style` 9 needs Node 20 or later, but `package.json` has no `engines` field and the repo has no `.nvmrc`. Add `"engines": { "node": ">=20" }` (found in /flow:finish-milestone v2.31.2)
 - [ ] Drop `filepond-plugin-image-exif-orientation`: the package, its `<script>` tag, its `registerPlugin()` argument (car-edit.js ~29), and its copy line (build.js ~47). Current browsers apply EXIF orientation natively. **First upload one rotated phone JPEG with the plugin removed, and confirm that the stored image and the resized variants are upright.** (found in the #2208 audit)
 
+### `scripts/server-hooks/post-receive`
+
+- [ ] The comment at ~L53 says "Remove the fallback when no rollback target predates #2190". It names no issue, and nothing tracks it. Open an issue for the removal and name it in the comment (found in /flow:finish-milestone v2.32.0)
+
 ### `scripts/render-deploy-sheet.sh`
 
 - [ ] ~L143 `grep -qx '.env.example'` reads `.` as any character. Use `grep -Fxq '.env.example'`, so only the literal file name matches (found in #2233)
@@ -223,6 +228,7 @@ after an item is written.
 
 - [ ] The photo test (~L181) passes when `uploadImages()` never saw the file, because the "no leftover temp file" check holds with no file written. Also assert that `cardetails.image` holds one stored `img_<hex>.jpg` name (found in /flow:finish-milestone v2.32.0)
 - [ ] The wiring test (~L581) and the spec header say "a failed create writes no FileError row". `removeTmpImages()` writes one when `unlink()` fails. Change the text to "no image-move FileError row" (found in /flow:finish-milestone v2.32.0)
+- [ ] `CarActionsSaveWiringTest` checks `save.php` source text with `strpos`: `testAddCarChecksErrorsBeforeMovingTempImages`, `testAddCarImageMoveFailureStillReturnsServerError`, `testAddCarValidationLogRecordsSubmittedDates`. A correct refactor fails them, and a wrong guard with the same text passes. Delete the first two (the Playwright spec proves the 422, no car row, and no temp file). Replace the third with a check that the ValidationError log row holds `purchasedate=` (found in /flow:finish-milestone v2.32.0)
 
 ### `tests/playwright/car-edit-text-save.spec.js` (test-only, no estimate)
 
