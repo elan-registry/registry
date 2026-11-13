@@ -40,13 +40,20 @@ ARG APP_GID=20
 # want an interactive shell into the `db` service without leaving the
 # container. scripts/refresh-local-db.sh runs on the host and uses the `db`
 # container's own client instead.
+#
+# git is a runtime tool too: tests/unit/regression/DeployignoreDriftRegressionTest.php
+# runs `git ls-files`, and `composer test:full` runs it in this container. The
+# bind-mounted .git has the host user as owner, not www-data, so git refuses
+# it until safe.directory names the docroot.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       libjpeg62-turbo-dev \
       libpng-dev \
       libfreetype6-dev \
       libzip-dev \
       default-mysql-client \
- && rm -rf /var/lib/apt/lists/*
+      git \
+ && rm -rf /var/lib/apt/lists/* \
+ && git config --system --add safe.directory /var/www/html
 
 # Extensions.
 #

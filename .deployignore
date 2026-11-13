@@ -4,6 +4,7 @@
 
 # Claude Code / AI tooling
 .claude/
+.claude.local.md.example
 
 # UserSpice AI dev plugins (dev tooling only — not needed on server)
 usersc/plugins/ai_prompts/
@@ -12,6 +13,9 @@ usersc/plugins/db_explainer/
 # GitHub (CI workflows, issue templates, bot configs)
 .github/
 .imgbotconfig
+
+# This file. Cleanup reads it, then deletes it with the other entries.
+.deployignore
 
 # Git config files (not needed on server)
 .githooks/
@@ -46,11 +50,14 @@ tools/
 .markdownlint.json
 .markdownlintignore
 .semgrepignore
+eslint-rules/
+stubs/
 
 # Playwright configs
 playwright.config.js
 playwright.config.prod.js
 playwright.config.test.js
+playwright.config.dev.js
 
 # PHP test configs
 phpunit.xml
@@ -60,7 +67,6 @@ phpunit-integration.xml
 # Node / JS tooling
 package.json
 package-lock.json
-tsconfig.json
 
 # Node dependency tree (npm ci recreates it on every deploy — .htaccess
 # already blocks web access, this just shrinks the deployed docroot)
@@ -73,11 +79,9 @@ composer.lock
 # Project documentation not needed on server
 CLAUDE.md
 README.md
-SECURITY.md
 LICENSE
 .env.example
-.env.local.sample
-instructions.txt
+.env.test.local.sample
 
 # Database migrations (run automatically by post-receive hook, not served)
 database/
@@ -85,5 +89,6 @@ database/
 # Dev-only scripts and utilities
 utilities/
 
-# Wiki source (served via GitHub wiki, not the web server)
-wiki/
+# Test-only override files. post-receive copies them over robots.txt and
+# llms.txt on Test before this cleanup runs.
+deploy/

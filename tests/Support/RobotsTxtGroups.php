@@ -165,7 +165,7 @@ final class RobotsTxtGroups
     {
         $path = dirname(__DIR__, 2) . '/' . $fileName;
         if (!is_file($path)) {
-            throw new RuntimeException($fileName . ' must exist at the repo root');
+            throw new RuntimeException($fileName . ' must exist (path relative to the repo root)');
         }
 
         return (string) file_get_contents($path);

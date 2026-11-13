@@ -732,20 +732,29 @@ Test and production servers have a single shared post-receive hook
 (`scripts/server-hooks/post-receive`) that automatically:
 
 1. Checkout latest code
-2. Run `git describe --tags` and write VERSION file
-3. Run `composer install --no-dev --optimize-autoloader`
-4. Run `php vendor/bin/phinx migrate` (halts deployment on failure)
-5. Run `npm ci --omit=dev && npm run build` to (re)generate vendored frontend
+2. Test only: swap in the crawler override files. Copy
+   `deploy/test-overrides/robots-test.txt` over `robots.txt`, and copy
+   `deploy/test-overrides/llms-test.txt` over `llms.txt`. A failed copy of
+   either file halts deployment with an error.
+   The hook uses `deploy/test-overrides/` only when both `robots-test.txt` and
+   `llms-test.txt` exist there. If one is missing, the hook uses the root
+   `robots-test.txt` and `llms-test.txt` instead. This happens for an older
+   tag that predates the move, and the deploy log names the fallback.
+3. Run `git describe --tags` and write VERSION file
+4. Run `composer install --no-dev --optimize-autoloader`
+5. Run `php vendor/bin/phinx migrate` (halts deployment on failure)
+6. Run `npm ci --omit=dev && npm run build` to (re)generate vendored frontend
    assets in `usersc/js/`/`usersc/css/` (halts deployment on failure). These
    directories are gitignored build output, not committed — see
    [ADR-018](adr/ADR-018-build-at-deploy-for-frontend-vendoring.md).
    The hook sets `GOMAXPROCS=2` for this step. See "Process limit on the
    shared host" below
-6. Self-update the installed hook from the newly deployed working tree
-7. Remove dev-only paths listed in `.deployignore` (e.g. `tests/`, `scripts/`,
-   `utilities/`, `wiki/`) via `rm -rf`, then remove `.deployignore` itself
+7. Self-update the installed hook from the newly deployed working tree
+8. Remove dev-only paths listed in `.deployignore` (e.g. `tests/`, `scripts/`,
+   `utilities/`) via `rm -rf`, then remove `.deployignore` itself. This step
+   runs last. The hook reads `deploy/` before this step deletes it.
 
-**Host requirements:** steps 3-5 require Composer, PHP, and Node/npm to be
+**Host requirements:** steps 4-6 require Composer, PHP, and Node/npm to be
 resolvable non-interactively on the deploy host's login shell (no `nvm use`
 or similar interactive step). `@versatiles/style` requires Node 20 or
 later. On 2026-11-10 the `a2hosting` login shell had Node v22.23.2 and npm
@@ -763,12 +772,12 @@ CA certificates off thread: resource temporarily unavailable`, or only
 change the npm steps.
 
 **Important:** Never list a persistent, server-writable directory in
-`.deployignore` (e.g. `backups/`) — step 7's `rm -rf` would delete it wholesale
+`.deployignore` (e.g. `backups/`) — step 8's `rm -rf` would delete it wholesale
 on every subsequent push. See #1479, where this happened to the server's
-backup directory.
+backup directory. The drift guard below checks this rule in CI.
 
 **Important — deploying a change to `post-receive` itself takes two pushes,
-not one:** Step 6's self-update copies the new hook file to disk *during* the
+not one:** Step 7's self-update copies the new hook file to disk *during* the
 currently-running invocation, but that invocation is already executing the
 *old* code — it can't reload itself mid-run. So the first push after any
 change to `scripts/server-hooks/post-receive` still executes the **old**
@@ -794,6 +803,10 @@ Repeat independently for `prod` when you deploy there — each environment's
 installed hook is updated (and needs re-triggering) on its own schedule,
 based only on when that specific remote last received a push.
 
+The #2190 change to the Test hook is the exception. Install that hook by hand
+before the first Test push. See "Test hook hand install" below. A hand install
+removes the need for the two-push procedure for that change.
+
 **Development:**
 
 The git hooks in `.githooks/` (`post-checkout`, `post-commit` and
@@ -806,6 +819,164 @@ The hooks run only after `./scripts/setup-git-hooks.sh` sets
 - `ApplicationVersion::get()` reads VERSION file (unchanged)
 - Deployment timestamp shows VERSION file modification time
 - Example output: `v2.9.1-rc1 (2025-12-14 10:30:00)`
+
+#### `.deployignore` drift guard
+
+A unit regression test compares `.deployignore` with the tracked files.
+The test is `tests/unit/regression/DeployignoreDriftRegressionTest.php`. It
+runs `git ls-files`. It runs on the host, in CI, and in the app container.
+CI runs it with `composer test:regression:ci`. If git cannot run, the test
+fails. It does not skip. The test also fails when `.deployignore` contains a
+carriage return (`\r`, a CRLF line ending). Save the file with LF line endings.
+
+The test holds three lists as constants:
+
+| List | Holds | Edit it when |
+| --- | --- | --- |
+| `DEPLOYED` | Top-level tracked entries that ship to the servers | You add a top-level tracked file or folder that the servers need |
+| `SERVER_ONLY` | Entries that git does not track, such as `node_modules/` | The list must name a path that git does not track |
+| `PROTECTED` | Persistent, server-writable paths, such as `backups/` | Only with a review. Do not change it to make a failure pass |
+
+The test checks three rules:
+
+1. Each tracked top-level entry is in `.deployignore` or `DEPLOYED`.
+2. Each `.deployignore` entry matches a tracked path, or it is in `SERVER_ONLY`.
+3. No `.deployignore` entry equals a `PROTECTED` path. No entry is a
+   path-segment prefix of one. No entry is under one. The test removes a
+   leading `./` or `/` from each entry before it compares. For example,
+   `usersc/` does not match the protected `users/`, but `/backups/` and
+   `./backups/old/` match the protected `backups/`.
+
+Each failure names the entry and the fix. A Rule 1 or Rule 2 failure names the
+list to edit. A Rule 3 failure names the entry and the protected path. Fix it
+this way:
+
+- **Rule 1:** Add the new file to `.deployignore` if the servers do not need
+  it. Add it to `DEPLOYED` if they do.
+- **Rule 2:** Remove the entry from `.deployignore`. Add it to `SERVER_ONLY`
+  only when git does not track the path and the list must still name it.
+- **Rule 3:** Remove the entry from `.deployignore`. Step 8 of the hook deletes
+  every listed path. A protected path in the list loses its data on the next
+  push (#1479).
+- **CRLF:** Convert `.deployignore` to LF line endings.
+
+#### Test hook hand install (one-time, #2190)
+
+The #2190 change moves the Test override files. The server runs the hook that
+is installed on the server. It does not run the hook in the pushed commit.
+The old hook copies `llms-test.txt` from the root of the work tree. The change
+removes that file from the root. The old hook's `cp` then exits 1. The deploy
+stops before composer, migrations, build, self-update, and cleanup run. Test
+then serves the permissive production `robots.txt` from the checkout. To
+recover, do the hand install below. Then redeploy the tag with the push in
+step 4.
+
+Remove this section, "Post-deploy checks for #2190", and "Rollback check for
+the Test hook (#2190)" when you remove the root-file fallback from the hook.
+The comment "Remove the fallback when no rollback target predates #2190" in
+`scripts/server-hooks/post-receive` marks the fallback.
+
+A hand install puts the new hook on Test before the first push. Prod needs no
+hand install. Its hook has no swap step, so its first push installs the new
+hook through the self-update.
+
+1. On the PR branch, get the full SHA of the commit you will push to Test:
+
+   ```bash
+   git rev-parse HEAD
+   ```
+
+2. Copy the hook from that commit to the Test bare repository. Replace `<sha>`
+   with the SHA and `<host>` with the Test server:
+
+   ```bash
+   git show <sha>:scripts/server-hooks/post-receive \
+     | ssh <host> 'cat > ~/git/test.elanregistry.git/hooks/post-receive'
+   ```
+
+   Copy from the commit, not from your working tree. The working tree can
+   differ from the commit.
+
+3. Make the file executable and check its syntax on the server:
+
+   ```bash
+   ssh <host> 'cd ~/git/test.elanregistry.git && chmod +x hooks/post-receive && bash -n hooks/post-receive && echo "Hook syntax OK"'
+   ```
+
+   `bash -n` checks the syntax only. It does not run the hook.
+
+4. Push the PR commit to Test, as in "Remote Configuration Reference". The
+   first Test push runs the new hook logic.
+
+#### Post-deploy checks for #2190
+
+Before the first Test push, save the current hashes of the live files:
+
+```bash
+curl -s https://test.elanregistry.org/robots.txt | shasum -a 256
+curl -s https://test.elanregistry.org/llms.txt | shasum -a 256
+```
+
+After the Test push, check these items:
+
+1. The push output shows the swap from `deploy/test-overrides/`, the line
+   `Hook self-updated.`, and no `ERROR` line.
+2. The two hashes match the saved hashes. The files are byte-for-byte the same.
+3. These paths return `404` on Test:
+
+   ```bash
+   for p in /playwright.config.dev.js /eslint-rules/require-skip-reason.cjs \
+     /stubs/brevo-sdk.php /.claude.local.md.example \
+     /deploy/test-overrides/robots-test.txt; do
+     curl -s -o /dev/null -w "%{http_code} $p\n" "https://test.elanregistry.org$p"
+   done
+   ```
+
+4. `.env.test.local.sample` is absent from the Test docroot:
+
+   ```bash
+   ssh <host> 'ls ~/test.elanregistry.org/.env.test.local.sample'
+   ```
+
+   The expected result is `No such file or directory`.
+
+After the next prod deploy, these paths return `404` on elanregistry.org:
+
+```bash
+for p in /robots-test.txt /llms-test.txt /.claude.local.md.example; do
+  curl -s -o /dev/null -w "%{http_code} $p\n" "https://elanregistry.org$p"
+done
+```
+
+If the edge still returns `200` after the deploy, purge the cached path. See
+the purge step in "Deployment Verification Checklist".
+
+#### Rollback check for the Test hook (#2190)
+
+Run this check after the post-deploy checks pass. It proves the root-file
+fallback works.
+
+1. Push the previous tag to Test. The tag must predate this change, so that
+   its root files exist:
+
+   ```bash
+   git push --force test 'vPREVIOUS^{commit}:main'
+   ```
+
+2. Check the push output. The deploy completes, and it names the root-file
+   fallback.
+3. Install the hook again from the current tag. The rollback deploy copies the
+   previous tag's old hook onto Test during self-update. That old hook fails on
+   the current tag. Repeat steps 2 and 3 of "Test hook hand install" with
+   `vCURRENT^{commit}` in place of `<sha>`.
+4. Redeploy the current tag:
+
+   ```bash
+   git push --force test 'vCURRENT^{commit}:main'
+   ```
+
+5. Check the swap in the push output. Compare the `robots.txt` and `llms.txt`
+   hashes with the saved hashes.
 
 ## ✅ Post-Deployment Configuration Requirements
 
