@@ -29,7 +29,8 @@ final class PageMetadataBeforeInitRuleTest extends RuleTestCase
     {
         $this->analyse([self::FIXTURE_ROOT . '/app/late.php'], [
             ['Assign $pageTitle before the require_once of users/init.php (line 4). '
-                . 'The loader reads it at init time, so a later assignment has no effect.', 10],
+                . 'The value set before init is the fallback for the page. To change it per request, '
+                . 'assign it again after init and before elanregistry_prep.php (elanregistry_overrides section 6).', 10],
         ]);
     }
 

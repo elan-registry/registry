@@ -91,6 +91,33 @@ require_once '../users/init.php';
 // Must be set before elanregistry_prep.php, which triggers the nav render.
 $nav_section = ($requested_subdir === 'stories') ? 'stories' : 'reference';
 
+// #1960: each PDF keeps its own canonical. The header renders before the
+// validation block below, so this repeats its doc and subdir checks and also
+// requires the file to exist. Only a request that the page will serve can put
+// subdir and doc in the canonical. Any other request gets the default
+// canonical with no query string.
+$is_servable_doc = static function (string $subdir, string $doc) use ($abs_us_root, $us_url_root): bool {
+    if (!in_array($subdir, ['reference', 'stories'], true)
+        || strpos($doc, '..') !== false
+        || strpos($doc, '/') !== false
+        || strpos($doc, '\\') !== false
+        || strpos($doc, 'http') === 0
+        || basename($doc) !== $doc
+        || !in_array(pathinfo($doc, PATHINFO_EXTENSION), ['pdf', 'PDF'], true)) {
+        return false;
+    }
+
+    return is_file($abs_us_root . $us_url_root . 'docs/' . $subdir . '/assets/' . $doc);
+};
+
+if ($is_servable_doc($requested_subdir, $requested_doc)) {
+    $pageCanonicalUrl = \ElanRegistry\CanonicalUrl::build(
+        $current_origin,
+        $php_self,
+        ['subdir' => $requested_subdir, 'doc' => $requested_doc]
+    );
+}
+
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
 use ElanRegistry\Documentation\DocumentPortalTemplate;

@@ -8,6 +8,7 @@ A search visitor lands on the correct production page, not a 404, a test-site pa
 ## User-Facing Changes
 
 - Old `/stats.php`, `/stories` and `/stories/` links now open the statistics and car stories pages.
+- Each car page now has its own search title and description, and shared links no longer split search ranking.
 
 ## Admin-Facing Changes
 

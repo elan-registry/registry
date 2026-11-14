@@ -219,9 +219,32 @@ CarView::displayCarousel(Car $car, ?int $instanceId = null): string
 
 // Build the schema.org structured-data array for a car detail page
 CarView::buildCarSchema(object $carData, string $currentUrl): array
+
+// Build the per-car <title> text and meta description for details.php
+CarView::buildPageTitle(object $carData, bool $modelKnown): string
+CarView::buildPageDescription(object $carData, bool $modelKnown): string
 ```
 
-These three static methods are the class's entire public surface.
+These five static methods are the class's entire public surface.
+
+- `buildCarSchema()` writes `$currentUrl` to the `url` field. Pass the
+  canonical URL of the page (`$pageCanonicalUrl` in `details.php`), not the
+  request URL. Then the JSON-LD `url` matches `rel=canonical`, `og:url` and
+  `twitter:url`, and no request query string reaches it.
+- `buildPageTitle()` returns, for example, `1969 Lotus Elan S4 (DHC), Chassis
+  36/7890`. The upstream header adds the site name. `buildPageDescription()`
+  returns the same car part in a sentence for the meta description.
+- Both methods use only validated, closed-set fields. A field that fails its
+  check is left out. Series and variant appear only when `$modelKnown` is
+  true. The caller sets `$modelKnown` from `CarModel::exists()`. When the
+  chassis is left out, the text adds `Registry car #<id>`, so two cars do not
+  share a title. The output character set is in the PHPDoc of
+  [`buildPageTitle()`](https://github.com/elan-registry/registry/blob/main/usersc/classes/CarView.php),
+  and the field checks are in its private helper `pageTitleParts()`.
+- Owner free text (nickname, notes, color) never goes into the output. The
+  output never contains `<`, `>`, `"`, `'` or `&`. The upstream header echoes
+  `$pageTitle` without escaping, so `details.php` also escapes the title with
+  `htmlspecialchars()`. See `elanregistry_overrides` section 6.
 
 **Design Notes**:
 
@@ -1340,45 +1363,20 @@ passes it to `apply()`, `ignore()` or `undoIgnore()` as `$seenToken`. When the
 field is missing, or is not 64 lowercase hex characters, the handler does not
 call the method and counts the car as `Changed`.
 
-**`apply()` steps**:
+**`apply()`**:
 
 `apply(int $carId, array $reattachNames, bool $restoreOrder, int $userId, string $seenToken): CarPhotoRecoveryOutcome`
 
-The method returns a [`CarPhotoRecoveryOutcome`](#carphotorecoveryoutcome).
-Each "Return" in these steps names the `result` of that outcome.
-
-1. Throw `CarValidationException` when `$carId` is not positive or a name is
-   not a string. Remove duplicate names.
-   Return `NothingToDo` when no name is ticked and `$restoreOrder` is false.
-2. Return `Changed` when `$seenToken` is not 64 lowercase hex characters.
-   Call `findRows([$carId])`. The names come from the server, not from the form.
-   Return `Changed` when the `versionToken()` of the row's `rawImage` is not
-   `$seenToken`: `cars.image` changed since the page loaded. Return `Changed`
-   also when the car is gone.
-   Return `NothingToDo` when `findRows()` returns no row and the token matches.
-   Return `Unreadable` when the row has `unreadable` set.
-   In these cases, the method writes nothing and logs nothing.
-3. Use `earlierOrder` as the base list when `$restoreOrder` is true and an
-   earlier order exists. Else use the current list. When `$restoreOrder` is
-   true and the row has no earlier order, the restore is not available.
-4. Append each ticked name that the row lists as a safe detached photo, in
-   stored order. Each other ticked name is not attached.
-5. Return `NothingToDo` when the order is not restored and no photo is
-   attached. The outcome reports the ignored names and an unavailable
-   restore.
-6. Encode the list with `CarImageProcessor::encodeImages()`. Call
-   `CarRepository::updateImage()` once. Pass the raw `cars.image` value that
-   `findRows()` read. The write succeeds only when the value did not change.
-7. Return `Changed` when the write misses. The method writes no log row.
-   The outcome reports no ignored names and no unavailable restore.
-8. Log one row with `LogCategories::LOG_CATEGORY_CAR_ACTIONS`. The message
-   starts with `Car Photos:`. Return `Applied`. The outcome reports the
-   ignored names and an unavailable restore. The metadata holds:
-   - `action`: `car_photos_apply`
-   - `car_id`
-   - `reattached`: the list of attached names
-   - `order_restored`: `true` or `false`
-   - `token_after`: the `versionToken()` of the list that the call wrote
+The method calls `findRows([$carId])` again, so the names come from the
+server, not from the form. It writes nothing when `$seenToken` does not match
+the current `cars.image`. The write is one compare-and-set
+`CarRepository::updateImage()` call, and one log row
+(`LogCategories::LOG_CATEGORY_CAR_ACTIONS`, action `car_photos_apply`) with
+`token_after`, the `versionToken()` of the list that the call wrote. The
+restore check in "No restore after a restore" reads `token_after`. Each return
+value is in the PHPDoc of
+[`apply()`](https://github.com/elan-registry/registry/blob/main/usersc/classes/Car/CarPhotoRecovery.php)
+and [`CarPhotoRecoveryOutcome`](#carphotorecoveryoutcome).
 
 The handler logs each ignored name and each unavailable restore of the
 outcome to `LOG_CATEGORY_SECURITY`. It reports a count of the names, and the
@@ -1393,7 +1391,8 @@ gets no outcome, so it logs no such warning for that car.
   and does not change `cars.image`. It returns `Applied`, `Changed`,
   `Unreadable`, or `NothingToDo` (no row, or the row is already ignored).
 - `undoIgnore(...)` takes the same arguments. It writes a newer `logs` row that
-  cancels the ignore. It returns `NothingToDo` when the row is not ignored.
+  cancels the ignore. It returns `NothingToDo` when the row is not ignored,
+  or the car has no row.
 - Both rows use the CarActions category and a `Car Photos:` message prefix.
   The metadata holds `action` (`car_photos_ignore` or `car_photos_unignore`),
   `car_id`, `token` (the `versionToken()` of `cars.image`) and `detached` (the
@@ -1415,37 +1414,6 @@ gets no outcome, so it logs no such warning for that car.
   decode or lacks a key, so the car shows. An apply row counts only when it
   restored the order.
 
-**Common Usage**:
-
-```php
-use ElanRegistry\Car\CarPhotoRecovery;
-use ElanRegistry\Car\CarPhotoRecoveryResult;
-
-$recovery = new CarPhotoRecovery(dbi());
-
-// Read only. Returns one row for each car with something to show.
-$rows = $recovery->findRows();
-
-// Write. Reattach two ticked photos of car 123 and restore its order.
-// $seenToken is CarPhotoRecovery::versionToken($row->rawImage) from the page load.
-$outcome = $recovery->apply(
-    123,
-    ['photo-a.jpg', 'photo-b.jpg'],
-    restoreOrder: true,
-    userId: $currentUserId,
-    seenToken: $seenToken,
-);
-// $outcome->ignoredNames: ticked names that the row does not list as safe detached photos.
-
-if ($outcome->result === CarPhotoRecoveryResult::Changed) {
-    // cars.image changed since the page loaded, or during the call. Ask the admin to check the car again.
-}
-
-// Hide a car that needs no change, and show it again.
-$recovery->ignore(123, $currentUserId, $seenToken);
-$recovery->undoIgnore(123, $currentUserId, $seenToken);
-```
-
 Pass `$imageRoot` to the constructor in tests. The default is the real
 `userimages/` directory. Pass `$repository` to replace the default
 `CarRepository`.
@@ -1464,16 +1432,6 @@ alert and writes no log row. The tab does not catch the other two exceptions.
 The `car_photos_apply` handler catches `ImageProcessingException` from
 `apply()`, `ignore()` and `undoIgnore()`. It logs the failure to
 `LOG_CATEGORY_CAR_ERRORS` and shows an error message.
-
-**Used By**:
-
-- `app/admin/includes/tab-car_photos.php` - `findRows()` on each render of
-  the tab, `ignoredBy()` to split the rows, `versionToken()` for the `seen`
-  fields, and `thumbnailName()` for the thumbnails
-- `app/admin/index.php`, command `car_photos_apply` - `apply()` for each
-  selected car (**Apply selected** or the per-row **Apply**), `ignore()` and
-  `undoIgnore()` for one car. The handler accepts the form only for admins
-  and editors.
 
 **See Also**:
 
@@ -1535,14 +1493,14 @@ A `final readonly` value object. `apply()` returns one for each call.
 
 `apply()` sets `ignoredNames` and `restoreUnavailable` only after it checks
 the form against the row as the page saw it. That is, only for `Applied`, or
-for the `NothingToDo` of step 5. They are empty and `false` in these cases:
+for `NothingToDo` after that check. They are empty and `false` in these cases:
 
-- `Changed` (also after a compare-and-set miss in step 7) and `Unreadable`,
-  because the page saw other data.
-- The `NothingToDo` of step 2: no row now, for example because a detached
+- `Changed` (also after a compare-and-set miss) and `Unreadable`, because the
+  page saw other data.
+- `NothingToDo` when the car has no row now, for example because a detached
   file was removed from disk after the page loaded. With no row to check
   against, a ticked name is not proven false.
-- The `NothingToDo` of step 1: no name is ticked and no restore is asked.
+- `NothingToDo` when no name is ticked and no restore is asked.
 
 The constructor throws `CarValidationException` when `ignoredNames` is not
 empty or `restoreUnavailable` is `true` for the result `Changed` or
@@ -4716,6 +4674,43 @@ when the run did not commit. A negative count throws
 
 **Used By**: `AccountDeletionPrivacyStep::run()` (returns it) and the rerun
 script `30-Rerun-Deletion-Privacy-Step.php` (shows it)
+
+---
+
+### CanonicalUrl
+
+**Location**: `/usersc/classes/CanonicalUrl.php`
+
+**Namespace**: `ElanRegistry`
+
+**Purpose**: `final class` that builds the canonical URL (#1960).
+`usersc/includes/head_tags.php` writes the result to `<link rel="canonical">`,
+`og:url` and `twitter:url`. The canonical is default-deny: the request query
+string never reaches it.
+
+**Methods**:
+
+- `static build(string $origin, string $scriptPath, array $query = []): string`
+  - Returns `$origin` plus `$scriptPath`. A final `index.php` segment becomes
+  its directory (`/index.php` gives `/`, `/app/owner/cars/index.php` gives
+  `/app/owner/cars/`). The query string comes only from `$query`, through
+  `http_build_query()`, which encodes the values and leaves out `null` values.
+  Pass only validated values, for example `['car_id' => (int) $carID]`.
+
+**Used By**:
+
+- `usersc/includes/head_tags.php` - the default canonical,
+  `CanonicalUrl::build($current_origin, $php_self)`, when the page does not set
+  `$pageCanonicalUrl`
+- Pages where a query parameter identifies the resource set
+  `$pageCanonicalUrl`. Section 6 of
+  `usersc/plugins/ai_prompts/custom_prompts/elanregistry_overrides.md.php`
+  gives the command that finds them.
+
+**See Also**:
+
+- `usersc/plugins/ai_prompts/custom_prompts/elanregistry_overrides.md.php`,
+  section 6 - when a page sets `$pageCanonicalUrl`
 
 ---
 

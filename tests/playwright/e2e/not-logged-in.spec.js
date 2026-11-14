@@ -1046,6 +1046,20 @@ test.describe('llms.txt AI crawler guidance (#1413)', () => {
   });
 });
 
+// CAR_ID_STANDARD is missing on some test DBs, so discover cars from the
+// index. DataTables renders the Details links, so wait for the first one.
+const discoverCarIds = async (page, count) => {
+  await page.goto('app/owner/cars/index.php');
+  const detailsLinks = page.locator('a[href*="details.php?car_id="]');
+  await detailsLinks.first().waitFor();
+  const hrefs = await detailsLinks.evaluateAll((links) => links.map((link) => link.getAttribute('href')));
+  const carIds = [...new Set(hrefs.map((href) => new URL(href, page.url()).searchParams.get('car_id')))];
+  expect(carIds.length, `the car index must list at least ${count} cars`).toBeGreaterThanOrEqual(count);
+  const selected = carIds.slice(0, count);
+  selected.forEach((carId) => expect(carId, 'each Details link must carry a car_id').toMatch(/^\d+$/));
+  return selected;
+};
+
 test.describe('SEO metadata: JSON-LD, noindex, apple-touch-icon (#1371)', () => {
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'not-logged-in') {
@@ -1054,14 +1068,7 @@ test.describe('SEO metadata: JSON-LD, noindex, apple-touch-icon (#1371)', () => 
   });
 
   test('GET /app/owner/cars/details.php for the first listed car renders a Schema.org Car JSON-LD block', async ({ page }) => {
-    // CAR_ID_STANDARD is missing on some test DBs, so discover a car. Details
-    // links are rendered by DataTables, so wait for one.
-    await page.goto('app/owner/cars/index.php');
-    const firstDetailsLink = page.locator('a[href*="details.php?car_id="]').first();
-    await firstDetailsLink.waitFor();
-    const href = await firstDetailsLink.getAttribute('href');
-    const carId = new URL(href, page.url()).searchParams.get('car_id');
-    expect(carId, 'first Details link must carry a car_id').toMatch(/^\d+$/);
+    const [carId] = await discoverCarIds(page, 1);
 
     const response = await page.goto(`app/owner/cars/details.php?car_id=${carId}`);
 
@@ -1084,6 +1091,81 @@ test.describe('SEO metadata: JSON-LD, noindex, apple-touch-icon (#1371)', () => 
 
     // Layer 5: the site-wide robots default (no $pageRobots).
     expect(body).toContain('<meta name="robots" content="index, follow">');
+  });
+
+  // Reads the URL and title head tags, and the JSON-LD url, of the open page.
+  const readHeadTags = async (page) => {
+    const jsonLd = await page.locator('script[type="application/ld+json"]').textContent();
+    return {
+      canonical: await page.locator('link[rel="canonical"]').getAttribute('href'),
+      ogUrl: await page.locator('meta[property="og:url"]').getAttribute('content'),
+      twitterUrl: await page.locator('meta[name="twitter:url"]').getAttribute('content'),
+      jsonLdUrl: JSON.parse(jsonLd).url,
+      title: await page.title(),
+      description: await page.locator('meta[name="description"]').getAttribute('content'),
+      ogTitle: await page.locator('meta[property="og:title"]').getAttribute('content'),
+      twitterTitle: await page.locator('meta[name="twitter:title"]').getAttribute('content'),
+    };
+  };
+
+  // #1960: the canonical keeps only the validated car_id. A crafted suffix, a
+  // padded ID or a tracking parameter must not reach it.
+  [
+    { name: 'crafted suffix', query: (carId) => `car_id=${carId}-spam` },
+    { name: 'padded integer', query: (carId) => `car_id=000${carId}` },
+    { name: 'tracking parameter', query: (carId) => `car_id=${carId}&utm_source=newsletter` },
+  ].forEach(({ name, query }) => {
+    test(`details.php canonical, og:url, twitter:url and JSON-LD url drop a ${name} (#1960)`, async ({ page, baseURL }) => {
+      const [carId] = await discoverCarIds(page, 1);
+      const expected = new URL(`app/owner/cars/details.php?car_id=${carId}`, baseURL).href;
+
+      const response = await page.goto(`app/owner/cars/details.php?${query(carId)}`);
+      expect(response.status()).toBe(200);
+
+      const tags = await readHeadTags(page);
+      expect(tags.canonical).toBe(expected);
+      expect(tags.ogUrl).toBe(expected);
+      expect(tags.twitterUrl).toBe(expected);
+      expect(tags.jsonLdUrl).toBe(expected);
+    });
+  });
+
+  test('paint-colors.php canonical has no query string (#1960)', async ({ page, baseURL }) => {
+    const response = await page.goto('docs/reference/paint-colors.php?utm_source=test');
+    expect(response.status()).toBe(200);
+
+    const canonical = await page.locator('link[rel="canonical"]').getAttribute('href');
+    expect(canonical).toBe(new URL('docs/reference/paint-colors.php', baseURL).href);
+  });
+
+  // #1528: a car that does not load keeps the redirect and gets no per-car
+  // title. The car loads before any output, so the redirect is a real 302.
+  ['abc', '-spam'].forEach((carId) => {
+    test(`details.php?car_id=${carId} sends a 302 to the car index (#1960)`, async ({ request }) => {
+      const response = await request.get(`app/owner/cars/details.php?car_id=${carId}`, { maxRedirects: 0 });
+
+      expect(response.status()).toBe(302);
+      expect(toLocationPath(response.headers()['location'] ?? '')).toMatch(/app\/owner\/cars\/index\.php$/);
+      expect(await response.text()).not.toContain('Chassis');
+    });
+  });
+
+  test('details.php sets a per-car title and description, and two cars differ (#1528)', async ({ page }) => {
+    const carIds = await discoverCarIds(page, 2);
+    const tagsPerCar = [];
+    for (const carId of carIds) {
+      await page.goto(`app/owner/cars/details.php?car_id=${carId}`);
+      tagsPerCar.push(await readHeadTags(page));
+    }
+
+    tagsPerCar.forEach((tags) => {
+      expect(tags.ogTitle).toContain('Lotus Elan');
+      expect(tags.title.startsWith(tags.ogTitle), `<title> "${tags.title}" must start with og:title`).toBe(true);
+      expect(tags.twitterTitle).toBe(tags.ogTitle);
+      expect(tags.description).toMatch(/^Registry record for a /);
+    });
+    expect(tagsPerCar[0].title).not.toBe(tagsPerCar[1].title);
+    expect(tagsPerCar[0].description).not.toBe(tagsPerCar[1].description);
   });
 
   const noindexPages = [

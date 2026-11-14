@@ -13,12 +13,12 @@ class SitemapService
 {
     /** @var list<array{path: string, changefreq: string, priority: string}> */
     private const STATIC_PAGES = [
-        ['path' => '/app/owner/cars/index.php', 'changefreq' => 'weekly', 'priority' => '0.9'],
+        ['path' => '/app/owner/cars/', 'changefreq' => 'weekly', 'priority' => '0.9'],
         ['path' => '/app/owner/reports/statistics.php', 'changefreq' => 'monthly', 'priority' => '0.6'],
         ['path' => '/docs/reference/paint-colors.php', 'changefreq' => 'yearly', 'priority' => '0.7'],
-        ['path' => '/docs/reference/index.php', 'changefreq' => 'monthly', 'priority' => '0.6'],
+        ['path' => '/docs/reference/', 'changefreq' => 'monthly', 'priority' => '0.6'],
         ['path' => '/docs/reference/identification-guide.php', 'changefreq' => 'yearly', 'priority' => '0.6'],
-        ['path' => '/docs/guides/index.php', 'changefreq' => 'monthly', 'priority' => '0.5'],
+        ['path' => '/docs/guides/', 'changefreq' => 'monthly', 'priority' => '0.5'],
         ['path' => '/docs/reference/assets/Elan_26_36_Workshop_Manual.pdf', 'changefreq' => 'yearly', 'priority' => '0.4'],
         ['path' => '/docs/reference/assets/elan_s1_s2_coupe_masterpartslist.pdf', 'changefreq' => 'yearly', 'priority' => '0.4'],
         ['path' => '/docs/reference/assets/2016%20Jan%20Elan%20Engine%20Types.pdf', 'changefreq' => 'yearly', 'priority' => '0.4'],
