@@ -9,18 +9,12 @@ use PHPUnit\Framework\TestCase;
 use Tests\Support\PartialRenderHarness;
 
 /**
- * Regression test for #2184: verification email went out without its Brevo tag.
+ * Regression test for #2184: the admin status panel must show the escaped
+ * reason when the Brevo plugin is not ready.
  *
- * CarVerificationSendService called `email($to, $subject, $body)` with no
- * `$opts`, so the sendinblue override sent the mail untagged and the Brevo
- * webhook, which then filtered on the `car_verification` tag, never recorded
- * it. Since #2359 the webhook records every event of our mail without a tag
- * filter. The tag still matters: only a `car_verification`-tagged event with
- * no user counts in the dashboard's unmatched-recipient counter, and Brevo
- * statistics group the mail by it. The fix passes `['tags' => AppConstants::VERIFICATION_EMAIL_TAG]` as the
- * fourth argument. CarVerificationSendServiceTest checks the `$opts` value
- * that reaches email() at run time. This test checks that the admin status
- * panel shows the escaped reason when the Brevo plugin is not ready.
+ * #2184 started with verification email that went out without its Brevo tag.
+ * CarVerificationSendServiceTest checks the tag that reaches email() at run
+ * time.
  *
  * @category regression
  * @issue 2184

@@ -67,7 +67,7 @@ class ExceptionHierarchyTest extends TestCase
         );
     }
 
-    /** Existing catch (CarException) and catch (OwnerException) blocks depend on the direct parent. */
+    /** Catch blocks name a parent class (catch (CarException) in process-transfer-*.php), so each parent must stay fixed. */
     #[DataProvider('exceptionParentProvider')]
     public function testExceptionHasExpectedParent(
         string $className,
