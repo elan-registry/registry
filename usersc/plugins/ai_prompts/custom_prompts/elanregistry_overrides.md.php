@@ -271,8 +271,10 @@ A page sets `$pageCanonicalUrl` before `elanregistry_prep.php` only when a query
 resource. Build it with `ElanRegistry\CanonicalUrl::build()` from validated values only:
 
 ```php
-// app/owner/cars/details.php — car_id identifies the car
-$pageCanonicalUrl = CanonicalUrl::build($current_origin, $php_self, ['car_id' => (int) $carID]);
+// app/owner/cars/details.php — car_id identifies the car. $host is empty when
+// the request's host is not trusted, so fall back to getBaseUrl().
+$origin = !empty($host) ? $current_origin : getBaseUrl();
+$pageCanonicalUrl = CanonicalUrl::build($origin, $php_self, ['car_id' => (int) $carID]);
 ```
 
 To find the pages that set it, run `grep -rn 'pageCanonicalUrl =' app docs`. Every other page uses the

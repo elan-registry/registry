@@ -381,6 +381,9 @@ final class HeadTagsCanonicalRenderTest extends IntegrationTestCase
             'not a number' => ['car_id=abc'],
             'no leading digits' => ['car_id=-spam'],
             'no such car' => ['car_id=999999999'],
+            'empty car_id' => ['car_id='],
+            'tracking parameter only' => ['utm_source=newsletter'],
+            'no query string' => [''],
         ];
     }
 

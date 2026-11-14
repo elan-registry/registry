@@ -186,7 +186,7 @@ after an item is written.
 
 ### `tests/integration/HeadTagsCanonicalRenderTest.php` + `tests/integration/VerifyCarLandingPageTest.php` + `tests/Support/UserscPageClient.php` (test-only)
 
-- [ ] Each file repeats the DB env propagation to the `php -S` process, the router bootstrap (autoload, Dotenv `.env.test.local`, chdir, require) and a curl wrapper that splits headers and reads `Location`. Move them to one `tests/Support` helper Also use `trackNewRateLimitRows()` in place of the blanket `us_rate_limits` delete in both test classes (found in #1960)
+- [ ] Each file repeats the DB env propagation to the `php -S` process, the router bootstrap (autoload, Dotenv `.env.test.local`, chdir, require) and a curl wrapper that splits headers and reads `Location`. Move them to one `tests/Support` helper. Also use `trackNewRateLimitRows()` in place of the blanket `us_rate_limits` delete in both test classes (found in #1960)
 
 ### `tests/integration/OwnerCreateUpdateTransactionRollbackTest.php`
 

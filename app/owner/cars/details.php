@@ -86,9 +86,9 @@ if (!empty($_GET)) {
     exit;
 }
 
-// The car loads before elanregistry_prep.php for two reasons: the page head
-// (header1_must_include.php and head_tags.php) reads $pageTitle,
-// $pageDescription and $pageCanonicalUrl, and the
+// The car loads before elanregistry_prep.php for two reasons. First, the page
+// head (header1_must_include.php and head_tags.php) reads $pageTitle,
+// $pageDescription and $pageCanonicalUrl when it renders. Second, the
 // not-found redirect above must run before any output to send a real 302.
 // The title shows series and variant only when car_models knows the pair
 // (#1528). No try/catch: a failed lookup is a serious error.

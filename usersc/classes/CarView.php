@@ -39,7 +39,8 @@ class CarView
 
     // Per-car page title and description (#1528). Upstream header1_must_include.php
     // echoes $pageTitle without escaping, so each part must match a closed
-    // character set, and the final string is filtered again.
+    // character set, and the final string is filtered again. The year range is
+    // the one CarValidator enforces (Lotus Elan production years).
     private const TITLE_YEAR_MIN = 1963;
     private const TITLE_YEAR_MAX = 1974;
     private const TITLE_CHASSIS_PATTERN = '~^[A-Za-z0-9/ .-]{3,15}\z~';
@@ -334,8 +335,8 @@ class CarView
         $chassis = $carData->chassis ?? null;
         $id = $carData->id ?? null;
 
-        // The model line comes from a closed set of two names, so an unknown
-        // series can still pick it.
+        // Elan and Elan Plus 2 are the only model names, so the model line is
+        // safe even when $modelKnown is false.
         ['model' => $model, 'series' => $seriesForName] = self::modelAndSeries(
             is_string($series) ? trim($series) : ''
         );

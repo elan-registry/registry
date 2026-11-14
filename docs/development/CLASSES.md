@@ -4702,9 +4702,10 @@ string never reaches it.
 - `usersc/includes/head_tags.php` - the default canonical,
   `CanonicalUrl::build($current_origin, $php_self)`, when the page does not set
   `$pageCanonicalUrl`
-- `app/owner/cars/details.php` (`car_id`) and `docs/pdf-viewer.php` (`subdir`
-  and `doc` for a known document) - set `$pageCanonicalUrl`, because a query
-  parameter identifies the resource
+- Pages where a query parameter identifies the resource set
+  `$pageCanonicalUrl`. Section 6 of
+  `usersc/plugins/ai_prompts/custom_prompts/elanregistry_overrides.md.php`
+  gives the command that finds them.
 
 **See Also**:
 

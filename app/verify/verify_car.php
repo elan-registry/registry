@@ -64,11 +64,8 @@ declare(strict_types=1);
 
 $pageTitle = 'Verify Your Car';
 $pageDescription = 'Confirm your Lotus Elan registry record is up to date, or tell us it has been sold.';
-// The URL carries the vericode credential in its query string, which
-// head_tags.php would otherwise republish in a canonical link and og:url tag
-// on an "index, follow" page — handing the secret to any crawler that
-// reaches it. noindex closes that off; nothing about this page belongs in a
-// search index regardless.
+// The URL carries the vericode credential in its query string, and nothing on
+// this page belongs in a search index.
 $pageRobots = 'noindex, follow';
 
 require_once '../../users/init.php';

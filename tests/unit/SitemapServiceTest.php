@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\CanonicalUrl;
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\SitemapService;
 use PHPUnit\Framework\Attributes\Group;
@@ -42,11 +43,11 @@ final class SitemapServiceTest extends TestCase
         $xml     = $service->buildXml(self::BASE_URL);
 
         $this->assertStringContainsString(
-            '<loc>' . self::BASE_URL . '/app/owner/cars/index.php</loc>',
+            '<loc>' . self::BASE_URL . '/app/owner/cars/</loc>',
             $xml,
         );
         $this->assertStringContainsString(
-            '<loc>' . self::BASE_URL . '/docs/guides/index.php</loc>',
+            '<loc>' . self::BASE_URL . '/docs/guides/</loc>',
             $xml,
         );
         $this->assertStringContainsString(
@@ -140,6 +141,25 @@ final class SitemapServiceTest extends TestCase
 
         $this->assertCount(15, $urls);
         $this->assertStringNotContainsString('details.php?car_id=', $xml);
+    }
+
+    /**
+     * A sitemap URL must be the page's own canonical, or search engines get
+     * two conflicting signals (#1960).
+     */
+    public function testBuildXmlStaticUrlsMatchTheirCanonicalUrls(): void
+    {
+        $sitemap = simplexml_load_string($this->makeService([])->buildXml(self::BASE_URL));
+        $this->assertNotFalse($sitemap);
+        $sitemap->registerXPathNamespace('s', 'http://www.sitemaps.org/schemas/sitemap/0.9');
+        $locs = $sitemap->xpath('//s:url/s:loc');
+        $this->assertNotEmpty($locs);
+
+        foreach ($locs as $loc) {
+            $url = (string) $loc;
+            $path = (string) parse_url($url, PHP_URL_PATH);
+            $this->assertSame(CanonicalUrl::build(self::BASE_URL, $path), $url);
+        }
     }
 
     public function testCarEntryHasMonthlyChangefreqAndPointEightPriority(): void
