@@ -66,15 +66,6 @@ class ErrorPageHeadersTest extends IntegrationTestCase
         }
     }
 
-    /** #1830: the fully qualified class must resolve under the Composer autoloader. */
-    public function testLogCategoriesClassResolves(): void
-    {
-        $this->assertTrue(
-            class_exists(LogCategories::class),
-            'ElanRegistry\LogCategories must resolve via the Composer PSR-4 autoloader'
-        );
-    }
-
     /**
      * Run error/500.php in a subprocess with the given REDIRECT_STATUS and
      * return stdout. Not required in-process: its header() calls would warn

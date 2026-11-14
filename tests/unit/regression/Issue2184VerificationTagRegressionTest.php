@@ -9,19 +9,12 @@ use PHPUnit\Framework\TestCase;
 use Tests\Support\PartialRenderHarness;
 
 /**
- * Regression test for #2184: verification email went out without its Brevo tag.
+ * Regression test for #2184: the admin status panel must show the escaped
+ * reason when the Brevo plugin is not ready.
  *
- * CarVerificationSendService called `email($to, $subject, $body)` with no
- * `$opts`, so the sendinblue override sent the mail untagged and the Brevo
- * webhook, which then filtered on the `car_verification` tag, never recorded
- * it. Since #2359 the webhook records every event of our mail without a tag
- * filter. The tag still matters: only a `car_verification`-tagged event with
- * no user counts in the dashboard's unmatched-recipient counter, and Brevo
- * statistics group the mail by it. The fix passes `['tags' => AppConstants::VERIFICATION_EMAIL_TAG]` as the
- * fourth argument. `$opts` is optional, so a later edit that drops it still
- * runs and still sends mail. This test fails if the service source no longer
- * passes the tag. CarVerificationSendServiceTest checks the `$opts` value
- * that reaches email() at run time.
+ * #2184 started with verification email that went out without its Brevo tag.
+ * CarVerificationSendServiceTest checks the tag that reaches email() at run
+ * time.
  *
  * @category regression
  * @issue 2184
@@ -31,21 +24,6 @@ use Tests\Support\PartialRenderHarness;
 final class Issue2184VerificationTagRegressionTest extends TestCase
 {
     use PartialRenderHarness;
-
-    public function testSendServicePassesTheVerificationTagToEmail(): void
-    {
-        // tests/unit/regression/ is three levels below the project root.
-        $targetFile = dirname(__DIR__, 3) . '/usersc/classes/Car/CarVerificationSendService.php';
-        $this->assertFileExists($targetFile);
-        $source = file_get_contents($targetFile);
-        $this->assertIsString($source);
-
-        $this->assertStringContainsString(
-            "['tags' => AppConstants::VERIFICATION_EMAIL_TAG]",
-            $source,
-            'CarVerificationSendService must pass $opts with the verification tag to email() (#2184)'
-        );
-    }
 
     /**
      * The status panel must show the actual reason, escaped, so an admin

@@ -8,8 +8,8 @@ use PHPUnit\Framework\Attributes\Group;
 
 /**
  * Migration 20260709000000_add_elanregistry_baseline: its ElanRegistry tables
- * and the 3 car audit triggers exist. Trigger behavior is covered by
- * CarsYearSmallintMigrationTest.
+ * and two of their indexes exist. CarsYearSmallintMigrationTest covers the car
+ * audit triggers.
  */
 #[Group('integration')]
 #[Group('migration')]
@@ -74,26 +74,6 @@ final class AddElanregistryBaselineMigrationTest extends IntegrationTestCase
                 "Table `{$table}` must exist after the baseline migration"
             );
         }
-    }
-
-    /** Rebuilt by 20260710120000; CarsYearSmallintMigrationTest checks the final form. */
-    #[Group('integration')]
-    #[Group('migration')]
-    public function test_carAuditTriggersExist(): void
-    {
-        $triggers = $this->db->query(
-            "SELECT TRIGGER_NAME
-             FROM information_schema.TRIGGERS
-             WHERE TRIGGER_SCHEMA = DATABASE()
-               AND EVENT_OBJECT_TABLE = 'cars'
-             ORDER BY TRIGGER_NAME"
-        )->results();
-
-        $triggerNames = array_map(static fn(object $t): string => $t->TRIGGER_NAME, $triggers);
-
-        $this->assertContains('cars_insert', $triggerNames, 'cars_insert trigger must exist');
-        $this->assertContains('cars_update', $triggerNames, 'cars_update trigger must exist');
-        $this->assertContains('cars_delete', $triggerNames, 'cars_delete trigger must exist');
     }
 
     /**

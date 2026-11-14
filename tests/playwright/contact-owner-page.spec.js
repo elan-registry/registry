@@ -26,7 +26,7 @@ test.describe('Contact owner page — DatabaseInterface migration (#1585)', () =
 
   test('valid car_id renders the contact-owner form', async ({ page }) => {
     // car_id=1 is used as a stable local fixture elsewhere in this suite
-    // (car-edit-text-save.spec.js, csp-validation.spec.js, ui-consistency.spec.js).
+    // (car-edit-text-save.spec.js, csp-validation.spec.js).
     await page.goto(`app/owner/contact/owner.php?car_id=${CAR_ID_STANDARD}`, { waitUntil: 'domcontentloaded' });
 
     const currentUrl = page.url();

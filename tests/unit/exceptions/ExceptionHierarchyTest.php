@@ -5,9 +5,11 @@ declare(strict_types=1);
 use ElanRegistry\Exceptions\AdminContactException;
 use ElanRegistry\Exceptions\AdminOperationException;
 use ElanRegistry\Exceptions\BackupException;
+use ElanRegistry\Exceptions\CarConcurrentModificationException;
 use ElanRegistry\Exceptions\CarCreationException;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarDeletionException;
+use ElanRegistry\Exceptions\CarException;
 use ElanRegistry\Exceptions\CarMergeException;
 use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarPermissionException;
@@ -18,8 +20,11 @@ use ElanRegistry\Exceptions\ImageProcessingException;
 use ElanRegistry\Exceptions\LocationServiceException;
 use ElanRegistry\Exceptions\OwnerCreationException;
 use ElanRegistry\Exceptions\OwnerDatabaseException;
+use ElanRegistry\Exceptions\OwnerException;
+use ElanRegistry\Exceptions\OwnerSearchException;
 use ElanRegistry\Exceptions\OwnerUpdateException;
 use ElanRegistry\Exceptions\OwnerValidationException;
+use ElanRegistry\Exceptions\ProfileFlagValueException;
 use ElanRegistry\Exceptions\ValidationException;
 use PHPUnit\Framework\TestCase;
 
@@ -45,18 +50,33 @@ class ExceptionHierarchyTest extends TestCase
         OwnerValidationException::class,
         OwnerUpdateException::class,
         OwnerDatabaseException::class,
+        OwnerSearchException::class,
         ImageProcessingException::class,
         BackupException::class,
         ValidationException::class,
         LocationServiceException::class,
     ];
 
-    public function testBaseClassIsAbstract(): void
+    #[DataProvider('abstractClassProvider')]
+    public function testBaseClassIsAbstract(string $className): void
     {
-        $reflection = new ReflectionClass(ElanRegistryException::class);
+        $reflection = new ReflectionClass($className);
         $this->assertTrue(
             $reflection->isAbstract(),
-            'ElanRegistryException must be abstract'
+            "{$className} must be abstract"
+        );
+    }
+
+    /** Catch blocks name a parent class (catch (CarException) in process-transfer-*.php), so each parent must stay fixed. */
+    #[DataProvider('exceptionParentProvider')]
+    public function testExceptionHasExpectedParent(
+        string $className,
+        string $expectedParent
+    ): void {
+        $this->assertSame(
+            $expectedParent,
+            get_parent_class($className),
+            "{$className} should directly extend {$expectedParent}"
         );
     }
 
@@ -191,11 +211,12 @@ class ExceptionHierarchyTest extends TestCase
     #[DataProvider('exceptionClassProvider')]
     public function testWithUserMessageFactory(string $className): void
     {
+        $previous = new RuntimeException('Original DB error');
         $exception = $className::withUserMessage(
             'Technical details for logs',
             'User-friendly message.',
             500,
-            null
+            $previous
         );
 
         $this->assertEquals(
@@ -207,6 +228,29 @@ class ExceptionHierarchyTest extends TestCase
             'User-friendly message.',
             $exception->getUserMessage()
         );
+
+        $this->assertSame(
+            $previous,
+            $exception->getPrevious(),
+            "{$className}::withUserMessage() should keep the previous exception"
+        );
+    }
+
+    /**
+     * Old throw sites without withUserMessage() must not leak technical text
+     * (#927). #651: the AdminContactException catch block showed getMessage().
+     */
+    #[DataProvider('defaultUserMessageProvider')]
+    public function testDefaultUserMessageHidesTechnicalMessage(
+        string $className,
+        string $technicalMessage,
+        string $expectedUserMessage
+    ): void {
+        $exception = new $className($technicalMessage);
+
+        $this->assertEquals($technicalMessage, $exception->getMessage());
+        $this->assertEquals($expectedUserMessage, $exception->getUserMessage());
+        $this->assertNotEquals($exception->getMessage(), $exception->getUserMessage());
     }
 
     #[DataProvider('exceptionClassProvider')]
@@ -220,46 +264,6 @@ class ExceptionHierarchyTest extends TestCase
             $exception->getPrevious(),
             "{$className} should accept Error as previous exception"
         );
-    }
-
-    public function testStatusCodesAre404ForNotFound(): void
-    {
-        $this->assertEquals(404, (new CarNotFoundException())->getHttpStatusCode());
-    }
-
-    public function testStatusCodesAre422ForValidation(): void
-    {
-        $this->assertEquals(422, (new CarValidationException())->getHttpStatusCode());
-        $this->assertEquals(422, (new OwnerValidationException())->getHttpStatusCode());
-        $this->assertEquals(422, (new ValidationException())->getHttpStatusCode());
-    }
-
-    public function testStatusCodesForSecurityExceptions(): void
-    {
-        $this->assertEquals(403, (new CarPermissionException())->getHttpStatusCode());
-    }
-
-    public function testStatusCodesAre500ForServerErrors(): void
-    {
-        $this->assertEquals(500, (new CarCreationException())->getHttpStatusCode());
-        $this->assertEquals(500, (new CarDeletionException())->getHttpStatusCode());
-        $this->assertEquals(500, (new CarMergeException())->getHttpStatusCode());
-        $this->assertEquals(500, (new CarDatabaseException())->getHttpStatusCode());
-        $this->assertEquals(500, (new OwnerCreationException())->getHttpStatusCode());
-        $this->assertEquals(500, (new OwnerUpdateException())->getHttpStatusCode());
-        $this->assertEquals(500, (new OwnerDatabaseException())->getHttpStatusCode());
-        $this->assertEquals(500, (new ImageProcessingException())->getHttpStatusCode());
-        $this->assertEquals(500, (new BackupException('msg'))->getHttpStatusCode());
-        $this->assertEquals(500, (new LocationServiceException())->getHttpStatusCode());
-    }
-
-    /**
-     * Transfer failures are conflict-class errors (concurrent admin actions,
-     * state conflicts) rather than server faults.
-     */
-    public function testCarTransferExceptionReturns409(): void
-    {
-        $this->assertEquals(409, (new CarTransferException())->getHttpStatusCode());
     }
 
     public function testDefaultUserMessageUsedWhenNoMessageProvided(): void
@@ -296,6 +300,79 @@ class ExceptionHierarchyTest extends TestCase
     }
 
     /** @return array<string, array<int, string>> */
+    public static function abstractClassProvider(): array
+    {
+        return [
+            'ElanRegistryException' => [ElanRegistryException::class],
+            'CarException' => [CarException::class],
+            'OwnerException' => [OwnerException::class],
+        ];
+    }
+
+    /** @return array<string, array<int, string>> */
+    public static function exceptionParentProvider(): array
+    {
+        return [
+            'CarException' => [CarException::class, ElanRegistryException::class],
+            'CarNotFoundException' => [CarNotFoundException::class, CarException::class],
+            'CarCreationException' => [CarCreationException::class, CarException::class],
+            'CarValidationException' => [CarValidationException::class, CarException::class],
+            'CarDeletionException' => [CarDeletionException::class, CarException::class],
+            'CarMergeException' => [CarMergeException::class, CarException::class],
+            'CarTransferException' => [CarTransferException::class, CarException::class],
+            'CarDatabaseException' => [CarDatabaseException::class, CarException::class],
+            'CarConcurrentModificationException' => [CarConcurrentModificationException::class, CarDatabaseException::class],
+            'ProfileFlagValueException' => [ProfileFlagValueException::class, CarDatabaseException::class],
+            'CarPermissionException' => [CarPermissionException::class, CarException::class],
+            'OwnerException' => [OwnerException::class, ElanRegistryException::class],
+            'OwnerCreationException' => [OwnerCreationException::class, OwnerException::class],
+            'OwnerSearchException' => [OwnerSearchException::class, OwnerException::class],
+            'OwnerUpdateException' => [OwnerUpdateException::class, OwnerException::class],
+            'OwnerValidationException' => [OwnerValidationException::class, OwnerException::class],
+            'OwnerDatabaseException' => [OwnerDatabaseException::class, OwnerException::class],
+            'AdminContactException' => [AdminContactException::class, ElanRegistryException::class],
+            'AdminOperationException' => [AdminOperationException::class, ElanRegistryException::class],
+        ];
+    }
+
+    /** @return array<string, array<int, string>> */
+    public static function defaultUserMessageProvider(): array
+    {
+        return [
+            'OwnerValidationException' => [
+                OwnerValidationException::class,
+                'Invalid email format',
+                'The owner information provided is invalid. Please check your input.',
+            ],
+            'OwnerUpdateException' => [
+                OwnerUpdateException::class,
+                'DB::update() returned false',
+                'Unable to update the owner record. Please try again.',
+            ],
+            'OwnerCreationException' => [
+                OwnerCreationException::class,
+                'DB::insert() failed',
+                'Unable to create the owner record. Please try again.',
+            ],
+            'OwnerSearchException' => [
+                OwnerSearchException::class,
+                'Search query too short',
+                'Search failed. Please try again.',
+            ],
+            'AdminContactException' => [
+                AdminContactException::class,
+                'Admin user not found',
+                'An error occurred while sending the message. Please try again.',
+            ],
+            'AdminOperationException' => [
+                AdminOperationException::class,
+                'Failed to load owner profile',
+                'An error occurred during the operation. Please try again.',
+            ],
+        ];
+    }
+
+    /** @return array<string, array<int, string>> */
     public static function exceptionWithCategoryProvider(): array
     {
         return [
@@ -311,6 +388,7 @@ class ExceptionHierarchyTest extends TestCase
             'OwnerValidationException' => [OwnerValidationException::class, 'ValidationError'],
             'OwnerUpdateException' => [OwnerUpdateException::class, 'OwnerActions'],
             'OwnerDatabaseException' => [OwnerDatabaseException::class, 'DatabaseError'],
+            'OwnerSearchException' => [OwnerSearchException::class, 'OwnerActions'],
             'ImageProcessingException' => [ImageProcessingException::class, 'FileError'],
             'AdminContactException' => [AdminContactException::class, 'CarActions'],
             'AdminOperationException' => [AdminOperationException::class, 'SystemError'],
@@ -329,6 +407,7 @@ class ExceptionHierarchyTest extends TestCase
             'CarValidationException' => [CarValidationException::class, 422],
             'CarDeletionException' => [CarDeletionException::class, 500],
             'CarMergeException' => [CarMergeException::class, 500],
+            // Transfer failures are conflicts (concurrent admin actions), not server faults.
             'CarTransferException' => [CarTransferException::class, 409],
             'CarDatabaseException' => [CarDatabaseException::class, 500],
             'CarPermissionException' => [CarPermissionException::class, 403],
@@ -336,6 +415,7 @@ class ExceptionHierarchyTest extends TestCase
             'OwnerValidationException' => [OwnerValidationException::class, 422],
             'OwnerUpdateException' => [OwnerUpdateException::class, 500],
             'OwnerDatabaseException' => [OwnerDatabaseException::class, 500],
+            'OwnerSearchException' => [OwnerSearchException::class, 500],
             'ImageProcessingException' => [ImageProcessingException::class, 500],
             'AdminContactException' => [AdminContactException::class, 500],
             'AdminOperationException' => [AdminOperationException::class, 500],

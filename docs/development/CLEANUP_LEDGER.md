@@ -191,10 +191,6 @@ after an item is written.
 
 - [ ] `testOwnerSelfEditSetsOwnerLastUpdatedButAdminEditDoesNot` only checks that the new `owner_last_updated` is later than a date two years ago, and does not count `cars_hist` rows. Bound it with `assertEqualsWithDelta(time(), ..., 60)` and assert one new history row (found while working on #1929)
 
-### `tests/integration/EmailEventRekeyReportAuthTest.php` (test coverage)
-
-- [ ] `testVisitorWhoIsNotLoggedInIsRefusedAndGetsNoReport` checks only that no report shows. A crash passes too. Assert exit code 0 and HTTP 302, as the editor test does (found in #2358 review)
-
 ### `tests/integration/OwnerCreateUpdateTransactionRollbackTest.php`
 
 - [ ] Replace the hand-written DB proxy (~L55) with `PassThroughDatabase` (from #2169)
@@ -243,10 +239,6 @@ after an item is written.
 
 - [ ] Seven `seed-*.php` fixtures and the migration fixture each copy the `er_deleted_user_addresses` cleanup: a table-exists check, then a `DELETE ... IN (...)`. Three also copy the username-to-ID lookup. None checks `$db->error()` after the check or the delete, although the cleanup loop in the same files exits on an error. Add one shared helper (for example `Tests\Support\DeletedUserAddressCleanup::forUserIds($db, $ids)`) that checks `error()`, and call it from each fixture (found in #2419)
 
-### `tests/unit/admin/VerificationBannerReasonTest.php` (test quality)
-
-- [ ] The unreadable-banner check matches `app/admin/index.php` source with regexes, so a rename breaks it, and it does not check the outer `if ($verificationBannerSeverity !== null)` gate. Replace it with a render test when an `index.php` render harness exists (found in #2102 review)
-
 ### `tests/unit/cars/services/AdminVerificationQueueUrlStateTest.php` (test quality)
 
 - [ ] The test reads `app/admin/index.php` source with `file_get_contents` and slices a block out of it. Replace it with a behavior test of the queue URL state, for example through `IntegrationTestCase::invokeEndpoint()` (found in #2330)
@@ -269,8 +261,7 @@ after an item is written.
 
 ### `tests/unit/regression/Issue2360SendPolicySourceRegressionTest.php`
 
-- [ ] The source-position checks at ~L317, ~L322 and ~L353 repeat behavior tests (`SendOwnerEmailSendPolicyTest` ~L246, ~L334, `AdminContactSendPolicyTest`). Delete them, and keep the tests of the checker helper (found in /finish-milestone v2.30.8)
-- [ ] Replace the source check at ~L328 (policy check after the template render) with a behavior test: with a missing template, a blocked recipient and a clean recipient get the same error, and the log has no policy line (found in /finish-milestone v2.30.8)
+- [ ] Replace the source check `test_endpoint_policyCallComesAfterTemplateRender` (policy check after the template render) with a behavior test: with a missing template, a blocked recipient and a clean recipient get the same error, and the log has no policy line (found in /finish-milestone v2.30.8)
 
 ### `tests/unit/regression/Issue2460OwnerContactTagSourceRegressionTest.php` (test quality)
 
@@ -403,7 +394,7 @@ after an item is written.
   - Check first: the gitignored upstream plugin code may reference some of these constants. A search of tracked files cannot see it.
   - Check first: the admin log viewer may filter by the stored category *values*. Old `logs` rows keep their values after a constant goes.
   - Check first: `docs/development/LOG_CATEGORIES.md` lists the constants.
-  - Check first: `ApiResponseTest.php` (~406, ~692) and `CarUpdateRepositoryFailureTest.php` (~106) use two of them.
+  - Check first: `ApiResponseTest.php` (`testWithLoggingIsImmutable`, `testToArrayDoesNotIncludePendingLog`) and `CarUpdateRepositoryFailureTest.php` (~106) use two of them.
   - Do this with #1997, which splits the overloaded categories in the same file.
 
 ### `usersc/classes/Migration/DeliverabilityMigrationQueries.php` + `tests/integration/database/DeliverabilityMigrationFixture.php`

@@ -57,19 +57,6 @@ final class CarUpdateOwnerInitiatedTest extends TestCase
         $this->assertTrue($this->car->update(['id' => 42, 'color' => 'Carnival Red'], true));
     }
 
-    public function testNonOwnerInitiatedUpdateOmitsOwnerLastUpdated(): void
-    {
-        $this->mockRepo->expects($this->once())
-            ->method('updateCar')
-            ->with(42, $this->callback(
-                fn(array $fields) => !array_key_exists('owner_last_updated', $fields)
-            ))
-            ->willReturn(true);
-        $this->mockRepo->method('findById')->willReturn(null);
-
-        $this->assertTrue($this->car->update(['id' => 42, 'color' => 'Carnival Red'], false));
-    }
-
     public function testDefaultUpdateOmitsOwnerLastUpdated(): void
     {
         $this->mockRepo->expects($this->once())

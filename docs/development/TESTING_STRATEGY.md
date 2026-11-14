@@ -291,7 +291,7 @@ rules as its TRIM and CUT criteria.
 - **Do not test the test.** A test of the test's own regex or fixture checks
   no app behavior. The six `testNegativeControl*` methods in
   `tests/unit/regression/Issue2101DeliverabilityFlagsSourceRegressionTest.php`
-  are an example (on 2026-11-13).
+  were an example. #2398 deleted them.
 - **Use a data provider when three or more tests have the same shape.** One
   test method for each field or view with the same assertions is a copy, not
   more coverage. `tests/unit/classes/EmailTemplateTest.php` (on 2026-11-13,

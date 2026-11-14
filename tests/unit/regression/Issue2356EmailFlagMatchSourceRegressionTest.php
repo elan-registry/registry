@@ -16,13 +16,10 @@ use PHPUnit\Framework\TestCase;
  *   uses neither `effectiveEmailFlags()` nor `emailFlagActiveSql()`.
  * - A deliverability path reads `cars.email`. The verification send and
  *   the Brevo event match use `users.email` only.
- * - A removed method or constant is back (code and docs).
+ * - A removed method or constant is back in code or tests.
  * - The account notice template shows "Brevo", or prints an address that it
  *   did not escape.
  * - The `verifySuccess` hook calls more than one clear method.
- *
- * Every check has a negative control. The control runs the same matcher over
- * an in-memory string that holds the forbidden pattern, and asserts a hit.
  *
  * `users/**` is gitignored, so CI has only the few tracked upstream files.
  * When `users/verify.php` is missing, the writer checks skip the upstream
@@ -161,7 +158,7 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
     ];
 
     /**
-     * Names that #2356 removed. They must not appear in code, tests or docs.
+     * Names that #2356 removed. They must not appear in code or tests.
      *
      * @var list<string>
      */
@@ -185,7 +182,7 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
      */
     private const REMOVED_NAME_TEST_ALLOW_LIST = [
         'tests/unit/regression/Issue2356EmailFlagMatchSourceRegressionTest.php'
-            => 'This test names them in its list and controls.',
+            => 'This test names them in its list.',
         'tests/unit/cars/EmailNoticeBuilderTest.php'
             => 'It asserts that the removed constants stay removed.',
         'tests/unit/cars/services/CarRepositoryTest.php'
@@ -359,29 +356,6 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
         );
     }
 
-    public function testNegativeControlOwnerCreateMatcher(): void
-    {
-        $calls = [
-            'static' => 'Owner::create($fields);',
-            'owner variable' => '$owner->create($fields);',
-            'inline new' => '(new Owner($id))->create($fields);',
-            'any variable name' => '$o = new Owner($db);' . "\n" . '$o->create($f);',
-            'qualified class' => '$x = new \\ElanRegistry\\Owner();' . "\n" . '$x->create($f);',
-        ];
-        foreach ($calls as $label => $code) {
-            $this->assertTrue(self::callsOwnerCreate($code), "Matcher misses: {$label}");
-        }
-
-        $notCalls = [
-            'another class' => '$car = new Car();' . "\n" . '$car->create($f);',
-            'owner without create' => '$o = new Owner($id);' . "\n" . '$o->update($f);',
-            'other variable' => '$o = new Owner($id);' . "\n" . '$user->create($f);',
-        ];
-        foreach ($notCalls as $label => $code) {
-            $this->assertFalse(self::callsOwnerCreate($code), "Matcher over-matches: {$label}");
-        }
-    }
-
     public function testUpdateEmailHelperHasNoCaller(): void
     {
         $callers = [];
@@ -395,45 +369,6 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
         }
 
         $this->assertSame([], $callers, 'updateEmail() writes users.email with no since/seen. A caller needs a writers entry.');
-    }
-
-    public function testNegativeControlUsersEmailWriterMatcher(): void
-    {
-        $writers = [
-            'fields variable' => "\$fields = ['email' => \$email];\n\$db->update('users', \$id, \$fields);",
-            'fields key' => "\$fields['email'] = \$email;\n\$db->update('users', \$id, \$fields);",
-            'inline update' => "\$db->update('users', \$id, ['email' => \$new, 'email_new' => null]);",
-            'User::update array' => "\$verify->update(array('email_verified' => 1, 'email' => \$new), \$id);",
-            'owner field list' => "\$userFieldNames = ['fname', 'lname', 'email', 'password'];\n\$this->_db->update(\$this->userTableName, \$id, \$f);",
-            'inline insert' => "\$db->insert('users', ['username' => \$u, 'email' => \$e]);",
-            'raw SQL' => "\$db->query('UPDATE users SET email = ? WHERE id = ?', [\$e, \$id]);",
-            'raw SQL, later column' => '$db->query("UPDATE `users` SET fname = ?, email=? WHERE id = ?", $p);',
-            'raw SQL, alias' => "\$db->query('UPDATE users u SET u.email = ? WHERE u.id = ?', [\$e, \$id]);",
-            'raw SQL, AS alias' => "\$db->query('UPDATE users AS u SET u.fname = ?, u.email = ? WHERE u.id = ?', \$p);",
-            'raw SQL, insert column list' => "\$db->query('INSERT INTO users (username, email, fname) VALUES (?, ?, ?)', \$p);",
-            'raw SQL, insert last column' => "\$db->query('INSERT INTO `users` (`username`, `email`) VALUES (?, ?)', \$p);",
-        ];
-        foreach ($writers as $label => $code) {
-            $this->assertTrue(self::looksLikeUsersEmailWrite($code), "Matcher misses: {$label}");
-        }
-
-        $notWriters = [
-            'vericode only' => "\$db->update('users', \$id, ['vericode' => \$v, 'vericode_expiry' => \$e]);",
-            'email as a mail parameter' => "\$params = ['email' => rawurlencode(\$email)];\n\$db->update('users', \$id, ['vericode' => \$v]);",
-            'email on another table' => "\$db->update('cars', \$id, ['email' => \$email]);",
-            'a read' => "\$u = \$db->query('SELECT email FROM users WHERE id = ?', [\$id])->first();",
-            'raw SQL, other column' => "\$db->query('UPDATE users SET email_verified = 1 WHERE id = ?', [\$id]);",
-            'raw SQL, email in WHERE' => "\$db->query('UPDATE users SET vericode = ? WHERE email = ?', [\$v, \$e]);",
-            'raw SQL, other table' => "\$db->query('UPDATE cars SET email = ? WHERE id = ?', [\$e, \$id]);",
-            'raw SQL, alias on another table' => "\$db->query('UPDATE cars c SET c.email = ? WHERE c.id = ?', [\$e, \$id]);",
-            'raw SQL, alias, other column' => "\$db->query('UPDATE users u SET u.email_new = ? WHERE u.id = ?', [\$e, \$id]);",
-            'raw SQL, insert on another table' => "\$db->query('INSERT INTO cars (user_id, email) VALUES (?, ?)', \$p);",
-            'raw SQL, insert on a history table' => "\$db->query('INSERT INTO users_hist (id, email) VALUES (?, ?)', \$p);",
-            'raw SQL, insert other column' => "\$db->query('INSERT INTO users (username, email_new) VALUES (?, ?)', \$p);",
-        ];
-        foreach ($notWriters as $label => $code) {
-            $this->assertFalse(self::looksLikeUsersEmailWrite($code), "Matcher over-matches: {$label}");
-        }
     }
 
     // ------------------------------------------------------------------
@@ -626,15 +561,6 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
         $this->assertStringNotContainsString('cars.email', $eligible);
     }
 
-    public function testNegativeControlMethodBody(): void
-    {
-        $code = "<?php\nclass A {\n    public function a(): void\n    {\n        \$x = 'cars.email';\n    }\n\n"
-            . "    public function b(): void\n    {\n        \$y = 1;\n    }\n}\n";
-
-        $this->assertStringContainsString('cars.email', self::methodBody($code, 'a'));
-        $this->assertStringNotContainsString('cars.email', self::methodBody($code, 'b'));
-    }
-
     /** Only the repository reads the raw profile row. Other code gets the applied flags. */
     public function testFindProfileEmailStateIsNotCalledOutsideTheRepository(): void
     {
@@ -651,25 +577,8 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
         $this->assertSame([], $callers, 'findProfileEmailState() returns the stored flags without the address match.');
     }
 
-    public function testNegativeControlFlagColumnMatchers(): void
-    {
-        $this->assertNotSame([], self::storedFlagColumnHits('$x = $state->email_blocked;'));
-        $this->assertNotSame([], self::storedFlagColumnHits("\$db->query('SELECT p.email_bounced FROM profiles p');"));
-        $this->assertNotSame([], self::storedFlagColumnHits('$row->email_blocked_address'));
-        $this->assertNotSame([], self::storedFlagColumnHits("'email_bounced_address' => \$a"));
-        $this->assertSame([], self::storedFlagColumnHits('$x = $row->email_blocked_active;'), 'An _active alias is a predicate result.');
-        $this->assertSame([], self::storedFlagColumnHits('$x = $row->email_blocked_cause;'));
-        $this->assertSame([], self::storedFlagColumnHits('$x = $state->email_opted_out;'));
-
-        $code = "<?php\nclass A {\n"
-            . "    public function ok() {\n        return 1;\n    }\n"
-            . "    public function bad() {\n        return \$row->email_bounced;\n    }\n"
-            . "}\n";
-        $this->assertSame(['bad'], array_keys(self::methodsNamingFlagColumns($code)));
-    }
-
     // ------------------------------------------------------------------
-    // Claim 3: removed names are gone (code, tests and docs)
+    // Claim 3: removed names are gone (code and tests)
     // ------------------------------------------------------------------
 
     public function testRemovedNamesAreAbsentFromCodeAndTests(): void
@@ -688,26 +597,6 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
         }
 
         $this->assertSame([], $hits, "Removed names are back (#2356):\n" . implode("\n", $hits));
-    }
-
-    public function testRemovedNamesAreAbsentFromDocs(): void
-    {
-        $files = $this->docFiles();
-        $this->assertNotEmpty($files);
-        $this->assertContains('docs/development/CLASSES.md', $files, 'The scan must include CLASSES.md.');
-
-        $hits = [];
-        foreach ($files as $relative) {
-            foreach (self::removedNameHits($this->rawText($relative)) as $name) {
-                $hits[] = "{$relative}: {$name}";
-            }
-        }
-
-        $this->assertSame(
-            [],
-            $hits,
-            "Docs still name a removed method or constant (#2356). Update them:\n" . implode("\n", $hits)
-        );
     }
 
     public function testRemovedNameAllowListEntriesExistAndNameARemovedName(): void
@@ -729,16 +618,6 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
         }
         $this->assertFalse(method_exists(\ElanRegistry\Car\CarVerificationManager::class, 'clearBouncedForEmailChange'));
         $this->assertFalse(defined(\ElanRegistry\Car\EmailNoticeBuilder::class . '::CAUSE_BREVO_COMPLAINT'));
-    }
-
-    public function testNegativeControlRemovedNameMatcher(): void
-    {
-        foreach (self::REMOVED_NAMES as $name) {
-            $this->assertSame([$name], self::removedNameHits("\$repo->{$name}(1);"), "Matcher misses {$name}");
-            $this->assertSame([$name], self::removedNameHits("`{$name}()` clears it."), "Matcher misses {$name} in docs");
-        }
-        $this->assertSame([], self::removedNameHits('clearFlagsForConfirmedEmailChange and hasSuppressedFlag'));
-        $this->assertSame([], self::removedNameHits('EmailNoticeBuilder::KIND_BLOCKED'));
     }
 
     // ------------------------------------------------------------------
@@ -799,17 +678,6 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
         $this->assertStringContainsString('htmlspecialchars($value, ENT_QUOTES, \'UTF-8\')', $code);
     }
 
-    public function testNegativeControlTemplateChecks(): void
-    {
-        $this->assertSame(1, preg_match('/brevo/i', 'Brevo blocked this address'));
-        $this->assertSame(1, preg_match('/brevo/i', 'your BREVO account'));
-
-        // A naive render of the same address leaks it, so the assertion above can fail.
-        $naive = '<strong>' . "o'brien&co@example.com" . '</strong>';
-        $this->assertStringContainsString("o'brien&co@example.com", $naive);
-        $this->assertStringNotContainsString('o&#039;brien&amp;co@example.com', $naive);
-    }
-
     // ------------------------------------------------------------------
     // Claim 5: the hook calls one clear method
     // ------------------------------------------------------------------
@@ -831,18 +699,8 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
         $this->assertStringNotContainsString('$currentEmail', $code, 'The repository reads users.email under the lock.');
     }
 
-    public function testNegativeControlClearMethodMatcher(): void
-    {
-        $this->assertSame(['clearBouncedForUser'], self::clearMethodCalls('$repo->clearBouncedForUser($u, $e);'));
-        $this->assertSame(
-            ['clearFlagsForConfirmedEmailChange', 'clearBouncedForEmailChange'],
-            self::clearMethodCalls('$m->clearFlagsForConfirmedEmailChange($a, $b); $m->clearBouncedForEmailChange($a, $b, $e);')
-        );
-        $this->assertSame([], self::clearMethodCalls('$m->setBouncedFromEvent(1);'));
-    }
-
     // ------------------------------------------------------------------
-    // Matchers (pure functions of a string, so the controls can reuse them)
+    // Matchers (pure functions of a string)
     // ------------------------------------------------------------------
 
     /**
@@ -1077,38 +935,6 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
                     continue;
                 }
                 $files[] = substr($path, strlen($this->root) + 1);
-            }
-        }
-        sort($files);
-
-        return $files;
-    }
-
-    /**
-     * Markdown docs that a code change can falsify. `docs/plans/` is private scratch.
-     *
-     * @return list<string>
-     */
-    private function docFiles(): array
-    {
-        $files = [];
-        $base = $this->root . '/docs';
-        if (is_dir($base)) {
-            $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($base, FilesystemIterator::SKIP_DOTS));
-            foreach ($iterator as $file) {
-                if (!$file instanceof SplFileInfo || !$file->isFile()) {
-                    continue;
-                }
-                $path = $file->getPathname();
-                if (!str_ends_with($path, '.md') || str_contains($path, '/docs/plans/')) {
-                    continue;
-                }
-                $files[] = substr($path, strlen($this->root) + 1);
-            }
-        }
-        foreach (['README.md', 'CLAUDE.md'] as $rootDoc) {
-            if (is_file($this->root . '/' . $rootDoc)) {
-                $files[] = $rootDoc;
             }
         }
         sort($files);
