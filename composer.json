@@ -46,6 +46,7 @@
         "test:regression:ci": "@php vendor/phpunit/phpunit/phpunit -c phpunit-unit.xml --testsuite=Unit --group regression --exclude-group known-broken",
         "test:unit:all": "@php vendor/phpunit/phpunit/phpunit -c phpunit-unit.xml",
         "test:integration": "@php vendor/phpunit/phpunit/phpunit -c phpunit-integration.xml --testsuite=Integration",
+        "test:integration:no-migration": "@php vendor/phpunit/phpunit/phpunit -c phpunit-integration.xml --testsuite=Integration --exclude-group migration --exclude-group live-network --exclude-group known-broken",
         "test:database": "@php vendor/phpunit/phpunit/phpunit -c phpunit-integration.xml tests/integration/database",
         "test:full": ["@php vendor/phpunit/phpunit/phpunit -c phpunit-unit.xml", "@php vendor/phpunit/phpunit/phpunit -c phpunit-integration.xml"],
         "test:coverage": "@php vendor/phpunit/phpunit/phpunit -c phpunit-unit.xml --coverage-html=coverage",

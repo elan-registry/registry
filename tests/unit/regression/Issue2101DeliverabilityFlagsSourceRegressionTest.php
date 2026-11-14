@@ -31,18 +31,6 @@ final class Issue2101DeliverabilityFlagsSourceRegressionTest extends TestCase
             => 'This test names the column in its patterns.',
         'usersc/classes/Migration/DeliverabilityMigrationQueries.php'
             => 'The #2101 migration reads the old column to copy the flag to profiles.',
-        'tests/integration/database/AddCarsVerificationAttemptsColumnsSandboxTest.php'
-            => 'It runs an older migration on a schema that still has the car flag columns.',
-        'tests/integration/database/DeliverabilityMigrationFixture.php'
-            => 'It seeds the old columns that the #2101 migration copies.',
-        'tests/integration/database/DeliverabilityMigrationUpSandboxTest.php'
-            => 'It checks that up() removes the old columns.',
-        'tests/integration/database/DeliverabilityMigrationRerunSandboxTest.php'
-            => 'It stops up() part way, while the old columns still exist.',
-        'tests/integration/database/DeliverabilityMigrationDownSandboxTest.php'
-            => 'It checks that down() restores the old columns and their values.',
-        'tests/integration/database/DeliverabilityMigrationFreshAndRollbackSandboxTest.php'
-            => 'It checks the schema before and after the #2101 migration.',
     ];
 
     private const EMAIL_SUPPRESSED_PATTERN = '/email_suppressed/';

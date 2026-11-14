@@ -41,7 +41,7 @@ remote_name="${1:-}"
 #
 # This hook is the only place the integration suite runs (CI has no test
 # database), so when in doubt it RUNS the suite: a wrongful skip is the worst
-# outcome, an unnecessary ~20s run is acceptable.
+# outcome, an unnecessary ~NNs run is acceptable.
 #
 # A push is gated when its diff touches
 # ^(app|usersc/classes|tests/integration|database/migrations)/.*\.php$.
@@ -75,15 +75,29 @@ remote_name="${1:-}"
 # stopped stack blocks the push with "docker compose up -d" rather than
 # skipping. See scripts/lib/integration-runner.sh (#2171, #2245).
 #
-# The suite (composer test:integration, against the schema in
-# .env.test.local) tests the WORKING TREE, so it runs at most ONCE per hook
-# invocation and later refs reuse its exit code; pushing a ref that is not
-# HEAD prints a warning. Any non-zero exit blocks the push — a test failure
-# or an unreachable test DB (tests/bootstrap-integration.php fails loudly).
+# TWO MODES (#2395). The migration sandbox tests (PHPUnit group `migration`)
+# take about half of the suite time. They test only the migration inputs:
+#   database/, usersc/classes/Migration/, usersc/classes/Cron/,
+#   tests/integration/database/, phinx.php, composer.lock.
+# When the full diff of a gated ref touches one of these paths, the hook runs
+# `composer test:integration` (the full suite). When it touches none, the hook
+# runs `composer test:integration:no-migration`, which leaves out the groups
+# migration, live-network and known-broken. An unresolved base or a git
+# failure runs the full suite (fail-safe).
+#
+# The suite (against the schema in .env.test.local) tests the WORKING TREE,
+# so each mode runs at most ONCE per hook invocation and later refs reuse its
+# exit code. A full run also satisfies a later no-migration ref. A ref that
+# needs the full suite after a no-migration run starts the full run. Pushing
+# a ref that is not HEAD prints a warning. Any non-zero exit blocks the
+# push — a test failure or an unreachable test DB
+# (tests/bootstrap-integration.php fails loudly).
 #
 # CACHE. $GIT_DIR/integration-passed holds one key — the pushed tree SHA, the
-# test DB_NAME and the runner (host/docker) — for the most recent pass. It is
-# written only when the
+# test DB_NAME and the runner (host/docker) — and the mode (full or
+# no-migration) of the most recent pass. A full pass satisfies both modes. A
+# no-migration pass satisfies only a no-migration need. It is written only
+# when the
 # suite exits 0, the pushed commit is HEAD and the working tree has no
 # modified or untracked (non-ignored) files, so
 # it only skips a re-push of an identical tree (e.g. a retried force push).
@@ -97,6 +111,8 @@ remote_name="${1:-}"
 # The optional quotes match a path git still C-quotes under
 # core.quotepath=false (one containing a tab, newline, quote or backslash).
 integration_gate_paths='^"?(app|usersc/classes|tests/integration|database/migrations)/.*\.php"?$'
+# Paths that the migration sandbox tests depend on. Same optional quotes.
+integration_migration_paths='^"?((database|usersc/classes/Migration|usersc/classes/Cron|tests/integration/database)/.*|phinx\.php|composer\.lock)"?$'
 zero_sha="0000000000000000000000000000000000000000"
 gate_failed=0
 
@@ -171,6 +187,21 @@ _gated_files_for_ref() {
     return 0
 }
 
+# Echoes the migration inputs changed between $1 (base) and $2 (local_sha).
+# It checks the full diff, not only the gated paths, because phinx.php and
+# composer.lock are not gated. Returns 1 after a WARNING if the diff fails,
+# so the caller runs the full suite.
+_migration_files_for_ref() {
+    local base="$1" local_sha="$2" files
+
+    if ! files="$(_diff_names "$base" "$local_sha" 2>/dev/null)"; then
+        echo "  WARNING: 'git diff $base $local_sha' failed." >&2
+        return 1
+    fi
+    printf '%s\n' "$files" | grep -E "$integration_migration_paths"
+    return 0
+}
+
 # Cache key for a recorded pass: the pushed TREE (not the commit — a reword
 # or an amended message doesn't change what the tests exercise) plus the test
 # database name, so pointing .env.test.local at a different schema invalidates
@@ -199,13 +230,18 @@ _integration_cache_file() {
     git rev-parse --git-path integration-passed 2>/dev/null
 }
 
-# Returns 0 when $1 (a non-empty key) matches the recorded pass.
+# Returns 0 when $1 (a non-empty key) matches the recorded pass for the
+# need in $2 (full or no-migration, default full). A full pass satisfies
+# both needs. A no-migration pass did not run the migration tests, so it
+# satisfies only a no-migration need.
 _integration_cache_hit() {
-    local key="$1" file
+    local key="$1" mode="${2:-full}" file recorded
     [ -z "$key" ] && return 1
     file="$(_integration_cache_file)"
     [ -n "$file" ] && [ -f "$file" ] || return 1
-    [ "$(cat "$file" 2>/dev/null)" = "$key" ]
+    recorded="$(cat "$file" 2>/dev/null)"
+    [ "$recorded" = "$key full" ] && return 0
+    [ "$mode" = "no-migration" ] && [ "$recorded" = "$key no-migration" ]
 }
 
 # Records a pass. Refuses unless the key is non-empty AND the pushed commit
@@ -214,9 +250,10 @@ _integration_cache_hit() {
 # depended on an uncommitted or un-added file (e.g. a new app/*.php never
 # `git add`ed) must not be cached against a tree that lacks it. A failing
 # `git status` also refuses. Written via temp file + mv so a crash mid-write
-# can't leave a truncated key that silently never matches.
+# can't leave a truncated key that silently never matches. $3 is the mode
+# that ran (full or no-migration, default full).
 _integration_cache_record() {
-    local key="$1" local_sha="$2" file tmp status_out
+    local key="$1" local_sha="$2" mode="${3:-full}" file tmp status_out
     [ -n "$key" ] || return 1
     [ "$local_sha" = "$(git rev-parse HEAD 2>/dev/null)" ] || return 1
     status_out="$(git status --porcelain 2>/dev/null)" || return 1
@@ -225,7 +262,7 @@ _integration_cache_record() {
     file="$(_integration_cache_file)"
     [ -n "$file" ] || return 1
     tmp="${file}.tmp.$$"
-    printf '%s\n' "$key" > "$tmp" 2>/dev/null || return 1
+    printf '%s %s\n' "$key" "$mode" > "$tmp" 2>/dev/null || return 1
     mv -f "$tmp" "$file" 2>/dev/null || { rm -f "$tmp"; return 1; }
     return 0
 }
@@ -235,10 +272,12 @@ if [ "${SKIP_INTEGRATION_GATE:-}" = "1" ]; then
     echo "  Integration-test gate SKIPPED (SKIP_INTEGRATION_GATE=1)."
     echo ""
 else
-# The suite tests the working tree, not any particular ref, so it runs at
-# most once per invocation; later refs reuse this result.
-suite_ran=0
-suite_status=0
+# The suite tests the working tree, not any particular ref, so each mode
+# runs at most once per invocation. Later refs reuse the result.
+full_ran=0
+full_status=0
+nomig_ran=0
+nomig_status=0
 
 while read -r local_ref local_sha remote_ref remote_sha; do
     # Blank line (git can send one on an up-to-date push) or a delete.
@@ -270,8 +309,23 @@ while read -r local_ref local_sha remote_ref remote_sha; do
         continue
     fi
 
+    # When we cannot tell what changed, the migration tests must run too.
+    if [ "$gated_status" -ne 0 ]; then
+        need_mode="full"
+        reason="the changed files could not be read"
+    elif ! migration_files="$(_migration_files_for_ref "$base" "$local_sha")"; then
+        need_mode="full"
+        reason="the changed files could not be read"
+    elif [ -n "$migration_files" ]; then
+        need_mode="full"
+        reason="a migration input changed"
+    else
+        need_mode="no-migration"
+        reason="no migration input changed"
+    fi
+
     cache_key="$(_integration_cache_key "$local_sha")"
-    if _integration_cache_hit "$cache_key"; then
+    if _integration_cache_hit "$cache_key" "$need_mode"; then
         cat <<EOF
 
   Integration gate: skip — this exact tree already passed the integration
@@ -287,23 +341,46 @@ EOF
         echo "  WARNING: '$branch' ($local_sha) is not HEAD — the suite tests the working tree (HEAD), not the pushed commit." >&2
     fi
 
-    if [ "$suite_ran" -eq 0 ]; then
+    # A full run covers a no-migration need too, so use it when it exists.
+    if [ "$need_mode" = "full" ] || [ "$full_ran" -eq 1 ]; then
+        run_mode="full"
+        script="test:integration"
+        mode_ran="$full_ran"
+    else
+        run_mode="no-migration"
+        script="test:integration:no-migration"
+        mode_ran="$nomig_ran"
+    fi
+
+    if [ "$mode_ran" -eq 0 ]; then
         cat <<EOF
 
   Integration-test gate: push to '$branch' touches app/, usersc/classes/,
-  tests/integration/, or database/migrations/. Running the full integration
-  suite before allowing this push (composer test:integration, ~20s against the
+  tests/integration/, or database/migrations/, and $reason.
+  Running composer $script before allowing this push (~NNs against the
   test schema)...
 
 EOF
-        suite_ran=1
         # </dev/null: the loop reads the remaining refs from stdin, so a
         # child that drained it would silently end the loop un-gated.
-        if _run_integration_suite </dev/null; then
-            suite_status=0
+        if _run_integration_suite "$script" </dev/null; then
+            run_status=0
         else
-            suite_status=1
+            run_status=1
         fi
+        if [ "$run_mode" = "full" ]; then
+            full_ran=1
+            full_status="$run_status"
+        else
+            nomig_ran=1
+            nomig_status="$run_status"
+        fi
+    fi
+
+    if [ "$run_mode" = "full" ]; then
+        suite_status="$full_status"
+    else
+        suite_status="$nomig_status"
     fi
 
     if [ "$suite_status" -ne 0 ]; then
@@ -317,7 +394,7 @@ EOF
 EOF
         gate_failed=1
     else
-        _integration_cache_record "$cache_key" "$local_sha" || true
+        _integration_cache_record "$cache_key" "$local_sha" "$run_mode" || true
     fi
 done <<< "$ref_updates"
 fi

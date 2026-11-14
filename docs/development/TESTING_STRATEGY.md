@@ -378,7 +378,7 @@ sandbox classes (its `up()`, `down()`, dry-run and rerun tests) and each base
 class or fixture that only those classes use. Do not delete
 `MigrationSandboxTestCase`. New migrations extend it. After that, the
 production schema is the proof, and each sandbox class adds about 3 s to
-each gated push (#2395).
+each gated push that changes a migration input (#2395).
 
 The rule does not cover these tests:
 
