@@ -57,11 +57,6 @@ INTEGRATION_PREFLIGHT_FAIL=90
 # returns its exit status. In Docker mode it runs inside this checkout's
 # `app` container (as www-data, see docker-compose.yml's header).
 #
-# $1 is the composer script to run. The default is `test:integration`, the
-# full suite. The pre-push hook passes `test:integration:no-migration` when a
-# push changes no migration input (#2395). The verification suite passes no
-# argument, so it always runs the full suite.
-#
 # A pre-flight problem — no `docker` on PATH, `docker compose ps` failing, or
 # the app service not running — returns $INTEGRATION_PREFLIGHT_FAIL with an
 # actionable message, never a silent skip. Once PHPUnit itself starts inside
@@ -69,7 +64,7 @@ INTEGRATION_PREFLIGHT_FAIL=90
 # (including a fatal error or an out-of-memory kill), so a caller must not
 # read every non-zero return here as "could not run".
 _run_integration_suite() {
-    local script="${1:-test:integration}" running ps_err
+    local running ps_err
     if [ "$(_integration_runner)" = "docker" ]; then
         if ! command -v docker >/dev/null 2>&1; then
             echo "  .env.test.local points at the Docker 'db' service (DB_HOST=db), but 'docker' is not on PATH." >&2
@@ -91,8 +86,8 @@ _run_integration_suite() {
             return "$INTEGRATION_PREFLIGHT_FAIL"
         fi
         echo "  (running in the Docker 'app' container: .env.test.local has DB_HOST=db)"
-        docker compose exec -T -u www-data app composer "$script"
+        docker compose exec -T -u www-data app composer test:integration
         return $?
     fi
-    composer "$script"
+    composer test:integration
 }

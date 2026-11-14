@@ -31,14 +31,11 @@
              list outright rather than adding to it
              (vendor/phpunit/phpunit/src/TextUI/Configuration/Merger.php:1063-1069),
              so composer scripts running this config must not pass that flag
-             at all, because it would silently re-enable live-network. One
-             exception: test:integration:no-migration (used by the pre-push
-             hook, #2395) repeats this whole list and adds migration.
-             Issue2160RegressionTest checks that its list equals this exclude
-             list plus migration. The group flag still opts a group back in;
-             tests/README.md's "Second CLI gotcha" section has the exact
-             command to copy (an XML comment cannot contain a literal double
-             hyphen, so it is not reproduced here). -->
+             at all — doing so would silently re-enable live-network. The
+             group flag still opts a group back in; tests/README.md's
+             "Second CLI gotcha" section has the exact command to copy
+             (an XML comment cannot contain a literal double hyphen, so it
+             is not reproduced here). -->
         <exclude>
             <group>live-network</group>
             <group>known-broken</group>

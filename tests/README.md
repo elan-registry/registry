@@ -412,10 +412,7 @@ rather than adding to it (`vendor/phpunit/phpunit/src/TextUI/Configuration/Merge
 so a `--exclude-group known-broken` on an integration run would silently re-enable `live-network`.
 That is why the integration composer scripts pass no `--exclude-group` at all and rely on the XML
 — only the `phpunit-unit.xml` scripts (`test:quick:ci`, `test:regression:ci`) use the flag, and
-`phpunit-unit.xml` has no `<groups>` block for them to clobber. The one exception is
-`test:integration:no-migration` (used by the pre-push hook, #2395). It repeats every XML exclude
-group and adds `migration`. `Issue2160RegressionTest` checks that its list equals the XML exclude
-list plus `migration`, so add a new XML exclude group to that script too. To run an excluded group
+`phpunit-unit.xml` has no `<groups>` block for them to clobber. To run an excluded group
 deliberately, opt it back in with `--group`, which is unaffected:
 
 ```bash

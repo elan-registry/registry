@@ -189,10 +189,9 @@ final class AddExampleColumnSandboxTest extends MigrationSandboxTestCase
 ```
 
 The sandbox tests run with the integration tests: `composer test:integration`,
-`composer test:medium` (the unit tests plus `tests/integration/database`), and the pre-push hook.
-The hook runs them only when the push changes a migration input, such as a file
-under `database/` or `tests/integration/database/`. The trigger rules are in
-`scripts/README.md`. They do not run in CI.
+`composer test:medium` (the unit tests plus `tests/integration/database`), and the pre-push hook
+when the push changes PHP under `app/`, `usersc/classes/`, `tests/integration/`,
+or `database/migrations/`. They do not run in CI.
 
 ## Recovery from a Failed Migration
 

@@ -108,8 +108,8 @@ extract_fn() {
 
 FN_FILE="$TMPROOT/fns.sh"
 {
-    grep -E '^(integration_gate_paths|integration_migration_paths|zero_sha)=' "$HOOK_SRC"
-    for fn in _diff_names _gate_base_for_ref _gated_files_for_ref _migration_files_for_ref \
+    grep -E '^(integration_gate_paths|zero_sha)=' "$HOOK_SRC"
+    for fn in _diff_names _gate_base_for_ref _gated_files_for_ref \
         _integration_cache_key _integration_cache_file \
         _integration_cache_hit _integration_cache_record; do
         body="$(extract_fn "$fn")"
@@ -146,9 +146,6 @@ cat > "$STUBDIR/composer" <<'STUB'
 #!/bin/bash
 printf '%s\n' "composer $*" >> "$COMPOSER_LOG"
 [ -n "${STUB_DRAIN:-}" ] && cat >/dev/null
-# STUB_FAIL_SCRIPT fails only that composer script, so a case can tell
-# which mode's result the hook used.
-[ -n "${STUB_FAIL_SCRIPT:-}" ] && [ "$1" = "$STUB_FAIL_SCRIPT" ] && exit 1
 exit "${STUB_EXIT:-0}"
 STUB
 chmod +x "$STUBDIR/composer"
@@ -211,9 +208,8 @@ cp "$REAL_REPO/scripts/lib/integration-runner.sh" "$TMPROOT/scripts/lib/integrat
 
 CACHE_FILE="$(git rev-parse --git-path integration-passed)"
 
-# record_pass <sha> [mode] — writes the cache exactly as a local pass of
-# <sha>'s tree in <mode> (full or no-migration, default full) would. The gate
-# must ignore it except for an identical tree.
+# record_pass <sha> — writes the cache exactly as a local pass of <sha>'s
+# tree would. The gate must ignore it except for an identical tree.
 record_pass() {
     local key
     key="$(_integration_cache_key "$1")"
@@ -221,7 +217,7 @@ record_pass() {
         echo "FATAL: empty cache key for $1" >&2
         exit 1
     fi
-    printf '%s %s\n' "$key" "${2:-full}" > "$CACHE_FILE"
+    printf '%s\n' "$key" > "$CACHE_FILE"
 }
 clear_pass() { rm -f "$CACHE_FILE"; }
 
@@ -655,8 +651,6 @@ OUT26="$(STUB_EXIT=0 run_hook "refs/heads/issue/one $P5 refs/heads/issue/one $P2
 assert_hook "Case 26a (control): the same push skips when git works" 0 0 "$OUT26" "no gated changes"
 OUT26="$(EXTRA_PATH="$GITSTUBDIR" STUB_EXIT=0 run_hook "refs/heads/issue/one $P5 refs/heads/issue/one $P2")"
 assert_hook "Case 26b: a failing git diff runs the suite (fail-safe)" 1 0 "$OUT26" "fail-safe"
-assert_eq "Case 26c: a failing git diff runs the full suite" \
-    "composer test:integration" "$(cat "$COMPOSER_LOG")"
 
 # --- Case 27: blank stdin lines do nothing ------------------------
 clear_pass
@@ -919,112 +913,6 @@ git checkout -q main
 git branch -D issue/dk >/dev/null 2>&1
 clear_pass
 
-# =========================================================================
-# Suite mode (#2395): the full suite only when a migration input changed
-# =========================================================================
-
-clear_pass
-# Each branch forks from main and changes one set of paths. The base is the
-# pushed ref's own parent, so each diff holds only that change.
-mode_branch() {
-    local name="$1"
-    shift
-    git checkout -q -b "$name" "$MAIN_C3"
-    local f
-    for f in "$@"; do
-        mkdir -p "$(dirname "$f")"
-        write_file "$f" "<?php // $name $f"
-    done
-    commit_all "$name: change $*"
-}
-MO_APP="$(mode_branch issue/mo-app app/mo.php)"
-MO_MIG="$(mode_branch issue/mo-mig database/migrations/20990102000000_mo.php)"
-MO_TDB="$(mode_branch issue/mo-tdb tests/integration/database/MoTest.php)"
-MO_MCL="$(mode_branch issue/mo-mcl usersc/classes/Migration/Mo.php)"
-MO_LCK="$(mode_branch issue/mo-lck app/mo.php composer.lock)"
-mode_line() { printf 'refs/heads/%s %s refs/heads/%s %s' "$1" "$2" "$1" "$MAIN_C3"; }
-
-# --- Case M1: only app/ changed -> no-migration suite ---------------------
-git checkout -q issue/mo-app
-clear_pass
-OUTM1="$(STUB_EXIT=0 run_hook "$(mode_line issue/mo-app "$MO_APP")")"
-assert_eq "Case M1a: an app/-only push runs test:integration:no-migration" \
-    "composer test:integration:no-migration" "$(cat "$COMPOSER_LOG")"
-if printf '%s' "$OUTM1" | grep -q "no migration input changed"; then
-    pass "Case M1b: the message says no migration input changed"
-else
-    fail "Case M1b: the message says no migration input changed" "output: [$OUTM1]"
-fi
-# HEAD is the pushed commit and the tree is clean, so the hook records.
-assert_eq "Case M1c: a no-migration pass is recorded with its mode" \
-    "$(_integration_cache_key "$MO_APP") no-migration" "$(cat "$CACHE_FILE" 2>/dev/null)"
-
-# --- Case M2: a migration input changed -> full suite ---------------------
-for mo in "issue/mo-mig $MO_MIG database/migrations" \
-    "issue/mo-tdb $MO_TDB tests/integration/database" \
-    "issue/mo-mcl $MO_MCL usersc/classes/Migration"; do
-    read -r mo_ref mo_sha mo_dir <<< "$mo"
-    clear_pass
-    OUTM2="$(STUB_EXIT=0 run_hook "$(mode_line "$mo_ref" "$mo_sha")")"
-    assert_eq "Case M2: a $mo_dir/ change runs test:integration" \
-        "composer test:integration" "$(cat "$COMPOSER_LOG")"
-done
-if printf '%s' "$OUTM2" | grep -q "a migration input changed"; then
-    pass "Case M2d: the message says a migration input changed"
-else
-    fail "Case M2d: the message says a migration input changed" "output: [$OUTM2]"
-fi
-
-# --- Case M3: app/ plus composer.lock -> full suite -----------------------
-clear_pass
-STUB_EXIT=0 run_hook "$(mode_line issue/mo-lck "$MO_LCK")" >/dev/null
-assert_eq "Case M3: app/ plus composer.lock runs test:integration" \
-    "composer test:integration" "$(cat "$COMPOSER_LOG")"
-
-# --- Case M5: no-migration ref, then a ref that needs the full suite ------
-MO_TWO="$(mode_line issue/mo-app "$MO_APP")
-$(mode_line issue/mo-mig "$MO_MIG")"
-clear_pass
-OUTM5="$(STUB_FAIL_SCRIPT=test:integration run_hook "$MO_TWO")"
-assert_eq "Case M5a: a later ref that needs the full suite runs it" \
-    "composer test:integration:no-migration
-composer test:integration" "$(cat "$COMPOSER_LOG")"
-assert_hook "Case M5b: the push gates on the full suite's result" \
-    2 1 "$OUTM5" "BLOCKED"
-clear_pass
-MO_TWO_REV="$(mode_line issue/mo-mig "$MO_MIG")
-$(mode_line issue/mo-app "$MO_APP")"
-STUB_EXIT=0 run_hook "$MO_TWO_REV" >/dev/null
-assert_eq "Case M5c: a full run satisfies a later no-migration ref" \
-    "composer test:integration" "$(cat "$COMPOSER_LOG")"
-
-# --- Case M6: the cache mode ------------------------------------------------
-git checkout -q issue/mo-mig
-record_pass "$MO_MIG" no-migration
-STUB_EXIT=0 run_hook "$(mode_line issue/mo-mig "$MO_MIG")" >/dev/null
-assert_eq "Case M6a: a no-migration pass does not satisfy a full need" \
-    "composer test:integration" "$(cat "$COMPOSER_LOG")"
-git checkout -q issue/mo-app
-record_pass "$MO_APP" full
-OUTM6B="$(STUB_EXIT=0 run_hook "$(mode_line issue/mo-app "$MO_APP")")"
-assert_hook "Case M6b: a full pass satisfies a no-migration need" \
-    0 0 "$OUTM6B" "already passed"
-
-# --- Case M7: _run_integration_suite with no argument runs the full suite --
-: > "$COMPOSER_LOG"
-INTEGRATION_GATE_RUNNER=host PATH="$STUBDIR:$PATH" _run_integration_suite >/dev/null 2>&1
-assert_eq "Case M7a: _run_integration_suite with no argument runs test:integration (host)" \
-    "composer test:integration" "$(cat "$COMPOSER_LOG")"
-: > "$DOCKER_LOG"
-INTEGRATION_GATE_RUNNER=docker STUB_DOCKER_RUNNING=1 PATH="$STUBDIR:$PATH" \
-    _run_integration_suite >/dev/null 2>&1
-assert_eq "Case M7b: _run_integration_suite with no argument runs test:integration (docker)" \
-    "docker compose exec -T -u www-data app composer test:integration" \
-    "$(grep ' compose exec ' "$DOCKER_LOG")"
-
-git checkout -q main
-clear_pass
-
 # --- Case 32: unresolvable parent -> fail-safe run ------------------------
 # Destructive to the topology, so it runs last.
 clear_pass
@@ -1036,7 +924,5 @@ ORPH_C1="$(commit_all "orphaned: docs")"
 OUT32="$(STUB_EXIT=0 run_hook "refs/heads/issue/orphaned $ORPH_C1 refs/heads/issue/orphaned $ZERO")"
 assert_hook "Case 32: an unresolvable parent runs the suite once (fail-safe)" \
     1 0 "$OUT32" "fail-safe"
-assert_eq "Case 32b: an unresolvable parent runs the full suite" \
-    "composer test:integration" "$(cat "$COMPOSER_LOG")"
 
 harness_report

@@ -21,10 +21,6 @@ final class Issue2160RegressionTest extends TestCase
 {
     private const INTEGRATION_CONFIG = 'phpunit-integration.xml';
 
-    // The one script allowed to pass --exclude-group (#2395). The pre-push hook
-    // runs it when a push changes no migration input, to skip migration tests.
-    private const NO_MIGRATION_SCRIPT = 'test:integration:no-migration';
-
     private string $projectRoot;
 
     protected function setUp(): void
@@ -43,10 +39,7 @@ final class Issue2160RegressionTest extends TestCase
                     continue;
                 }
                 $integrationCommandCount++;
-                if (
-                    str_contains($command, '--exclude-group')
-                    && $scriptName !== self::NO_MIGRATION_SCRIPT
-                ) {
+                if (str_contains($command, '--exclude-group')) {
                     $offenders[] = sprintf('composer script "%s": %s', $scriptName, $command);
                 }
             }
@@ -68,30 +61,18 @@ final class Issue2160RegressionTest extends TestCase
         );
     }
 
-    public function testNoMigrationScriptExcludesXmlGroupsPlusMigration(): void
-    {
-        $commands = $this->composerScripts()[self::NO_MIGRATION_SCRIPT] ?? [];
-        $this->assertCount(1, $commands, 'composer.json needs one "' . self::NO_MIGRATION_SCRIPT . '" command');
-
-        // One group for each flag. A comma list is one literal name that matches no test.
-        preg_match_all('/--exclude-group(?:=|\s+)(\S+)/', $commands[0], $matches);
-        $scriptGroups = $matches[1];
-        $expected = array_merge($this->xmlExcludedGroups(), ['migration']);
-
-        sort($scriptGroups);
-        sort($expected);
-        $this->assertSame(
-            $expected,
-            $scriptGroups,
-            self::NO_MIGRATION_SCRIPT . ' must exclude the groups of ' . self::INTEGRATION_CONFIG
-                . ' <groups><exclude> plus migration, one --exclude-group flag each. A CLI flag'
-                . ' replaces the XML list, so a missing group is silently re-enabled (#2160, #2395)'
-        );
-    }
-
     public function testIntegrationConfigExcludesLiveNetworkAndKnownBroken(): void
     {
-        $excluded = $this->xmlExcludedGroups();
+        $path = $this->projectRoot . '/' . self::INTEGRATION_CONFIG;
+        $this->assertFileExists($path);
+
+        $xml = simplexml_load_file($path);
+        $this->assertNotFalse($xml, self::INTEGRATION_CONFIG . ' is not valid XML');
+
+        $excluded = [];
+        foreach ($xml->xpath('/phpunit/groups/exclude/group') ?: [] as $group) {
+            $excluded[] = trim((string) $group);
+        }
 
         foreach (['live-network', 'known-broken'] as $required) {
             $this->assertContains(
@@ -138,25 +119,6 @@ final class Issue2160RegressionTest extends TestCase
             "tests/integration/{$className}.php must carry #[Group('live-network')] so "
                 . self::INTEGRATION_CONFIG . ' keeps it out of the default integration run (#2160)'
         );
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function xmlExcludedGroups(): array
-    {
-        $path = $this->projectRoot . '/' . self::INTEGRATION_CONFIG;
-        $this->assertFileExists($path);
-
-        $xml = simplexml_load_file($path);
-        $this->assertNotFalse($xml, self::INTEGRATION_CONFIG . ' is not valid XML');
-
-        $excluded = [];
-        foreach ($xml->xpath('/phpunit/groups/exclude/group') ?: [] as $group) {
-            $excluded[] = trim((string) $group);
-        }
-
-        return $excluded;
     }
 
     /**
