@@ -107,7 +107,7 @@ final class BrevoEventPathParityIntegrationTest extends IntegrationTestCase
         $this->repo = new CarRepository($this->db);
         $this->manager = new CarVerificationManager($this->repo);
         $this->applier = new EmailEventApplier($this->repo, $this->manager);
-        $this->eventTs = time() - 3600;
+        $this->eventTs = self::outsideParisRepeatedHour(time() - 3600);
     }
 
     protected function tearDown(): void
@@ -172,6 +172,20 @@ final class BrevoEventPathParityIntegrationTest extends IntegrationTestCase
     {
         $written = $this->repo->insertEmailEvent($carId, $email, 'sent', null, $messageId, date(AppConstants::DATETIME_FORMAT, $sentTs));
         $this->assertSame(1, $written, 'Test setup: the sent row must be written');
+    }
+
+    /**
+     * Brevo's `blockedAt` is Paris wall time, which is ambiguous in the
+     * repeated hour of the change to CET. The import job can read such a time
+     * 1 hour off (see BrevoSuppressionSyncJob::parseBlockedAt()), so a test
+     * time in that hour fails on a few days of the year.
+     */
+    private static function outsideParisRepeatedHour(int $ts): int
+    {
+        $zone = new DateTimeZone('Europe/Paris');
+        $wall = (new DateTimeImmutable('@' . $ts))->setTimezone($zone)->format('Y-m-d H:i:s');
+
+        return (new DateTimeImmutable($wall, $zone))->getTimestamp() === $ts ? $ts : $ts - 7200;
     }
 
     private function wall(int $ts): string
@@ -814,7 +828,7 @@ final class BrevoEventPathParityIntegrationTest extends IntegrationTestCase
     public function testFullBackfillSetsBlockedAgainWhenTheOwnerReturnsToABlockedAddress(string $returnPath): void
     {
         $owner = $this->ownerWhoReturnedToAFromB($returnPath);
-        $oldBlockedTs = time() - 20 * 86400;
+        $oldBlockedTs = self::outsideParisRepeatedHour(time() - 20 * 86400);
 
         // The nightly import covers 48 hours and finds nothing this old. The full backfill has no window.
         $summary = $this->importJob($owner['email'], 'unsubscribedViaEmail', $oldBlockedTs)->runNowWithSummary();
@@ -837,7 +851,7 @@ final class BrevoEventPathParityIntegrationTest extends IntegrationTestCase
     {
         $owner = $this->ownerWhoReturnedToAFromB($returnPath);
 
-        $backfill = $this->importJob($owner['email'], 'hardBounce', time() - 20 * 86400)->runNowWithSummary();
+        $backfill = $this->importJob($owner['email'], 'hardBounce', self::outsideParisRepeatedHour(time() - 20 * 86400))->runNowWithSummary();
         // The entry is older than the confirmed change that cleared the bounce.
         // The applier's date guard skips it, so the summary counts it as skipped (#2393).
         $this->assertSame(1, $backfill->skippedCount, 'The backfill must read the entry and skip it');
