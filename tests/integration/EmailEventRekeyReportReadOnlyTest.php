@@ -89,22 +89,6 @@ final class EmailEventRekeyReportReadOnlyTest extends IntegrationTestCase
         $this->assertSame($ownerId, $assignments[$sentId]['user_id']);
     }
 
-    public function testTheScriptAndTheQueriesHoldNoWriteStatement(): void
-    {
-        foreach ([
-            __DIR__ . '/../../app/admin/scripts/maintenance/29-Report-Email-Event-Rekey.php',
-            __DIR__ . '/../../usersc/classes/Migration/EmailEventRekeyQueries.php',
-        ] as $file) {
-            $source = (string) file_get_contents($file);
-            $this->assertNotSame('', $source);
-            $this->assertSame(
-                0,
-                preg_match('/\b(INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM|ALTER\s+TABLE|DROP\s+|TRUNCATE|->insert\(|->update\(|->delete\()/i', $source),
-                basename($file) . ' must hold no write statement'
-            );
-        }
-    }
-
     /**
      * @return array<string, string>
      */

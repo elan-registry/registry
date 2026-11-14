@@ -301,40 +301,7 @@ async function assertPageTitle(page, { expectedTitle, expectedDescription, check
   }
 }
 
-const NO_CARDS_ERROR = 'No cards found on page';
-
-/**
- * Get the first visible card element on a page
- * @param {import('@playwright/test').Page} page - Playwright page object
- * @returns {Locator} First visible card
- */
-async function getFirstCard(page) {
-  const cards = page.locator('.card, .registry-card');
-  const cardCount = await cards.count();
-
-  if (cardCount === 0) {
-    throw new Error(NO_CARDS_ERROR);
-  }
-  
-  return cards.first();
-}
-
-/**
- * Check for consistent Bootstrap card structure
- * @param {import('@playwright/test').Page} page - Playwright page object
- */
-async function validateCardStructure(page) {
-  const firstCard = await getFirstCard(page);
-  await expect(firstCard).toBeVisible();
-  
-  const hasHeader = await firstCard.locator('.card-header').count();
-  const hasBody = await firstCard.locator('.card-body').count();
-  
-  expect(hasHeader + hasBody).toBeGreaterThan(0);
-}
-
 module.exports = {
-  NO_CARDS_ERROR,
   login,
   isLoggedIn,
   logout,
@@ -343,8 +310,6 @@ module.exports = {
   navigateAndWait,
   testRedirect,
   waitForDataTables,
-  getFirstCard,
-  validateCardStructure,
   assertNoGoogleMapsRequests,
   assertNoConsoleErrors,
   assertPageTitle

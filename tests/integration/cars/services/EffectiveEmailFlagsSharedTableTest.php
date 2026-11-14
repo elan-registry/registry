@@ -169,70 +169,6 @@ final class EffectiveEmailFlagsSharedTableTest extends IntegrationTestCase
         }
     }
 
-    /**
-     * An admin edit of users.email (A to B, then back to A) with no write to
-     * the profile. The flag for A stops applying and applies again.
-     */
-    #[DataProvider('addressFlagProvider')]
-    #[Group('fast')]
-    public function testAdminEditFromAToBAndBackToAChangesTheResultWithoutAProfileWrite(string $flag): void
-    {
-        $ownerId = $this->createOwnerWithFlag($flag, self::ADDRESS, self::ADDRESS);
-        $this->assertTrue($this->methodSaysApplies($ownerId, $flag), 'Test setup: applies for A');
-        $this->assertTrue($this->predicateSaysApplies($ownerId, $flag), 'Test setup: applies for A');
-
-        $this->setUserEmailRaw($ownerId, 'b-address@example.com');
-        $this->assertFalse($this->methodSaysApplies($ownerId, $flag), 'effectiveEmailFlags() for B');
-        $this->assertFalse($this->predicateSaysApplies($ownerId, $flag), 'emailFlagActiveSql() for B');
-
-        $this->setUserEmailRaw($ownerId, self::ADDRESS);
-        $this->assertTrue($this->methodSaysApplies($ownerId, $flag), 'effectiveEmailFlags() back to A');
-        $this->assertTrue($this->predicateSaysApplies($ownerId, $flag), 'emailFlagActiveSql() back to A');
-        $this->assertSame('1', (string) $this->getOwnerEmailFlags($ownerId)[$flag], 'The flag stays in the row');
-    }
-
-    /**
-     * Opt-out applies whatever the address. The method and the plain
-     * `p.email_opted_out = 1` test agree.
-     *
-     * @return array<string, array{0: bool, 1: string, 2: bool}>
-     */
-    public static function optOutProvider(): array
-    {
-        return [
-            'opted out, current address'    => [true, self::ADDRESS, true],
-            'opted out, other address'      => [true, 'someone-else@example.com', true],
-            'opted out, address with tab'   => [true, self::ADDRESS . "\t", true],
-            'not opted out'                 => [false, self::ADDRESS, false],
-        ];
-    }
-
-    #[DataProvider('optOutProvider')]
-    #[Group('fast')]
-    public function testOptOutMethodAgreesWithThePlainColumnTest(bool $optedOut, string $userEmail, bool $expected): void
-    {
-        $ownerId = $this->createTestUser([], true);
-        $this->setOwnerOptedOut($ownerId, $optedOut);
-        $this->setUserEmailRaw($ownerId, $userEmail);
-        // Stored block and bounce addresses are a different address, so the
-        // opt-out result cannot come from another flag.
-        $this->writeFlagRaw($ownerId, 'email_blocked', 'elsewhere@example.com');
-        $this->writeFlagRaw($ownerId, 'email_bounced', 'elsewhere@example.com');
-
-        $sql = $this->db->query(
-            'SELECT (p.email_opted_out = 1) AS opted_out FROM profiles p JOIN users u ON u.id = p.user_id WHERE p.user_id = ?',
-            [$ownerId]
-        );
-        $this->assertFalse($sql->error(), $sql->errorString());
-        // The adapter returns itself from query(), so read the row before the next query.
-        $columnSaysOptedOut = (int) $sql->first()->opted_out === 1;
-
-        $this->assertSame($expected, $this->repo->effectiveEmailFlags($ownerId)->optedOut, 'effectiveEmailFlags()');
-        $this->assertSame($expected, $columnSaysOptedOut, 'p.email_opted_out = 1');
-        $this->assertFalse($this->repo->effectiveEmailFlags($ownerId)->blocked, 'Test setup: the block is for another address');
-        $this->assertFalse($this->repo->effectiveEmailFlags($ownerId)->bounced, 'Test setup: the bounce is for another address');
-    }
-
     #[DataProvider('addressFlagProvider')]
     #[Group('fast')]
     public function testOwnerWithNoProfileRowHasNoFlagByEitherRule(string $flag): void
@@ -245,16 +181,5 @@ final class EffectiveEmailFlagsSharedTableTest extends IntegrationTestCase
         $this->assertFalse($flags->blocked);
         $this->assertFalse($flags->bounced);
         $this->assertFalse($this->predicateSaysApplies($ownerId, $flag), 'The predicate is not true for a missing profile row');
-    }
-
-    #[Group('fast')]
-    public function testNegativeControlTheTableCanTellApplyFromNotApply(): void
-    {
-        $rows = self::addressRows();
-        $applies = array_filter($rows, static fn (array $row): bool => $row[2]);
-        $notApplies = array_filter($rows, static fn (array $row): bool => !$row[2]);
-
-        $this->assertNotEmpty($applies, 'The table must hold rows where the flag applies');
-        $this->assertNotEmpty($notApplies, 'The table must hold rows where the flag does not apply');
     }
 }

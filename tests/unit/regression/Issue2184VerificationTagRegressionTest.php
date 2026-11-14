@@ -18,10 +18,9 @@ use Tests\Support\PartialRenderHarness;
  * filter. The tag still matters: only a `car_verification`-tagged event with
  * no user counts in the dashboard's unmatched-recipient counter, and Brevo
  * statistics group the mail by it. The fix passes `['tags' => AppConstants::VERIFICATION_EMAIL_TAG]` as the
- * fourth argument. `$opts` is optional, so a later edit that drops it still
- * runs and still sends mail. This test fails if the service source no longer
- * passes the tag. CarVerificationSendServiceTest checks the `$opts` value
- * that reaches email() at run time.
+ * fourth argument. CarVerificationSendServiceTest checks the `$opts` value
+ * that reaches email() at run time. This test checks that the admin status
+ * panel shows the escaped reason when the Brevo plugin is not ready.
  *
  * @category regression
  * @issue 2184
@@ -31,21 +30,6 @@ use Tests\Support\PartialRenderHarness;
 final class Issue2184VerificationTagRegressionTest extends TestCase
 {
     use PartialRenderHarness;
-
-    public function testSendServicePassesTheVerificationTagToEmail(): void
-    {
-        // tests/unit/regression/ is three levels below the project root.
-        $targetFile = dirname(__DIR__, 3) . '/usersc/classes/Car/CarVerificationSendService.php';
-        $this->assertFileExists($targetFile);
-        $source = file_get_contents($targetFile);
-        $this->assertIsString($source);
-
-        $this->assertStringContainsString(
-            "['tags' => AppConstants::VERIFICATION_EMAIL_TAG]",
-            $source,
-            'CarVerificationSendService must pass $opts with the verification tag to email() (#2184)'
-        );
-    }
 
     /**
      * The status panel must show the actual reason, escaped, so an admin

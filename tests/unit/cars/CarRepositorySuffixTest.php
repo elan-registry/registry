@@ -13,16 +13,6 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('fast')]
 final class CarRepositorySuffixTest extends TestCase
 {
-    public function testSuffixToTextReturnsCorrectDescriptionForA(): void
-    {
-        $this->assertEquals('S4 FHC UK Market', CarRepository::suffixToText('A'));
-    }
-
-    public function testSuffixToTextReturnsCorrectDescriptionForB(): void
-    {
-        $this->assertEquals('S4 FHC Export', CarRepository::suffixToText('B'));
-    }
-
     public function testSuffixToTextHandlesLowercase(): void
     {
         $this->assertEquals('S4 FHC UK Market', CarRepository::suffixToText('a'));

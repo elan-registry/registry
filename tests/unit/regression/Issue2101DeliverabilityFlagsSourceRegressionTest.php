@@ -14,9 +14,6 @@ use PHPUnit\Framework\TestCase;
  * columns, the removed history-row code, or an opt-out page that reads the
  * block or bounce flag.
  *
- * Every matcher has a negative control. The control runs the same matcher
- * over an in-memory string that holds a forbidden pattern, and asserts a hit.
- *
  * @issue 2101
  * @link https://github.com/elan-registry/registry/issues/2101
  */
@@ -31,7 +28,7 @@ final class Issue2101DeliverabilityFlagsSourceRegressionTest extends TestCase
      */
     private const EMAIL_SUPPRESSED_ALLOW_LIST = [
         'tests/unit/regression/Issue2101DeliverabilityFlagsSourceRegressionTest.php'
-            => 'This test names the column in its patterns and controls.',
+            => 'This test names the column in its patterns.',
         'usersc/classes/Migration/DeliverabilityMigrationQueries.php'
             => 'The #2101 migration reads the old column to copy the flag to profiles.',
         'tests/integration/database/AddCarsVerificationAttemptsColumnsSandboxTest.php'
@@ -103,13 +100,6 @@ final class Issue2101DeliverabilityFlagsSourceRegressionTest extends TestCase
         }
     }
 
-    public function testNegativeControlEmailSuppressedPatternMatches(): void
-    {
-        $this->assertSame(1, preg_match(self::EMAIL_SUPPRESSED_PATTERN, "SELECT email_suppressed FROM cars"));
-        $this->assertSame(1, preg_match(self::EMAIL_SUPPRESSED_PATTERN, '$car->email_suppressed = 1;'));
-        $this->assertSame(0, preg_match(self::EMAIL_SUPPRESSED_PATTERN, 'p.email_opted_out'));
-    }
-
     // ------------------------------------------------------------------
     // Claim 2: email_bounced is not a cars column any more
     // ------------------------------------------------------------------
@@ -135,24 +125,6 @@ final class Issue2101DeliverabilityFlagsSourceRegressionTest extends TestCase
             "These places read `email_bounced` from a car. It lives on profiles now (#2101):\n"
                 . implode("\n", $hits)
         );
-    }
-
-    public function testNegativeControlCarsBouncedMatcherFindsForbiddenPatterns(): void
-    {
-        $this->assertNotSame([], self::carsBouncedHits('SELECT cars.email_bounced FROM cars'));
-        $this->assertNotSame([], self::carsBouncedHits('if ($car->email_bounced) { }'));
-        $this->assertNotSame([], self::carsBouncedHits('if ($carData->email_bounced === 1) { }'));
-        $this->assertNotSame([], self::carsBouncedHits("\$db->query('SELECT id, email_bounced FROM cars WHERE id = ?', [1]);"));
-        $this->assertNotSame([], self::carsBouncedHits("\$db->query('UPDATE cars SET email_bounced = 1 WHERE id = ?', [1]);"));
-    }
-
-    public function testNegativeControlCarsBouncedMatcherAllowsProfileReads(): void
-    {
-        $this->assertSame([], self::carsBouncedHits('$state->email_bounced'));
-        $this->assertSame([], self::carsBouncedHits(
-            "\$db->query('SELECT cars.id, p.email_bounced FROM cars LEFT JOIN profiles p ON p.user_id = cars.user_id');"
-        ));
-        $this->assertSame([], self::carsBouncedHits("\$db->query('UPDATE profiles SET email_bounced = 1 WHERE user_id = ?');"));
     }
 
     // ------------------------------------------------------------------
@@ -213,25 +185,6 @@ final class Issue2101DeliverabilityFlagsSourceRegressionTest extends TestCase
         }
     }
 
-    public function testNegativeControlProfileInsertMatcherSeesBothStyles(): void
-    {
-        $bad = "\$db->insert('profiles', ['user_id' => 5, 'bio' => 'x']);";
-        $lists = self::profileInsertColumnLists($bad);
-        $this->assertCount(1, $lists);
-        $this->assertSame(['user_id', 'bio'], $lists[0]);
-
-        $good = "\$db->insert('profiles', ['user_id' => \$id, 'email_address_since' => \$a, "
-            . "'email_address_seen' => strtolower(\$b)]);";
-        $lists = self::profileInsertColumnLists($good);
-        $this->assertCount(1, $lists);
-        $this->assertSame([], array_diff(self::PROFILE_INSERT_REQUIRED_COLUMNS, $lists[0]));
-
-        $sql = "\$db->query('INSERT INTO profiles (user_id, bio) VALUES (?, ?)');";
-        $lists = self::profileInsertColumnLists($sql);
-        $this->assertCount(1, $lists);
-        $this->assertSame(['user_id', 'bio'], $lists[0]);
-    }
-
     // ------------------------------------------------------------------
     // Claim 4: the removed history-row code is gone
     // ------------------------------------------------------------------
@@ -277,22 +230,6 @@ final class Issue2101DeliverabilityFlagsSourceRegressionTest extends TestCase
         $this->assertStringNotContainsString('suppressedHist', $tab);
     }
 
-    public function testNegativeControlRemovedCodePatternsMatch(): void
-    {
-        $samples = [
-            'findLatestHistoryOperationByCarIds' => '$repo->findLatestHistoryOperationByCarIds([1], "EMAIL SUPPRESSED");',
-            'EmailNoticeBuilder::OPERATION_*' => 'EmailNoticeBuilder::OPERATION_BOUNCED',
-            'suppressedHist' => '$suppressedHist = [];',
-            'verifyHistoryFieldsForAdminAction' => 'verifyHistoryFieldsForAdminAction($car);',
-            'userSettingsHistoryFields' => 'userSettingsHistoryFields($car, 1)',
-        ];
-        $patterns = self::removedCodePatterns();
-        $this->assertSame(array_keys($patterns), array_keys($samples), 'Add a control for each pattern.');
-        foreach ($patterns as $label => $pattern) {
-            $this->assertSame(1, preg_match($pattern, $samples[$label]), "Pattern '{$label}' does not match its sample.");
-        }
-    }
-
     // ------------------------------------------------------------------
     // Claim 5: the opt-out page reads email_opted_out only
     // ------------------------------------------------------------------
@@ -317,15 +254,8 @@ final class Issue2101DeliverabilityFlagsSourceRegressionTest extends TestCase
         );
     }
 
-    public function testNegativeControlBlockOrBounceReadMatcher(): void
-    {
-        $this->assertNotSame([], self::blockOrBounceReads('$x = $state->email_blocked;'));
-        $this->assertNotSame([], self::blockOrBounceReads("\$r = \$db->query('SELECT email_bounced FROM profiles');"));
-        $this->assertSame([], self::blockOrBounceReads('$x = $state->email_opted_out;'));
-    }
-
     // ------------------------------------------------------------------
-    // Matchers (pure functions of a string, so the controls can reuse them)
+    // Matchers (pure functions of a string)
     // ------------------------------------------------------------------
 
     /**

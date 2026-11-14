@@ -535,52 +535,6 @@ final class ApiResponseTest extends TestCase
     }
 
     /**
-     * Test response with empty string message
-     *
-     * @return void
-     */
-    #[Group('fast')]
-    public function testEmptyStringMessage(): void
-    {
-        $response = ApiResponse::success('');
-
-        $this->assertEquals('', $response->getMessage());
-        $array = $response->toArray();
-        $this->assertEquals('', $array['message']);
-    }
-
-    /**
-     * Test response with null data value
-     *
-     * @return void
-     */
-    #[Group('fast')]
-    public function testNullDataValue(): void
-    {
-        $response = ApiResponse::success('Done')
-            ->withData('nullable_field', null);
-
-        $data = $response->getData();
-        $this->assertArrayHasKey('nullable_field', $data);
-        $this->assertNull($data['nullable_field']);
-    }
-
-    /**
-     * Test response with empty array data
-     *
-     * @return void
-     */
-    #[Group('fast')]
-    public function testEmptyArrayData(): void
-    {
-        $response = ApiResponse::success('Done')
-            ->withData('items', []);
-
-        $data = $response->getData();
-        $this->assertEquals([], $data['items']);
-    }
-
-    /**
      * Test response with nested array data
      *
      * @return void

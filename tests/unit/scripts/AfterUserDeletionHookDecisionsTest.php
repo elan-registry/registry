@@ -14,9 +14,9 @@ require_once __DIR__ . '/../../Support/UserDeletionHookFakeDatabase.php';
  * Runs usersc/scripts/after_user_deletion.php over a recording database double (#2419).
  *
  * AccountDeletionPrivacyStepTest covers the step itself. This test covers the
- * two decisions the hook makes from the step result: it skips the car cleanup
- * when the step refused, and it writes a CRITICAL line when a committed step
- * deleted no holding row.
+ * order of the step and the car cleanup, and the two decisions the hook makes
+ * from the step result: it skips the car cleanup when the step refused, and it
+ * writes a CRITICAL line when a committed step deleted no holding row.
  *
  * The fake reports no noowner user, so the hook takes the fallback branch.
  * That branch needs no admin session, so the test sets none.
@@ -31,6 +31,12 @@ final class AfterUserDeletionHookDecisionsTest extends TestCase
 
     private const NO_HOLDING_ROW_LINE = 'CRITICAL: privacy step for user 77 found no er_deleted_user_addresses row; '
         . 'check trigger users_delete_capture_addresses, or the users row was already gone before this deletion';
+
+    /** The first and the last statement of the privacy step. */
+    private const PRIVACY_STEP_SQL = [
+        'SELECT id FROM users WHERE id = ?',
+        'DELETE FROM er_deleted_user_addresses WHERE user_id = ?',
+    ];
 
     /** Statements that only the car cleanup sends. */
     private const CAR_CLEANUP_SQL = [
@@ -91,6 +97,51 @@ final class AfterUserDeletionHookDecisionsTest extends TestCase
     {
         foreach ($this->userDeletionLogs() as $message) {
             $this->assertStringNotContainsString('found no er_deleted_user_addresses row', $message);
+        }
+    }
+
+    /**
+     * The privacy step runs before the noowner lookup early return and before
+     * the car cleanup, so that no early return keeps personal data.
+     */
+    public function testPrivacyStepRunsBeforeTheNoownerLookupAndTheCarCleanup(): void
+    {
+        $db = new UserDeletionHookFakeDatabase();
+
+        $this->runHook($db);
+
+        foreach (self::PRIVACY_STEP_SQL as $stepSql) {
+            $stepPosition = $db->indexOf($stepSql);
+            $this->assertNotNull($stepPosition, "The hook must run the privacy step: {$stepSql}");
+            foreach (self::CAR_CLEANUP_SQL as $needle) {
+                $position = $db->indexOf($needle);
+                $this->assertNotNull($position, "The car cleanup must send: {$needle}");
+                $this->assertLessThan($position, $stepPosition, "The privacy step must run before: {$needle}");
+            }
+        }
+    }
+
+    /**
+     * The car cleanup starts after the step commits, at findByOwner(). The
+     * step does all the personal-data work, so the cleanup must not touch it.
+     */
+    public function testCarCleanupTouchesNoPersonalDataTable(): void
+    {
+        $db = new UserDeletionHookFakeDatabase();
+
+        $this->runHook($db);
+
+        $commit = $db->indexOf('COMMIT');
+        $cleanupStart = $db->indexOf('SELECT id FROM cars WHERE user_id = ?');
+        $this->assertNotNull($commit);
+        $this->assertNotNull($cleanupStart);
+        $this->assertGreaterThan($commit, $cleanupStart);
+        foreach (array_slice($db->events, $cleanupStart) as $event) {
+            if (!str_starts_with($event, 'SQL: ')) {
+                continue;
+            }
+            $this->assertStringNotContainsString('profiles', $event);
+            $this->assertStringNotContainsString('er_email_events', $event);
         }
     }
 

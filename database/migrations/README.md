@@ -193,10 +193,8 @@ The sandbox tests run with the integration tests: `composer test:integration`,
 when the push changes PHP under `app/`, `usersc/classes/`, `tests/integration/`,
 or `database/migrations/`. They do not run in CI.
 
-For full examples, see `AddCarsVerificationAttemptsColumnsSandboxTest` and
-`RenameErVerificationSettingsUnmatchedCounterMigrationTest`. Both extend
-`MigrationSandboxTestCase`. The second keeps its original name from before the
-harness.
+For a full example, see `AddCarsVerificationAttemptsColumnsSandboxTest`. It
+extends `MigrationSandboxTestCase`.
 
 ## Recovery from a Failed Migration
 
