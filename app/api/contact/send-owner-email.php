@@ -123,6 +123,13 @@ if (!$fromOwner->data() || !$toOwner->data()) {
 $toData   = $toOwner->data();
 $fromData = $fromOwner->data();
 
+// The noowner system account has an undeliverable address (ADR-010). Refuse
+// before the address check, which would otherwise answer 500. No log row:
+// this is an expected refusal, not an error.
+if ($toData->username === AppConstants::NOOWNER_USERNAME) {
+    ApiResponse::error('This car has no current owner to contact. Use the Feedback form to contact the registry.', 409)->send();
+}
+
 // InputSanitizer::stripHeaderInjectionChars() can throw on a PCRE engine failure;
 // catch it here rather than let it escape as a raw error page instead of the
 // ApiResponse JSON contract this endpoint promises.

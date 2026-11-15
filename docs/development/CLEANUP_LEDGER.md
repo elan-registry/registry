@@ -95,10 +95,6 @@ after an item is written.
 
 - [ ] Delete `ModelLoader.getModelByValue()` (~99-117). Nothing calls it (JS, PHP, or Playwright). (found in the #2208 audit)
 
-### `app/owner/contact/owner.php`
-
-- [ ] Replace `$db->get('cars', ...)` (~L25) with `CarRepository::findById()`. Keep the redirect to `/` on not-found (from #2002)
-
 ### `app/views/cars/` (section partials)
 
 - [ ] `_vehicle_info_card` and `_factory_data_card` link the card level to the heading level. Only `h4` gets `card-header-er-l2`, so a nested `h3` card cannot use L2 styling (UI_STANDARDS "Card Hierarchy"). `_owner_info_card`, `_location_map_card` and `_photos_card` always use a plain `card-header`. Give all five partials a card-level variable (found in #2495)

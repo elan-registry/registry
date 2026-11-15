@@ -93,7 +93,11 @@ researching a chassis number.
   instead of the table. Only the action buttons and the history card differ
   by viewer — "Log in to contact owner" for a guest, "Update Car" for the
   owner, an admin banner and edit link for staff, "Contact Owner" for
-  another member.
+  another member. A car with no current owner (held by the `noowner` system
+  account) has no Contact Owner action. Every viewer sees the status line
+  "This car has no current owner." A member also sees a "Contact the
+  Registry" button, which opens the feedback form. An admin sees only the
+  admin banner and edit link. A guest sees no "Log in to contact owner" link.
 - **Factory records** (`app/owner/cars/factory.php`) — original build data
   matched to a chassis number where the registry holds it.
 - **Statistics** (`app/owner/reports/statistics.php`) — production trends,
@@ -161,9 +165,13 @@ detail, factory and statistics pages — as public.
 - **Contact another owner** (`app/owner/contact/owner.php`) — the first message
   is relayed through the site so neither address is exposed. The endpoint
   (`app/api/contact/send-owner-email.php`) verifies the recipient actually
-  owns the referenced car before sending. It sends nothing to an owner who has no profile, who opted out, or whose
-  address bounced or is blocked, and it gives the sender the same response
-  as for a sent message (`SendPolicy`, see EMAIL_SYSTEM.md).
+  owns the referenced car before sending. It sends nothing to an owner who
+  has no profile, who opted out, or whose address bounced or is blocked, and
+  it gives the sender the same response as for a sent message (`SendPolicy`,
+  see EMAIL_SYSTEM.md). The endpoint refuses a `noowner` recipient with a 409
+  response and a readable message. It writes no log row and no `EmailError`
+  row for that refusal. The form page redirects a `noowner` car to the car
+  details page with an information message.
 - **Send feedback to the registrar** (`app/owner/contact/index.php`).
 
 ### 3.3. Editor and administrator

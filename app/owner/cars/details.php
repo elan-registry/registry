@@ -17,13 +17,16 @@ $pageDescription = 'Detailed registry record for a Lotus Elan or Elan Plus 2, in
 
 require_once '../../../users/init.php';
 
+use ElanRegistry\AppConstants;
 use ElanRegistry\CanonicalUrl;
 use ElanRegistry\Car\Car;
 use ElanRegistry\Car\CarBadges;
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\CarView;
 use ElanRegistry\Exceptions\CarDatabaseException;
+use ElanRegistry\Exceptions\OwnerDatabaseException;
 use ElanRegistry\LogCategories;
+use ElanRegistry\Owner;
 use ElanRegistry\Reference\CarModel;
 
 if (!securePage($php_self)) {
@@ -202,12 +205,28 @@ if ($carSchemaJson === false) {
                                 </div>
                                 <div class="col-md-4 text-md-end">
                                         <?php
+                                    // A car of the noowner system account has nobody to
+                                    // contact (#2505), so the hero shows a status line in place of
+                                    // Contact Owner.
+                                    // On a lookup failure the page keeps the normal contact
+                                    // control; the endpoint still refuses the send.
+                                    $heroNoOwner = false;
+                                    if (!$user->isLoggedIn() || $user->data()->id !== $carData->user_id) {
+                                        try {
+                                            $heroNoOwner = ((new Owner((int) $carData->user_id))->data()->username ?? '')
+                                                === AppConstants::NOOWNER_USERNAME;
+                                        } catch (OwnerDatabaseException) {
+                                            // Owner::find() already logged the DB error.
+                                        }
+                                    }
                                     if (!$user->isLoggedIn()) {
                                         $context = 'guest_detail';
                                     } elseif ($user->data()->id === $carData->user_id) {
                                         $context = 'owner_detail';
                                     } elseif (isRegistryAdmin($user->data()->id)) {
                                         $context = 'admin_detail';
+                                    } elseif ($heroNoOwner) {
+                                        $context = 'no_owner_detail';
                                     } else {
                                         $context = 'visitor_detail';
                                     }

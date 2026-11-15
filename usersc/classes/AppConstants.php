@@ -55,4 +55,17 @@ class AppConstants
      * @see https://github.com/elan-registry/registry/issues/2460
      */
     public const OWNER_CONTACT_EMAIL_TAG = 'send-owner-email';
+
+    /**
+     * Username of the system account that holds cars with no current owner
+     *
+     * Must match `RegisterNoownerAccount::USERNAME` in
+     * `database/migrations/20260817035200_register_noowner_account.php`.
+     * The account has the address `noowner@invalid`, so no mail can reach it.
+     * The contact pages test this username to refuse a contact message for
+     * such a car (ADR-010).
+     *
+     * @see https://github.com/elan-registry/registry/issues/2505
+     */
+    public const NOOWNER_USERNAME = 'noowner';
 }
