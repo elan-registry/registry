@@ -22,5 +22,5 @@ A search visitor lands on the correct production page, not a 404, a test-site pa
 - [#2246](https://github.com/elan-registry/registry/issues/2246) — Keep `test.elanregistry.org` pages out of Google search results.
 - [#1960](https://github.com/elan-registry/registry/issues/1960) — Build the canonical URL from a clean path, not the raw request URI.
 - [#1528](https://github.com/elan-registry/registry/issues/1528) — Give each car detail page its own title and description.
-- WIP: [#2505](https://github.com/elan-registry/registry/issues/2505) — Fix the contact-owner form 500 error for cars owned by the `noowner` account.
+- [#2505](https://github.com/elan-registry/registry/issues/2505) — Fix the contact-owner form 500 error for cars owned by the `noowner` account.
 - WIP: [#1455](https://github.com/elan-registry/registry/issues/1455) — Keep typed Add/Edit Car data after navigation or CSRF expiry.
