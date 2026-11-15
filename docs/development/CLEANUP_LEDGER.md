@@ -397,10 +397,6 @@ after an item is written.
   - Check first: `ApiResponseTest.php` (`testWithLoggingIsImmutable`, `testToArrayDoesNotIncludePendingLog`) and `CarUpdateRepositoryFailureTest.php` (~106) use two of them.
   - Do this with #1997, which splits the overloaded categories in the same file.
 
-### `usersc/classes/Migration/DeliverabilityMigrationQueries.php` + `tests/integration/database/DeliverabilityMigrationFixture.php`
-
-- [ ] The "admin Clear Suppression" text (queries L64, L232; fixture L28) describes legacy `cars_hist` rows. Add "former action, replaced in #2357" so a reader does not look for it (found in /finish-milestone v2.30.9)
-
 ### `usersc/classes/Owner.php` + `usersc/user_settings.php` + `app/verify/verify_car.php` + `usersc/classes/Car/EmailEventApplier.php`
 
 - [ ] The `try { logger() } catch { error_log('[ElanRegistry] ...') }` guard is copied at about 7 sites. Rollback guards are in `Owner.php` (2), `user_settings.php`, `verify_car.php` (`rollbackQuietly()`) and `EmailEventApplier.php`. Remove all of them and call `logger()` and `rollback()` directly (see ERROR_HANDLING.md): `logger()` throws only when the database already failed the request (see #2449, #2561). Update `UserSettingsResumeVerificationEndpointTest`, which checks the "logger failed" text (found in #2393)

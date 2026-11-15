@@ -4823,8 +4823,8 @@ methods, so the migration does what the report shows. The class only reads.
 
 **Purpose**: The reads that decide what migration
 `20261012000000_move_deliverability_flags_to_profiles` copies from `cars` to
-`profiles` (#2101). The migration and its tests call the same methods, so a
-test compares the decisions with the migrated rows. The migration can use the
+`profiles` (#2101). Only the migration calls these methods. Its sandbox tests
+were deleted one release after it deployed (#2395). The migration can use the
 class because `phinx.php` loads `vendor/autoload.php`.
 
 **Key Features**:
