@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
 
-use ElanRegistry\Exceptions\CarDatabaseException;
-use ElanRegistry\Exceptions\OwnerDatabaseException;
 use ElanRegistry\Owner;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -87,48 +85,32 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
     }
 
     /**
-     * The script's owner loop and totals. Catches only the two infrastructure
-     * exception types the script absorbs, so a programming error fails the test.
+     * The script's owner loop and totals. No kept test makes an owner fail, so
+     * the script's per-owner catch is not copied: an exception fails the test.
      *
      * @param list<int> $ownerIds
-     * @return array{updated:int, skipped:int, failed:int, ownersScanned:int, ownerErrors:int, perOwner: array<int, \ElanRegistry\OwnerSyncResult|null>}
+     * @return array{updated:int, skipped:int, failed:int, perOwner: array<int, \ElanRegistry\OwnerSyncResult>}
      */
     private function runExecuteLoop(array $ownerIds): array
     {
         $totalUpdated = 0;
         $totalSkipped = 0;
         $totalFailed = 0;
-        $ownersScanned = 0;
-        $ownerErrors = 0;
         $perOwner = [];
 
         foreach ($ownerIds as $ownerId) {
-            $ownersScanned++;
-            try {
-                $result = (new Owner($ownerId, $this->db))->syncOwnerFieldsToCars();
-                $totalUpdated += $result->updatedCount();
-                $totalSkipped += $result->skippedCount();
-                $totalFailed += $result->failedCount();
-                $perOwner[$ownerId] = $result;
-            } catch (OwnerDatabaseException | CarDatabaseException $e) {
-                // One owner's infrastructure failure must not abort the run.
-                $ownerErrors++;
-                $perOwner[$ownerId] = null;
-
-                // Same rollback as the script, so a mid-transaction failure does not cascade.
-                if ($this->db->inTransaction()) {
-                    $this->db->rollBack();
-                }
-            }
+            $result = (new Owner($ownerId, $this->db))->syncOwnerFieldsToCars();
+            $totalUpdated += $result->updatedCount();
+            $totalSkipped += $result->skippedCount();
+            $totalFailed += $result->failedCount();
+            $perOwner[$ownerId] = $result;
         }
 
         return [
-            'updated'       => $totalUpdated,
-            'skipped'       => $totalSkipped,
-            'failed'        => $totalFailed,
-            'ownersScanned' => $ownersScanned,
-            'ownerErrors'   => $ownerErrors,
-            'perOwner'      => $perOwner,
+            'updated'  => $totalUpdated,
+            'skipped'  => $totalSkipped,
+            'failed'   => $totalFailed,
+            'perOwner' => $perOwner,
         ];
     }
 
@@ -137,7 +119,7 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
      * once, and a conflicted owner is skipped entirely.
      *
      * @param list<int> $ownerIds
-     * @return array{updated:int, skipped:int, failed:int, ownersScanned:int, ownerErrors:int, ownersSkippedForConflict:int, perOwner: array<int, \ElanRegistry\OwnerSyncResult|null>}
+     * @return array{updated:int, skipped:int, failed:int, ownersSkippedForConflict:int, perOwner: array<int, \ElanRegistry\OwnerSyncResult>}
      */
     private function runExecuteLoopSkippingConflicts(array $ownerIds): array
     {
@@ -157,8 +139,6 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
         }
 
         $totals = $this->runExecuteLoop($toSync);
-        // Counts skipped owners too, as the script does.
-        $totals['ownersScanned'] = count($ownerIds);
         $totals['ownersSkippedForConflict'] = $ownersSkippedForConflict;
 
         return $totals;
@@ -299,7 +279,6 @@ final class ReconcileOwnerFieldsExecuteTest extends IntegrationTestCase
         $this->assertSame(1, $secondTotals['updated'], 'A repeat run still reports the no-op UPDATE as a successful update (per syncOwnerFieldsToCars()\'s own no-op branch), just with no new history row');
 
         $result = $secondTotals['perOwner'][$ownerId];
-        $this->assertNotNull($result);
         $this->assertTrue($result->isCompleteSuccess(), 'A repeat, no-op run must read as complete success');
 
         $this->assertSame(

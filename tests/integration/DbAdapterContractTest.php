@@ -229,6 +229,17 @@ final class DbAdapterContractTest extends IntegrationTestCase
         $this->untrackCarId($carId);
     }
 
+    /** As for get(): a failing query is the only reachable `false` path. */
+    public function test_delete_returnsFalse_whenUnderlyingQueryFails(): void
+    {
+        $db = $this->adapter();
+
+        $returned = $db->delete(self::MISSING_TABLE, ['id', '=', 1]);
+
+        $this->assertFalse($returned, 'delete() must return false — not throw, not return the adapter — on a failed query');
+        $this->assertTrue($db->error());
+    }
+
     // ----------------------------------------- insert() / update() round trip
 
     public function test_insertUpdateAndLastId_roundTripAgainstRealRow(): void
