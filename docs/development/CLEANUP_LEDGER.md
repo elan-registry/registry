@@ -217,7 +217,7 @@ after an item is written.
 
 ### `tests/integration/cars/services/CarRepositoryProfileFlagReadersTest.php`
 
-- [ ] `testRepositorySqlHasNoMaxOverTheProfileFlagColumns` (~L151) and `testCarDetailsPageLoadsTheOwnerProfileStateForTheCard` (~L392) read source text with `file_get_contents()`. Replace them with behavior tests (found in #2330)
+- [ ] `testCarDetailsPageLoadsTheOwnerProfileStateForTheCard` (~L440) reads source text with `file_get_contents()`. Replace it with a behavior test (found in #2330)
 
 ### `tests/playwright/admin-verification-dashboard.spec.js` (test coverage)
 

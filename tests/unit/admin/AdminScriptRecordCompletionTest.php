@@ -24,11 +24,10 @@ final class ThrowingInsertDatabase extends FakeDatabase
 
 /**
  * Unit tests for admin_script_record_completion() (app/admin/includes/fix-script-core.php),
- * covering the branches the two new integration tests (FixPagePermissionsAnalyzeRunTest,
- * CleanupRateLimitsFixScriptRunTest) do not reach: the function's own failure path, and
- * the caller-side "gate a success message on whether the callback fired" pattern used at
- * 21-Fix-Page-Permissions.php's Step-3 site (the exact logic a /simplify pass fixed after
- * it initially shipped a double-message bug — see issue #1776).
+ * covering the branches the integration test FixPagePermissionsAnalyzeRunTest does not
+ * reach: the function's own failure path, and the caller-side "gate a success message
+ * on whether the callback fired" pattern used at 21-Fix-Page-Permissions.php's Step-3
+ * site (#1776).
  *
  * @see app/admin/includes/fix-script-core.php
  */

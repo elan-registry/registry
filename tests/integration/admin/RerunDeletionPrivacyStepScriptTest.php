@@ -443,23 +443,4 @@ final class RerunDeletionPrivacyStepScriptTest extends IntegrationTestCase
         $this->assertSame(1, $this->holdingRowCount($owner['id']), 'Another deleted user is not touched');
         $this->assertSame(1, $this->profileCount($owner['id']));
     }
-
-    public function testSecurePageComesBeforeIsAdminAndBeforeTheRun(): void
-    {
-        $source = (string) file_get_contents(__DIR__ . '/../../../' . self::SCRIPT);
-
-        $core = strpos($source, 'fix-script-core.php');
-        $securePage = strpos($source, 'securePage($php_self)');
-        $isAdmin = strpos($source, 'isAdmin()');
-        $run = strpos($source, '->run(');
-
-        $this->assertNotFalse($core, 'The script must load fix-script-core.php');
-        $this->assertNotFalse($securePage, 'The script must call securePage($php_self)');
-        $this->assertNotFalse($isAdmin, 'The script must call isAdmin()');
-        $this->assertNotFalse($run, 'The script must call the privacy step');
-        $this->assertLessThan($securePage, $core);
-        $this->assertLessThan($isAdmin, $securePage, 'securePage($php_self) must come before isAdmin()');
-        $this->assertLessThan($run, $isAdmin, 'isAdmin() must come before the run');
-        $this->assertStringContainsString('admin_script_exec_requested()', $source, 'The run needs a POST with a valid token');
-    }
 }

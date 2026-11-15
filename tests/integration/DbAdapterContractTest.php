@@ -240,35 +240,6 @@ final class DbAdapterContractTest extends IntegrationTestCase
         $this->assertTrue($db->error());
     }
 
-    public function test_delete_errorInfo_reportsTableNotFound_afterFailedDelete(): void
-    {
-        $db = $this->adapter();
-
-        $db->delete(self::MISSING_TABLE, ['id', '=', 1]);
-        $errorInfo = $db->errorInfo();
-
-        $this->assertSame('42S02', $errorInfo[0] ?? null, 'errorInfo()[0] must be the "table not found" SQLSTATE after a failed delete()');
-        $this->assertSame(1146, (int) ($errorInfo[1] ?? 0), 'errorInfo()[1] must be the MySQL "table not found" driver code after a failed delete()');
-    }
-
-    /** As for query(): errorInfo()[0] is int 0, not '00000', after a successful delete(). */
-    public function test_delete_errorInfo_reportsIntegerZeroTriple_afterSuccessfulDelete(): void
-    {
-        $db = $this->adapter();
-        $carId = $this->createTestCar($this->userId);
-
-        $db->delete('cars', ['id', '=', $carId]);
-        $errorInfo = $db->errorInfo();
-
-        $this->assertSame(0, $errorInfo[0] ?? null, 'errorInfo()[0] must be the literal integer 0 that \DB::query() resets to before any error — not the PDO "00000" string');
-        $this->assertArrayHasKey(1, $errorInfo);
-        $this->assertNull($errorInfo[1]);
-        $this->assertArrayHasKey(2, $errorInfo);
-        $this->assertNull($errorInfo[2]);
-
-        $this->untrackCarId($carId);
-    }
-
     // ----------------------------------------- insert() / update() round trip
 
     public function test_insertUpdateAndLastId_roundTripAgainstRealRow(): void

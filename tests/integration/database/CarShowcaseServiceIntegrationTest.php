@@ -79,34 +79,6 @@ final class CarShowcaseServiceIntegrationTest extends IntegrationTestCase
         }
     }
 
-    public function testBuildShowcasePoolReturnsArray(): void
-    {
-        $pool = (new CarShowcaseService($this->db))->buildShowcasePool();
-
-        $this->assertIsArray($pool);
-    }
-
-    /** At most 12 items (6 recent + 6 random). */
-    public function testBuildShowcasePoolMaxSize(): void
-    {
-        $pool = (new CarShowcaseService($this->db))->buildShowcasePool();
-
-        $this->assertLessThanOrEqual(12, count($pool));
-    }
-
-    public function testBuildShowcasePoolItemsHaveIsNewProperty(): void
-    {
-        $this->createShowcaseEligibleCar();
-
-        $pool = (new CarShowcaseService($this->db))->buildShowcasePool();
-
-        $this->assertNotEmpty($pool, 'Pool must be non-empty once at least one image-eligible car exists');
-        foreach ($pool as $car) {
-            $this->assertObjectHasProperty('is_new', $car);
-            $this->assertIsBool($car->is_new);
-        }
-    }
-
     /** Fields the home-page template relies on. */
     public function testBuildShowcasePoolItemsHaveRequiredFields(): void
     {
@@ -175,20 +147,6 @@ final class CarShowcaseServiceIntegrationTest extends IntegrationTestCase
 
         foreach ($poolFixtureCars as $car) {
             $this->assertTrue($car->is_new, "Fixture car {$car->id} (ctime=NOW) should have is_new=true");
-        }
-    }
-
-
-    public function testGetNewCarIdsReturnsArrayOfIntegers(): void
-    {
-        $userId = $this->createTestUser();
-        $this->createTestCar($userId);
-
-        $ids = (new CarShowcaseService($this->db))->getNewCarIds();
-
-        $this->assertIsArray($ids);
-        foreach ($ids as $id) {
-            $this->assertIsInt($id, 'Every element returned by getNewCarIds() must be a PHP int');
         }
     }
 

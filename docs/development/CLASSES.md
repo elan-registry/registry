@@ -1113,7 +1113,7 @@ another owner's car is never an owner action.
 | Owner removes a photo | `Car::removeImage($file, true)` → `CarRepository::updateImage(..., $ownerLastUpdated)` | Yes | `CarImageOwnerFreshnessTest::testOwnerRemovalResetsOwnerLastUpdatedAndWritesOneHistoryRow` |
 | Verify link | `CarVerificationManager::markVerified()` | Yes | `CarVerificationTest::testMarkVerifiedResetsOwnerLastUpdatedWithOneHistoryRow` |
 | Sold link | `CarVerificationManager::markSold()` | Yes | `CarVerificationTest::testMarkSoldResetsOwnerLastUpdatedWithOneHistoryRow` |
-| Car creation | column default (`NOT NULL`, `CURRENT_TIMESTAMP`), set by migration `20260905172137` | Set, not reset | Not an owner action, so no reset test. `OwnerSyncOwnerFieldsToCarsTest::testNullOwnerLastUpdatedNoLongerReachableAfterSchemaChange` checks that the column is `NOT NULL` |
+| Car creation | column default (`NOT NULL`, `CURRENT_TIMESTAMP`), set by migration `20260905172137` | Set, not reset | Not an owner action, so no reset test. `CarVerificationTimestampMigrationTest::testSchema_ownerLastUpdated_isNotNullWithCurrentTimestampDefault` checks that the column is `NOT NULL` |
 | Opt-out link | `CarVerificationManager::setSuppressedForOwner()` | No: opting out confirms nothing | `CarVerificationManagerSuppressForOwnerTest::testOptOutDoesNotChangeOwnerLastUpdated` |
 | Owner email or profile change, synced to cars | `Owner::syncOwnerFieldsToCars()` | No: it would mark every car fresh | `OwnerSyncOwnerFieldsToCarsTest::testOwnerLastUpdatedUnchangedAndCarStaysVerificationEligible` |
 | Ownership transfer | `CarAdministrationService::transfer()` | No: a transfer is not a re-attestation (#1878) | `CarTransferTest::testTransferDoesNotChangeOwnerLastUpdated` |
@@ -1121,7 +1121,7 @@ another owner's car is never an owner action.
 | Admin or editor removes a photo on another owner's car | `Car::removeImage($file, false)` | No | `CarImageOwnerFreshnessTest::testNonOwnerRemovalDoesNotResetOwnerLastUpdated` |
 | Clean-up after a failed upload | `Car::removeImages()` | No | `CarImageOwnerFreshnessTest::testRemoveImagesCleanupDoesNotResetOwnerLastUpdated` |
 | Car merge | `CarAdministrationService::merge()` | No | `CarMergeTest::testMergeDoesNotChangeOwnerLastUpdatedOnSurvivingCar` |
-| Reconcile owner fields (maintenance script 26) | `app/admin/scripts/maintenance/26-Reconcile-Owner-Fields.php` | No | `ReconcileOwnerFieldsExecuteTest::testOwnerLastUpdatedNeverTouched` |
+| Reconcile owner fields (maintenance script 26) | `app/admin/scripts/maintenance/26-Reconcile-Owner-Fields.php`, which writes through `Owner::syncOwnerFieldsToCars()` | No | `OwnerSyncOwnerFieldsToCarsTest::testOwnerLastUpdatedUnchangedAndCarStaysVerificationEligible` |
 
 A new action that resets the date must write `owner_last_updated` in the
 same UPDATE as its other columns (`Car::update()`'s `$isOwnerInitiated`, or

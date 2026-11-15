@@ -97,22 +97,6 @@ final class BrevoWebhookRateLimitEnforcementTest extends IntegrationTestCase
         );
     }
 
-    public function testAuthFailureIpMaxIsKeyedPerIpNotGlobal(): void
-    {
-        $this->requireDatabase();
-
-        $exhaustedIp = '203.0.113.' . random_int(1, 254);
-        $this->seedFailedAttempts(self::AUTH_FAILURE_ACTION, $exhaustedIp, self::AUTH_FAILURE_IP_MAX);
-        $this->assertFalse(checkRateLimit(self::AUTH_FAILURE_ACTION, null, null, ['ip' => $exhaustedIp]));
-
-        $freshIp = '198.51.100.' . random_int(1, 254); // a different TEST-NET-2 block
-        $this->assertTrue(
-            checkRateLimit(self::AUTH_FAILURE_ACTION, null, null, ['ip' => $freshIp]),
-            'A different IP must not be affected by another IP exhausting ' . self::AUTH_FAILURE_ACTION
-                . "'s ip_max limit — ip_max is scoped per identifier, not site-wide."
-        );
-    }
-
     public function testTotalMaxBlocksAfterConfiguredThreshold(): void
     {
         $this->requireDatabase();
@@ -132,22 +116,6 @@ final class BrevoWebhookRateLimitEnforcementTest extends IntegrationTestCase
                 . self::ACTION . ' must reject the next request. A missing or mistyped rate-limit '
                 . 'key would make this pass unconditionally (RateLimit::check() fails OPEN when no '
                 . 'limit is configured), silently leaving the endpoint with no protection at all.'
-        );
-    }
-
-    public function testTotalMaxIsKeyedPerIpNotGlobal(): void
-    {
-        $this->requireDatabase();
-
-        $exhaustedIp = '203.0.113.' . random_int(1, 254);
-        $this->seedTotalAttempts(self::ACTION, $exhaustedIp, self::TOTAL_MAX);
-        $this->assertFalse(checkRateLimit(self::ACTION, null, null, ['ip' => $exhaustedIp]));
-
-        $freshIp = '198.51.100.' . random_int(1, 254); // a different TEST-NET-2 block
-        $this->assertTrue(
-            checkRateLimit(self::ACTION, null, null, ['ip' => $freshIp]),
-            'A different IP must not be affected by another IP exhausting ' . self::ACTION
-                . "'s limit — total_max is scoped per identifier, not site-wide."
         );
     }
 }

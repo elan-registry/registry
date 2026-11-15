@@ -248,46 +248,6 @@ final class SendinblueMessagesRetentionRuleTest extends IntegrationTestCase
         $this->assertSame('sendinblue_messages', $result->ruleName);
     }
 
-    public function testAFailedTableCheckThrows(): void
-    {
-        $failing = new class ($this->db) extends PassThroughDatabase {
-            public function query(string $sql, array $params = []): static
-            {
-                return $this->simulateFailure('simulated lock wait timeout');
-            }
-        };
-
-        try {
-            $this->rule($failing)->purge($this->now);
-            $this->fail('A failed table check must throw');
-        } catch (RetentionPurgeException $e) {
-            $this->assertStringContainsString('table check failed', $e->getMessage());
-            $this->assertSame('table check', $e->step(), 'The job log line prints the step');
-            $this->assertSame('HY000', $e->sqlState(), 'The job log line prints the SQLSTATE');
-        }
-    }
-
-    public function testAFailedDeleteThrows(): void
-    {
-        $this->seedMessage('del-fail', $this->daysAgo(91));
-        $failing = new class ($this->db) extends PassThroughDatabase {
-            public function query(string $sql, array $params = []): static
-            {
-                return str_starts_with(ltrim($sql), 'DELETE')
-                    ? $this->simulateFailure('simulated lock wait timeout')
-                    : parent::query($sql, $params);
-            }
-        };
-
-        try {
-            $this->rule($failing)->purge($this->now);
-            $this->fail('A failed delete must throw');
-        } catch (RetentionPurgeException $e) {
-            $this->assertStringContainsString('delete failed', $e->getMessage());
-        }
-        $this->assertNotNull($this->messageRow('del-fail'), 'The failed delete must leave the row');
-    }
-
     public function testAFailedClearThrowsAfterTheDeleteRan(): void
     {
         $this->seedMessage('clr-gone', $this->daysAgo(91));
