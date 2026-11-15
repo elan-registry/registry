@@ -522,6 +522,47 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
     expect(jsonResponse).toHaveProperty('success', false);
   });
 
+  // #1455: a long-open car form refreshes its CSRF token from csrf-token.php.
+  test('csrf-token.php rejects a request without the AJAX header', async ({ page }) => {
+    const response = await page.request.get('app/api/shared/csrf-token.php');
+    expect(response.status()).toBe(400);
+    const jsonResponse = await response.json();
+    expect(jsonResponse).toHaveProperty('success', false);
+    expect(jsonResponse).not.toHaveProperty('csrf');
+  });
+
+  test('csrf-token.php rejects a POST with 405', async ({ page }) => {
+    const response = await page.request.post('app/api/shared/csrf-token.php', {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      form: { x: '1' }
+    });
+    expect(response.status()).toBe(405);
+    const jsonResponse = await response.json();
+    expect(jsonResponse).toHaveProperty('success', false);
+    expect(jsonResponse).not.toHaveProperty('csrf');
+  });
+
+  test('csrf-token.php returns a non-cacheable token that save.php accepts', async ({ page }) => {
+    const response = await page.request.get('app/api/shared/csrf-token.php', {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    });
+    expect(response.status()).toBe(200);
+    expect(response.headers()['cache-control']).toContain('no-store');
+    const jsonResponse = await response.json();
+    expect(jsonResponse).toHaveProperty('success', true);
+    expect(typeof jsonResponse.csrf).toBe('string');
+    expect(jsonResponse.csrf.length).toBeGreaterThan(0);
+
+    // 400 (unknown action), not 403, proves save.php accepted the token.
+    const saveResponse = await page.request.post('app/api/cars/save.php', {
+      form: { action: 'not_a_real_action', csrf: jsonResponse.csrf }
+    });
+    expect(saveResponse.status()).toBe(400);
+    const saveJson = await saveResponse.json();
+    expect(saveJson).toHaveProperty('success', false);
+    expect(saveJson).toHaveProperty('message', 'No valid action');
+  });
+
   test('location reverse geocoding endpoint enforces method, CSRF, and validation checks', async ({ page }) => {
     // Method check runs before the CSRF/validation checks
     const methodResponse = await page.request.get('app/api/shared/location-reverse.php');
@@ -780,5 +821,23 @@ test.describe('Issue #2227 — join-failure beacon survives a lost/stale CSRF to
     const jsonResponse = await response.json();
     expect(jsonResponse).toHaveProperty('success', true);
     expect(jsonResponse).toHaveProperty('message', 'Reported');
+  });
+});
+
+test.describe('Issue #1455 — csrf-token.php requires login', () => {
+  // Clearing cookies models a lost session. The token must not reach it.
+  test.beforeEach(async ({ page }) => {
+    await page.context().clearCookies();
+  });
+
+  test('csrf-token.php returns 401 Login required with no session', async ({ page }) => {
+    const response = await page.request.get('app/api/shared/csrf-token.php', {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    });
+    expect(response.status()).toBe(401);
+    const jsonResponse = await response.json();
+    expect(jsonResponse).toHaveProperty('success', false);
+    expect(jsonResponse).toHaveProperty('message', 'Login required');
+    expect(jsonResponse).not.toHaveProperty('csrf');
   });
 });

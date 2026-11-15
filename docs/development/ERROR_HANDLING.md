@@ -542,6 +542,32 @@ const api = new ElanRegistryAPI({
 });
 ```
 
+#### Recover from an expired token
+
+A long form can outlive its token. For example, the owner logs in again in
+another tab, and the session token changes. The Add/Edit Car form
+(`app/assets/js/car-edit.js`) recovers without loss of the typed input:
+
+- `GET /app/api/shared/csrf-token.php` returns `{success: true, csrf: <token>}`
+  with `Cache-Control: no-store`. The request must send
+  `X-Requested-With: XMLHttpRequest` (else 400). A logged-out request gets 401.
+  Other methods get 405. The token is the current session token
+  (`Token::generate()`). The endpoint does not rotate it.
+- On a 403 with the message `Invalid CSRF token`, the page gets a new token,
+  writes it to `#csrf`, and sends the save one more time. `save.php` also
+  sends 403 when the owner may not change the car. That 403 gets no retry,
+  and the page shows the server message.
+- A second token rejection, or a refresh that fails with a status other than
+  401, shows a plain "This page is out of date" message. One click on the
+  save button sends at most two saves.
+- On a 401 (from the save or from the refresh), the page tells the owner to
+  log in again in a new tab, then select the save button again. It keeps the
+  input.
+- Messages to the user never contain the word "CSRF".
+
+Use the same pattern for other long forms. On the server, check login (401)
+before the token (403), as `app/api/cars/save.php` does.
+
 ### "ApiResponse not returning JSON"
 
 **Cause**: Headers already sent (output before send())

@@ -232,6 +232,11 @@ function updateCarDetails(array &$car, bool $logoutOnDenied = true): void
                             </select>
                             <span class='input-group-text'><i id="model_icon" aria-hidden='true' class="fas"></i></span>
                         </div>
+                        <div id="model-load-error" data-testid="model-load-error" class="alert alert-warning d-none mt-2" role="alert">
+                            <i class="fas fa-exclamation-circle" aria-hidden="true"></i>
+                            The model list could not be loaded.
+                            <button type="button" id="model-load-retry" data-testid="model-load-retry" class="btn btn-outline-secondary btn-sm ms-2">Retry</button>
+                        </div>
                     </div>
                 </div>
 
