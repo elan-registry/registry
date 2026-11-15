@@ -62,8 +62,8 @@ class AppConstants
      * Must match `RegisterNoownerAccount::USERNAME` in
      * `database/migrations/20260817035200_register_noowner_account.php`.
      * The account has the address `noowner@invalid`, so no mail can reach it.
-     * The contact pages test this username to refuse a contact message for
-     * such a car (ADR-010).
+     * The contact endpoint, the contact form page and the car page test this
+     * username to refuse a contact message for such a car (ADR-010).
      *
      * @see https://github.com/elan-registry/registry/issues/2505
      */

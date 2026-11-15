@@ -1,6 +1,7 @@
 <?php
 if (count(get_included_files()) == 1) { die(); }
 
+/** @var string $context Set by the including page. */
 $_baseUrl    = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
 $heroCarId   = (int)($heroCarId ?? 0);
 $heroNoOwner = (bool)($heroNoOwner ?? false);

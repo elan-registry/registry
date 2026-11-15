@@ -38,6 +38,7 @@ after an item is written.
 ### `.claude/rules/php-code.md`
 
 - [ ] "When you review error handling" names only the last-resort fallback as an allowed `\Throwable` catch. `ERROR_HANDLING.md` also documents the page-section fault-domain catch (`VerificationTabStatus::read()`, `tab-verification.php`, #2364) as a deliberate exception. Add it to the rule, so reviewers do not flag those files (found in #1844)
+- [ ] ~L24 "Wrap database operations in `try` and `catch`" conflicts with the "No guards" rule in `ERROR_HANDLING.md` and makes reviewers flag correct code. ~L55 documents `ApiResponse::error($message, $context)`, but the second parameter is `int $statusCode`. Correct both lines (found in #2505)
 
 ### `app/admin/includes/account-cleanup-helpers.php`
 
@@ -158,6 +159,10 @@ after an item is written.
 ### `tests/Support/BrevoOverrideStub.php` + `tests/Support/BrevoSiteRoot.php` (test-only)
 
 - [ ] `BrevoOverrideStub` writes `"<?php\n"` and `sweep()` deletes any file with that exact content. Add a unique marker comment to the stub content (found in /finish-milestone v2.30.7)
+
+### `tests/integration/AdminCarReassignmentTest.php` + `tests/integration/SendOwnerEmailNoOwnerTest.php` (test-only)
+
+- [ ] Three copies of the `noowner` id lookup (`SELECT id FROM users WHERE username = ?`): `AdminCarReassignmentTest` ~L26 and ~L65, and `SendOwnerEmailNoOwnerTest::noownerId()`. Move one helper into `IntegrationTestCase` that reads `AppConstants::NOOWNER_USERNAME` (found in #2505)
 
 ### `tests/integration/AdminClearBlockAndOptOutTest.php` (test coverage)
 

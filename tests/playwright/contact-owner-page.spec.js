@@ -1,24 +1,24 @@
-// Coverage for app/owner/contact/owner.php (issue #1585).
+// Coverage for app/owner/contact/owner.php and the car-page contact controls.
 //
-// Before #1585, this page called `$db->findById(...)` — a method that exists
-// on the real \DB class but was never part of DatabaseInterface — which would
-// have fataled in production. The fix replaced it with
-// `$db->get('cars', [...])->results()` guarded by explicit `=== false` checks,
-// redirecting to '/' on any failure (get() returning false) or an empty result
-// (no matching car/owner row).
+// #1585: the page once called `$db->findById(...)`, which is not part of
+// DatabaseInterface and would have fataled in production. The page now loads
+// the car with `CarRepository::findById()` and redirects to '/' when it
+// returns null (no matching car).
 //
 // Neither of the other Playwright tests that reference this page
 // (mobile-responsive.spec.js, navigation.spec.js) pass a `car_id` query param,
-// so the DB code path this fix touches never actually executes there. This
-// file exercises it directly: the golden path (a real car_id renders the
-// contact form) and the empty($carResults) redirect path (a nonexistent
-// car_id never renders the form).
+// so the car lookup never executes there. This file exercises it directly:
+// the golden path (a real car_id renders the contact form) and the redirect
+// path (a nonexistent car_id never renders the form).
+//
+// #2505: a car of the noowner system account offers no Contact Owner control,
+// and owner.php redirects such a car back to the car page.
 
 const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn, login } = require('./auth-helper.js');
 const { CAR_ID_STANDARD, CAR_ID_NONEXISTENT, CAR_ID_NOOWNER, CAR_ID_OWNED_BY_ADMIN } = require('./fixtures.js');
 
-test.describe('Contact owner page — DatabaseInterface migration (#1585)', () => {
+test.describe('Contact owner page — form and admin hero actions (#1585, #2505)', () => {
 
   test.beforeEach(async ({ page }) => {
     await ensureLoggedIn(page);
@@ -37,11 +37,11 @@ test.describe('Contact owner page — DatabaseInterface migration (#1585)', () =
 
     // Deliberately not skipped on a redirect to '/': that is exactly the failure
     // mode of the bug this file exists to catch (a call to a \DB-only method, or
-    // the === false guards tripping), so it must fail this test, not skip it.
+    // a car lookup that finds nothing), so it must fail this test, not skip it.
     expect(currentUrl).toContain('contact/owner.php');
 
-    // The golden path this fix must preserve: get('cars', ...)->results() and
-    // get('users', ...)->results() both succeeded and the form rendered.
+    // The golden path this fix must preserve: the car and owner lookups both
+    // succeeded and the form rendered.
     await expect(page.locator('h2:has-text("Contact Owner")')).toBeVisible();
     await expect(page.locator('textarea[name="message"]')).toBeVisible();
     await expect(page.locator('input[name="car_id"]')).toHaveValue(String(CAR_ID_STANDARD));
@@ -50,7 +50,7 @@ test.describe('Contact owner page — DatabaseInterface migration (#1585)', () =
   });
 
   test('nonexistent car_id never renders the contact form', async ({ page }) => {
-    // No car with this id can exist — exercises the empty($carResults) guard,
+    // No car with this id can exist — exercises the findById() === null guard,
     // which redirects to '/' rather than rendering the form.
     await page.goto(`app/owner/contact/owner.php?car_id=${CAR_ID_NONEXISTENT}`, { waitUntil: 'domcontentloaded' });
 
@@ -93,7 +93,9 @@ test.describe('Contact owner page — DatabaseInterface migration (#1585)', () =
     await page.goto(`app/owner/contact/owner.php?car_id=${CAR_ID_NOOWNER}`, { waitUntil: 'domcontentloaded' });
 
     expect(page.url()).toContain(`app/owner/cars/details.php?car_id=${CAR_ID_NOOWNER}`);
-    await expect(page.getByText('This car has no current owner. Use the Feedback form')).toBeVisible();
+    // usWarning() queues a UserSpice generic message, which renders as the dark toast.
+    await expect(page.locator('.us-toast:has(.us-bar-dark) .toast-body'))
+      .toContainText('This car has no current owner. Use the Feedback form');
     await expect(page.locator('textarea[name="message"]')).toHaveCount(0);
   });
 
