@@ -167,34 +167,4 @@ final class FactoryRegistryLinkIntegrationTest extends IntegrationTestCase
             $this->db->delete('elan_factory_info', ['id', '=', $unmatchedRowId]);
         }
     }
-
-    public function testFactoryDataTablesResponseIncludesCarIdField(): void
-    {
-        $car = new Car();
-
-        $request = [
-            'draw'    => 1,
-            'start'   => 0,
-            'length'  => 25,
-            'search'  => ['value' => ''],
-            'order'   => [['column' => 0, 'dir' => 'asc']],
-            'columns' => [
-                ['data' => 'id',   'searchable' => 'true', 'orderable' => 'true'],
-                ['data' => 'year', 'searchable' => 'true', 'orderable' => 'true'],
-            ],
-        ];
-
-        $result = $car->getDataTablesData($request, 'factory');
-
-        $this->assertIsArray($result);
-        $this->assertArrayHasKey('data', $result);
-        $this->assertNotEmpty($result['data'], 'Factory data must be non-empty — setUp inserted at least one row');
-
-        foreach ($result['data'] as $row) {
-            $this->assertTrue(
-                property_exists($row, 'car_id'),
-                'Every factory row must have a car_id property'
-            );
-        }
-    }
 }

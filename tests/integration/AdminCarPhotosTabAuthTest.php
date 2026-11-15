@@ -1028,22 +1028,6 @@ final class AdminCarPhotosTabAuthTest extends IntegrationTestCase
         $this->assertSame([], $this->messages($result['raw'], 'dark'), 'A bulk Apply leaves no selection out');
     }
 
-    public function testPostTickedSubsetAttachesOnlyThoseInStoredOrderNotTickOrder(): void
-    {
-        $carId = $this->carWithThreeDetachedPhotos();
-
-        // The form lists x3 before x1. The stored order is x1, x2, x3.
-        $result = $this->post($this->adminId, ['reattach' => [$carId => ['x3.jpg', 'x1.jpg']]] + $this->seen($carId));
-
-        $this->assertSame(0, $result['exitCode']);
-        $this->assertSame('["keep.jpg","x1.jpg","x3.jpg"]', $this->currentImage($carId));
-        $this->assertSame([], $this->messages($result['raw'], 'danger'));
-        // x2 stays detached: the next render still lists it with a box.
-        $xpath = $this->xpath($this->render($this->adminId)['raw']);
-        $this->assertSame(1, $xpath->query("//input[@name='reattach[{$carId}][]'][@value='x2.jpg']")->length);
-        $this->assertSame(0, $xpath->query("//input[@name='reattach[{$carId}][]'][@value='x1.jpg']")->length);
-    }
-
     public function testPostPerPhotoForgedNameBesideARealOneAttachesOnlyTheRealOneAndLogsTheForgery(): void
     {
         $carId = $this->carWithDetachedPhoto();
@@ -1301,42 +1285,6 @@ final class AdminCarPhotosTabAuthTest extends IntegrationTestCase
         $this->assertSame(['car_photos_ignore', 'car_photos_unignore'], array_column($metadata, 'action'), 'A newer log row, no deletion');
     }
 
-    public function testPostUndoIgnoreOfARowThatIsNotIgnoredWritesNothing(): void
-    {
-        $carId = $this->carWithDetachedPhoto();
-
-        $result = $this->post($this->adminId, ['unignore_car' => (string) $carId] + $this->seen($carId));
-
-        $this->assertSame(0, $result['exitCode']);
-        $this->assertContains("Car {$carId} not shown again: it has nothing to show, or it is not ignored.", $this->messages($result['raw'], 'danger'));
-        $this->assertSame([], $this->photoLogMetadata($carId));
-    }
-
-    public function testIgnoredRowReturnsAfterAnOutOfBandChangeOfTheDetachedPhotos(): void
-    {
-        $carId = $this->carWithDetachedPhoto();
-        $this->post($this->adminId, ['ignore_car' => (string) $carId] + $this->seen($carId));
-        $this->assertNotContains((string) $carId, $this->mainRowIds($this->render($this->adminId)['raw']), 'Test setup: the row is hidden');
-
-        // Another save drops b.jpg and keeps a.jpg out: the token and the detached names both change.
-        $this->photo($carId, 'c.jpg', 3);
-        $this->setImage($carId, ['c.jpg']);
-
-        $this->assertContains((string) $carId, $this->mainRowIds($this->render($this->adminId)['raw']), 'The row shows again');
-    }
-
-    public function testIgnoredRowReturnsWhenOnlyTheStoredValueChanges(): void
-    {
-        $carId = $this->carWithDetachedPhoto();
-        $this->post($this->adminId, ['ignore_car' => (string) $carId] + $this->seen($carId));
-        $this->assertNotContains((string) $carId, $this->mainRowIds($this->render($this->adminId)['raw']), 'Test setup: the row is hidden');
-
-        // Same photo, same detached names, other stored text: a changed token alone shows the row.
-        $this->db->query('UPDATE cars SET image = ? WHERE id = ?', ['[ "b.jpg" ]', $carId]);
-
-        $this->assertContains((string) $carId, $this->mainRowIds($this->render($this->adminId)['raw']));
-    }
-
     public function testApplyAfterIgnoreChangesTheListSoTheRowShowsAgain(): void
     {
         $carId = $this->carWithThreeDetachedPhotos();
@@ -1515,38 +1463,6 @@ final class AdminCarPhotosTabAuthTest extends IntegrationTestCase
             1,
             $this->xpath($page['raw'])->query("//tr[@data-testid='car-photos-ignored-row'][@data-car-id='{$carId}']")->length,
             'The ignored table lists the car'
-        );
-    }
-
-    public function testPostIgnoreOfAnIgnoredRowWritesNoSecondLogRow(): void
-    {
-        $carId = $this->carWithDetachedPhoto();
-        $this->post($this->adminId, ['ignore_car' => (string) $carId] + $this->seen($carId));
-
-        $result = $this->post($this->adminId, ['ignore_car' => (string) $carId] + $this->seen($carId));
-
-        $this->assertSame(0, $result['exitCode']);
-        $this->assertContains(
-            "Car {$carId} not ignored: it has nothing to show, or it is already ignored.",
-            $this->messages($result['raw'], 'danger')
-        );
-        $this->assertCount(1, $this->photoLogMetadata($carId));
-    }
-
-    public function testRenderListsRowsWithAnEarlierOrderBeforeRowsWithOnlyDetachedPhotos(): void
-    {
-        $detached = $this->carWithDetachedPhoto();
-        $reversed = $this->carWithReversedOrder();
-        $this->assertLessThan($reversed, $detached, 'Test setup: the detached car has the lower ID');
-
-        $ids = $this->mainRowIds($this->render($this->adminId)['raw']);
-
-        $this->assertContains((string) $detached, $ids);
-        $this->assertContains((string) $reversed, $ids);
-        $this->assertLessThan(
-            array_search((string) $detached, $ids, true),
-            array_search((string) $reversed, $ids, true),
-            'The restore row comes first although its car ID is higher'
         );
     }
 

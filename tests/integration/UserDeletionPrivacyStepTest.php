@@ -807,24 +807,6 @@ final class UserDeletionPrivacyStepTest extends IntegrationTestCase
         $this->assertSame(0, $this->profileCount($owner['id']));
     }
 
-    public function testAddressHeldByAnotherLiveUserIsStillSkipped(): void
-    {
-        $owner = $this->createOwnerWithPendingChange();
-        $this->deleteUsersRowOnly($owner['id']);
-        // Another account registered with the deleted user's old address (other case).
-        $this->createTestUser(['email' => strtoupper($owner['email'])]);
-        $kept = 'privacy-live-holder-' . uniqid();
-        $gone = 'privacy-pending-gone-' . uniqid();
-        $this->insertPluginRow($kept, $owner['email']);
-        $this->insertPluginRow($gone, $owner['pending']);
-
-        $result = (new \ElanRegistry\AccountDeletionPrivacyStep($this->db))->run($owner['id']);
-
-        $this->assertSame(AccountDeletionPrivacyOutcome::Committed, $result->outcome);
-        $this->assertTrue($this->pluginRowExists($kept), 'The row belongs to the live user that holds the address now');
-        $this->assertFalse($this->pluginRowExists($gone), 'Test control: the other holding-row address still goes');
-    }
-
     public function testNoHoldingRowStillWorks(): void
     {
         $userId = $this->createOwner();

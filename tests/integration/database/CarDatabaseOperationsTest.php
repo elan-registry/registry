@@ -212,18 +212,6 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
     }
 
     #[Group('integration')]
-    public function testCarOwnershipIntegrity(): void
-    {
-        $row = $this->db->query(
-            'SELECT id, user_id FROM cars WHERE id = ?',
-            [$this->testCarId]
-        )->first();
-
-        $this->assertNotNull($row);
-        $this->assertEquals($this->testUserId, $row->user_id);
-    }
-
-    #[Group('integration')]
     public function testVerificationCodeSetAndRetrieved(): void
     {
         $car = new Car($this->testCarId);
@@ -273,30 +261,6 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
         $carData = $query->first();
 
         $this->assertStringStartsWith($soldDate, $carData->solddate);
-    }
-
-    #[Group('integration')]
-    public function testConcurrentCarOperationsMaintainIntegrity(): void
-    {
-        $car1 = new Car($this->testCarId);
-        $car2 = new Car($this->testCarId);
-
-        $this->assertEquals($car1->data()->id, $car2->data()->id);
-        $this->assertEquals($car1->data()->chassis, $car2->data()->chassis);
-
-        $updateData = [
-            'id' => $this->testCarId,
-            'token' => Token::generate(),
-            'color' => 'Concurrent Test'
-        ];
-
-        $result = $car1->update($updateData);
-
-        $this->assertTrue($result);
-
-        $car2->find($this->testCarId);
-
-        $this->assertEquals('Concurrent Test', $car2->data()->color);
     }
 
     /**

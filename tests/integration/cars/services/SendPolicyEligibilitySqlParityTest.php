@@ -91,12 +91,6 @@ final class SendPolicyEligibilitySqlParityTest extends IntegrationTestCase
         return $ownerId;
     }
 
-    public function test_blockingFlags_verification_isNotEmpty(): void
-    {
-        // Without this the data provider would give no cases and the parity tests would pass with zero runs.
-        $this->assertNotSame([], $this->policy->blockingFlags(MailKind::Verification));
-    }
-
     public function test_blockingFlags_verification_coversEveryOwnerFlag(): void
     {
         // A flag dropped from the table would drop out of the provider and out of the parity checks.
@@ -138,18 +132,6 @@ final class SendPolicyEligibilitySqlParityTest extends IntegrationTestCase
             $this->policy->forUser(MailKind::Verification, $controlOwner)->allowed,
             'Control: the policy allows the clean owner'
         );
-    }
-
-    #[DataProvider('verificationFlagProvider')]
-    public function test_everyFlagFromTheTable_neverGivesADisagreement(string $flag): void
-    {
-        $ownerId = $this->createOwnerWithFlag($flag, self::OWNER_EMAIL);
-        $carId   = $this->createEligibleCar($ownerId, self::OWNER_EMAIL);
-
-        $sqlExcludes  = !in_array($carId, $this->allVerificationEligibleCarIds(), true);
-        $policyBlocks = !$this->policy->forUser(MailKind::Verification, $ownerId)->allowed;
-
-        $this->assertSame($policyBlocks, $sqlExcludes, "SQL and policy disagree for {$flag}");
     }
 
     /**

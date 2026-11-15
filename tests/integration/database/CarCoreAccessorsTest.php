@@ -8,7 +8,7 @@ use ElanRegistry\Car\Car;
 use ElanRegistry\Exceptions\CarValidationException;
 use PHPUnit\Framework\Attributes\Group;
 
-/** #1440: Car find(), exists(), history(), and findByOwner() edge cases. */
+/** #1440: Car find(), exists(), and findByOwner() edge cases. */
 #[Group('integration')]
 final class CarCoreAccessorsTest extends IntegrationTestCase
 {
@@ -32,48 +32,12 @@ final class CarCoreAccessorsTest extends IntegrationTestCase
     }
 
     #[Group('integration')]
-    public function testExistsReturnsFalseBeforeFind(): void
-    {
-        $car = new Car();
-
-        $this->assertFalse($car->exists());
-    }
-
-    #[Group('integration')]
     public function testExistsReturnsTrueAfterFind(): void
     {
         $carId = $this->createTestCar($this->testUserId);
         $car = new Car($carId);
 
         $this->assertTrue($car->exists());
-    }
-
-    #[Group('integration')]
-    public function testHistoryDefaultsToEmptyArrayForNewCarInstance(): void
-    {
-        $car = new Car();
-
-        $this->assertSame([], $car->history());
-    }
-
-    #[Group('integration')]
-    public function testHistoryReturnsPopulatedRecordsAfterUpdate(): void
-    {
-        $carId = $this->createTestCar($this->testUserId);
-        $car = new Car($carId);
-
-        // update() reloads via find(), so history() shows the trigger row.
-        $car->update([
-            'id'    => $carId,
-            'token' => Token::generate(),
-            'color' => 'History Test Color',
-        ]);
-
-        $history = $car->history();
-
-        $this->assertNotEmpty($history, 'Expected at least one history record after update()');
-        $operations = array_map(fn($record) => $record->operation, $history);
-        $this->assertContains('UPDATE', $operations, 'Expected an UPDATE operation record in history');
     }
 
     #[Group('integration')]

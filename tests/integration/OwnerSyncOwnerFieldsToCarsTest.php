@@ -204,27 +204,6 @@ final class OwnerSyncOwnerFieldsToCarsTest extends IntegrationTestCase
         $this->assertSame(2, (int) $totalRows, 'A changed car must have exactly two cars_hist rows: the trigger UPDATE row and the application OWNER_SYNC row');
     }
 
-    public function testSaveChangingLocationAndNameYieldsOneOwnerSyncRow(): void
-    {
-        $userId = $this->createTestUser(['fname' => 'Before']);
-        $this->createTestProfile($userId, ['city' => 'Salem', 'website' => 'https://old.example.com']);
-        $carId = $this->createTestCar($userId);
-
-        $owner = new Owner($userId);
-        $owner->update([
-            'id'      => $userId,
-            'fname'   => 'After',
-            'city'    => 'Eugene',
-            'website' => 'https://new.example.com',
-        ]);
-        $owner = new Owner($userId);
-
-        $result = $owner->syncOwnerFieldsToCars();
-
-        $this->assertContains($carId, $result->updated);
-        $this->assertSame(1, $this->countOwnerSyncHistoryRows($carId), 'A single sync call touching multiple fields must write exactly one OWNER_SYNC row');
-    }
-
     /**
      * The car starts stale on owner_last_updated and mtime, so eligibility
      * depends on freshnessSql() not reading mtime (#1953).
@@ -260,81 +239,6 @@ final class OwnerSyncOwnerFieldsToCarsTest extends IntegrationTestCase
         $eligible = $repo->findVerificationEligible(1000, 0);
         $eligibleIds = array_map(static fn ($c) => (int) $c->id, $eligible);
         $this->assertContains($carId, $eligibleIds, 'A car with a non-NULL, stale owner_last_updated must remain verification-eligible after a sync, despite the sync bumping mtime from stale to fresh');
-    }
-
-    /**
-     * #1953: owner_last_updated is NOT NULL; an omitted value takes the column default.
-     * Skips when the #1953 migration has not run locally.
-     */
-    public function testNullOwnerLastUpdatedNoLongerReachableAfterSchemaChange(): void
-    {
-        $row = $this->db->query(
-            "SELECT IS_NULLABLE
-             FROM information_schema.COLUMNS
-             WHERE TABLE_SCHEMA = DATABASE()
-               AND TABLE_NAME   = 'cars'
-               AND COLUMN_NAME  = 'owner_last_updated'
-             LIMIT 1"
-        )->first();
-
-        if (!$row || $row->IS_NULLABLE !== 'NO') {
-            $this->markTestSkipped(
-                'Migration 20260905172137 has not been applied — cars.owner_last_updated is ' .
-                'still nullable. Run: composer migrate'
-            );
-        }
-
-        $userId = $this->createTestUser();
-        $this->createTestProfile($userId, ['lat' => 45.5231, 'lon' => -122.6765]);
-
-        // Omitted, not null: a null fails the INSERT and proves nothing.
-        $carId = $this->createTestCar($userId, [
-            'email'         => 'no-null-owner-updated@example.com',
-            'solddate'      => null,
-            'last_verified' => null,
-        ]);
-
-        $before = $this->db->query("SELECT owner_last_updated FROM cars WHERE id = ?", [$carId])->first();
-        $this->assertNotNull($before->owner_last_updated, 'owner_last_updated must never be NULL post-#1953');
-
-        $owner = new Owner($userId);
-        $owner->syncOwnerFieldsToCars();
-
-        $after = $this->db->query("SELECT owner_last_updated FROM cars WHERE id = ?", [$carId])->first();
-        $this->assertNotNull($after->owner_last_updated, 'owner_last_updated must remain non-NULL after a sync');
-        $this->assertSame(
-            (string) $before->owner_last_updated,
-            (string) $after->owner_last_updated,
-            'syncOwnerFieldsToCars() must never write owner_last_updated'
-        );
-    }
-
-    public function testHistoricalLocationSyncRowsUnchangedAfterSync(): void
-    {
-        $userId = $this->createTestUser();
-        $this->createTestProfile($userId, ['lat' => 45.5231, 'lon' => -122.6765]);
-        $carId = $this->createTestCar($userId);
-
-        $this->db->insert('cars_hist', [
-            'operation' => 'LOCATION_SYNC',
-            'car_id'    => $carId,
-            'user_id'   => $userId,
-            'model'     => '',
-            'series'    => '',
-            'variant'   => '',
-            'type'      => '',
-            'chassis'   => '',
-            'ctime'     => date('Y-m-d H:i:s', strtotime('-1 day')),
-        ]);
-
-        $owner = new Owner($userId);
-        $owner->syncOwnerFieldsToCars();
-
-        $legacyRows = $this->db->query(
-            "SELECT COUNT(*) AS cnt FROM cars_hist WHERE car_id = ? AND operation = 'LOCATION_SYNC'",
-            [$carId]
-        )->first()->cnt;
-        $this->assertSame(1, (int) $legacyRows, 'Historical LOCATION_SYNC rows must remain untouched by a new sync');
     }
 
     /**

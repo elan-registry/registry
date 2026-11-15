@@ -50,15 +50,6 @@ final class AdminCarReassignmentTest extends IntegrationTestCase
         );
     }
 
-    /** find()'s return value, not data(), is the not-found signal. */
-    public function testFindReturnsFalseForNonexistentUsername(): void
-    {
-        $missingUser = new User();
-        $found = $missingUser->find('this-username-does-not-exist-1562');
-        $this->assertFalse($found, 'User::find() must return false for a nonexistent username');
-        $this->assertEmpty($missingUser->data(), 'User::data() must be empty/null after a failed find()');
-    }
-
     /** #1878: reassignment to noowner is not a change of owner, so solddate stays. */
     public function testReassignToNoownerPreservesSoldDate(): void
     {

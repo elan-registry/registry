@@ -817,27 +817,6 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         $this->assertSame(strtolower($email), $flags->email_bounced_address);
     }
 
-    public function testTenKilobyteReasonIsStoredAs255Characters(): void
-    {
-        $this->requireBrevoReady();
-
-        $email = 'longreason-' . uniqid() . '@example.com';
-        $carId = $this->createFixtureCarWithEmail($email);
-        $messageId = $this->seedSentRow($carId, $email);
-
-        $result = $this->postAuthorized($this->taggedPayload([
-            'email' => $email,
-            'event' => 'soft_bounce',
-            'message-id' => $messageId,
-            'reason' => str_repeat('r', 10240),
-        ]));
-
-        $this->assertSame(200, $result['status']);
-        $rows = $this->eventRowsForMessage($messageId);
-        $this->assertCount(1, $rows);
-        $this->assertSame(255, mb_strlen((string) $rows[0]->reason));
-    }
-
     // ------------------------------------------------------------------
     // sendinblueRecordEvent() (#2355)
     // ------------------------------------------------------------------

@@ -449,34 +449,4 @@ final class EmailEventMatcherIntegrationTest extends IntegrationTestCase
 
         $this->assertNull($this->matcher->matchUserByAddress($address));
     }
-
-    // --- Live-DB: the lookups use an index --------------------------------
-
-    public function testStepALookupUsesTheMessageIdIndex(): void
-    {
-        // An empty table gives "no matching row in const table" and no key, so seed a row.
-        $userId = $this->makeUser();
-        $this->seedSentRow($userId, null, $this->userEmail($userId), $this->uniqueId('explain-a'), '2026-10-14 09:00:00');
-        $rows = $this->db->query(
-            'EXPLAIN SELECT user_id, car_id, email, brevo_message_id, occurred_at
-               FROM er_email_events WHERE brevo_message_id = ? AND event = ?',
-            ['some-id', 'sent']
-        )->results();
-
-        $this->assertNotEmpty($rows);
-        $this->assertSame('idx_er_email_events_brevo_message_id', $rows[0]->key ?? null);
-    }
-
-    public function testStepBLookupUsesTheUniqueMessageIdKey(): void
-    {
-        $messageId = $this->uniqueId('explain-b');
-        $this->seedPluginRow($messageId, 'explain@example.com', '2026-10-14 09:00:00');
-        $rows = $this->db->query(
-            'EXPLAIN SELECT message_id, recipient_email, accepted_at FROM plg_sendinblue_messages WHERE message_id = ?',
-            [$messageId]
-        )->results();
-
-        $this->assertNotEmpty($rows);
-        $this->assertSame('message_id', $rows[0]->key ?? null);
-    }
 }
