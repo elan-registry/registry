@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Pre-migration fixture for the #2358 sandbox tests.
+ * Pre-migration fixture for EmailEventRekeyQueriesTest (#2358).
  *
  * It writes one case for each rule of migration 20261013000000 into a sandbox
  * that stands at version 20261012000001. Every value is a literal, so a test
@@ -45,32 +45,11 @@ declare(strict_types=1);
  */
 final class EmailEventRekeyMigrationFixture
 {
-    /** Event IDs that the migration keeps, in ascending order. */
-    public const KEPT_IDS = [1, 4, 7, 8, 12, 13, 15, 16, 18, 19];
-
     /** Step (b): event IDs that go to the owner of their car. */
     public const OWNER_MATCHED_IDS = [1, 2, 3, 7, 8, 13, 14, 15, 16, 18];
 
     /** Step (b): event IDs that go to the one user with the address. */
     public const ADDRESS_MATCHED_IDS = [4, 12, 19];
-
-    /** Step (c): event IDs with no user, or with `noowner`. */
-    public const DROPPED_IDS = [5, 6, 9, 10, 11, 17, 20];
-
-    /** Step (d): the groups that collapse. */
-    public const COLLAPSE_GROUPS = [
-        ['kept_id' => 1, 'removed_ids' => [2, 3], 'occurred_at' => '2026-03-01 09:00:00'],
-        ['kept_id' => 13, 'removed_ids' => [14], 'occurred_at' => '2026-03-02 06:00:00'],
-    ];
-
-    /** Kept event ID => the user that owns the row after the migration. */
-    public const USER_AFTER = [
-        1 => 201, 4 => 203, 7 => 207, 8 => 207, 12 => 207, 13 => 207, 15 => 201, 16 => 207, 18 => 216, 19 => 202,
-    ];
-
-    public const USER_IDS = [201, 202, 203, 204, 205, 206, 207, 210, 215, 216, 217];
-
-    public const CAR_IDS = [2010, 2011, 2012, 2020, 2060, 2070, 2071, 2100, 2130, 2150, 2160];
 
     public const MTIME = '2026-01-01 00:00:00';
 
@@ -80,28 +59,6 @@ final class EmailEventRekeyMigrationFixture
         self::seedProfiles($pdo);
         self::seedCars($pdo);
         self::seedEvents($pdo);
-    }
-
-    /**
-     * Remove every fixture row, so a test can seed again. Call it on the
-     * pre-migration schema (after down()).
-     */
-    public static function clear(\PDO $pdo): void
-    {
-        $pdo->exec('DELETE FROM er_email_events');
-        $pdo->exec('DELETE FROM cars WHERE id IN (' . implode(',', self::CAR_IDS) . ')');
-        $pdo->exec('DELETE FROM cars_hist WHERE car_id IN (' . implode(',', self::CAR_IDS) . ')');
-        $pdo->exec('DELETE FROM profiles WHERE user_id IN (' . implode(',', self::USER_IDS) . ')');
-        $pdo->exec('DELETE FROM users WHERE id IN (' . implode(',', self::USER_IDS) . ')');
-
-        // The users AFTER DELETE trigger leaves a holding row per user (#2419).
-        // The table is absent until its migration runs.
-        $hasHoldingTable = $pdo->query(
-            "SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'er_deleted_user_addresses'"
-        );
-        if ($hasHoldingTable !== false && $hasHoldingTable->fetchColumn() !== false) {
-            $pdo->exec('DELETE FROM er_deleted_user_addresses WHERE user_id IN (' . implode(',', self::USER_IDS) . ')');
-        }
     }
 
     private static function seedUsers(\PDO $pdo): void
