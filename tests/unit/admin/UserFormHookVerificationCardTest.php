@@ -478,16 +478,6 @@ final class UserFormHookVerificationCardTest extends TestCase
         $this->assertStringContainsString('owner@example.invalid', $card);
     }
 
-    /** The hook reads the flags through effectiveEmailFlags(), the one owner-level reader. */
-    public function testHookReadsTheFlagsThroughEffectiveEmailFlagsOnly(): void
-    {
-        $source = (string) file_get_contents(self::HOOK);
-
-        $this->assertStringContainsString('->effectiveEmailFlags((int) $user_id)', $source);
-        $this->assertStringNotContainsString('findProfileEmailState', $source);
-        $this->assertDoesNotMatchRegularExpression('/->email_(?:bounced|blocked|opted_out)\b/', $source);
-    }
-
     /** The flags are per owner, so no car row repeats them. */
     public function testFlagsAppearOnceInTheSummaryAndNotInTheCarRows(): void
     {

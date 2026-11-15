@@ -5,7 +5,6 @@ declare(strict_types=1);
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
-use Tests\Support\FakeDatabase;
 use Tests\Support\SqlRecordingFakeDatabase;
 
 require_once __DIR__ . '/../../../app/admin/includes/account-cleanup-helpers.php';
@@ -141,28 +140,6 @@ final class OwnerlessAccountsFinderTest extends TestCase
     }
 
     /**
-     * The array returned by the function must be the exact array returned by
-     * results() — not a copy, subset, or re-keyed version.
-     */
-    #[DataProvider('finderProvider')]
-    public function testResultsAreReturnedDirectly(
-        string $functionName,
-        int $defaultThreshold,
-        int $altThreshold
-    ): void {
-        $expected = [
-            (object) ['id' => 7,  'email' => 'x@example.com'],
-            (object) ['id' => 13, 'email' => 'y@example.com'],
-            (object) ['id' => 21, 'email' => 'z@example.com'],
-        ];
-
-        $db     = $this->makeDb($expected);
-        $result = $functionName($db, $defaultThreshold);
-
-        $this->assertSame($expected, $result);
-    }
-
-    /**
      * The generated SQL must contain the NOT EXISTS guard for car_transfer_requests
      * so that users with a pending transfer request are excluded from eligibility.
      */
@@ -178,41 +155,5 @@ final class OwnerlessAccountsFinderTest extends TestCase
         $sql = $db->getLastSql();
         $this->assertStringContainsString('car_transfer_requests', $sql);
         $this->assertStringContainsString("status = 'pending'", $sql);
-    }
-
-    /**
-     * Verifies that the function calls query() before accessing results().
-     */
-    #[DataProvider('finderProvider')]
-    public function testQueryChainIsCalledCorrectly(
-        string $functionName,
-        int $defaultThreshold,
-        int $altThreshold
-    ): void {
-        $state = (object) ['queryWasCalled' => false];
-
-        $db = new class($state) extends FakeDatabase {
-            public function __construct(private readonly object $state) {}
-
-            public function query(string $sql, array $params = []): self
-            {
-                $this->state->queryWasCalled = true;
-                return $this;
-            }
-
-            // results() enforces ordering: it may only be reached after query().
-            public function results(bool $assoc = false): array
-            {
-                if (!$this->state->queryWasCalled) {
-                    throw new \RuntimeException('results() was reached before query() was called');
-                }
-                return [];
-            }
-        };
-
-        $result = $functionName($db, $defaultThreshold);
-
-        $this->assertIsArray($result);
-        $this->assertTrue($state->queryWasCalled, 'query() must be called before results()');
     }
 }

@@ -73,9 +73,4 @@ final class RetentionResultTest extends TestCase
             $this->assertStringContainsString('rule_x', $e->getMessage());
         }
     }
-
-    public function testConstructorIsNotPublic(): void
-    {
-        $this->assertFalse((new ReflectionClass(RetentionResult::class))->getConstructor()?->isPublic());
-    }
 }

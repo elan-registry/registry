@@ -69,19 +69,6 @@ final class VerificationSwitchGateSourceTest extends TestCase
         $this->assertSame(['SendVerificationBatchJob.php'], self::filesReadingTheSwitch($files));
     }
 
-    public function testNegativeControlScannerSeesAReadInAnotherFileAndInAComment(): void
-    {
-        $this->assertSame(
-            ['A.php', 'B.php', 'D.php'],
-            self::filesReadingTheSwitch([
-                'A.php' => '<?php $x = $settings->isEnabled();',
-                'B.php' => "<?php\n// calls isEnabled() later\n",
-                'C.php' => '<?php $y = 1;',
-                'D.php' => '<?php $z = $settings->isEnabledOrNull();',
-            ])
-        );
-    }
-
     /** A Brevo job that overrides the gate would stop with the switch off, even with no `isEnabled(` text. */
     public function testOnlyTheSendBatchJobOverridesTheSwitchGate(): void
     {

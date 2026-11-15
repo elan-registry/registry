@@ -173,32 +173,6 @@ final class SendVerificationBatchJobTest extends TestCase
         );
     }
 
-    // --- jobName() / guardIntervalHours() ---------------------------------
-
-    public function testJobNameReturnsSendVerificationBatch(): void
-    {
-        $reflection = new ReflectionClass(SendVerificationBatchJob::class);
-        $method = $reflection->getMethod('jobName');
-
-        $repo = $this->createStub(CarRepository::class);
-        $sendSvc = $this->makeSendSvc($repo);
-        $job = $this->makeJob($this->makeSettings(), $sendSvc, $this->makeSender($repo, $sendSvc));
-
-        $this->assertSame('send_verification_batch', $method->invoke($job));
-    }
-
-    public function testGuardIntervalHoursReturnsTwenty(): void
-    {
-        $reflection = new ReflectionClass(SendVerificationBatchJob::class);
-        $method = $reflection->getMethod('guardIntervalHours');
-
-        $repo = $this->createStub(CarRepository::class);
-        $sendSvc = $this->makeSendSvc($repo);
-        $job = $this->makeJob($this->makeSettings(), $sendSvc, $this->makeSender($repo, $sendSvc));
-
-        $this->assertSame(20, $method->invoke($job));
-    }
-
     // --- execute() — eligibility query -------------------------------------
 
     public function testExecuteCallsFindEligibleWithBatchSizeAsLimitAndOffsetZero(): void

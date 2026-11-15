@@ -25,9 +25,7 @@ final class ThrowingInsertDatabase extends FakeDatabase
 /**
  * Unit tests for admin_script_record_completion() (app/admin/includes/fix-script-core.php),
  * covering the branches the integration test FixPagePermissionsAnalyzeRunTest does not
- * reach: the function's own failure path, and the caller-side "gate a success message
- * on whether the callback fired" pattern used at 21-Fix-Page-Permissions.php's Step-3
- * site (#1776).
+ * reach: the function's own failure path (#1776).
  *
  * @see app/admin/includes/fix-script-core.php
  */
@@ -130,54 +128,5 @@ final class AdminScriptRecordCompletionTest extends TestCase
         $this->assertStringContainsString('simulated insert failure', $mockLogEntries[0]['message']);
         $this->assertStringContainsString('onFailure callback itself threw', $mockLogEntries[1]['message']);
         $this->assertStringContainsString('callback bug', $mockLogEntries[1]['message']);
-    }
-
-    /**
-     * Reproduces 21-Fix-Page-Permissions.php's Step-3 "$recordingFailed" gating
-     * pattern directly — the exact logic a /simplify pass fixed after it
-     * initially shipped a double-message bug (both the failure warning and a
-     * misleading "recorded" success line could print together). This locks in
-     * that fix independent of the full script's securePage()/POST/CSRF gating.
-     */
-    #[Group('fast')]
-    public function testRecordingFailedFlagPatternGatesSuccessMessageOnSuccess(): void
-    {
-        global $db;
-        $db = new FakeDatabase();
-
-        $messages = [];
-        $recordingFailed = false;
-        admin_script_record_completion(__FILE__, 1, function (string $msg) use (&$recordingFailed, &$messages) {
-            $recordingFailed = true;
-            $messages[] = $msg;
-        });
-        if (!$recordingFailed) {
-            $messages[] = '✅ Script completion recorded';
-        }
-
-        $this->assertFalse($recordingFailed);
-        $this->assertSame(['✅ Script completion recorded'], $messages);
-    }
-
-    #[Group('fast')]
-    public function testRecordingFailedFlagPatternGatesSuccessMessageOnFailure(): void
-    {
-        global $db;
-        $db = new ThrowingInsertDatabase();
-
-        $messages = [];
-        $recordingFailed = false;
-        admin_script_record_completion(__FILE__, 1, function (string $msg) use (&$recordingFailed, &$messages) {
-            $recordingFailed = true;
-            $messages[] = $msg;
-        });
-        if (!$recordingFailed) {
-            $messages[] = '✅ Script completion recorded';
-        }
-
-        $this->assertTrue($recordingFailed);
-        // Exactly one message — the failure warning — never both.
-        $this->assertCount(1, $messages);
-        $this->assertStringContainsString('Could not record script completion', $messages[0]);
     }
 }

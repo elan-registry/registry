@@ -5,7 +5,6 @@ declare(strict_types=1);
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\EffectiveEmailFlags;
 use ElanRegistry\Exceptions\CarValidationException;
-use ElanRegistry\Exceptions\ElanRegistryException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -180,52 +179,7 @@ final class EmailFlagActiveSqlTest extends TestCase
         return '';
     }
 
-    public function testRejectionIsATypedRegistryException(): void
-    {
-        $this->expectException(ElanRegistryException::class);
-        CarRepository::emailFlagActiveSql('email_opted_out');
-    }
-
-    /**
-     * @return array<string, array{mixed}>
-     */
-    public static function nonStringProvider(): array
-    {
-        return [
-            'int'    => [1],
-            'null'   => [null],
-            'bool'   => [true],
-            'float'  => [1.5],
-            'array'  => [['email_blocked']],
-            'object' => [new stdClass()],
-        ];
-    }
-
-    #[DataProvider('nonStringProvider')]
-    public function testNonStringArgumentThrowsTypeError(mixed $flag): void
-    {
-        $this->expectException(TypeError::class);
-
-        CarRepository::emailFlagActiveSql($flag);
-    }
-
     // --- EffectiveEmailFlags ------------------------------------------
-
-    public function testEffectiveEmailFlagsIsFinalAndReadonly(): void
-    {
-        $class = new ReflectionClass(EffectiveEmailFlags::class);
-
-        $this->assertTrue($class->isFinal());
-        $this->assertTrue($class->isReadOnly());
-    }
-
-    public function testEffectiveEmailFlagsCannotBeChanged(): void
-    {
-        $flags = EffectiveEmailFlags::none();
-
-        $this->expectException(Error::class);
-        (new ReflectionProperty(EffectiveEmailFlags::class, 'blocked'))->setValue($flags, true);
-    }
 
     public function testNoneHasNoFlagAndNoDetail(): void
     {

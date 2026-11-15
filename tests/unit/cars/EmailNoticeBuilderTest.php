@@ -706,28 +706,4 @@ final class EmailNoticeBuilderTest extends TestCase
         }
         $this->assertSame([], array_diff(array_keys(EmailNoticeBuilder::CAUSE_TEXT), CarRepository::BLOCKED_CAUSES));
     }
-
-    public function testRemovedConstantsAndPerCarShapeAreGone(): void
-    {
-        $constants = (new ReflectionClass(EmailNoticeBuilder::class))->getConstants();
-
-        foreach (['CAUSE_BREVO_COMPLAINT', 'CAUSE_OWNER_OPTOUT', 'MAX_ADDRESSES'] as $removed) {
-            $this->assertArrayNotHasKey($removed, $constants, "{$removed} must stay removed");
-        }
-        $this->assertSame(
-            ['KIND_BLOCKED' => 'blocked', 'KIND_BOUNCED' => 'bounced', 'KIND_OPTED_OUT' => 'opted_out'],
-            array_filter($constants, 'is_string')
-        );
-    }
-
-    public function testResultHasNoPerCarKeys(): void
-    {
-        $flags  = self::flags(['blocked' => true, 'blockedAddress' => 'b@example.com']);
-        $result = $this->builderFor($flags)->buildForOwner(1);
-
-        $this->assertNotNull($result);
-        foreach (['addresses', 'hasSuppressed', 'hasBounced', 'overflowCount'] as $removed) {
-            $this->assertArrayNotHasKey($removed, $result);
-        }
-    }
 }

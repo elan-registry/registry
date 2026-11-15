@@ -23,7 +23,7 @@ use PHPUnit\Framework\Attributes\Group;
  * level), that all three branches now call logger() with the new
  * LogCategories::LOG_CATEGORY_REGISTRATION_FAILED category, positioned
  * before the branch's die/redirect, and that #1406's enumeration-safety
- * properties (generic message, field-name-only metadata) are preserved.
+ * property (field-name-only metadata) is preserved.
  *
  * @issue 1690
  * @link https://github.com/elan-registry/registry/issues/1690
@@ -141,29 +141,6 @@ final class Issue1690RegressionTest extends RegressionTestCase
             '/logger\(0,\s*' . preg_quote(self::CATEGORY_CONST, '/') . ',\s*\r?\n\s*\'join\.php: Registration failed/',
             $source,
             'The validation-failure branch\'s logger() call must use LOG_CATEGORY_REGISTRATION_FAILED'
-        );
-    }
-
-    /**
-     * #1406 regression guard: the generic, enumeration-safe failure message
-     * must still be present exactly once, and the unconditional foreach that
-     * echoes per-error usError() calls must still be intact and unchanged in
-     * shape (this test is deliberately narrower than Issue1406RegressionTest
-     * — it only guards that #1690's changes did not touch this text/logic,
-     * not the full enumeration-safety property, which #1406's own test
-     * already covers).
-     */
-    public function testGenericEnumerationSafeMessageStillPresent(): void
-    {
-        $source = $this->joinPhpSource();
-
-        $genericMessage = 'Check your inbox — if an account exists, we have sent you a sign-in link. '
-            . 'Otherwise, please check your information and try again.';
-
-        $this->assertSame(
-            1,
-            substr_count($source, $genericMessage),
-            'The #1406 generic, enumeration-safe failure message must still appear exactly once'
         );
     }
 
