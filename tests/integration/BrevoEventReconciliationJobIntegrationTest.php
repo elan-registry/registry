@@ -48,9 +48,9 @@ final class ThrowingBrevoEventReconciliationClient extends FakeBrevoEventReconci
  *
  * #2034: runNow() bypasses CronJobGuard::claim() against the real
  * `er_cron_job_runs` table (the unit test uses a fake DB). The admin page
- * 27-Reconcile-Brevo-Events.php calls it for "run now". setUp() and tearDown()
- * snapshot and restore the seeded `brevo_reconciliation` row, which
- * CronJobRunsIntegrationTest also changes.
+ * 27-Reconcile-Brevo-Events.php calls runNowWithSummary(), which also skips
+ * claim(). setUp() and tearDown() snapshot and restore the seeded
+ * `brevo_reconciliation` row, which CronJobRunsIntegrationTest also changes.
  *
  * @see https://github.com/elan-registry/registry/issues/1889
  * @see https://github.com/elan-registry/registry/issues/2359
@@ -428,9 +428,17 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
         }
     }
 
-    /** With the switch off, the job applies a bounce that the webhook dropped. */
+    /**
+     * With the switch off, run() claims the run and applies a bounce that the
+     * webhook dropped (#2358).
+     */
     public function testAHardBounceIsAppliedWithTheSwitchOff(): void
     {
+        $this->assertSame(
+            0,
+            (int) $this->db->query('SELECT enabled FROM er_verification_settings WHERE id = 1')->first()->enabled,
+            'Test setup: the verification switch is off'
+        );
         $this->seedSentRow('reconcile-switch-off-bounce');
 
         // run() claims the guard, and a claim is due only 20 hours after the
@@ -449,6 +457,7 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
         ])->run();
 
         $this->assertSame('1', (string) $this->getOwnerEmailFlags($this->userId)['email_bounced']);
+        $this->assertNotNull($this->fetchLastRunAt(), 'run() claimed the run');
     }
 
     // --- runNow() bypasses the guard (#2034) ----------------------------------
@@ -508,30 +517,6 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
             $this->fetchLastRunAt(),
             'runNow() must not touch last_run_at — it never calls the guard, disabled or not'
         );
-    }
-
-    /** #2358: run() claims the run and reaches execute() while the verification switch is off. */
-    public function testRunReachesExecuteWithTheVerificationSwitchOff(): void
-    {
-        $this->setCronRowState(enabled: true, lastRunAt: null);
-        $this->assertSame(
-            0,
-            (int) $this->db->query('SELECT enabled FROM er_verification_settings WHERE id = 1')->first()->enabled,
-            'Test setup: the verification switch is off'
-        );
-        $this->seedSentRow('runnow-bypass-switch-off-run');
-
-        $this->makeJob([
-            new FakeBrevoEvent(
-                email: $this->carEmail,
-                event: 'delivered',
-                messageId: 'runnow-bypass-switch-off-run',
-                date: '2026-09-08T12:00:00Z'
-            ),
-        ])->run();
-
-        $this->assertSame(1, $this->countEventRows('runnow-bypass-switch-off-run'), 'run() must do the backfill');
-        $this->assertNotNull($this->fetchLastRunAt(), 'run() claimed the run');
     }
 
     /** Control: run() is blocked by the same disabled row, so the bypass is real. */

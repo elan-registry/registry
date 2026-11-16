@@ -365,7 +365,6 @@ final class CarTransferTest extends IntegrationTestCase
     }
 
     /**
-     * #1562: the car goes to the seeded noowner account, not a hardcoded ID.
      * #1878: reassignment to noowner is not a change of owner, so solddate stays.
      */
     #[Group('fast')]
@@ -383,7 +382,7 @@ final class CarTransferTest extends IntegrationTestCase
         $this->assertSame(
             (int) $noOwner->id,
             (int) $after->user_id,
-            'Car must be reassigned to the dynamically-resolved noowner ID, not a hardcoded value'
+            'Car must be reassigned to the noowner account'
         );
         $this->assertSame(
             '2020-01-01',

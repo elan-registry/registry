@@ -13,8 +13,8 @@ use PHPUnit\Framework\Attributes\Group;
  *
  * - `join_failure_beacon`: since #2227 the endpoint has no CSRF check, so this
  *   limit is its only abuse control (ADR-019). JoinFailureReportEndpointTest
- *   proves the endpoint records the rows. total_max applies because the
- *   endpoint records only successes.
+ *   checks in the source that the endpoint records the rows. total_max
+ *   applies because the endpoint records only successes.
  * - `location_search` (#1582, #2122): buckets anonymous callers by IP, not
  *   globally. The LocationService logic is in
  *   tests/unit/location/LocationServiceRateLimitTest.php.

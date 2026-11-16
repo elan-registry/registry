@@ -144,9 +144,6 @@ final class CarMergeTest extends IntegrationTestCase
             $this->testUserId,
             $repo
         );
-        // Untrack the deleted row or tearDown() logs a spurious cleanup NOTE.
-        $this->untrackCarId($this->testMergeCarId);
-
         return $filenames;
     }
 
@@ -516,7 +513,6 @@ final class CarMergeTest extends IntegrationTestCase
             $this->testUserId,
             $repo
         );
-        $this->untrackCarId($this->testMergeCarId);
 
         $stored = $this->db->query('SELECT image FROM cars WHERE id = ?', [$this->testCarId]);
         $row = $stored->first();
@@ -594,9 +590,6 @@ final class CarMergeTest extends IntegrationTestCase
             (new Car($this->testMergeCarId))->exists(),
             'the source car must be deleted by a successful merge'
         );
-
-        // Untrack the deleted row or tearDown() logs a spurious cleanup NOTE.
-        $this->untrackCarId($this->testMergeCarId);
 
         $stored = $this->db->query('SELECT image FROM cars WHERE id = ?', [$this->testCarId]);
         $row = $stored->first();
