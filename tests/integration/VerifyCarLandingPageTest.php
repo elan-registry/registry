@@ -288,7 +288,10 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     }
 
     /**
-     * An unchanged mtime proves that the GET issued no UPDATE at all.
+     * The whole row, mtime included, must be unchanged after the GET, and the
+     * GET must write no VERIFIED or VERIFIED SOLD history row. An UPDATE that
+     * writes the same values leaves mtime unchanged, so the row check alone
+     * cannot prove that no UPDATE ran.
      */
     #[DataProvider('getRequestQuerySuffixProvider')]
     public function testGetDoesNotMutateCarRow(string $querySuffix): void

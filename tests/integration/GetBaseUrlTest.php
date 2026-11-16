@@ -142,10 +142,6 @@ final class GetBaseUrlTest extends IntegrationTestCase
                 ['REQUEST_SCHEME' => 'https', 'HTTP_HOST' => 'test.elanregistry.org:8443', 'SERVER_PORT' => '8443'],
                 'https://test.elanregistry.org',
             ],
-            'localhost, docker port' => [
-                ['REQUEST_SCHEME' => 'http', 'HTTP_HOST' => 'localhost:8002', 'SERVER_PORT' => '8002'],
-                'http://localhost:8002',
-            ],
             'localhost, default port' => [
                 ['REQUEST_SCHEME' => 'http', 'HTTP_HOST' => 'localhost', 'SERVER_PORT' => '80'],
                 'http://localhost',

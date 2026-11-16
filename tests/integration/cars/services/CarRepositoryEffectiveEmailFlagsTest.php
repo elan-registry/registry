@@ -146,7 +146,8 @@ final class CarRepositoryEffectiveEmailFlagsTest extends IntegrationTestCase
 
     /**
      * A users.email with a trailing CRLF equals the stored address.
-     * EffectiveEmailFlagsSharedTableTest covers the other trailing white space.
+     * EffectiveEmailFlagsSharedTableTest covers the match for each trailing
+     * white space. This row checks that currentEmail is returned as stored.
      *
      * @return array<string, array{0: string}>
      */

@@ -54,7 +54,6 @@ class ImageOrientationTest extends TestCase
      */
     public static function resizeWithoutExifProvider(): array
     {
-        // The test resizes each image to half size.
         return [
             'jpeg with red stripe resizes without EXIF data' => [100, 50, true, 'jpg', 'test_normal'],
             'plain jpeg resizes without EXIF data'           => [100, 100, false, 'jpg', 'no_exif'],
@@ -63,7 +62,8 @@ class ImageOrientationTest extends TestCase
     }
 
     /**
-     * Resize must process a synthetic image that has no EXIF data.
+     * Resize must process a synthetic image that has no EXIF data. PNG has no
+     * EXIF orientation step, so its row checks that path too.
      */
     #[Group('fast')]
     #[DataProvider('resizeWithoutExifProvider')]
