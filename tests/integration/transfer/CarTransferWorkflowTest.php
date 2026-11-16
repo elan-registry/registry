@@ -46,6 +46,11 @@ final class CarTransferWorkflowTest extends TransferIntegrationTestCase
         $result = $this->repo->updateStatus($requestId, TransferStatus::Completed, 'Second admin');
 
         $this->assertFalse($result, 'updateStatus() must return false when the row is already in a terminal status (TOCTOU gate)');
+
+        $row = $this->repo->findById($requestId);
+        $this->assertNotNull($row, 'Row should still exist after the rejected claim');
+        $this->assertSame('First admin', $row->admin_notes, 'The rejected claim must not overwrite admin_notes');
+        $this->assertSame('completed', $row->status, 'The rejected claim must not change status');
     }
 
     /**

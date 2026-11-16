@@ -168,25 +168,6 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
     }
   });
 
-
-  test('owner contact endpoint requires authentication', async ({ request }) => {
-    // The bare `request` fixture has no session cookie, unlike `page` after
-    // the beforeEach login. securePage() sends an anonymous caller to the
-    // login page before the CSRF check, so the reply is a redirect, not JSON.
-    const response = await request.post('app/api/contact/send-owner-email.php', {
-      form: {
-        car_id: '1',
-        to_user_id: '1',
-        message: 'Interest in your Lotus Elan',
-        csrf: 'test_token'
-      },
-      maxRedirects: 0
-    });
-
-    expect(response.status()).toBe(302);
-    expect(response.headers()['location']).toMatch(/users\/login\.php$/);
-  });
-
   test('list.php rows carry badges, badges_html, and no freshness fields', async ({ page }) => {
     await page.goto('app/owner/cars/index.php', { waitUntil: 'networkidle' });
 
@@ -682,6 +663,26 @@ test.describe('Admin AJAX Endpoints — Unauthenticated Access', () => {
     const jsonResponse = await response.json();
     expect(jsonResponse).toHaveProperty('success', false);
     expect(jsonResponse).toHaveProperty('message', 'Unauthorized access');
+  });
+});
+
+test.describe('Owner Contact Endpoint — Unauthenticated Access', () => {
+  test('owner contact endpoint requires authentication', async ({ request }) => {
+    // The bare `request` fixture has no session cookie. securePage() sends an
+    // anonymous caller to the login page before the CSRF check, so the reply
+    // is a redirect, not JSON.
+    const response = await request.post('app/api/contact/send-owner-email.php', {
+      form: {
+        car_id: '1',
+        to_user_id: '1',
+        message: 'Interest in your Lotus Elan',
+        csrf: 'test_token'
+      },
+      maxRedirects: 0
+    });
+
+    expect(response.status()).toBe(302);
+    expect(response.headers()['location']).toMatch(/users\/login\.php$/);
   });
 });
 

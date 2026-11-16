@@ -151,6 +151,7 @@ final class DocumentPortalTemplateTest extends TestCase
     {
         $this->expectException(\InvalidArgumentException::class);
 
+        // @phpstan-ignore argument.type (intentional missing 'title' key; asserts the guard throws)
         DocumentPortalTemplate::renderPortalHeader([
             'description' => 'Desc',
         ]);
@@ -160,6 +161,7 @@ final class DocumentPortalTemplateTest extends TestCase
     {
         $this->expectException(\InvalidArgumentException::class);
 
+        // @phpstan-ignore argument.type (intentional missing 'description' key; asserts the guard throws)
         DocumentPortalTemplate::renderPortalHeader([
             'title' => 'Title',
         ]);
@@ -368,6 +370,7 @@ final class DocumentPortalTemplateTest extends TestCase
     {
         $this->expectException(\InvalidArgumentException::class);
 
+        // @phpstan-ignore argument.type (intentional missing 'title' key; asserts the guard throws)
         DocumentPortalTemplate::renderDocumentCard([
             'icon'       => 'fa-car',
             'url'        => '/test',
@@ -379,6 +382,7 @@ final class DocumentPortalTemplateTest extends TestCase
     {
         $this->expectException(\InvalidArgumentException::class);
 
+        // @phpstan-ignore argument.type (intentional missing 'icon' key; asserts the guard throws)
         DocumentPortalTemplate::renderDocumentCard([
             'title'      => 'Title',
             'url'        => '/test',
@@ -390,6 +394,7 @@ final class DocumentPortalTemplateTest extends TestCase
     {
         $this->expectException(\InvalidArgumentException::class);
 
+        // @phpstan-ignore argument.type (intentional missing 'url' key; asserts the guard throws)
         DocumentPortalTemplate::renderDocumentCard([
             'title'      => 'Title',
             'icon'       => 'fa-car',
@@ -401,6 +406,7 @@ final class DocumentPortalTemplateTest extends TestCase
     {
         $this->expectException(\InvalidArgumentException::class);
 
+        // @phpstan-ignore argument.type (intentional missing 'buttonText' key; asserts the guard throws)
         DocumentPortalTemplate::renderDocumentCard([
             'title' => 'Title',
             'icon'  => 'fa-car',
@@ -430,7 +436,7 @@ final class DocumentPortalTemplateTest extends TestCase
      */
     public static function documentCardGridProvider(): array
     {
-        $card = ['title' => 'T', 'icon' => 'fa-car', 'url' => '/', 'buttonText' => 'V'];
+        $card = self::BASE_CARD;
 
         return [
             'wraps in row' => [[$card], null, ["class='row"], []],
@@ -578,6 +584,7 @@ final class DocumentPortalTemplateTest extends TestCase
     {
         $this->expectException(\InvalidArgumentException::class);
 
+        // @phpstan-ignore argument.type (intentional missing 'label' key; asserts the guard throws)
         DocumentPortalTemplate::renderNavFooter([
             ['url' => '/'],
         ]);
@@ -587,6 +594,7 @@ final class DocumentPortalTemplateTest extends TestCase
     {
         $this->expectException(\InvalidArgumentException::class);
 
+        // @phpstan-ignore argument.type (intentional missing 'url' key; asserts the guard throws)
         DocumentPortalTemplate::renderNavFooter([
             ['label' => 'Home'],
         ]);

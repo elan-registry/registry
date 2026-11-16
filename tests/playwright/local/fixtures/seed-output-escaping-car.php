@@ -12,6 +12,12 @@ use ElanRegistry\Car\CarRepository;
  * shows as text and creates no element. Each payload fits its column width:
  * color is varchar(25), engine and chassis are varchar(15).
  *
+ * The owner website holds a quote-break payload (website is varchar(100)).
+ * It has an https scheme, so OwnerView::websiteUrl() keeps it and the Owner
+ * Information card renders it as a link. Thus only the href escaping stops
+ * the attribute breakout. A javascript: payload would not test the escaping,
+ * because the scheme filter removes the link before it renders.
+ *
  * Usage:
  *   php seed-output-escaping-car.php            seed (deletes earlier marker rows first)
  *   php seed-output-escaping-car.php --cleanup  delete the marker rows only
@@ -73,6 +79,7 @@ const SEED_EMAIL = 'playwright-seed-output-escaping@example.invalid';
 const SEED_COLOR = '<script>alert(1)</script>';
 const SEED_ENGINE = '<img onerror=1>';
 const SEED_CHASSIS = '<i onerror=1>';
+const SEED_WEBSITE = 'https://x.test/"onmouseover="alert(1)';
 
 $db = dbi();
 
@@ -109,6 +116,10 @@ if ($seedUserIds !== []) {
         'SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
         ['er_deleted_user_addresses']
     );
+    if ($db->error()) {
+        fwrite(STDERR, "ERROR: Lookup of er_deleted_user_addresses failed: {$db->errorString()}\n");
+        exit(1);
+    }
     if ($holdingTable->count() > 0) {
         $db->query(
             'DELETE FROM er_deleted_user_addresses WHERE user_id IN (' . implode(',', array_fill(0, count($seedUserIds), '?')) . ')',
@@ -137,7 +148,7 @@ $userInserted = $db->insert('users', [
     'lname'          => 'Seed',
     'active'         => 1,
     'email_verified' => 1,
-    // 0 means banned in UserSpice.
+    // Use 1 for a normal active user. In UserSpice, 0 means banned.
     'permissions'    => 1,
     'join_date'      => $now,
 ]);
@@ -156,11 +167,13 @@ if (!$db->insert('user_permission_matches', ['user_id' => $userId, 'permission_i
     exit(1);
 }
 
-// profiles.user_id is UNIQUE, so upsert.
+// profiles.user_id is UNIQUE, so upsert. The website is stored raw, as the
+// app stores it. Escaping occurs only at render.
 $db->query(
-    'INSERT INTO profiles (user_id, bio, city, state, country) VALUES (?, ?, ?, ?, ?) '
-    . 'ON DUPLICATE KEY UPDATE bio = VALUES(bio), city = VALUES(city), state = VALUES(state), country = VALUES(country)',
-    [$userId, '', 'Hethel', 'Norfolk', 'United Kingdom']
+    'INSERT INTO profiles (user_id, bio, city, state, country, website) VALUES (?, ?, ?, ?, ?, ?) '
+    . 'ON DUPLICATE KEY UPDATE bio = VALUES(bio), city = VALUES(city), state = VALUES(state), '
+    . 'country = VALUES(country), website = VALUES(website)',
+    [$userId, '', 'Hethel', 'Norfolk', 'United Kingdom', SEED_WEBSITE]
 );
 if ($db->error()) {
     fwrite(STDERR, "ERROR: Failed to insert seed owner profile: {$db->errorString()}\n");
@@ -181,6 +194,9 @@ $carInserted = $carRepository->insertCar([
     'ctime'              => $now,
     'owner_last_updated' => $now,
     'email'              => SEED_EMAIL,
+    // The details page reads the website from the car row, not from profiles.
+    // Owner::syncOwnerFieldsToCars() keeps the two the same in the app.
+    'website'            => SEED_WEBSITE,
 ]);
 if (!$carInserted) {
     fwrite(STDERR, "ERROR: Failed to insert seed car: {$carRepository->errorString()}\n");

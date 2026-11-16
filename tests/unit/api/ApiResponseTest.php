@@ -259,9 +259,10 @@ final class ApiResponseTest extends TestCase
     }
 
     /**
-     * Builder calls with a reader for the state that each one changes.
+     * Builder calls with a reader for the state that each one changes, and
+     * the exact state the original must keep.
      *
-     * @return array<string, array{\Closure(ApiResponse): ApiResponse, \Closure(ApiResponse): mixed}>
+     * @return array<string, array{\Closure(ApiResponse): ApiResponse, \Closure(ApiResponse): mixed, mixed}>
      */
     public static function immutableBuilderProvider(): array
     {
@@ -269,14 +270,17 @@ final class ApiResponseTest extends TestCase
             'withData' => [
                 static fn (ApiResponse $r): ApiResponse => $r->withData('key', 'value'),
                 static fn (ApiResponse $r): mixed => $r->getData(),
+                [],
             ],
             'withDataArray' => [
                 static fn (ApiResponse $r): ApiResponse => $r->withDataArray(['key' => 'value']),
                 static fn (ApiResponse $r): mixed => $r->getData(),
+                [],
             ],
             'withLogging' => [
                 static fn (ApiResponse $r): ApiResponse => $r->withLogging(1, LogCategories::LOG_CATEGORY_DIAGNOSTICS, 'Message'),
                 static fn (ApiResponse $r): mixed => $r->getPendingLog(),
+                null,
             ],
         ];
     }
@@ -284,19 +288,20 @@ final class ApiResponseTest extends TestCase
     /**
      * Test each builder returns a new instance and leaves the original unchanged
      *
-     * @param \Closure(ApiResponse): ApiResponse $build Applies the builder under test
-     * @param \Closure(ApiResponse): mixed       $read  Reads the state the builder sets
+     * @param \Closure(ApiResponse): ApiResponse $build            Applies the builder under test
+     * @param \Closure(ApiResponse): mixed       $read             Reads the state the builder sets
+     * @param mixed                             $expectedOriginal The state the original must keep
      *
      * @return void
      */
     #[Group('fast')]
     #[DataProvider('immutableBuilderProvider')]
-    public function testBuilderIsImmutable(\Closure $build, \Closure $read): void
+    public function testBuilderIsImmutable(\Closure $build, \Closure $read, mixed $expectedOriginal): void
     {
         $original = ApiResponse::success('Done');
         $modified = $build($original);
 
-        $this->assertEmpty($read($original));
+        $this->assertSame($expectedOriginal, $read($original));
         $this->assertNotEmpty($read($modified));
         $this->assertNotSame($original, $modified);
     }

@@ -4,17 +4,18 @@
 // that details.php shows each payload as text and creates no element from it.
 // The fields were "accidentally safe" before the encode-at-output reform
 // because Input::sanitize() pre-encoded values at storage time.
+//
+// The seed owner's website holds a quote-break payload, to check the escaping
+// of the website href.
 
 const { test, expect } = require('@playwright/test');
 const BASE_URL = require('./base-url.js');
 const { runPhpFixture } = require('./fixture-runner.js');
 const {
-    CAR_ID_WITH_WEBSITE,
     CAR_ID_WITHOUT_OWNERSHIP_DATES,
     CAR_ID_WITH_OWNERSHIP_DATES,
 } = require('./fixtures.js');
 
-const WEBSITE_DETAILS_URL = `app/owner/cars/details.php?car_id=${CAR_ID_WITH_WEBSITE}`;
 const NO_DATES_DETAILS_URL = `app/owner/cars/details.php?car_id=${CAR_ID_WITHOUT_OWNERSHIP_DATES}`;
 const WITH_DATES_DETAILS_URL = `app/owner/cars/details.php?car_id=${CAR_ID_WITH_OWNERSHIP_DATES}`;
 
@@ -24,6 +25,7 @@ const PAYLOADS = {
     color: '<script>alert(1)</script>',
     engine: '<img onerror=1>',
     chassis: '<i onerror=1>',
+    website: 'https://x.test/"onmouseover="alert(1)',
 };
 const isRemoteBase = !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(BASE_URL);
 
@@ -77,30 +79,25 @@ test.describe('Car details — output escaping of seeded HTML payloads (issue #8
 
         expect(dialogs).toHaveLength(0);
     });
-});
 
-test.describe('Car details — website link escaping', () => {
-    test('website href does not contain unescaped quotes or javascript protocol', async ({ page }) => {
-        // Website is owner-level (issue #1963) and now rendered in the Owner
-        // Information card as a plain link (its own URL as link text), not the
-        // "Visit Website" button that used to live in the vehicle info card's
-        // Ownership & History section.
-        //
-        // CAR_ID_WITH_WEBSITE has an owner website in the test DB. The
-        // toBeGreaterThan(0) guard below fails the test if the fixture ever
-        // points at a car with no website, so the loop cannot run zero times.
-        await page.goto(WEBSITE_DETAILS_URL, { waitUntil: 'networkidle' });
+    test('website href keeps the quote-break payload inside the attribute', async ({ page }) => {
+        // Website is owner-level (issue #1963). The Owner Information card
+        // renders it as a link with its own URL as the link text. The payload
+        // has an https scheme, so OwnerView::websiteUrl() keeps it, and only
+        // the href escaping stops the attribute breakout. Unit tests in
+        // OwnerViewTest cover the javascript: scheme filter.
+        await page.goto(`app/owner/cars/details.php?car_id=${seeded.carId}`, { waitUntil: 'networkidle' });
 
-        const websiteLinks = page.locator('dl a[target="_blank"][rel="noopener noreferrer"]');
-        const count = await websiteLinks.count();
-        expect(count).toBeGreaterThan(0);
+        const ownerCard = page.locator('.registry-card', { hasText: 'Owner Information' });
+        // Positive control: the owner card and its website link rendered.
+        await expect(ownerCard).toHaveCount(1);
+        const websiteLink = ownerCard.locator('dl a[target="_blank"][rel="noopener noreferrer"]');
+        await expect(websiteLink).toHaveCount(1);
 
-        for (let i = 0; i < count; i++) {
-            const href = await websiteLinks.nth(i).getAttribute('href');
-            expect(href).toBeTruthy();
-            expect(href).not.toMatch(/javascript:/i);
-            expect(href).not.toContain('"');
-        }
+        // Escaped output decodes back to the full payload. Raw output ends the
+        // href at the first quote and adds an onmouseover attribute.
+        await expect(websiteLink).toHaveAttribute('href', PAYLOADS.website);
+        await expect(ownerCard.locator('[onmouseover]')).toHaveCount(0);
     });
 });
 
