@@ -26,6 +26,9 @@ final class EncodeAtOutputRegressionTest extends RegressionTestCase
     }
 
     /**
+     * One field is enough: Input::raw() does not depend on the field name, so
+     * each field runs the same code. This test does not call the updaters.
+     *
      * @return array<string, array{string}>
      */
     public static function zeroValueFieldProvider(): array
