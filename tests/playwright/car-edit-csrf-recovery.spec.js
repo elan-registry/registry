@@ -50,10 +50,18 @@ test.describe('Car form save: CSRF and session recovery (#1455)', () => {
         const saves = await routeSave(page, (call) => (call.number === 1 ? 'pass' : SAVE_OK));
         await openReadyEditPage(page);
         await page.locator('#csrf').evaluate((el) => { el.value = 'stale'; });
+        // The unsaved-changes guard must also turn off when the save succeeds
+        // on the retry, not only on the first send.
+        const dialogs = [];
+        page.on('dialog', (dialog) => {
+            dialogs.push(dialog.type());
+            dialog.accept();
+        });
 
         await page.locator('#submit').click();
         await page.waitForURL(/app\/owner\/cars\/details\.php\?car_id=1091/, { timeout: 15000 });
 
+        expect(dialogs, 'a save that succeeds on the retry leaves without a dialog').toEqual([]);
         expect(saves.calls.map((c) => c.csrf)[0], 'the first send carries the stale token').toBe('stale');
         expect(saves.calls, 'one send, one retry').toHaveLength(2);
         expect(saves.calls[1].csrf, 'the retry carries the refreshed token').not.toBe('stale');

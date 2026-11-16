@@ -602,6 +602,22 @@ test.describe('Redirect verification — GSC 404 and soft 404 cleanup (#1369)', 
       to: '/docs/reference/assets/Elan_26_36_Workshop_Manual.pdf',
       label: '/docs/assets/ → /docs/reference/assets/ (duplicate PDF path)',
     },
+    // Legacy URLs that returned 404 in Search Console (#2247)
+    {
+      from: 'stats.php',
+      to: '/app/owner/reports/statistics.php',
+      label: '/stats.php legacy statistics page (#2247)',
+    },
+    {
+      from: 'stories',
+      to: '/docs/car-stories.php',
+      label: '/stories bare path (#2247)',
+    },
+    {
+      from: 'stories/',
+      to: '/docs/car-stories.php',
+      label: '/stories/ bare directory (#2247)',
+    },
   ];
 
   redirects.forEach(({ from, to, label }) => {
