@@ -2,13 +2,18 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/IntegrationTestCase.php';
+
 use PHPUnit\Framework\Attributes\Group;
 
 /**
  * #1406: the 'registration_recovery_email' limit enforces through the real
  * check -> record -> check loop. checkRateLimit() only counts recorded rows, so
- * config alone proves nothing. Keep email_max/email_window in step with
- * tests/unit/system/RateLimitConfigTest.php.
+ * config alone proves nothing. email_max comes from
+ * usersc/includes/rate_limits.php.
+ *
+ * No test here covers how usersc/join.php normalizes the email before it
+ * builds the rate-limit key. #2733 holds that gap.
  *
  * Each test passes its own IntegrationTestCase::fakeDocumentationIp().
  * Without an explicit IP, one shared bucket (ip_max) fills across tests and
@@ -17,8 +22,6 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('database')]
 final class RateLimitEnforcementTest extends IntegrationTestCase
 {
-    private const EMAIL_MAX = 4;
-
     /** @var array{ip: string} */
     private array $ip;
 
@@ -28,16 +31,32 @@ final class RateLimitEnforcementTest extends IntegrationTestCase
         $this->ip = ['ip' => $this->fakeDocumentationIp()];
     }
 
+    /**
+     * Read email_max for registration_recovery_email from the project-owned
+     * rate-limit file.
+     */
+    private function configuredEmailMax(): int
+    {
+        $rateLimits = [];
+        require dirname(__DIR__, 2) . '/usersc/includes/rate_limits.php';
+
+        $this->assertArrayHasKey('registration_recovery_email', $rateLimits);
+        $this->assertArrayHasKey('email_max', $rateLimits['registration_recovery_email']);
+
+        return (int) $rateLimits['registration_recovery_email']['email_max'];
+    }
+
     public function testEmailMaxLimitBlocksAfterConfiguredThreshold(): void
     {
         $this->requireDatabase();
 
+        $emailMax = $this->configuredEmailMax();
         $email = 'rate-limit-test-' . uniqid('', true) . '@example.com';
 
-        for ($i = 0; $i < self::EMAIL_MAX; $i++) {
+        for ($i = 0; $i < $emailMax; $i++) {
             $this->assertTrue(
                 checkRateLimit('registration_recovery_email', null, $email, $this->ip),
-                'Attempt ' . ($i + 1) . ' of ' . self::EMAIL_MAX . ' should be allowed (within the configured limit)'
+                'Attempt ' . ($i + 1) . ' of ' . $emailMax . ' should be allowed (within the configured limit)'
             );
             // Mirrors usersc/join.php: success=false rows count toward email_max;
             // success=true rows count only toward the higher total_max.
@@ -46,7 +65,7 @@ final class RateLimitEnforcementTest extends IntegrationTestCase
 
         $this->assertFalse(
             checkRateLimit('registration_recovery_email', null, $email, $this->ip),
-            'Attempt ' . (self::EMAIL_MAX + 1) . ' must be blocked — this is the control that prevents '
+            'Attempt ' . ($emailMax + 1) . ' must be blocked — this is the control that prevents '
                 . 'email-bombing a victim via repeated registration attempts with their address (#1406)'
         );
     }
@@ -55,8 +74,9 @@ final class RateLimitEnforcementTest extends IntegrationTestCase
     {
         $this->requireDatabase();
 
+        $emailMax = $this->configuredEmailMax();
         $exhaustedEmail = 'rate-limit-exhausted-' . uniqid('', true) . '@example.com';
-        for ($i = 0; $i < self::EMAIL_MAX; $i++) {
+        for ($i = 0; $i < $emailMax; $i++) {
             recordRateLimit('registration_recovery_email', false, null, $exhaustedEmail, $this->ip);
         }
         $this->assertFalse(checkRateLimit('registration_recovery_email', null, $exhaustedEmail, $this->ip));
@@ -65,29 +85,6 @@ final class RateLimitEnforcementTest extends IntegrationTestCase
         $this->assertTrue(
             checkRateLimit('registration_recovery_email', null, $freshEmail, $this->ip),
             'A different email must not be affected by another email exhausting its own limit'
-        );
-    }
-
-    /**
-     * Different casings of one email, normalized as join.php does, share one
-     * bucket (users.email uses a case-insensitive collation).
-     */
-    public function testCaseVariationsOfSameEmailShareOneRateLimitBucketWhenNormalized(): void
-    {
-        $this->requireDatabase();
-
-        $baseEmail = 'rate-limit-case-' . uniqid('', true) . '@example.com';
-        $casings = [$baseEmail, strtoupper($baseEmail), ucfirst($baseEmail)];
-
-        for ($i = 0; $i < self::EMAIL_MAX; $i++) {
-            recordRateLimit('registration_recovery_email', false, null, mb_strtolower($casings[$i % count($casings)]), $this->ip);
-        }
-
-        $this->assertFalse(
-            checkRateLimit('registration_recovery_email', null, mb_strtolower($baseEmail), $this->ip),
-            'Attempts recorded under varied casing of the same email, once normalized, must exhaust '
-                . 'the single shared bucket for that email — proving case variation cannot be used to '
-                . 'dodge email_max.'
         );
     }
 }

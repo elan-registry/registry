@@ -46,6 +46,12 @@ final class ThrowingBrevoEventReconciliationClient extends FakeBrevoEventReconci
  * seed a verification `sent` row (step (a) of the matcher). The owner joined
  * and got the address before the seeded send, so the date guards pass.
  *
+ * #2034: runNow() bypasses CronJobGuard::claim() against the real
+ * `er_cron_job_runs` table (the unit test uses a fake DB). The admin page
+ * 27-Reconcile-Brevo-Events.php calls runNowWithSummary(), which also skips
+ * claim(). setUp() and tearDown() snapshot and restore the seeded
+ * `brevo_reconciliation` row, which CronJobRunsIntegrationTest also changes.
+ *
  * @see https://github.com/elan-registry/registry/issues/1889
  * @see https://github.com/elan-registry/registry/issues/2359
  */
@@ -79,6 +85,12 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
     /** Original er_verification_settings.unmatched_recipient_count, restored in tearDown(). */
     private int $originalUnmatchedCount = 0;
 
+    /** Original enabled value for the 'brevo_reconciliation' er_cron_job_runs row, restored in tearDown(). */
+    private bool $originalCronEnabled = true;
+
+    /** Original last_run_at value for the 'brevo_reconciliation' er_cron_job_runs row, restored in tearDown(). */
+    private ?string $originalCronLastRunAt = null;
+
     public static function tearDownAfterClass(): void
     {
         if (self::$madePluginTable) {
@@ -106,6 +118,25 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
             : 0;
         $this->db->query('UPDATE er_verification_settings SET enabled = 0 WHERE id = 1');
 
+        // After the verification snapshot: a failed assert here still runs
+        // tearDown(), which must not write default values over that row.
+        $this->db->query(
+            'SELECT enabled, last_run_at FROM er_cron_job_runs WHERE job_name = ?',
+            [BrevoEventReconciliationJob::JOB_NAME]
+        );
+        $this->assertFalse(
+            $this->db->error(),
+            'Failed to read original er_cron_job_runs row: ' . $this->db->errorString()
+                . ' — likely means this migration has not been applied to the test schema'
+        );
+        $cronRow = $this->db->first();
+        $this->assertIsObject(
+            $cronRow,
+            "er_cron_job_runs must already have a seeded '" . BrevoEventReconciliationJob::JOB_NAME . "' row"
+        );
+        $this->originalCronEnabled = (bool) $cronRow->enabled;
+        $this->originalCronLastRunAt = !empty($cronRow->last_run_at) ? (string) $cronRow->last_run_at : null;
+
         $this->repo = new CarRepository($this->db);
         $this->applier = new EmailEventApplier($this->repo, new CarVerificationManager($this->repo));
 
@@ -119,6 +150,10 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
     protected function tearDown(): void
     {
         if ($this->databaseConnected) {
+            $this->db->query(
+                'UPDATE er_cron_job_runs SET enabled = ?, last_run_at = ? WHERE job_name = ?',
+                [$this->originalCronEnabled ? 1 : 0, $this->originalCronLastRunAt, BrevoEventReconciliationJob::JOB_NAME]
+            );
             $this->db->query(
                 'UPDATE er_verification_settings SET enabled = ?, unmatched_recipient_count = ? WHERE id = 1',
                 [$this->originalVerificationEnabled ? 1 : 0, $this->originalUnmatchedCount]
@@ -173,6 +208,27 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
         );
         $this->assertFalse($this->db->error(), 'Test setup: plugin row: ' . $this->db->errorString());
         $this->pluginMessageIds[] = $messageId;
+    }
+
+    private function setCronRowState(bool $enabled, ?string $lastRunAt): void
+    {
+        $this->db->query(
+            'UPDATE er_cron_job_runs SET enabled = ?, last_run_at = ? WHERE job_name = ?',
+            [$enabled ? 1 : 0, $lastRunAt, BrevoEventReconciliationJob::JOB_NAME]
+        );
+        $this->assertFalse($this->db->error(), 'Failed to set er_cron_job_runs fixture: ' . $this->db->errorString());
+    }
+
+    private function fetchLastRunAt(): ?string
+    {
+        $this->db->query(
+            'SELECT last_run_at FROM er_cron_job_runs WHERE job_name = ?',
+            [BrevoEventReconciliationJob::JOB_NAME]
+        );
+        $row = $this->db->first();
+        $this->assertIsObject($row);
+
+        return !empty($row->last_run_at) ? (string) $row->last_run_at : null;
     }
 
     /** Count the owner's event rows for a message ID, without the `sent` row. */
@@ -372,42 +428,117 @@ final class BrevoEventReconciliationJobIntegrationTest extends IntegrationTestCa
         }
     }
 
-    /** With the switch off, the job applies a bounce that the webhook dropped. */
+    /**
+     * With the switch off, run() claims the run and applies a bounce that the
+     * webhook dropped (#2358).
+     */
     public function testAHardBounceIsAppliedWithTheSwitchOff(): void
     {
+        $this->assertSame(
+            0,
+            (int) $this->db->query('SELECT enabled FROM er_verification_settings WHERE id = 1')->first()->enabled,
+            'Test setup: the verification switch is off'
+        );
         $this->seedSentRow('reconcile-switch-off-bounce');
 
         // run() claims the guard, and a claim is due only 20 hours after the
         // last one. A claim of an earlier run (of this test, or of the cron
         // container) would make run() a quiet no-op. So the test makes the job
-        // due, and puts the old value back.
-        $row = $this->db->query(
-            'SELECT last_run_at FROM er_cron_job_runs WHERE job_name = ?',
-            [BrevoEventReconciliationJob::JOB_NAME]
-        )->first();
-        $this->assertIsObject($row, 'Setup: the job has a seeded er_cron_job_runs row');
-        $this->db->query(
-            'UPDATE er_cron_job_runs SET last_run_at = NULL WHERE job_name = ?',
-            [BrevoEventReconciliationJob::JOB_NAME]
-        );
+        // due. tearDown() puts the old value back.
+        $this->setCronRowState(true, null);
 
-        try {
-            $this->makeJob([
-                new FakeBrevoEvent(
-                    email: $this->carEmail,
-                    event: 'hardBounces',
-                    messageId: 'reconcile-switch-off-bounce',
-                    date: '2026-09-08T12:00:00Z'
-                ),
-            ])->run();
-        } finally {
-            $this->db->query(
-                'UPDATE er_cron_job_runs SET last_run_at = ? WHERE job_name = ?',
-                [$row->last_run_at, BrevoEventReconciliationJob::JOB_NAME]
-            );
-        }
+        $this->makeJob([
+            new FakeBrevoEvent(
+                email: $this->carEmail,
+                event: 'hardBounces',
+                messageId: 'reconcile-switch-off-bounce',
+                date: '2026-09-08T12:00:00Z'
+            ),
+        ])->run();
 
         $this->assertSame('1', (string) $this->getOwnerEmailFlags($this->userId)['email_bounced']);
+        $this->assertNotNull($this->fetchLastRunAt(), 'run() claimed the run');
+    }
+
+    // --- runNow() bypasses the guard (#2034) ----------------------------------
+
+    /**
+     * last_run_at = now makes claim() fail, but runNow() must still do the
+     * work: an er_email_events row must appear.
+     */
+    public function testRunNowExecutesRealWorkWhenClaimWouldFailDueToRecentRun(): void
+    {
+        $justClaimed = (new \DateTimeImmutable('now'))->format('Y-m-d H:i:s');
+        $this->setCronRowState(enabled: true, lastRunAt: $justClaimed);
+        $this->seedSentRow('runnow-bypass-recent-claim');
+
+        $this->makeJob([
+            new FakeBrevoEvent(
+                email: $this->carEmail,
+                event: 'delivered',
+                messageId: 'runnow-bypass-recent-claim',
+                date: '2026-09-08T12:00:00Z'
+            ),
+        ])->runNow();
+
+        $this->assertSame(
+            1,
+            $this->countEventRows('runnow-bypass-recent-claim'),
+            'runNow() must record the event even though claim() would have refused (too recently run)'
+        );
+        $this->assertSame(
+            $justClaimed,
+            $this->fetchLastRunAt(),
+            'runNow() must not touch last_run_at at all — it never calls the guard'
+        );
+    }
+
+    /** enabled = 0 blocks run(); runNow() must bypass it (an operator override). */
+    public function testRunNowExecutesRealWorkWhenJobIsDisabled(): void
+    {
+        $this->setCronRowState(enabled: false, lastRunAt: null);
+        $this->seedSentRow('runnow-bypass-disabled');
+
+        $this->makeJob([
+            new FakeBrevoEvent(
+                email: $this->carEmail,
+                event: 'delivered',
+                messageId: 'runnow-bypass-disabled',
+                date: '2026-09-08T12:00:00Z'
+            ),
+        ])->runNow();
+
+        $this->assertSame(
+            1,
+            $this->countEventRows('runnow-bypass-disabled'),
+            'runNow() must record the event even though the job is disabled'
+        );
+        $this->assertNull(
+            $this->fetchLastRunAt(),
+            'runNow() must not touch last_run_at — it never calls the guard, disabled or not'
+        );
+    }
+
+    /** Control: run() is blocked by the same disabled row, so the bypass is real. */
+    public function testRunIsBlockedByTheSameDisabledRowRunNowBypasses(): void
+    {
+        $this->setCronRowState(enabled: false, lastRunAt: null);
+        $this->seedSentRow('runnow-bypass-control');
+
+        $this->makeJob([
+            new FakeBrevoEvent(
+                email: $this->carEmail,
+                event: 'delivered',
+                messageId: 'runnow-bypass-control',
+                date: '2026-09-08T12:00:00Z'
+            ),
+        ])->run();
+
+        $this->assertSame(
+            0,
+            $this->countEventRows('runnow-bypass-control'),
+            'run() must be blocked by the disabled row that runNow() bypasses in the sibling test'
+        );
     }
 
     // --- Retention prune ------------------------------------------------------

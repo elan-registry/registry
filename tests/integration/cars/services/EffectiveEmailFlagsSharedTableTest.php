@@ -58,6 +58,7 @@ final class EffectiveEmailFlagsSharedTableTest extends IntegrationTestCase
             'users.email with leading tab'          => ["\t" . self::ADDRESS, self::ADDRESS, true],
             'stored address with case and spaces'   => [self::ADDRESS, "  Owner@Example.COM \t", true],
             'stored address with trailing newline'  => [self::ADDRESS, self::ADDRESS . "\n", true],
+            'stored address with vertical tab and CR' => [self::ADDRESS, "\x0B" . self::ADDRESS . "\r", true],
             'stored address of spaces only'         => [self::ADDRESS, '   ', true],
             'stored address of a tab only'          => [self::ADDRESS, "\t", true],
             'stored address NULL'                   => [self::ADDRESS, null, true],
@@ -65,6 +66,7 @@ final class EffectiveEmailFlagsSharedTableTest extends IntegrationTestCase
             'mismatch'                              => [self::ADDRESS, 'other@example.com', false],
             'mismatch: prefix of the address'       => [self::ADDRESS, 'owner@example.co', false],
             'mismatch: space inside the address'    => [self::ADDRESS, 'owner @example.com', false],
+            'mismatch: holds the address'           => [self::ADDRESS, 'x' . self::ADDRESS, false],
             'mismatch with white space on both'     => ["\t" . self::ADDRESS . "\n", ' other@example.com ', false],
         ];
     }

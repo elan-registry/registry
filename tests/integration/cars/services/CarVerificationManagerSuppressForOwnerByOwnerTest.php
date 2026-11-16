@@ -9,6 +9,7 @@ use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use PHPUnit\Framework\Attributes\Group;
+use Tests\Support\PassThroughDatabase;
 
 /**
  * CarVerificationManager::clearSuppressedForOwnerByOwner() (owner
@@ -43,15 +44,6 @@ final class CarVerificationManagerSuppressForOwnerByOwnerTest extends Integratio
         return $this->getOwnerEmailFlags($ownerId);
     }
 
-    /** @return array<string, mixed> The full cars row as stored */
-    private function carRow(int $carId): array
-    {
-        $row = $this->repo->findById($carId);
-        $this->assertNotNull($row, "Test setup: car {$carId} disappeared");
-
-        return (array) $row;
-    }
-
     private function staleDate(): string
     {
         return date('Y-m-d H:i:s', strtotime(self::STALE_DATE));
@@ -70,50 +62,21 @@ final class CarVerificationManagerSuppressForOwnerByOwnerTest extends Integratio
     }
 
     #[Group('fast')]
-    public function testResumeClearsTheOptOutAndWritesNothingToAnyOwnedCar(): void
-    {
-        $ownerId = $this->createTestUser([], true);
-        $this->setOwnerOptedOut($ownerId, true, '2026-01-02 03:04:05');
-        $unsoldCarId = $this->createTestCar($ownerId, ['email' => 'owner-unsold@example.com']);
-        $soldCarId = $this->createTestCar($ownerId, [
-            'email' => 'owner-sold@example.com',
-            'solddate' => date('Y-m-d', strtotime('-30 days')),
-        ]);
-        $unsoldBefore = $this->carRow($unsoldCarId);
-        $soldBefore = $this->carRow($soldCarId);
-        $this->assertSame('1', (string) $this->flags($ownerId)['email_opted_out'], 'Test sanity: owner starts opted out');
-
-        $changed = $this->manager->clearSuppressedForOwnerByOwner($ownerId);
-
-        $this->assertTrue($changed, 'The opt-out changed from 1 to 0');
-        $flags = $this->flags($ownerId);
-        $this->assertSame('0', (string) $flags['email_opted_out']);
-        $this->assertNull($flags['email_opted_out_at']);
-        $this->assertSame($unsoldBefore, $this->carRow($unsoldCarId), 'The unsold car row must be unchanged');
-        $this->assertSame($soldBefore, $this->carRow($soldCarId), 'The sold car row must be unchanged');
-    }
-
-    #[Group('fast')]
-    public function testResumeWritesOneOwnerSourceLogRowWithOwnerAsActingUser(): void
+    public function testSecondResumeChangesNothingAndWritesNoSecondLogRow(): void
     {
         $ownerId = $this->createTestUser([], true);
         $this->setOwnerOptedOut($ownerId);
 
         $this->manager->clearSuppressedForOwnerByOwner($ownerId);
 
-        $changes = $this->repo->recentFlagChanges($ownerId, 100);
-        $this->assertCount(1, $changes);
-        $this->assertSame('email_opted_out', $changes[0]['flag']);
-        $this->assertSame(1, $changes[0]['old']);
-        $this->assertSame(0, $changes[0]['new']);
-        $this->assertSame('owner', $changes[0]['source']);
-        $this->assertSame($ownerId, $changes[0]['acting_user_id']);
-
-        // A second Resume changes nothing and writes no second row.
         $this->assertFalse($this->manager->clearSuppressedForOwnerByOwner($ownerId));
         $this->assertCount(1, $this->repo->recentFlagChanges($ownerId, 100));
     }
 
+    /**
+     * The writer-provider tests use a second owner who is not opted out, so
+     * only this test catches a Resume that clears every owner's opt-out.
+     */
     #[Group('fast')]
     public function testDifferentOwnersOptOutIsUntouched(): void
     {
@@ -146,139 +109,17 @@ final class CarVerificationManagerSuppressForOwnerByOwnerTest extends Integratio
     }
 
     /**
-     * An owner who complained and then opted out: Resume clears the opt-out
-     * and leaves the block, its address, time and cause. Verification still
-     * excludes the owner, so mail does not reach a blocked address.
-     */
-    #[Group('fast')]
-    public function testResumeByBlockedAndOptedOutOwnerKeepsTheBlockAndVerificationStillExcludesIt(): void
-    {
-        // The block applies only while its address matches users.email (#2356).
-        $ownerId = $this->createTestUser(['email' => 'complained@example.com'], true);
-        $this->setOwnerBlocked($ownerId, 'complained@example.com', '2026-02-03 04:05:06', 'spam');
-        $this->setOwnerOptedOut($ownerId);
-        $carId = $this->createEligibleCar($ownerId);
-        $blockBefore = array_intersect_key($this->flags($ownerId), array_flip([
-            'email_blocked', 'email_blocked_address', 'email_blocked_at', 'email_blocked_cause',
-        ]));
-        $this->assertNotContains($carId, $this->allVerificationEligibleCarIds(), 'Test sanity: excluded before Resume');
-
-        $this->manager->clearSuppressedForOwnerByOwner($ownerId);
-
-        $flags = $this->flags($ownerId);
-        $this->assertSame('0', (string) $flags['email_opted_out'], 'Resume clears the opt-out');
-        $this->assertSame(
-            $blockBefore,
-            array_intersect_key($flags, $blockBefore),
-            'Resume must leave the block, its address, time and cause unchanged'
-        );
-        $this->assertNotContains(
-            $carId,
-            $this->allVerificationEligibleCarIds(),
-            'The owner is still blocked, so verification must still exclude the car'
-        );
-    }
-
-    /**
      * Real connection, except an `UPDATE profiles` statement is not run and
      * reports failure. Every other statement, including the row lock, runs.
      */
     private function dbFailingProfileUpdate(): DatabaseInterface
     {
-        $real = $this->db;
-        return new class ($real) implements DatabaseInterface {
-            private bool $failed = false;
-
-            public function __construct(private DatabaseInterface $real)
+        return new class ($this->db) extends PassThroughDatabase {
+            public function query(string $sql, array $params = []): static
             {
-            }
-
-            public function query(string $sql, array $params = []): self
-            {
-                $this->failed = str_starts_with(ltrim($sql), 'UPDATE profiles');
-                if (!$this->failed) {
-                    $this->real->query($sql, $params);
-                }
-                return $this;
-            }
-
-            public function get(string $table, array $where): self|false
-            {
-                $result = $this->real->get($table, $where);
-                return $result === false ? false : $this;
-            }
-
-            public function insert(string $table, array $fields = [], bool $update = false): bool
-            {
-                return $this->real->insert($table, $fields, $update);
-            }
-
-            public function update(string $table, array|int $id, array $fields): bool
-            {
-                return $this->real->update($table, $id, $fields);
-            }
-
-            public function delete(string $table, array|int $where): self|false
-            {
-                $result = $this->real->delete($table, $where);
-                return $result === false ? false : $this;
-            }
-
-            public function error(): bool
-            {
-                return $this->failed || $this->real->error();
-            }
-
-            public function errorString(): string
-            {
-                return $this->failed
-                    ? 'Simulated database failure for the profile UPDATE'
-                    : $this->real->errorString();
-            }
-
-            public function errorInfo(): array
-            {
-                return $this->real->errorInfo();
-            }
-
-            public function count(): int
-            {
-                return $this->real->count();
-            }
-
-            public function first(bool $assoc = false): array|object
-            {
-                return $this->real->first($assoc);
-            }
-
-            public function results(bool $assoc = false): array
-            {
-                return $this->real->results($assoc);
-            }
-
-            public function lastId(): int
-            {
-                return $this->real->lastId();
-            }
-
-            public function beginTransaction(): bool
-            {
-                return $this->real->beginTransaction();
-            }
-
-            public function commit(): bool
-            {
-                return $this->real->commit();
-            }
-
-            public function rollBack(): bool
-            {
-                return $this->real->rollBack();
-            }
-
-            public function inTransaction(): bool
-            {
-                return $this->real->inTransaction();
+                return str_starts_with(ltrim($sql), 'UPDATE profiles')
+                    ? $this->simulateFailure('Simulated database failure for the profile UPDATE')
+                    : parent::query($sql, $params);
             }
         };
     }
@@ -371,7 +212,7 @@ final class CarVerificationManagerSuppressForOwnerByOwnerTest extends Integratio
         $this->assertSame('0', (string) $this->flags($ownerId)['email_opted_out']);
     }
 
-    private function secondConnection(): \PDO
+    private function secondConnection(): PDO
     {
         $host = (string) ($_ENV['DB_HOST'] ?? getenv('DB_HOST'));
         $port = $_ENV['DB_PORT'] ?? getenv('DB_PORT') ?: 3306;

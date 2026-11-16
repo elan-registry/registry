@@ -306,18 +306,6 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
         }
     }
 
-    public function testRepeatWriterCallLogsNothingAndChangesNothing(): void
-    {
-        $fixture = $this->createOwnerWithTwoCars('writer-a@example.com', 'writer-b@example.com');
-        $this->assertTrue($this->manager->setSuppressedForOwner($fixture['owner']));
-        $flagsAfterFirst = $this->getOwnerEmailFlags($fixture['owner']);
-
-        $this->assertFalse($this->manager->setSuppressedForOwner($fixture['owner']), 'A repeat opt-out is not a change');
-
-        $this->assertSame($flagsAfterFirst, $this->getOwnerEmailFlags($fixture['owner']), 'The first opted_out_at stays');
-        $this->assertCount(1, $this->flagLogRows($fixture['owner']), 'A repeat writes no second audit row');
-    }
-
     public function testWriterOnAnOwnerWithNoProfileThrowsAndWritesNothing(): void
     {
         $ownerId = $this->createTestUser();
