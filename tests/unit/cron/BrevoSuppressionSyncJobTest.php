@@ -447,54 +447,41 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     }
 
     /**
-     * The value seen on test (#2501): Brevo sent `20:52:44.000Z` for a block
-     * that the webhook dated 18:52:44 UTC (11:52:44 PDT). Before #2501 the job
-     * read it as UTC, 2 hours late, and a run within 2 hours of the block
-     * rejected it as a future date.
+     * The job reads a Brevo blockedAt as Paris wall time and stores it in the
+     * PHP default timezone (#2501).
      */
-    public function testTheCestOffsetSeenOnTestGivesTheWebhookTime(): void
+    #[DataProvider('blockedAtTimezones')]
+    public function testBlockedAtIsConvertedFromParisTime(string $blockedAt, string $now, string $expected): void
     {
         $this->assertSame(
-            ['occurredAt' => '2026-10-22 11:52:44', 'fallback' => false],
-            $this->occurredAtForBlockedAt('2026-10-22T20:52:44.000Z', '2026-10-22 12:20:38')
+            ['occurredAt' => $expected, 'fallback' => false],
+            $this->occurredAtForBlockedAt($blockedAt, $now)
         );
     }
 
-    /** In winter Paris is UTC+1 (CET), so the job takes 1 hour off, not 2. */
-    public function testACetValueLosesOneHour(): void
+    /** @return array<string, array{string, string, string}> */
+    public static function blockedAtTimezones(): array
     {
-        // 10:00 Paris (CET) = 09:00 UTC = 01:00 PST (US DST ended on 2026-11-01).
-        $this->assertSame(
-            ['occurredAt' => '2026-11-03 01:00:00', 'fallback' => false],
-            $this->occurredAtForBlockedAt('2026-11-03T10:00:00.000Z', '2026-11-03 12:00:00')
-        );
-    }
-
-    /** A non-zero offset is a real offset. The job keeps it. */
-    public function testAnExplicitNonZeroOffsetIsKept(): void
-    {
-        $this->assertSame(
-            ['occurredAt' => '2026-09-08 03:00:00', 'fallback' => false],
-            $this->occurredAtForBlockedAt('2026-09-08T12:00:00+02:00', self::NOW)
-        );
-    }
-
-    /** A value with no zone is Paris wall time too. */
-    public function testAValueWithNoZoneIsReadAsParisTime(): void
-    {
-        $this->assertSame(
-            ['occurredAt' => self::BLOCKED_AT_LOCAL, 'fallback' => false],
-            $this->occurredAtForBlockedAt('2026-09-08 12:00:00', self::NOW)
-        );
-    }
-
-    /** `+00:00` is the same label as `Z`. */
-    public function testAPlusZeroOffsetIsReadAsParisTime(): void
-    {
-        $this->assertSame(
-            ['occurredAt' => self::BLOCKED_AT_LOCAL, 'fallback' => false],
-            $this->occurredAtForBlockedAt('2026-09-08T12:00:00+00:00', self::NOW)
-        );
+        return [
+            // Brevo sent `20:52:44.000Z` for a block that the webhook dated
+            // 18:52:44 UTC (11:52:44 PDT). Before #2501 the job read it as
+            // UTC, 2 hours late, and a run within 2 hours of the block
+            // rejected it as a future date.
+            'the CEST offset seen on test gives the webhook time' => [
+                '2026-10-22T20:52:44.000Z',
+                '2026-10-22 12:20:38',
+                '2026-10-22 11:52:44',
+            ],
+            // In winter Paris is UTC+1 (CET), so the job takes 1 hour off,
+            // not 2. 10:00 Paris (CET) = 09:00 UTC = 01:00 PST (US DST ended
+            // on 2026-11-01).
+            'a CET value loses one hour' => ['2026-11-03T10:00:00.000Z', '2026-11-03 12:00:00', '2026-11-03 01:00:00'],
+            // A non-zero offset is a real offset. The job keeps it.
+            'an explicit non-zero offset is kept' => ['2026-09-08T12:00:00+02:00', self::NOW, '2026-09-08 03:00:00'],
+            'a value with no zone is Paris wall time' => ['2026-09-08 12:00:00', self::NOW, self::BLOCKED_AT_LOCAL],
+            // `+00:00` is the same label as `Z`.
+            'a +00:00 offset is read as Paris time' => ['2026-09-08T12:00:00+00:00', self::NOW, self::BLOCKED_AT_LOCAL],
+        ];
     }
 
     /**

@@ -8,6 +8,7 @@ use ElanRegistry\ApiResponse;
 use ElanRegistry\LogCategories;
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -94,78 +95,53 @@ final class TestableApiResponse
 final class ApiResponseTest extends TestCase
 {
     /**
-     * Test success factory method with default message
+     * Factory calls with their expected success flag, message, and status.
      *
-     * @return void
+     * @return array<string, array{\Closure(): ApiResponse, bool, string, int}>
      */
-    #[Group('fast')]
-    public function testSuccessWithDefaultMessage(): void
+    public static function factoryResponseProvider(): array
     {
-        $response = ApiResponse::success();
-
-        $this->assertTrue($response->isSuccess());
-        $this->assertEquals('Operation successful', $response->getMessage());
-        $this->assertEquals(200, $response->getStatusCode());
+        return [
+            'success default message' => [static fn (): ApiResponse => ApiResponse::success(), true, 'Operation successful', 200],
+            'success custom message' => [static fn (): ApiResponse => ApiResponse::success('Profile updated successfully!'), true, 'Profile updated successfully!', 200],
+            'error default message' => [static fn (): ApiResponse => ApiResponse::error(), false, 'An error occurred', 400],
+            'error custom message' => [static fn (): ApiResponse => ApiResponse::error('Invalid request data'), false, 'Invalid request data', 400],
+            'error custom status code' => [static fn (): ApiResponse => ApiResponse::error('Rate limit exceeded', 429), false, 'Rate limit exceeded', 429],
+            'validationError custom message' => [static fn (): ApiResponse => ApiResponse::validationError(['field' => 'Error'], 'Please correct the following errors'), false, 'Please correct the following errors', 422],
+            'unauthorized default message' => [static fn (): ApiResponse => ApiResponse::unauthorized(), false, 'Authentication required', 401],
+            'unauthorized custom message' => [static fn (): ApiResponse => ApiResponse::unauthorized('Session expired'), false, 'Session expired', 401],
+            'forbidden default message' => [static fn (): ApiResponse => ApiResponse::forbidden(), false, 'Access denied', 403],
+            'forbidden custom message' => [static fn (): ApiResponse => ApiResponse::forbidden('Admin access required'), false, 'Admin access required', 403],
+            'notFound default message' => [static fn (): ApiResponse => ApiResponse::notFound(), false, 'Resource not found', 404],
+            'notFound custom message' => [static fn (): ApiResponse => ApiResponse::notFound('Car not found'), false, 'Car not found', 404],
+            'serverError default message' => [static fn (): ApiResponse => ApiResponse::serverError(), false, 'Internal server error', 500],
+            'serverError custom message' => [static fn (): ApiResponse => ApiResponse::serverError('Database connection failed'), false, 'Database connection failed', 500],
+        ];
     }
 
     /**
-     * Test success factory method with custom message
+     * Test each factory method sets the success flag, message, and status code
+     *
+     * @param \Closure(): ApiResponse $factory         Builds the response under test
+     * @param bool                    $expectedSuccess Expected isSuccess() value
+     * @param string                  $expectedMessage Expected getMessage() value
+     * @param int                     $expectedStatus  Expected getStatusCode() value
      *
      * @return void
      */
     #[Group('fast')]
-    public function testSuccessWithCustomMessage(): void
-    {
-        $response = ApiResponse::success('Profile updated successfully!');
+    #[DataProvider('factoryResponseProvider')]
+    public function testFactorySetsSuccessMessageAndStatus(
+        \Closure $factory,
+        bool $expectedSuccess,
+        string $expectedMessage,
+        int $expectedStatus
+    ): void {
+        $response = $factory();
 
-        $this->assertTrue($response->isSuccess());
-        $this->assertEquals('Profile updated successfully!', $response->getMessage());
-        $this->assertEquals(200, $response->getStatusCode());
-    }
-
-    /**
-     * Test error factory method with default message
-     *
-     * @return void
-     */
-    #[Group('fast')]
-    public function testErrorWithDefaultMessage(): void
-    {
-        $response = ApiResponse::error();
-
-        $this->assertFalse($response->isSuccess());
-        $this->assertEquals('An error occurred', $response->getMessage());
-        $this->assertEquals(400, $response->getStatusCode());
-    }
-
-    /**
-     * Test error factory method with custom message
-     *
-     * @return void
-     */
-    #[Group('fast')]
-    public function testErrorWithCustomMessage(): void
-    {
-        $response = ApiResponse::error('Invalid request data');
-
-        $this->assertFalse($response->isSuccess());
-        $this->assertEquals('Invalid request data', $response->getMessage());
-        $this->assertEquals(400, $response->getStatusCode());
-    }
-
-    /**
-     * Test error factory method with custom status code
-     *
-     * @return void
-     */
-    #[Group('fast')]
-    public function testErrorWithCustomStatusCode(): void
-    {
-        $response = ApiResponse::error('Rate limit exceeded', 429);
-
-        $this->assertFalse($response->isSuccess());
-        $this->assertEquals('Rate limit exceeded', $response->getMessage());
-        $this->assertEquals(429, $response->getStatusCode());
+        $this->assertSame($expectedSuccess, $response->isSuccess());
+        $this->assertSame($expectedMessage, $response->getMessage());
+        $this->assertSame($expectedStatus, $response->getStatusCode());
     }
 
     /**
@@ -211,137 +187,6 @@ final class ApiResponseTest extends TestCase
     }
 
     /**
-     * Test validationError factory method with custom message
-     *
-     * @return void
-     */
-    #[Group('fast')]
-    public function testValidationErrorWithCustomMessage(): void
-    {
-        $errors = ['field' => 'Error'];
-        $response = ApiResponse::validationError($errors, 'Please correct the following errors');
-
-        $this->assertEquals('Please correct the following errors', $response->getMessage());
-        $this->assertEquals(422, $response->getStatusCode());
-    }
-
-    /**
-     * Test unauthorized factory method with default message
-     *
-     * @return void
-     */
-    #[Group('fast')]
-    public function testUnauthorizedWithDefaultMessage(): void
-    {
-        $response = ApiResponse::unauthorized();
-
-        $this->assertFalse($response->isSuccess());
-        $this->assertEquals('Authentication required', $response->getMessage());
-        $this->assertEquals(401, $response->getStatusCode());
-    }
-
-    /**
-     * Test unauthorized factory method with custom message
-     *
-     * @return void
-     */
-    #[Group('fast')]
-    public function testUnauthorizedWithCustomMessage(): void
-    {
-        $response = ApiResponse::unauthorized('Session expired');
-
-        $this->assertEquals('Session expired', $response->getMessage());
-        $this->assertEquals(401, $response->getStatusCode());
-    }
-
-    /**
-     * Test forbidden factory method with default message
-     *
-     * @return void
-     */
-    #[Group('fast')]
-    public function testForbiddenWithDefaultMessage(): void
-    {
-        $response = ApiResponse::forbidden();
-
-        $this->assertFalse($response->isSuccess());
-        $this->assertEquals('Access denied', $response->getMessage());
-        $this->assertEquals(403, $response->getStatusCode());
-    }
-
-    /**
-     * Test forbidden factory method with custom message
-     *
-     * @return void
-     */
-    #[Group('fast')]
-    public function testForbiddenWithCustomMessage(): void
-    {
-        $response = ApiResponse::forbidden('Admin access required');
-
-        $this->assertEquals('Admin access required', $response->getMessage());
-        $this->assertEquals(403, $response->getStatusCode());
-    }
-
-    /**
-     * Test notFound factory method with default message
-     *
-     * @return void
-     */
-    #[Group('fast')]
-    public function testNotFoundWithDefaultMessage(): void
-    {
-        $response = ApiResponse::notFound();
-
-        $this->assertFalse($response->isSuccess());
-        $this->assertEquals('Resource not found', $response->getMessage());
-        $this->assertEquals(404, $response->getStatusCode());
-    }
-
-    /**
-     * Test notFound factory method with custom message
-     *
-     * @return void
-     */
-    #[Group('fast')]
-    public function testNotFoundWithCustomMessage(): void
-    {
-        $response = ApiResponse::notFound('Car not found');
-
-        $this->assertEquals('Car not found', $response->getMessage());
-        $this->assertEquals(404, $response->getStatusCode());
-    }
-
-    /**
-     * Test serverError factory method with default message
-     *
-     * @return void
-     */
-    #[Group('fast')]
-    public function testServerErrorWithDefaultMessage(): void
-    {
-        $response = ApiResponse::serverError();
-
-        $this->assertFalse($response->isSuccess());
-        $this->assertEquals('Internal server error', $response->getMessage());
-        $this->assertEquals(500, $response->getStatusCode());
-    }
-
-    /**
-     * Test serverError factory method with custom message
-     *
-     * @return void
-     */
-    #[Group('fast')]
-    public function testServerErrorWithCustomMessage(): void
-    {
-        $response = ApiResponse::serverError('Database connection failed');
-
-        $this->assertEquals('Database connection failed', $response->getMessage());
-        $this->assertEquals(500, $response->getStatusCode());
-    }
-
-    /**
      * Test withData adds data to response
      *
      * @return void
@@ -355,22 +200,6 @@ final class ApiResponseTest extends TestCase
         $data = $response->getData();
         $this->assertArrayHasKey('quality_score', $data);
         $this->assertEquals(85, $data['quality_score']);
-    }
-
-    /**
-     * Test withData is immutable
-     *
-     * @return void
-     */
-    #[Group('fast')]
-    public function testWithDataIsImmutable(): void
-    {
-        $original = ApiResponse::success('Done');
-        $modified = $original->withData('key', 'value');
-
-        $this->assertEmpty($original->getData());
-        $this->assertNotEmpty($modified->getData());
-        $this->assertNotSame($original, $modified);
     }
 
     /**
@@ -412,21 +241,6 @@ final class ApiResponseTest extends TestCase
     }
 
     /**
-     * Test withDataArray is immutable
-     *
-     * @return void
-     */
-    #[Group('fast')]
-    public function testWithDataArrayIsImmutable(): void
-    {
-        $original = ApiResponse::success('Done');
-        $modified = $original->withDataArray(['key' => 'value']);
-
-        $this->assertEmpty($original->getData());
-        $this->assertNotEmpty($modified->getData());
-    }
-
-    /**
      * Test withLogging sets pending log
      *
      * @return void
@@ -445,18 +259,51 @@ final class ApiResponseTest extends TestCase
     }
 
     /**
-     * Test withLogging is immutable
+     * Builder calls with a reader for the state that each one changes, and
+     * the exact state the original must keep.
+     *
+     * @return array<string, array{\Closure(ApiResponse): ApiResponse, \Closure(ApiResponse): mixed, mixed}>
+     */
+    public static function immutableBuilderProvider(): array
+    {
+        return [
+            'withData' => [
+                static fn (ApiResponse $r): ApiResponse => $r->withData('key', 'value'),
+                static fn (ApiResponse $r): mixed => $r->getData(),
+                [],
+            ],
+            'withDataArray' => [
+                static fn (ApiResponse $r): ApiResponse => $r->withDataArray(['key' => 'value']),
+                static fn (ApiResponse $r): mixed => $r->getData(),
+                [],
+            ],
+            'withLogging' => [
+                static fn (ApiResponse $r): ApiResponse => $r->withLogging(1, LogCategories::LOG_CATEGORY_DIAGNOSTICS, 'Message'),
+                static fn (ApiResponse $r): mixed => $r->getPendingLog(),
+                null,
+            ],
+        ];
+    }
+
+    /**
+     * Test each builder returns a new instance and leaves the original unchanged
+     *
+     * @param \Closure(ApiResponse): ApiResponse $build            Applies the builder under test
+     * @param \Closure(ApiResponse): mixed       $read             Reads the state the builder sets
+     * @param mixed                             $expectedOriginal The state the original must keep
      *
      * @return void
      */
     #[Group('fast')]
-    public function testWithLoggingIsImmutable(): void
+    #[DataProvider('immutableBuilderProvider')]
+    public function testBuilderIsImmutable(\Closure $build, \Closure $read, mixed $expectedOriginal): void
     {
         $original = ApiResponse::success('Done');
-        $modified = $original->withLogging(1, LogCategories::LOG_CATEGORY_DIAGNOSTICS, 'Message');
+        $modified = $build($original);
 
-        $this->assertNull($original->getPendingLog());
-        $this->assertNotNull($modified->getPendingLog());
+        $this->assertSame($expectedOriginal, $read($original));
+        $this->assertNotEmpty($read($modified));
+        $this->assertNotSame($original, $modified);
     }
 
     /**

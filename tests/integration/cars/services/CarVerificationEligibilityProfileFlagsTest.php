@@ -37,7 +37,7 @@ final class CarVerificationEligibilityProfileFlagsTest extends IntegrationTestCa
      * A car that is stale, unsold, with an email and no recent send. With an
      * unflagged owner profile it is eligible.
      */
-    private function createEligibleCar(int $ownerId, string $email = self::OWNER_EMAIL): int
+    private function createEligibleCar(int $ownerId, ?string $email = self::OWNER_EMAIL): int
     {
         $stale = date('Y-m-d H:i:s', strtotime('-3 years'));
 
@@ -374,11 +374,21 @@ final class CarVerificationEligibilityProfileFlagsTest extends IntegrationTestCa
         $this->assertNotContains($carId, $this->allVerificationEligibleCarIds());
     }
 
+    /** @return array<string, array{?string}> */
+    public static function emptyCarEmailProvider(): array
+    {
+        return [
+            'empty' => [''],
+            'NULL'  => [null],
+        ];
+    }
+
     /** An empty cars.email does not exclude the car. The send never reads it. */
-    public function testAnEmptyCarEmailDoesNotExcludeTheCar(): void
+    #[DataProvider('emptyCarEmailProvider')]
+    public function testAnEmptyCarEmailDoesNotExcludeTheCar(?string $carEmail): void
     {
         $ownerId = $this->createTestUser(['email' => self::OWNER_EMAIL], true);
-        $carId = $this->createEligibleCar($ownerId, '');
+        $carId = $this->createEligibleCar($ownerId, $carEmail);
 
         $this->assertContains($carId, $this->allVerificationEligibleCarIds());
     }

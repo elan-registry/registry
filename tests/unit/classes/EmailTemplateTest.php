@@ -17,6 +17,35 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('fast')]
 final class EmailTemplateTest extends TestCase
 {
+    private const array MEMBER_TO_OWNER_VARS = [
+        'to'      => 'Jane Smith',
+        'from'    => 'John Doe',
+        'message' => 'Hi there.',
+    ];
+
+    private const array FEEDBACK_VARS = [
+        'name'      => 'Alice Tester',
+        'email'     => 'alice@example.com',
+        'accountId' => '42',
+        'comments'  => 'Great registry!',
+    ];
+
+    private const array VERIFY_VARS = [
+        'fname'                => 'Bob',
+        'email'                => 'bob@example.com',
+        'vericode'             => 'CODE',
+        'user_id'              => 7,
+        'join_vericode_expiry' => 48,
+    ];
+
+    private const array VERIFY_NEW_VARS = [
+        'fname'                => 'Carol',
+        'email'                => 'carol@example.com',
+        'vericode'             => 'NEWCODE77',
+        'user_id'              => 12,
+        'join_vericode_expiry' => 24,
+    ];
+
     private EmailTemplate $template;
 
     protected function setUp(): void
@@ -239,69 +268,64 @@ final class EmailTemplateTest extends TestCase
     // MESSAGE BOX TESTS
     // ============================================================
 
-    public function testCreateMessageBoxDefaultStyle(): void
+    /**
+     * @return array<string, array{string|null, list<string>}>
+     */
+    public static function messageBoxStyleProvider(): array
     {
-        $html = $this->template->createMessageBox('Title', 'Content');
-
-        $this->assertStringContainsString('content-box', $html);
-        $this->assertStringContainsString('<h3 style=', $html);
-        $this->assertStringContainsString('>Title</h3>', $html);
-        $this->assertStringContainsString('Content', $html);
+        return [
+            'default style' => [null, ['content-box', '<h3 style=', '>Title</h3>', 'Content']],
+            'message style' => ['message', ['content-box-message']],
+            'alert style' => ['alert', ['content-box-alert']],
+            'success style' => ['success', ['content-box-success']],
+        ];
     }
 
-    public function testCreateMessageBoxMessageStyle(): void
+    /**
+     * @param string|null  $style    Box style, or null for the default
+     * @param list<string> $contains Fragments the HTML must contain
+     */
+    #[DataProvider('messageBoxStyleProvider')]
+    public function testCreateMessageBoxAppliesStyle(?string $style, array $contains): void
     {
-        $html = $this->template->createMessageBox('Title', 'Content', 'message');
+        $html = $style === null
+            ? $this->template->createMessageBox('Title', 'Content')
+            : $this->template->createMessageBox('Title', 'Content', $style);
 
-        $this->assertStringContainsString('content-box-message', $html);
-    }
-
-    public function testCreateMessageBoxAlertStyle(): void
-    {
-        $html = $this->template->createMessageBox('Title', 'Content', 'alert');
-
-        $this->assertStringContainsString('content-box-alert', $html);
-    }
-
-    public function testCreateMessageBoxSuccessStyle(): void
-    {
-        $html = $this->template->createMessageBox('Title', 'Content', 'success');
-
-        $this->assertStringContainsString('content-box-success', $html);
+        $this->assertMarkup($html, $contains);
     }
 
     // ============================================================
     // BUTTON TESTS
     // ============================================================
 
-    public function testCreateButtonPrimaryStyle(): void
+    /**
+     * @return array<string, array{string, string, string|null, list<string>}>
+     */
+    public static function buttonStyleProvider(): array
     {
-        $html = $this->template->createButton('Click Me', 'https://example.com');
-
-        $this->assertStringContainsString('btn btn-primary', $html);
-        $this->assertStringContainsString('href="https://example.com"', $html);
-        $this->assertStringContainsString('Click Me', $html);
+        return [
+            'primary style' => ['Click Me', 'https://example.com', null, ['btn btn-primary', 'href="https://example.com"', 'Click Me']],
+            'secondary style' => ['Cancel', '/cancel', 'secondary', ['btn btn-secondary']],
+            'success style' => ['Approve', '/approve', 'success', ['btn btn-success']],
+            'danger style' => ['Delete', '/delete', 'danger', ['btn btn-danger']],
+        ];
     }
 
-    public function testCreateButtonSecondaryStyle(): void
+    /**
+     * @param string       $text     Button label
+     * @param string       $url      Button link
+     * @param string|null  $style    Button style, or null for the default
+     * @param list<string> $contains Fragments the HTML must contain
+     */
+    #[DataProvider('buttonStyleProvider')]
+    public function testCreateButtonAppliesStyle(string $text, string $url, ?string $style, array $contains): void
     {
-        $html = $this->template->createButton('Cancel', '/cancel', 'secondary');
+        $html = $style === null
+            ? $this->template->createButton($text, $url)
+            : $this->template->createButton($text, $url, $style);
 
-        $this->assertStringContainsString('btn btn-secondary', $html);
-    }
-
-    public function testCreateButtonSuccessStyle(): void
-    {
-        $html = $this->template->createButton('Approve', '/approve', 'success');
-
-        $this->assertStringContainsString('btn btn-success', $html);
-    }
-
-    public function testCreateButtonDangerStyle(): void
-    {
-        $html = $this->template->createButton('Delete', '/delete', 'danger');
-
-        $this->assertStringContainsString('btn btn-danger', $html);
+        $this->assertMarkup($html, $contains);
     }
 
     // ============================================================
@@ -767,590 +791,260 @@ final class EmailTemplateTest extends TestCase
         return (string) ob_get_clean();
     }
 
-    // ------------------------------------------------------------------
-    // _member_to_owner.php
-    // ------------------------------------------------------------------
-
-    public function testContactOwnerViewRendersWithoutError(): void
+    /**
+     * Each row renders one view with its variables and lists the fragments
+     * the output must and must not contain.
+     *
+     * @return array<string, array{string, array<string, mixed>, list<string>, list<string>}>
+     */
+    public static function viewMarkupProvider(): array
     {
-        $html = $this->renderView('_member_to_owner.php', [
-            'to'      => 'Jane Smith',
-            'from'    => 'John Doe',
-            'message' => 'Hi, interested in your Elan.',
-        ]);
+        $xss = '<script>alert(\'xss\')</script>';
+        $escaped = ['&lt;script&gt;'];
+        $noScript = ['<script>'];
+        $document = ['<!DOCTYPE html>', '</html>'];
+        $car99S4 = ['id' => '99', 'year' => '1971', 'series' => 'S4', 'variant' => '', 'type' => '', 'chassis' => 'ELAN/6/1234'];
+        $verifyNewUrl = 'users/verify_new.php?vericode=NEWCODE77';
 
-        $this->assertStringContainsString('<!DOCTYPE html>', $html);
-        $this->assertStringContainsString('</html>', $html);
+        return [
+            // _member_to_owner.php
+            'member_to_owner renders without error' => [
+                '_member_to_owner.php',
+                [...self::MEMBER_TO_OWNER_VARS, 'message' => 'Hi, interested in your Elan.'],
+                $document, [],
+            ],
+            'member_to_owner contains recipient name' => [
+                '_member_to_owner.php', self::MEMBER_TO_OWNER_VARS, ['Jane Smith'], [],
+            ],
+            'member_to_owner contains reply instruction' => [
+                '_member_to_owner.php', self::MEMBER_TO_OWNER_VARS, ['simply reply to this email'], [],
+            ],
+            'member_to_owner contains sender name' => [
+                '_member_to_owner.php', self::MEMBER_TO_OWNER_VARS, ['John Doe'], [],
+            ],
+            'member_to_owner escapes xss in recipient name' => [
+                '_member_to_owner.php',
+                [...self::MEMBER_TO_OWNER_VARS, 'to' => $xss, 'message' => 'Hi.'],
+                $escaped, $noScript,
+            ],
+            'member_to_owner escapes xss in sender name' => [
+                '_member_to_owner.php',
+                [...self::MEMBER_TO_OWNER_VARS, 'from' => $xss, 'message' => 'Hi.'],
+                $escaped, $noScript,
+            ],
+            'member_to_owner escapes xss in message' => [
+                '_member_to_owner.php',
+                [...self::MEMBER_TO_OWNER_VARS, 'message' => $xss],
+                $escaped, $noScript,
+            ],
+
+            // _feedback.php
+            'feedback renders without error' => [
+                '_feedback.php', self::FEEDBACK_VARS, $document, [],
+            ],
+            'feedback contains owner details' => [
+                '_feedback.php', self::FEEDBACK_VARS, ['Alice Tester', 'alice@example.com', '42'], [],
+            ],
+            'feedback contains comments' => [
+                '_feedback.php', self::FEEDBACK_VARS, ['Great registry!'], [],
+            ],
+            'feedback contains user feedback subtitle' => [
+                '_feedback.php',
+                [...self::FEEDBACK_VARS, 'accountId' => '7', 'comments' => 'Some comment.'],
+                ['Feedback from Alice Tester'], [],
+            ],
+            'feedback escapes xss in comments' => [
+                '_feedback.php',
+                [...self::FEEDBACK_VARS, 'comments' => $xss],
+                $escaped, $noScript,
+            ],
+            'feedback escapes xss in name' => [
+                '_feedback.php',
+                [...self::FEEDBACK_VARS, 'name' => $xss, 'comments' => 'Nice.'],
+                $escaped, $noScript,
+            ],
+
+            // _admin_to_owner.php
+            'admin_to_owner renders without error' => [
+                '_admin_to_owner.php',
+                [
+                    'to' => 'Jane Smith', 'from' => 'Admin User', 'message' => 'Please update your car details.',
+                    'carContext' => ['id' => '123', 'year' => '1972', 'series' => 'S4', 'variant' => '', 'type' => '', 'chassis' => 'CH123456'],
+                    'qualityIssue' => 'Missing chassis number',
+                ],
+                $document, [],
+            ],
+            'admin_to_owner contains recipient and sender' => [
+                '_admin_to_owner.php',
+                ['to' => 'Jane Smith', 'from' => 'Admin User', 'message' => 'Please update your car details.', 'carContext' => [], 'qualityIssue' => null],
+                ['Jane Smith', 'Admin User'], [],
+            ],
+            'admin_to_owner contains registry administrator label' => [
+                '_admin_to_owner.php',
+                ['to' => 'Jane Smith', 'from' => 'Admin User', 'message' => 'Update required.', 'carContext' => [], 'qualityIssue' => null],
+                ['Registry Administrator'], [],
+            ],
+            'admin_to_owner renders car context when provided' => [
+                '_admin_to_owner.php',
+                [
+                    'to' => 'Jane Smith', 'from' => 'Admin User', 'message' => 'Update required.',
+                    'carContext' => ['id' => '99', 'year' => '1971', 'series' => 'Sprint', 'variant' => '', 'type' => '', 'chassis' => 'ABCDEF'],
+                    'qualityIssue' => 'Missing engine number',
+                ],
+                ['99', '1971', 'Elan Sprint', 'ABCDEF', 'Missing engine number'], [],
+            ],
+            'admin_to_owner renders full vehicle label with variant and type' => [
+                '_admin_to_owner.php',
+                [
+                    'to' => 'Jane Smith', 'from' => 'Admin User', 'message' => 'Update required.',
+                    'carContext' => ['id' => '77', 'year' => '1968', 'series' => '+2', 'variant' => 'FHC', 'type' => '50', 'chassis' => 'GHIJKL'],
+                    'qualityIssue' => 'Verify engine specs',
+                ],
+                ['77', '1968', 'Elan +2 FHC (Type 50)', 'GHIJKL', 'Verify engine specs'], [],
+            ],
+            'admin_to_owner omits car box when car context empty' => [
+                '_admin_to_owner.php',
+                ['to' => 'Jane Smith', 'from' => 'Admin User', 'message' => 'General message.', 'carContext' => [], 'qualityIssue' => null],
+                [], ['Related to Your Car'],
+            ],
+            'admin_to_owner escapes xss in message' => [
+                '_admin_to_owner.php',
+                ['to' => 'Jane Smith', 'from' => 'Admin User', 'message' => $xss, 'carContext' => [], 'qualityIssue' => null],
+                $escaped, $noScript,
+            ],
+            'admin_to_owner escapes xss in recipient name' => [
+                '_admin_to_owner.php',
+                ['to' => $xss, 'from' => 'Admin User', 'message' => 'Hello.', 'carContext' => [], 'qualityIssue' => null],
+                $escaped, $noScript,
+            ],
+            'admin_to_owner shows update button when quality issue and car present' => [
+                '_admin_to_owner.php',
+                ['to' => 'Alice', 'from' => 'Admin Name', 'message' => 'Please correct the data.', 'carContext' => $car99S4, 'qualityIssue' => 'Year is incorrect'],
+                ['Update Your Car Record', 'Elan S4'], [],
+            ],
+            'admin_to_owner shows registry link when no quality issue' => [
+                '_admin_to_owner.php',
+                ['to' => 'Alice', 'from' => 'Admin Name', 'message' => 'General message.', 'carContext' => [], 'qualityIssue' => ''],
+                ['elanregistry.org'], ['Update Your Car Record'],
+            ],
+            'admin_to_owner escapes xss in quality issue' => [
+                '_admin_to_owner.php',
+                ['to' => 'Alice', 'from' => 'Admin Name', 'message' => 'Please fix the data.', 'carContext' => $car99S4, 'qualityIssue' => '<script>alert("xss")</script>'],
+                $escaped, $noScript,
+            ],
+
+            // _email_template_verify.php
+            'verify renders without error' => [
+                '_email_template_verify.php',
+                [...self::VERIFY_VARS, 'vericode' => 'ABC123DEFG'],
+                $document, [],
+            ],
+            'verify contains first name' => [
+                '_email_template_verify.php',
+                [...self::VERIFY_VARS, 'vericode' => 'ABC123DEFG'],
+                ['Bob'], [],
+            ],
+            // The verification URL must embed the vericode and user_id.
+            'verify contains verification link' => [
+                '_email_template_verify.php',
+                [...self::VERIFY_VARS, 'vericode' => 'MYCODE99'],
+                ['verify.php', 'MYCODE99', 'user_id=7'], [],
+            ],
+            'verify contains expiry hours' => [
+                '_email_template_verify.php', self::VERIFY_VARS, ['48'], [],
+            ],
+            'verify contains welcome content' => [
+                '_email_template_verify.php', self::VERIFY_VARS, ['Welcome to the Registry'], [],
+            ],
+            'verify escapes xss in first name' => [
+                '_email_template_verify.php',
+                [...self::VERIFY_VARS, 'fname' => $xss],
+                $escaped, $noScript,
+            ],
+            // rawurlencode encodes '+' as '%2B', so the raw '+' must not appear in the URL.
+            'verify url-encodes plus in email' => [
+                '_email_template_verify.php',
+                [...self::VERIFY_VARS, 'email' => 'bob+tag@example.com'],
+                ['bob%2Btag%40example.com'], [],
+            ],
+
+            // _email_template_verify_new.php
+            'verify_new renders without error' => [
+                '_email_template_verify_new.php',
+                [...self::VERIFY_NEW_VARS, 'url' => 'users/verify_new.php?email=carol%40example.com&vericode=NEWCODE77'],
+                $document, [],
+            ],
+            'verify_new contains first name' => [
+                '_email_template_verify_new.php',
+                [...self::VERIFY_NEW_VARS, 'url' => $verifyNewUrl],
+                ['Carol'], [],
+            ],
+            // The verification button and security warning must be present.
+            'verify_new displays new email address' => [
+                '_email_template_verify_new.php',
+                [...self::VERIFY_NEW_VARS, 'url' => $verifyNewUrl],
+                ['Verify New Email Address', 'request this change?'], [],
+            ],
+            'verify_new contains verification button' => [
+                '_email_template_verify_new.php',
+                [...self::VERIFY_NEW_VARS, 'url' => $verifyNewUrl],
+                ['Verify New Email Address'], [],
+            ],
+            // URL is built from trusted components (same as UserSpice original):
+            // users/verify.php?new=1&email=<email>&vericode=<code>&user_id=<id>
+            'verify_new builds full url from base url' => [
+                '_email_template_verify_new.php',
+                self::VERIFY_NEW_VARS,
+                ['https://test.elanregistry.org/users/verify.php?new=1&amp;email=carol@example.com&amp;vericode=NEWCODE77&amp;user_id=12'], [],
+            ],
+            'verify_new contains expiry hours' => [
+                '_email_template_verify_new.php',
+                [...self::VERIFY_NEW_VARS, 'url' => $verifyNewUrl],
+                ['24'], [],
+            ],
+            'verify_new escapes xss in first name' => [
+                '_email_template_verify_new.php',
+                [...self::VERIFY_NEW_VARS, 'fname' => $xss, 'url' => $verifyNewUrl],
+                $escaped, $noScript,
+            ],
+            // The $url option is not used — URL is always built from trusted components.
+            // Passing a malicious $url has no effect on the output.
+            'verify_new url ignores url parameter' => [
+                '_email_template_verify_new.php',
+                [...self::VERIFY_NEW_VARS, 'url' => 'javascript:alert(1)'],
+                ['users/verify.php'], ['javascript:'],
+            ],
+            // getFeedbackEmail() mock returns 'registrar@elanregistry.org'. The
+            // template must render that dynamic address into the mailto: href
+            // and the visible link text, not a hardcoded value (#368).
+            'verify_new contains admin contact email' => [
+                '_email_template_verify_new.php',
+                self::VERIFY_NEW_VARS,
+                ['href="mailto:registrar@elanregistry.org"', '>registrar@elanregistry.org<'], [],
+            ],
+        ];
     }
 
-    public function testContactOwnerViewContainsRecipientName(): void
-    {
-        $html = $this->renderView('_member_to_owner.php', [
-            'to'      => 'Jane Smith',
-            'from'    => 'John Doe',
-            'message' => 'Hi there.',
-        ]);
-
-        $this->assertStringContainsString('Jane Smith', $html);
-    }
-
-    public function testContactOwnerViewContainsReplyInstruction(): void
-    {
-        $html = $this->renderView('_member_to_owner.php', [
-            'to'      => 'Jane Smith',
-            'from'    => 'John Doe',
-            'message' => 'Hi there.',
-        ]);
-
-        $this->assertStringContainsString('simply reply to this email', $html);
-    }
-
-    public function testContactOwnerViewContainsSenderName(): void
-    {
-        $html = $this->renderView('_member_to_owner.php', [
-            'to'      => 'Jane Smith',
-            'from'    => 'John Doe',
-            'message' => 'Hi there.',
-        ]);
-
-        $this->assertStringContainsString('John Doe', $html);
-    }
-
-    public function testContactOwnerViewEscapesXssInRecipientName(): void
-    {
-        $html = $this->renderView('_member_to_owner.php', [
-            'to'      => '<script>alert(\'xss\')</script>',
-            'from'    => 'John Doe',
-            'message' => 'Hi.',
-        ]);
-
-        $this->assertStringNotContainsString('<script>', $html);
-        $this->assertStringContainsString('&lt;script&gt;', $html);
-    }
-
-    public function testContactOwnerViewEscapesXssInSenderName(): void
-    {
-        $html = $this->renderView('_member_to_owner.php', [
-            'to'      => 'Jane Smith',
-            'from'    => '<script>alert(\'xss\')</script>',
-            'message' => 'Hi.',
-        ]);
-
-        $this->assertStringNotContainsString('<script>', $html);
-        $this->assertStringContainsString('&lt;script&gt;', $html);
-    }
-
-    public function testContactOwnerViewEscapesXssInMessage(): void
-    {
-        $html = $this->renderView('_member_to_owner.php', [
-            'to'      => 'Jane Smith',
-            'from'    => 'John Doe',
-            'message' => '<script>alert(\'xss\')</script>',
-        ]);
-
-        $this->assertStringNotContainsString('<script>', $html);
-        $this->assertStringContainsString('&lt;script&gt;', $html);
-    }
-
-    // ------------------------------------------------------------------
-    // _feedback.php
-    // ------------------------------------------------------------------
-
-    public function testFeedbackViewRendersWithoutError(): void
-    {
-        $html = $this->renderView('_feedback.php', [
-            'name'      =>'Alice Tester',
-            'email'     => 'alice@example.com',
-            'accountId' => '42',
-            'comments'  => 'Great registry!',
-        ]);
-
-        $this->assertStringContainsString('<!DOCTYPE html>', $html);
-        $this->assertStringContainsString('</html>', $html);
-    }
-
-    public function testFeedbackViewContainsOwnerDetails(): void
-    {
-        $html = $this->renderView('_feedback.php', [
-            'name'      =>'Alice Tester',
-            'email'     => 'alice@example.com',
-            'accountId' => '42',
-            'comments'  => 'Great registry!',
-        ]);
-
-        $this->assertStringContainsString('Alice Tester', $html);
-        $this->assertStringContainsString('alice@example.com', $html);
-        $this->assertStringContainsString('42', $html);
-    }
-
-    public function testFeedbackViewContainsComments(): void
-    {
-        $html = $this->renderView('_feedback.php', [
-            'name'      =>'Alice Tester',
-            'email'     => 'alice@example.com',
-            'accountId' => '42',
-            'comments'  => 'Great registry!',
-        ]);
-
-        $this->assertStringContainsString('Great registry!', $html);
-    }
-
-    public function testFeedbackViewContainsUserFeedbackSubtitle(): void
-    {
-        $html = $this->renderView('_feedback.php', [
-            'name'      =>'Alice Tester',
-            'email'     => 'alice@example.com',
-            'accountId' => '7',
-            'comments'  => 'Some comment.',
-        ]);
-
-        $this->assertStringContainsString('Feedback from Alice Tester', $html);
-    }
-
-    public function testFeedbackViewEscapesXssInComments(): void
-    {
-        $html = $this->renderView('_feedback.php', [
-            'name'      =>'Alice Tester',
-            'email'     => 'alice@example.com',
-            'accountId' => '42',
-            'comments'  => '<script>alert(\'xss\')</script>',
-        ]);
-
-        $this->assertStringNotContainsString('<script>', $html);
-        $this->assertStringContainsString('&lt;script&gt;', $html);
-    }
-
-    public function testFeedbackViewEscapesXssInName(): void
-    {
-        $html = $this->renderView('_feedback.php', [
-            'name'      =>'<script>alert(\'xss\')</script>',
-            'email'     => 'alice@example.com',
-            'accountId' => '42',
-            'comments'  => 'Nice.',
-        ]);
-
-        $this->assertStringNotContainsString('<script>', $html);
-        $this->assertStringContainsString('&lt;script&gt;', $html);
-    }
-
-    // ------------------------------------------------------------------
-    // _admin_to_owner.php
-    // ------------------------------------------------------------------
-
-    public function testAdminContactOwnerViewRendersWithoutError(): void
-    {
-        $html = $this->renderView('_admin_to_owner.php', [
-            'to'           => 'Jane Smith',
-            'from'         => 'Admin User',
-            'message'      => 'Please update your car details.',
-            'carContext'   => ['id' => '123', 'year' => '1972', 'series' => 'S4', 'variant' => '', 'type' => '', 'chassis' => 'CH123456'],
-            'qualityIssue' => 'Missing chassis number',
-        ]);
-
-        $this->assertStringContainsString('<!DOCTYPE html>', $html);
-        $this->assertStringContainsString('</html>', $html);
-    }
-
-    public function testAdminContactOwnerViewContainsRecipientAndSender(): void
-    {
-        $html = $this->renderView('_admin_to_owner.php', [
-            'to'           => 'Jane Smith',
-            'from'         => 'Admin User',
-            'message'      => 'Please update your car details.',
-            'carContext'   => [],
-            'qualityIssue' => null,
-        ]);
-
-        $this->assertStringContainsString('Jane Smith', $html);
-        $this->assertStringContainsString('Admin User', $html);
-    }
-
-    public function testAdminContactOwnerViewContainsRegistryAdministratorLabel(): void
-    {
-        $html = $this->renderView('_admin_to_owner.php', [
-            'to'           => 'Jane Smith',
-            'from'         => 'Admin User',
-            'message'      => 'Update required.',
-            'carContext'   => [],
-            'qualityIssue' => null,
-        ]);
-
-        $this->assertStringContainsString('Registry Administrator', $html);
-    }
-
-    public function testAdminContactOwnerViewRendersCarContextWhenProvided(): void
-    {
-        $html = $this->renderView('_admin_to_owner.php', [
-            'to'           => 'Jane Smith',
-            'from'         => 'Admin User',
-            'message'      => 'Update required.',
-            'carContext'   => ['id' => '99', 'year' => '1971', 'series' => 'Sprint', 'variant' => '', 'type' => '', 'chassis' => 'ABCDEF'],
-            'qualityIssue' => 'Missing engine number',
-        ]);
-
-        $this->assertStringContainsString('99', $html);
-        $this->assertStringContainsString('1971', $html);
-        $this->assertStringContainsString('Elan Sprint', $html);
-        $this->assertStringContainsString('ABCDEF', $html);
-        $this->assertStringContainsString('Missing engine number', $html);
-    }
-
-    public function testAdminContactOwnerViewRendersFullVehicleLabelWithVariantAndType(): void
-    {
-        $html = $this->renderView('_admin_to_owner.php', [
-            'to'           => 'Jane Smith',
-            'from'         => 'Admin User',
-            'message'      => 'Update required.',
-            'carContext'   => ['id' => '77', 'year' => '1968', 'series' => '+2', 'variant' => 'FHC', 'type' => '50', 'chassis' => 'GHIJKL'],
-            'qualityIssue' => 'Verify engine specs',
-        ]);
-
-        $this->assertStringContainsString('77', $html);
-        $this->assertStringContainsString('1968', $html);
-        $this->assertStringContainsString('Elan +2 FHC (Type 50)', $html);
-        $this->assertStringContainsString('GHIJKL', $html);
-        $this->assertStringContainsString('Verify engine specs', $html);
-    }
-
-    public function testAdminContactOwnerViewOmitsCarBoxWhenCarContextEmpty(): void
-    {
-        $html = $this->renderView('_admin_to_owner.php', [
-            'to'           => 'Jane Smith',
-            'from'         => 'Admin User',
-            'message'      => 'General message.',
-            'carContext'   => [],
-            'qualityIssue' => null,
-        ]);
-
-        // The "Related to Your Car" box must not appear when carContext is empty.
-        $this->assertStringNotContainsString('Related to Your Car', $html);
-    }
-
-    public function testAdminContactOwnerViewEscapesXssInMessage(): void
-    {
-        $html = $this->renderView('_admin_to_owner.php', [
-            'to'           => 'Jane Smith',
-            'from'         => 'Admin User',
-            'message'      => '<script>alert(\'xss\')</script>',
-            'carContext'   => [],
-            'qualityIssue' => null,
-        ]);
-
-        $this->assertStringNotContainsString('<script>', $html);
-        $this->assertStringContainsString('&lt;script&gt;', $html);
-    }
-
-    public function testAdminContactOwnerViewEscapesXssInRecipientName(): void
-    {
-        $html = $this->renderView('_admin_to_owner.php', [
-            'to'           => '<script>alert(\'xss\')</script>',
-            'from'         => 'Admin User',
-            'message'      => 'Hello.',
-            'carContext'   => [],
-            'qualityIssue' => null,
-        ]);
-
-        $this->assertStringNotContainsString('<script>', $html);
-        $this->assertStringContainsString('&lt;script&gt;', $html);
-    }
-
-    // ------------------------------------------------------------------
-    // _admin_to_owner.php — quality issue behaviour
-    // ------------------------------------------------------------------
-
-    public function testAdminContactOwnerViewShowsUpdateButtonWhenQualityIssueAndCarPresent(): void
-    {
-        $html = $this->renderView('_admin_to_owner.php', [
-            'to'          => 'Alice',
-            'from'        => 'Admin Name',
-            'message'     => 'Please correct the data.',
-            'carContext'  => ['id' => '99', 'year' => '1971', 'series' => 'S4', 'variant' => '', 'type' => '', 'chassis' => 'ELAN/6/1234'],
-            'qualityIssue' => 'Year is incorrect',
-        ]);
-
-        $this->assertStringContainsString('Update Your Car Record', $html);
-        $this->assertStringContainsString('Elan S4', $html);
-    }
-
-    public function testAdminContactOwnerViewShowsRegistryLinkWhenNoQualityIssue(): void
-    {
-        $html = $this->renderView('_admin_to_owner.php', [
-            'to'          => 'Alice',
-            'from'        => 'Admin Name',
-            'message'     => 'General message.',
-            'carContext'  => [],
-            'qualityIssue' => '',
-        ]);
-
-        $this->assertStringNotContainsString('Update Your Car Record', $html);
-        $this->assertStringContainsString('elanregistry.org', $html);
-    }
-
-    public function testAdminContactOwnerViewEscapesXssInQualityIssue(): void
-    {
-        $html = $this->renderView('_admin_to_owner.php', [
-            'to'          => 'Alice',
-            'from'        => 'Admin Name',
-            'message'     => 'Please fix the data.',
-            'carContext'  => ['id' => '99', 'year' => '1971', 'series' => 'S4', 'variant' => '', 'type' => '', 'chassis' => 'ELAN/6/1234'],
-            'qualityIssue' => '<script>alert("xss")</script>',
-        ]);
-
-        $this->assertStringNotContainsString('<script>', $html);
-        $this->assertStringContainsString('&lt;script&gt;', $html);
-    }
-
-    // ------------------------------------------------------------------
-    // _email_template_verify.php
-    // ------------------------------------------------------------------
-
-    public function testVerifyEmailViewRendersWithoutError(): void
-    {
-        $html = $this->renderView('_email_template_verify.php', [
-            'fname'               => 'Bob',
-            'email'               => 'bob@example.com',
-            'vericode'            => 'ABC123DEFG',
-            'user_id'             => 7,
-            'join_vericode_expiry' => 48,
-        ], $this->userscViewDir());
-
-        $this->assertStringContainsString('<!DOCTYPE html>', $html);
-        $this->assertStringContainsString('</html>', $html);
-    }
-
-    public function testVerifyEmailViewContainsFirstName(): void
-    {
-        $html = $this->renderView('_email_template_verify.php', [
-            'fname'               => 'Bob',
-            'email'               => 'bob@example.com',
-            'vericode'            => 'ABC123DEFG',
-            'user_id'             => 7,
-            'join_vericode_expiry' => 48,
-        ], $this->userscViewDir());
-
-        $this->assertStringContainsString('Bob', $html);
-    }
-
-    public function testVerifyEmailViewContainsVerificationLink(): void
-    {
-        $html = $this->renderView('_email_template_verify.php', [
-            'fname'               => 'Bob',
-            'email'               => 'bob@example.com',
-            'vericode'            => 'MYCODE99',
-            'user_id'             => 7,
-            'join_vericode_expiry' => 48,
-        ], $this->userscViewDir());
-
-        // The verification URL must embed the vericode and user_id.
-        $this->assertStringContainsString('verify.php', $html);
-        $this->assertStringContainsString('MYCODE99', $html);
-        $this->assertStringContainsString('user_id=7', $html);
-    }
-
-    public function testVerifyEmailViewContainsExpiryHours(): void
-    {
-        $html = $this->renderView('_email_template_verify.php', [
-            'fname'               => 'Bob',
-            'email'               => 'bob@example.com',
-            'vericode'            => 'CODE',
-            'user_id'             => 7,
-            'join_vericode_expiry' => 48,
-        ], $this->userscViewDir());
-
-        $this->assertStringContainsString('48', $html);
-    }
-
-    public function testVerifyEmailViewContainsWelcomeContent(): void
-    {
-        $html = $this->renderView('_email_template_verify.php', [
-            'fname'               => 'Bob',
-            'email'               => 'bob@example.com',
-            'vericode'            => 'CODE',
-            'user_id'             => 7,
-            'join_vericode_expiry' => 48,
-        ], $this->userscViewDir());
-
-        $this->assertStringContainsString('Welcome to the Registry', $html);
-    }
-
-    public function testVerifyEmailViewEscapesXssInFirstName(): void
-    {
-        $html = $this->renderView('_email_template_verify.php', [
-            'fname'               => '<script>alert(\'xss\')</script>',
-            'email'               => 'bob@example.com',
-            'vericode'            => 'CODE',
-            'user_id'             => 7,
-            'join_vericode_expiry' => 48,
-        ], $this->userscViewDir());
-
-        $this->assertStringNotContainsString('<script>', $html);
-        $this->assertStringContainsString('&lt;script&gt;', $html);
-    }
-
-    public function testVerifyEmailViewUrlEncodesPlusInEmail(): void
-    {
-        $html = $this->renderView('_email_template_verify.php', [
-            'fname'               => 'Bob',
-            'email'               => 'bob+tag@example.com',
-            'vericode'            => 'CODE',
-            'user_id'             => 7,
-            'join_vericode_expiry' => 48,
-        ], $this->userscViewDir());
-
-        // rawurlencode encodes '+' as '%2B', so the raw '+' must not appear in the URL.
-        $this->assertStringContainsString('bob%2Btag%40example.com', $html);
-    }
-
-    // ------------------------------------------------------------------
-    // _email_template_verify_new.php
-    // ------------------------------------------------------------------
-
-    public function testVerifyNewEmailViewRendersWithoutError(): void
-    {
-        $html = $this->renderView('_email_template_verify_new.php', [
-            'fname'               => 'Carol',
-            'email'               => 'carol@example.com',
-            'vericode'            => 'NEWCODE77',
-            'user_id'             => 12,
-            'join_vericode_expiry' => 24,
-            'url'                 => 'users/verify_new.php?email=carol%40example.com&vericode=NEWCODE77',
-        ], $this->userscViewDir());
-
-        $this->assertStringContainsString('<!DOCTYPE html>', $html);
-        $this->assertStringContainsString('</html>', $html);
-    }
-
-    public function testVerifyNewEmailViewContainsFirstName(): void
-    {
-        $html = $this->renderView('_email_template_verify_new.php', [
-            'fname'               => 'Carol',
-            'email'               => 'carol@example.com',
-            'vericode'            => 'NEWCODE77',
-            'user_id'             => 12,
-            'join_vericode_expiry' => 24,
-            'url'                 => 'users/verify_new.php?vericode=NEWCODE77',
-        ], $this->userscViewDir());
-
-        $this->assertStringContainsString('Carol', $html);
-    }
-
-    public function testVerifyNewEmailViewDisplaysNewEmailAddress(): void
-    {
-        $html = $this->renderView('_email_template_verify_new.php', [
-            'fname'               => 'Carol',
-            'email'               => 'carol@example.com',
-            'vericode'            => 'NEWCODE77',
-            'user_id'             => 12,
-            'join_vericode_expiry' => 24,
-            'url'                 => 'users/verify_new.php?vericode=NEWCODE77',
-        ], $this->userscViewDir());
-
-        // The verification button and security warning must be present.
-        $this->assertStringContainsString('Verify New Email Address', $html);
-        $this->assertStringContainsString('request this change?', $html);
-    }
-
-    public function testVerifyNewEmailViewContainsVerificationButton(): void
-    {
-        $html = $this->renderView('_email_template_verify_new.php', [
-            'fname'               => 'Carol',
-            'email'               => 'carol@example.com',
-            'vericode'            => 'NEWCODE77',
-            'user_id'             => 12,
-            'join_vericode_expiry' => 24,
-            'url'                 => 'users/verify_new.php?vericode=NEWCODE77',
-        ], $this->userscViewDir());
-
-        $this->assertStringContainsString('Verify New Email Address', $html);
-    }
-
-    public function testVerifyNewEmailViewBuildsFullUrlFromBaseUrl(): void
-    {
-        $html = $this->renderView('_email_template_verify_new.php', [
-            'fname'               => 'Carol',
-            'email'               => 'carol@example.com',
-            'vericode'            => 'NEWCODE77',
-            'user_id'             => 12,
-            'join_vericode_expiry' => 24,
-        ], $this->userscViewDir());
-
-        // URL is built from trusted components (same as UserSpice original):
-        // users/verify.php?new=1&email=<email>&vericode=<code>&user_id=<id>
-        $this->assertStringContainsString(
-            'https://test.elanregistry.org/users/verify.php?new=1&amp;email=carol@example.com&amp;vericode=NEWCODE77&amp;user_id=12',
-            $html
-        );
-    }
-
-    public function testVerifyNewEmailViewContainsExpiryHours(): void
-    {
-        $html = $this->renderView('_email_template_verify_new.php', [
-            'fname'               => 'Carol',
-            'email'               => 'carol@example.com',
-            'vericode'            => 'NEWCODE77',
-            'user_id'             => 12,
-            'join_vericode_expiry' => 24,
-            'url'                 => 'users/verify_new.php?vericode=NEWCODE77',
-        ], $this->userscViewDir());
-
-        $this->assertStringContainsString('24', $html);
-    }
-
-    public function testVerifyNewEmailViewEscapesXssInFirstName(): void
-    {
-        $html = $this->renderView('_email_template_verify_new.php', [
-            'fname'               => '<script>alert(\'xss\')</script>',
-            'email'               => 'carol@example.com',
-            'vericode'            => 'NEWCODE77',
-            'user_id'             => 12,
-            'join_vericode_expiry' => 24,
-            'url'                 => 'users/verify_new.php?vericode=NEWCODE77',
-        ], $this->userscViewDir());
-
-        $this->assertStringNotContainsString('<script>', $html);
-        $this->assertStringContainsString('&lt;script&gt;', $html);
-    }
-
-    public function testVerifyNewEmailViewUrlIgnoresUrlParameter(): void
-    {
-        // The $url option is not used — URL is always built from trusted components.
-        // Passing a malicious $url has no effect on the output.
-        $html = $this->renderView('_email_template_verify_new.php', [
-            'fname'               => 'Carol',
-            'email'               => 'carol@example.com',
-            'vericode'            => 'NEWCODE77',
-            'user_id'             => 12,
-            'join_vericode_expiry' => 24,
-            'url'                 => 'javascript:alert(1)',
-        ], $this->userscViewDir());
-
-        $this->assertStringNotContainsString('javascript:', $html);
-        $this->assertStringContainsString('users/verify.php', $html);
-    }
-
-    public function testVerifyNewEmailViewContainsAdminContactEmail(): void
-    {
-        // getFeedbackEmail() mock returns 'registrar@elanregistry.org'.
-        // Verify the template renders the dynamic address into the mailto: href
-        // and visible link text — not any hardcoded value.
-        $html = $this->renderView('_email_template_verify_new.php', [
-            'fname'                => 'Carol',
-            'email'                => 'carol@example.com',
-            'vericode'             => 'NEWCODE77',
-            'user_id'              => 12,
-            'join_vericode_expiry' => 24,
-        ], $this->userscViewDir());
-
-        $this->assertStringContainsString(
-            'href="mailto:registrar@elanregistry.org"',
-            $html,
-            '_email_template_verify_new.php must build mailto: href from getFeedbackEmail() (#368)'
-        );
-        $this->assertStringContainsString(
-            '>registrar@elanregistry.org<',
-            $html,
-            '_email_template_verify_new.php must display the configured feedback address in link text (#368)'
-        );
+    /**
+     * The UserSpice-owned verify templates live in usersc/views/; the rest
+     * live in app/views/email/.
+     *
+     * @param string               $filename    View filename
+     * @param array<string, mixed> $vars        Variables to expose inside the view
+     * @param list<string>         $contains    Fragments the HTML must contain
+     * @param list<string>         $notContains Fragments the HTML must not contain
+     */
+    #[DataProvider('viewMarkupProvider')]
+    public function testViewRendersExpectedMarkup(
+        string $filename,
+        array $vars,
+        array $contains,
+        array $notContains
+    ): void {
+        $viewDir = str_starts_with($filename, '_email_template_verify') ? $this->userscViewDir() : null;
+        $html = $this->renderView($filename, $vars, $viewDir);
+
+        $this->assertMarkup($html, $contains, $notContains);
     }
 
     // ============================================================
@@ -1487,5 +1181,21 @@ final class EmailTemplateTest extends TestCase
             'If the button above does not work, contact <a href="mailto:' . $contact . '">' . $contact . '</a>.',
             $html
         );
+    }
+
+    /**
+     * Assert that the HTML contains each fragment in $contains and none in $notContains.
+     *
+     * @param list<string> $contains    Fragments the HTML must contain
+     * @param list<string> $notContains Fragments the HTML must not contain
+     */
+    private function assertMarkup(string $html, array $contains, array $notContains = []): void
+    {
+        foreach ($contains as $fragment) {
+            $this->assertStringContainsString($fragment, $html);
+        }
+        foreach ($notContains as $fragment) {
+            $this->assertStringNotContainsString($fragment, $html);
+        }
     }
 }

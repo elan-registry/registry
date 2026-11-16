@@ -3,8 +3,9 @@
 declare(strict_types=1);
 
 use ElanRegistry\Input;
-use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\TestCase;
 
 /**
  * Input::raw() is the storage-safe alternative to upstream \Input::get(),
@@ -175,43 +176,6 @@ final class ElanRegistryInputTest extends TestCase
     }
 
     #[Group('fast')]
-    public function test_raw_does_not_encode_ampersand(): void
-    {
-        $_POST = ['description' => 'Lotus & Lotus'];
-        $_GET  = [];
-
-        $result = Input::raw('description');
-
-        $this->assertSame('Lotus & Lotus', $result);
-        $this->assertStringNotContainsString('&amp;', (string) $result);
-    }
-
-    #[Group('fast')]
-    public function test_raw_does_not_encode_angle_brackets(): void
-    {
-        $_POST = ['note' => '1 < 2 > 0'];
-        $_GET  = [];
-
-        $result = Input::raw('note');
-
-        $this->assertSame('1 < 2 > 0', $result);
-        $this->assertStringNotContainsString('&lt;',  (string) $result);
-        $this->assertStringNotContainsString('&gt;',  (string) $result);
-    }
-
-    #[Group('fast')]
-    public function test_raw_does_not_encode_double_quotes(): void
-    {
-        $_POST = ['model' => '"Special Edition"'];
-        $_GET  = [];
-
-        $result = Input::raw('model');
-
-        $this->assertSame('"Special Edition"', $result);
-        $this->assertStringNotContainsString('&quot;', (string) $result);
-    }
-
-    #[Group('fast')]
     public function test_raw_does_not_encode_any_html_special_chars(): void
     {
         $rawValue = 'O\'Brien & "Lotus" <S4>';
@@ -256,88 +220,50 @@ final class ElanRegistryInputTest extends TestCase
         $this->assertSame('1969', $result);
     }
 
-    #[Group('fast')]
-    public function test_existsPost_returns_true_when_post_is_non_empty(): void
+    /**
+     * A null key parameter calls the no-argument form, which checks only that
+     * the superglobal is non-empty. In the "key is null" rows the stored value
+     * is null, and the keyed form returns false for it.
+     *
+     * @return array<string, array{0: 'post'|'get', 1: array<string, mixed>, 2: string|null, 3: bool}>
+     */
+    public static function existsProvider(): array
     {
-        $_POST['x'] = 'value';
-        $this->assertTrue(Input::existsPost());
-    }
-
-    #[Group('fast')]
-    public function test_existsPost_returns_false_when_post_is_empty(): void
-    {
-        $_POST = [];
-        $this->assertFalse(Input::existsPost());
-    }
-
-    #[Group('fast')]
-    public function test_existsPost_with_key_returns_true_when_key_present(): void
-    {
-        $_POST['x'] = 'value';
-        $this->assertTrue(Input::existsPost('x'));
-    }
-
-    #[Group('fast')]
-    public function test_existsPost_with_key_returns_false_when_key_absent(): void
-    {
-        $_POST = [];
-        $this->assertFalse(Input::existsPost('missing'));
+        return [
+            'post, no key, non-empty' => ['post', ['x' => 'value'], null, true],
+            'post, no key, empty'     => ['post', [], null, false],
+            'post, key present'       => ['post', ['x' => 'value'], 'x', true],
+            'post, key absent'        => ['post', [], 'missing', false],
+            'post, key is null'       => ['post', ['x' => null], 'x', false],
+            'get, no key, non-empty'  => ['get', ['x' => 'value'], null, true],
+            'get, no key, empty'      => ['get', [], null, false],
+            'get, key present'        => ['get', ['x' => 'value'], 'x', true],
+            'get, key absent'         => ['get', [], 'missing', false],
+            'get, key is null'        => ['get', ['x' => null], 'x', false],
+        ];
     }
 
     /**
-     * existsPost() with no key is true here, because $_POST is non-empty.
+     * @param 'post'|'get' $superglobal
+     * @param array<string, mixed> $data
      */
     #[Group('fast')]
-    public function test_existsPost_with_key_returns_false_when_key_is_null(): void
-    {
-        $_POST = ['x' => null];
-        $this->assertFalse(Input::existsPost('x'));
-    }
+    #[DataProvider('existsProvider')]
+    public function test_exists_reports_superglobal_and_key_presence(
+        string $superglobal,
+        array $data,
+        ?string $key,
+        bool $expected
+    ): void {
+        $_POST = $superglobal === 'post' ? $data : [];
+        $_GET  = $superglobal === 'get' ? $data : [];
 
-    #[Group('fast')]
-    public function test_existsPost_no_key_and_key_form_agree_when_key_present(): void
-    {
-        $_POST = ['x' => 'value'];
-        $this->assertTrue(Input::existsPost());
-        $this->assertTrue(Input::existsPost('x'));
-    }
+        $result = match ($superglobal) {
+            'post' => $key === null ? Input::existsPost() : Input::existsPost($key),
+            'get'  => $key === null ? Input::existsGet() : Input::existsGet($key),
+        };
 
-    #[Group('fast')]
-    public function test_existsGet_returns_true_when_get_is_non_empty(): void
-    {
-        $_GET['x'] = 'value';
-        $this->assertTrue(Input::existsGet());
-    }
-
-    #[Group('fast')]
-    public function test_existsGet_returns_false_when_get_is_empty(): void
-    {
-        $_GET = [];
-        $this->assertFalse(Input::existsGet());
-    }
-
-    #[Group('fast')]
-    public function test_existsGet_with_key_returns_true_when_key_present(): void
-    {
-        $_GET['x'] = 'value';
-        $this->assertTrue(Input::existsGet('x'));
-    }
-
-    #[Group('fast')]
-    public function test_existsGet_with_key_returns_false_when_key_absent(): void
-    {
-        $_GET = [];
-        $this->assertFalse(Input::existsGet('missing'));
-    }
-
-    /**
-     * existsGet() with no key is true here, because $_GET is non-empty.
-     */
-    #[Group('fast')]
-    public function test_existsGet_with_key_returns_false_when_key_is_null(): void
-    {
-        $_GET = ['x' => null];
-        $this->assertFalse(Input::existsGet('x'));
+        $this->assertSame($expected, $result);
     }
 
     /**

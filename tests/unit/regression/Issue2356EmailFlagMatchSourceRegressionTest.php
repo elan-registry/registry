@@ -183,8 +183,6 @@ final class Issue2356EmailFlagMatchSourceRegressionTest extends TestCase
     private const REMOVED_NAME_TEST_ALLOW_LIST = [
         'tests/unit/regression/Issue2356EmailFlagMatchSourceRegressionTest.php'
             => 'This test names them in its list.',
-        'tests/unit/cars/services/CarRepositoryTest.php'
-            => 'It asserts that the removed methods stay removed.',
         'tests/unit/admin/UserSettingsWiringTest.php'
             => 'It asserts that user_settings.php and the hook do not call them.',
         'tests/unit/cars/services/EmailFlagActiveSqlTest.php'

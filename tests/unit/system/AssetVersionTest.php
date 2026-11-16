@@ -105,45 +105,16 @@ class AssetVersionTest extends TestCase
         }
     }
 
-    /**
-     * Internal whitespace (e.g. a second line appended by a botched deploy
-     * script) survives trim() — since trim() only strips the ends — and must
-     * still be rejected by the allow-list regex. Distinct from Scenario 4
-     * below, which covers whitespace trim() *does* fully remove.
-     */
-    public function test_assetVersionResolver_versionFileWithInternalWhitespace_returnsDev(): void
-    {
-        $path = $this->writeTempVersionFile("v2.25.7\nleftover-line");
-
-        try {
-            $this->assertSame('dev', AssetVersionResolver::resolve($path));
-        } finally {
-            unlink($path);
-        }
-    }
-
-    // -------------------------------------------------------------------
-    // Scenario 4: VERSION file with surrounding whitespace — trim applied
-    // -------------------------------------------------------------------
-
-    public function test_assetVersionResolver_versionFileWithLeadingAndTrailingWhitespace_returnsTrimmedString(): void
-    {
-        $path = $this->writeTempVersionFile("  v2.25.7\n");
-
-        try {
-            $this->assertSame('v2.25.7', AssetVersionResolver::resolve($path));
-        } finally {
-            unlink($path);
-        }
-    }
-
     // -------------------------------------------------------------------
     // Data provider: all common whitespace / line-ending patterns
     // -------------------------------------------------------------------
 
     /**
      * Shell scripts and editors can produce various whitespace patterns in
-     * a VERSION file. trim() must handle all of them.
+     * a VERSION file. trim() must handle all of them. Internal whitespace
+     * (e.g. a second line appended by a botched deploy script) survives
+     * trim(), since trim() only strips the ends, so the allow-list must
+     * still reject it.
      *
      * @return array<string, array{0: string, 1: string}>
      */
@@ -156,6 +127,7 @@ class AssetVersionTest extends TestCase
             'Windows CRLF line ending'        => ["v2.25.7\r\n",   'v2.25.7'],
             'leading and trailing spaces'     => ["  v2.25.7  ",   'v2.25.7'],
             'git-describe with build suffix'  => ["v2.25.6-13-g16246bf2\n", 'v2.25.6-13-g16246bf2'],
+            'internal newline is rejected'    => ["v2.25.7\nleftover-line", 'dev'],
         ];
     }
 

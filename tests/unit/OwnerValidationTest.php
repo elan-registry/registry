@@ -5,6 +5,7 @@ declare(strict_types=1);
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Exceptions\OwnerValidationException;
 use ElanRegistry\Owner;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
@@ -20,6 +21,10 @@ use PHPUnit\Framework\TestCase;
 #[Group('unit')]
 final class OwnerValidationTest extends TestCase
 {
+    private const URL_START_MESSAGE = 'Website URL must start with http:// or https:// (e.g. https://example.com)';
+    private const URL_SCHEME_MESSAGE = 'Website URL must use http:// or https:// — other protocols are not allowed';
+    private const GENERIC_MESSAGE = 'The owner information provided is invalid. Please check your input.';
+
     /**
      * A DatabaseInterface double is required: Owner's constructor otherwise
      * falls back to dbi(), which is undefined in the unit tier
@@ -31,8 +36,8 @@ final class OwnerValidationTest extends TestCase
     }
 
     /**
-     * @param array<string, string|null> $fields Null values are intentional —
-     *        testLatNullPassesThrough() asserts null coordinates are dropped.
+     * @param array<string, mixed> $fields Mixed values are intentional —
+     *        droppedCoordinateProvider() asserts null coordinates are dropped.
      * @return array<string, mixed>
      */
     private function callValidateAndSanitize(array $fields, bool $requireAll = false): array
@@ -43,120 +48,75 @@ final class OwnerValidationTest extends TestCase
         return $method->invoke($owner, $fields, $requireAll);
     }
 
-    public function testWebsiteHttpIsAccepted(): void
+    private static function exactPattern(string $message): string
     {
-        $result = $this->callValidateAndSanitize(['website' => 'http://example.com']);
-        $this->assertEquals('http://example.com', $result['website']);
+        return '/^' . preg_quote($message, '/') . '$/u';
     }
 
-    public function testWebsiteHttpsIsAccepted(): void
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function acceptedWebsiteProvider(): array
     {
-        $result = $this->callValidateAndSanitize(['website' => 'https://example.com']);
-        $this->assertEquals('https://example.com', $result['website']);
+        return [
+            'http' => ['http://example.com'],
+            'https' => ['https://example.com'],
+        ];
     }
 
-    public function testWebsiteJavascriptSchemeIsRejected(): void
+    #[DataProvider('acceptedWebsiteProvider')]
+    public function testWebsiteWithAllowedSchemeIsAccepted(string $website): void
     {
-        // javascript:alert(1) fails FILTER_VALIDATE_URL — caught by the URL format check
-        // Regression for #927: getUserMessage() must return the specific URL message,
-        // not the generic 'The owner information provided is invalid...' default.
+        $result = $this->callValidateAndSanitize(['website' => $website]);
+        $this->assertSame($website, $result['website']);
+    }
+
+    /**
+     * Regression for #927: getUserMessage() must return the specific URL
+     * message, not the generic default. A null message pattern skips the
+     * getMessage() check.
+     *
+     * @return array<string, array{string, ?string, string}>
+     */
+    public static function rejectedWebsiteProvider(): array
+    {
+        return [
+            // Fails FILTER_VALIDATE_URL, so the URL format check catches it.
+            'javascript alert' => ['javascript:alert(1)', '/http.*https/i', self::exactPattern(self::URL_START_MESSAGE)],
+            // Passes FILTER_VALIDATE_URL on some PHP versions, so the throw path
+            // (URL format or scheme allowlist) varies. Assert only the shared pattern.
+            'javascript void' => ['javascript:void(0)', '/http.*https/i', '/http.*https/i'],
+            // Fails FILTER_VALIDATE_URL, so the URL format check catches it.
+            'data scheme' => ['data:text/html,test', '/http.*https/i', self::exactPattern(self::URL_START_MESSAGE)],
+            // Passes FILTER_VALIDATE_URL, so only the scheme allowlist blocks it.
+            'ftp scheme' => [
+                'ftp://example.com/file.txt',
+                self::exactPattern(self::URL_SCHEME_MESSAGE),
+                self::exactPattern(self::URL_SCHEME_MESSAGE),
+            ],
+            'schemeless domain' => ['example.com', null, self::exactPattern(self::URL_START_MESSAGE)],
+        ];
+    }
+
+    #[DataProvider('rejectedWebsiteProvider')]
+    public function testWebsiteWithBadSchemeIsRejected(
+        string $website,
+        ?string $messagePattern,
+        string $userMessagePattern
+    ): void {
         try {
-            $this->callValidateAndSanitize(['website' => 'javascript:alert(1)']);
+            $this->callValidateAndSanitize(['website' => $website]);
             $this->fail('Expected OwnerValidationException was not thrown');
         } catch (OwnerValidationException $e) {
-            $this->assertMatchesRegularExpression('/http.*https/i', $e->getMessage());
-            $this->assertEquals(
-                'Website URL must start with http:// or https:// (e.g. https://example.com)',
-                $e->getUserMessage(),
-                'getUserMessage() must return the specific URL message, not the generic default'
-            );
-            $this->assertNotEquals(
-                'The owner information provided is invalid. Please check your input.',
-                $e->getUserMessage()
-            );
-        }
-    }
-
-    public function testWebsiteJavascriptVoidSchemeIsRejected(): void
-    {
-        // javascript:void(0) passes FILTER_VALIDATE_URL on some PHP versions — blocked by scheme whitelist
-        // Regression for #927: getUserMessage() must return the specific URL message.
-        // The exact throw path (URL format vs scheme whitelist) may vary by PHP version,
-        // so we assert on the shared pattern rather than the exact message string.
-        try {
-            $this->callValidateAndSanitize(['website' => 'javascript:void(0)']);
-            $this->fail('Expected OwnerValidationException was not thrown');
-        } catch (OwnerValidationException $e) {
-            $this->assertMatchesRegularExpression('/http.*https/i', $e->getMessage());
+            if ($messagePattern !== null) {
+                $this->assertMatchesRegularExpression($messagePattern, $e->getMessage());
+            }
             $this->assertMatchesRegularExpression(
-                '/http.*https/i',
-                $e->getUserMessage(),
-                'getUserMessage() must return a specific URL message, not the generic default'
-            );
-            $this->assertNotEquals(
-                'The owner information provided is invalid. Please check your input.',
-                $e->getUserMessage()
-            );
-        }
-    }
-
-    public function testWebsiteDataSchemeIsRejected(): void
-    {
-        // data: fails FILTER_VALIDATE_URL — caught by the URL format check
-        // Regression for #927: getUserMessage() must return the specific URL message.
-        try {
-            $this->callValidateAndSanitize(['website' => 'data:text/html,test']);
-            $this->fail('Expected OwnerValidationException was not thrown');
-        } catch (OwnerValidationException $e) {
-            $this->assertMatchesRegularExpression('/http.*https/i', $e->getMessage());
-            $this->assertEquals(
-                'Website URL must start with http:// or https:// (e.g. https://example.com)',
+                $userMessagePattern,
                 $e->getUserMessage(),
                 'getUserMessage() must return the specific URL message, not the generic default'
             );
-            $this->assertNotEquals(
-                'The owner information provided is invalid. Please check your input.',
-                $e->getUserMessage()
-            );
-        }
-    }
-
-    public function testWebsiteFtpSchemeIsRejected(): void
-    {
-        // ftp: passes FILTER_VALIDATE_URL but is blocked by the scheme whitelist
-        // Regression for #927: getUserMessage() must return the specific URL message.
-        try {
-            $this->callValidateAndSanitize(['website' => 'ftp://example.com/file.txt']);
-            $this->fail('Expected OwnerValidationException was not thrown');
-        } catch (OwnerValidationException $e) {
-            $this->assertEquals(
-                'Website URL must use http:// or https:// — other protocols are not allowed',
-                $e->getMessage()
-            );
-            $this->assertEquals(
-                'Website URL must use http:// or https:// — other protocols are not allowed',
-                $e->getUserMessage(),
-                'getUserMessage() must return the specific URL message, not the generic default'
-            );
-            $this->assertNotEquals(
-                'The owner information provided is invalid. Please check your input.',
-                $e->getUserMessage()
-            );
-        }
-    }
-
-    public function testWebsiteSchemelessDomainIsRejected(): void
-    {
-        // Regression for #927: getUserMessage() must not return the generic default.
-        try {
-            $this->callValidateAndSanitize(['website' => 'example.com']);
-            $this->fail('Expected OwnerValidationException was not thrown');
-        } catch (OwnerValidationException $e) {
-            $this->assertEquals(
-                'Website URL must start with http:// or https:// (e.g. https://example.com)',
-                $e->getUserMessage(),
-                'getUserMessage() must return the specific URL message, not the generic default'
-            );
+            $this->assertNotEquals(self::GENERIC_MESSAGE, $e->getUserMessage());
         }
     }
 
@@ -166,66 +126,63 @@ final class OwnerValidationTest extends TestCase
         $this->assertArrayNotHasKey('website', $result);
     }
 
-    public function testLatNullPassesThrough(): void
+    /**
+     * @return array<string, array{mixed}>
+     */
+    public static function droppedCoordinateProvider(): array
     {
-        $result = $this->callValidateAndSanitize(['lat' => null]);
+        return [
+            'lat null' => [null],
+            'lat empty string' => [''],
+        ];
+    }
+
+    #[DataProvider('droppedCoordinateProvider')]
+    public function testEmptyCoordinateIsDropped(mixed $value): void
+    {
+        $result = $this->callValidateAndSanitize(['lat' => $value]);
         $this->assertArrayNotHasKey('lat', $result);
     }
 
-    public function testLatEmptyStringPassesThrough(): void
+    /**
+     * @return array<string, array{string, string, float}>
+     */
+    public static function acceptedCoordinateProvider(): array
     {
-        $result = $this->callValidateAndSanitize(['lat' => '']);
-        $this->assertArrayNotHasKey('lat', $result);
+        return [
+            // Zero is a valid coordinate. !empty() would reject it.
+            'lat zero equator' => ['lat', '0', 0.0],
+            'lat upper boundary' => ['lat', '90', 90.0],
+            'lat decimal cast to float' => ['lat', '51.5', 51.5],
+            'lon upper boundary' => ['lon', '180', 180.0],
+            'lon zero prime meridian' => ['lon', '0', 0.0],
+        ];
     }
 
-    public function testLatZeroIsAccepted(): void
+    #[DataProvider('acceptedCoordinateProvider')]
+    public function testCoordinateIsAccepted(string $field, string $value, float $expected): void
     {
-        // Zero is a valid equator coordinate — !empty() would incorrectly reject it
-        $result = $this->callValidateAndSanitize(['lat' => '0']);
-        $this->assertSame(0.0, $result['lat']);
+        $result = $this->callValidateAndSanitize([$field => $value]);
+        $this->assertSame($expected, $result[$field]);
     }
 
-    public function testLatBoundaryAccepted(): void
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function rejectedCoordinateProvider(): array
     {
-        $result = $this->callValidateAndSanitize(['lat' => '90']);
-        $this->assertSame(90.0, $result['lat']);
+        return [
+            'lat above 90' => ['lat', '91'],
+            'lat non-numeric' => ['lat', 'north'],
+            'lon above 180' => ['lon', '181'],
+        ];
     }
 
-    public function testLatOutOfRangeRejected(): void
+    #[DataProvider('rejectedCoordinateProvider')]
+    public function testCoordinateIsRejected(string $field, string $value): void
     {
         $this->expectException(OwnerValidationException::class);
-        $this->callValidateAndSanitize(['lat' => '91']);
-    }
-
-    public function testLatNonNumericRejected(): void
-    {
-        $this->expectException(OwnerValidationException::class);
-        $this->callValidateAndSanitize(['lat' => 'north']);
-    }
-
-    public function testLatIsCastToFloat(): void
-    {
-        $result = $this->callValidateAndSanitize(['lat' => '51.5']);
-        $this->assertSame(51.5, $result['lat']);
-    }
-
-    public function testLonBoundaryAccepted(): void
-    {
-        $result = $this->callValidateAndSanitize(['lon' => '180']);
-        $this->assertSame(180.0, $result['lon']);
-    }
-
-    public function testLonOutOfRangeRejected(): void
-    {
-        $this->expectException(OwnerValidationException::class);
-        $this->callValidateAndSanitize(['lon' => '181']);
-    }
-
-    public function testLonZeroIsAccepted(): void
-    {
-        // Zero is a valid prime-meridian coordinate — !empty() would incorrectly reject it
-        $result = $this->callValidateAndSanitize(['lon' => '0']);
-        $this->assertSame(0.0, $result['lon']);
+        $this->callValidateAndSanitize([$field => $value]);
     }
 
     public function testQualityScoreCountsZeroCoordinates(): void

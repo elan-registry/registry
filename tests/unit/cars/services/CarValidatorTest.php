@@ -256,42 +256,43 @@ final class CarValidatorTest extends TestCase
         $this->validator->validateAndSanitizeFields($fields, false);
     }
 
-    public function testLatZeroIsAccepted(): void
+    /**
+     * @return array<string, array{string, string, float}>
+     */
+    public static function acceptedCoordinateProvider(): array
     {
-        // Zero is a valid equator coordinate — !empty() would incorrectly reject it
-        $result = $this->validator->validateAndSanitizeFields(['lat' => '0'], false);
-        $this->assertSame(0.0, $result['lat']);
+        return [
+            // Zero is a valid coordinate. !empty() would reject it.
+            'lat zero equator' => ['lat', '0', 0.0],
+            'lon zero prime meridian' => ['lon', '0', 0.0],
+            'lat upper boundary' => ['lat', '90', 90.0],
+            'lon upper boundary' => ['lon', '180', 180.0],
+        ];
     }
 
-    public function testLonZeroIsAccepted(): void
+    #[DataProvider('acceptedCoordinateProvider')]
+    public function testCoordinateIsAccepted(string $field, string $value, float $expected): void
     {
-        // Zero is a valid prime-meridian coordinate — !empty() would incorrectly reject it
-        $result = $this->validator->validateAndSanitizeFields(['lon' => '0'], false);
-        $this->assertSame(0.0, $result['lon']);
+        $result = $this->validator->validateAndSanitizeFields([$field => $value], false);
+        $this->assertSame($expected, $result[$field]);
     }
 
-    public function testLatBoundaryAccepted(): void
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function outOfRangeCoordinateProvider(): array
     {
-        $result = $this->validator->validateAndSanitizeFields(['lat' => '90'], false);
-        $this->assertSame(90.0, $result['lat']);
+        return [
+            'lat above 90' => ['lat', '91'],
+            'lon above 180' => ['lon', '181'],
+        ];
     }
 
-    public function testLatOutOfRangeRejected(): void
+    #[DataProvider('outOfRangeCoordinateProvider')]
+    public function testCoordinateOutOfRangeIsRejected(string $field, string $value): void
     {
         $this->expectException(CarValidationException::class);
-        $this->validator->validateAndSanitizeFields(['lat' => '91'], false);
-    }
-
-    public function testLonBoundaryAccepted(): void
-    {
-        $result = $this->validator->validateAndSanitizeFields(['lon' => '180'], false);
-        $this->assertSame(180.0, $result['lon']);
-    }
-
-    public function testLonOutOfRangeRejected(): void
-    {
-        $this->expectException(CarValidationException::class);
-        $this->validator->validateAndSanitizeFields(['lon' => '181'], false);
+        $this->validator->validateAndSanitizeFields([$field => $value], false);
     }
 
     public function testValidateAndSanitizeFieldsRequiresChassisWhenRequireAll(): void
@@ -375,78 +376,53 @@ final class CarValidatorTest extends TestCase
     }
 
     /**
-     * A bare domain without a scheme is rejected with the structural-invalidity message.
+     * A null pattern means the row checks only the exception class.
+     *
+     * @return array<string, array{string, ?string}>
      */
-    public function testWebsiteSchemelessDomainIsRejected(): void
+    public static function rejectedWebsiteProvider(): array
+    {
+        return [
+            'schemeless domain' => ['example.com', '/http:\/\//'],
+            // No scheme, so FILTER_VALIDATE_URL fails.
+            'relative path' => ['/path/to/page', null],
+            // Some PHP versions let javascript: pass FILTER_VALIDATE_URL.
+            // The scheme allowlist must reject it.
+            'javascript scheme' => ['javascript:void(0)', '/(http:\/\/|https:\/\/)/'],
+            'data scheme' => ['data:text/html,<h1>x</h1>', null],
+            // ftp:// passes FILTER_VALIDATE_URL, so only the scheme allowlist rejects it.
+            'ftp scheme' => ['ftp://files.example.com', '/must use http:\/\/ or https:\/\//'],
+        ];
+    }
+
+    #[DataProvider('rejectedWebsiteProvider')]
+    public function testWebsiteWithBadSchemeIsRejected(string $website, ?string $messagePattern): void
     {
         $this->expectException(CarValidationException::class);
-        $this->expectExceptionMessageMatches('/http:\/\//');
+        if ($messagePattern !== null) {
+            $this->expectExceptionMessageMatches($messagePattern);
+        }
 
-        $this->validator->validateAndSanitizeFields(['website' => 'example.com'], false);
+        $this->validator->validateAndSanitizeFields(['website' => $website], false);
     }
 
     /**
-     * A relative path is rejected — it has no scheme and fails FILTER_VALIDATE_URL.
+     * @return array<string, array{string, string}>
      */
-    public function testWebsiteRelativePathIsRejected(): void
+    public static function acceptedWebsiteProvider(): array
     {
-        $this->expectException(CarValidationException::class);
-
-        $this->validator->validateAndSanitizeFields(['website' => '/path/to/page'], false);
+        return [
+            'http' => ['http://www.example.com', 'http://'],
+            'https' => ['https://www.example.com', 'https://'],
+        ];
     }
 
-    /**
-     * javascript: scheme passes FILTER_VALIDATE_URL on some PHP versions but must be
-     * rejected by the explicit scheme allowlist check.
-     * The exception message must reference http:// or https://.
-     */
-    public function testWebsiteJavascriptSchemeIsRejected(): void
+    #[DataProvider('acceptedWebsiteProvider')]
+    public function testWebsiteWithAllowedSchemeIsAccepted(string $website, string $expectedPrefix): void
     {
-        $this->expectException(CarValidationException::class);
-        $this->expectExceptionMessageMatches('/(http:\/\/|https:\/\/)/');
-
-        $this->validator->validateAndSanitizeFields(['website' => 'javascript:void(0)'], false);
-    }
-
-    /**
-     * data: URIs are rejected — they are structurally invalid per FILTER_VALIDATE_URL
-     * and must not be stored.
-     */
-    public function testWebsiteDataSchemeIsRejected(): void
-    {
-        $this->expectException(CarValidationException::class);
-
-        $this->validator->validateAndSanitizeFields(['website' => 'data:text/html,<h1>x</h1>'], false);
-    }
-
-    /**
-     * A valid http:// URL is accepted and the sanitized URL is returned.
-     */
-    public function testWebsiteHttpIsAccepted(): void
-    {
-        $result = $this->validator->validateAndSanitizeFields(['website' => 'http://www.example.com'], false);
+        $result = $this->validator->validateAndSanitizeFields(['website' => $website], false);
         $this->assertArrayHasKey('website', $result);
-        $this->assertStringStartsWith('http://', $result['website']);
-    }
-
-    /**
-     * A valid https:// URL is accepted and the sanitized URL is returned.
-     */
-    public function testWebsiteHttpsIsAccepted(): void
-    {
-        $result = $this->validator->validateAndSanitizeFields(['website' => 'https://www.example.com'], false);
-        $this->assertArrayHasKey('website', $result);
-        $this->assertStringStartsWith('https://', $result['website']);
-    }
-
-    /**
-     * An ftp:// URL passes FILTER_VALIDATE_URL but is rejected by the scheme allowlist.
-     */
-    public function testWebsiteFtpSchemeIsRejected(): void
-    {
-        $this->expectException(CarValidationException::class);
-        $this->expectExceptionMessageMatches('/must use http:\/\/ or https:\/\//');
-        $this->validator->validateAndSanitizeFields(['website' => 'ftp://files.example.com'], false);
+        $this->assertStringStartsWith($expectedPrefix, $result['website']);
     }
 
     // ============================================================

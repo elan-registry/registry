@@ -5,6 +5,7 @@ declare(strict_types=1);
 use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\Exceptions\VerificationConfigException;
 use ElanRegistry\LogCategories;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Tests\Support\BatchSizeRoundTripFakeDatabase;
@@ -29,9 +30,7 @@ require_once __DIR__ . '/../../../Support/BatchSizeRoundTripFakeDatabase.php';
  * option is used instead), the brevoReady()-dependent tests exercise the real
  * filesystem: {@see BrevoSiteRoot} points $abs_us_root/$us_url_root at a
  * throwaway temp directory and creates the override file and info.xml there
- * for the duration of each test, with guaranteed cleanup in tearDown(). This is the same strategy
- * the implementing agent used to verify the class against the real dev DB
- * (see the plan file's Test Plan section).
+ * for the duration of each test, with guaranteed cleanup in tearDown().
  */
 #[Group('fast')]
 final class VerificationSettingsTest extends TestCase
@@ -274,31 +273,36 @@ final class VerificationSettingsTest extends TestCase
     }
 
     /**
-     * The inverse of the regression test above: when the confirmation SELECT
-     * genuinely finds no row (the settings row really is missing), setEnabled()
-     * must still report failure.
+     * Each way the write can fail must make setEnabled() report failure. The
+     * "finds no row" row is the inverse of the regression test above: the
+     * settings row really is missing, so the confirmation SELECT must not pass.
+     *
+     * @return array<string, array{bool, array<string, mixed>}> [enabled, fake DB arguments]
      */
-    public function testSetEnabledReturnsFalseWhenConfirmationSelectFindsNoRow(): void
+    public static function setEnabledFailureProvider(): array
     {
-        $db = new VerificationSettingsFakeDatabase(
-            confirmSelectRowValue: [],
-        );
-
-        $this->assertFalse((new VerificationSettings($db))->setEnabled(false));
+        return [
+            'confirmation select finds no row' => [false, ['confirmSelectRowValue' => []]],
+            'confirmation select errors'       => [false, ['confirmSelectRowValue' => (object) ['id' => 1], 'confirmSelectErrors' => true]],
+            // brevoReady()'s SELECT finds a key; only the write itself fails.
+            'update fails'                     => [true, ['firstRowValue' => (object) ['key' => 'sib-fake-api-key'], 'errorAfterUpdateOnly' => true]],
+        ];
     }
 
     /**
-     * And when the confirmation SELECT itself errors (e.g. connection dropped
-     * between the UPDATE and the SELECT), setEnabled() must report failure too.
+     * @param array<string, mixed> $dbArgs
      */
-    public function testSetEnabledReturnsFalseWhenConfirmationSelectErrors(): void
+    #[DataProvider('setEnabledFailureProvider')]
+    public function testSetEnabledReturnsFalseWhenWriteFails(bool $enabled, array $dbArgs): void
     {
-        $db = new VerificationSettingsFakeDatabase(
-            confirmSelectRowValue: (object) ['id' => 1],
-            confirmSelectErrors: true,
-        );
+        // Enabling passes the brevoReady() gate first, so the override file must exist.
+        if ($enabled) {
+            $this->useTempSiteRoot(withOverrideFile: true);
+        }
 
-        $this->assertFalse((new VerificationSettings($db))->setEnabled(false));
+        $db = new VerificationSettingsFakeDatabase(...$dbArgs);
+
+        $this->assertFalse((new VerificationSettings($db))->setEnabled($enabled));
     }
 
     public function testSetEnabledTrueThrowsWhenBrevoNotReadyAndDoesNotWrite(): void
@@ -366,19 +370,6 @@ final class VerificationSettingsTest extends TestCase
         $db = new VerificationSettingsFakeDatabase();
 
         $this->assertTrue((new VerificationSettings($db))->setEnabled(false));
-    }
-
-    public function testSetEnabledReturnsFalseWhenUpdateFails(): void
-    {
-        $this->useTempSiteRoot(withOverrideFile: true);
-
-        // brevoReady()'s SELECT succeeds (key present); the write itself fails.
-        $db = new VerificationSettingsFakeDatabase(
-            firstRowValue: (object) ['key' => 'sib-fake-api-key'],
-            errorAfterUpdateOnly: true,
-        );
-
-        $this->assertFalse((new VerificationSettings($db))->setEnabled(true));
     }
 
     // =========================================================================
@@ -561,26 +552,25 @@ final class VerificationSettingsTest extends TestCase
         $this->assertStringNotContainsString('500', $changed[0]['message']);
     }
 
-    public function testSetBatchSizeReturnsFalseWhenUpdateFails(): void
+    /**
+     * @return array<string, array{array<string, mixed>}> [fake DB arguments]
+     */
+    public static function setBatchSizeFailureProvider(): array
     {
-        $db = new VerificationSettingsFakeDatabase(errorAfterUpdateOnly: true);
-
-        $this->assertFalse((new VerificationSettings($db))->setBatchSize(10));
+        return [
+            'update fails'                     => [['errorAfterUpdateOnly' => true]],
+            'confirmation select finds no row' => [['confirmSelectRowValue' => []]],
+            'confirmation select errors'       => [['confirmSelectRowValue' => (object) ['id' => 1], 'confirmSelectErrors' => true]],
+        ];
     }
 
-    public function testSetBatchSizeReturnsFalseWhenConfirmationSelectFindsNoRow(): void
+    /**
+     * @param array<string, mixed> $dbArgs
+     */
+    #[DataProvider('setBatchSizeFailureProvider')]
+    public function testSetBatchSizeReturnsFalseWhenWriteFails(array $dbArgs): void
     {
-        $db = new VerificationSettingsFakeDatabase(confirmSelectRowValue: []);
-
-        $this->assertFalse((new VerificationSettings($db))->setBatchSize(10));
-    }
-
-    public function testSetBatchSizeReturnsFalseWhenConfirmationSelectErrors(): void
-    {
-        $db = new VerificationSettingsFakeDatabase(
-            confirmSelectRowValue: (object) ['id' => 1],
-            confirmSelectErrors: true,
-        );
+        $db = new VerificationSettingsFakeDatabase(...$dbArgs);
 
         $this->assertFalse((new VerificationSettings($db))->setBatchSize(10));
     }
@@ -1383,29 +1373,5 @@ final class VerificationSettingsTest extends TestCase
         $this->assertNull($result);
         $this->assertCount(1, $mockLogEntries, 'A null value hits the fail-closed branch, same as a non-numeric string');
         $this->assertStringContainsString('missing', $mockLogEntries[0]['message']);
-    }
-
-    // =========================================================================
-    // Wrong-typed-value test — N/A for this class
-    // =========================================================================
-
-    /**
-     * No wrong-typed-value test is written for VerificationSettings itself:
-     * every public method parameter (`bool $enabled` on setEnabled()) is a
-     * scalar typed parameter, and PHP's type system already enforces the
-     * type at the language boundary — passing a non-bool triggers a
-     * TypeError before the method body ever runs, so there is no runtime
-     * shape violation for this class's own API to test. The wrong-typed-value
-     * coverage this project's convention calls for lives instead at the HTTP
-     * boundary in VerificationToggleEndpointBehaviorTest (integration tier),
-     * where request input really
-     * does arrive untyped from the wire.
-     */
-    public function testWrongTypedValueNotApplicableToThisClassDocumented(): void
-    {
-        // No assertion to make — see the docblock above for why this class has
-        // no wrong-typed-value case of its own. Counted so the test still
-        // reports as run rather than risky/incomplete.
-        $this->addToAssertionCount(1);
     }
 }

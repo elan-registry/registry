@@ -1,113 +1,104 @@
 // Regression test for issue #840: missing htmlspecialchars() on car detail fields.
 //
-// Verifies that car field display areas in details.php and usersc/account.php
-// render as plain text without raw HTML characters that would indicate unescaped
-// output. These fields were "accidentally safe" before the encode-at-output reform
+// Seeds a car whose color, engine, and chassis hold HTML payloads, then checks
+// that details.php shows each payload as text and creates no element from it.
+// The fields were "accidentally safe" before the encode-at-output reform
 // because Input::sanitize() pre-encoded values at storage time.
+//
+// The seed owner's website holds a quote-break payload, to check the escaping
+// of the website href.
 
 const { test, expect } = require('@playwright/test');
+const BASE_URL = require('./base-url.js');
+const { runPhpFixture } = require('./fixture-runner.js');
 const {
-    CAR_ID_WITH_HISTORY,
-    CAR_ID_WITH_WEBSITE,
     CAR_ID_WITHOUT_OWNERSHIP_DATES,
     CAR_ID_WITH_OWNERSHIP_DATES,
 } = require('./fixtures.js');
 
-const DETAILS_URL = `app/owner/cars/details.php?car_id=${CAR_ID_WITH_HISTORY}`;
-const WEBSITE_DETAILS_URL = `app/owner/cars/details.php?car_id=${CAR_ID_WITH_WEBSITE}`;
 const NO_DATES_DETAILS_URL = `app/owner/cars/details.php?car_id=${CAR_ID_WITHOUT_OWNERSHIP_DATES}`;
 const WITH_DATES_DETAILS_URL = `app/owner/cars/details.php?car_id=${CAR_ID_WITH_OWNERSHIP_DATES}`;
 
-test.describe('Car details — output escaping (issue #840)', () => {
+const FIXTURE_REL = 'tests/playwright/local/fixtures/seed-output-escaping-car.php';
+// Must match the payloads in the seed fixture.
+const PAYLOADS = {
+    color: '<script>alert(1)</script>',
+    engine: '<img onerror=1>',
+    chassis: '<i onerror=1>',
+    website: 'https://x.test/"onmouseover="alert(1)',
+};
+const isRemoteBase = !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(BASE_URL);
 
-    test.beforeEach(async ({ page }) => {
-        await page.goto(DETAILS_URL, { waitUntil: 'networkidle' });
+test.describe('Car details — output escaping of seeded HTML payloads (issue #840)', () => {
+    test.skip(isRemoteBase, 'The seed fixture writes to the local Docker database, so the base URL must be the local site');
+
+    // One worker: one seed for all tests, and the afterAll cleanup runs once.
+    test.describe.configure({ mode: 'serial' });
+
+    let seeded;
+
+    test.beforeAll(() => {
+        seeded = JSON.parse(runPhpFixture(FIXTURE_REL).trim().split('\n').pop());
+        expect(seeded.userId).toBeGreaterThan(0);
+        expect(seeded.carId).toBeGreaterThan(0);
     });
 
-    test('page loads without XSS execution', async ({ page }) => {
+    test.afterAll(() => {
+        try {
+            runPhpFixture(FIXTURE_REL, ['--cleanup']);
+        } catch (error) {
+            // The next seed run deletes the marker rows first, so a failed cleanup is not fatal.
+            console.warn('output-escaping cleanup failed:', error.message);
+        }
+    });
+
+    test('details page shows the payloads as text and creates no element from them', async ({ page }) => {
         const dialogs = [];
         page.on('dialog', dialog => {
             dialogs.push(dialog.message());
             dialog.dismiss();
         });
 
-        await page.goto(DETAILS_URL, { waitUntil: 'networkidle' });
+        await page.goto(`app/owner/cars/details.php?car_id=${seeded.carId}`, { waitUntil: 'networkidle' });
+
+        // Positive control: the page shows the seeded car, not an error or another car.
+        const hero = page.locator('.card.bg-primary');
+        await expect(hero.locator('.fw-bold.fs-5').first()).toHaveText(String(seeded.carId));
+        await expect(page.locator('.breadcrumb-item.active')).toContainText('1968 S4');
+
+        // The card scope leaves out the JSON-LD script in the page head area.
+        const cards = page.locator('.registry-card');
+        await expect(cards.locator('script')).toHaveCount(0);
+        await expect(cards.locator('[onerror]')).toHaveCount(0);
+
+        // Raw output would turn each payload into an element, so its literal
+        // text would not appear.
+        await expect(hero).toContainText(PAYLOADS.color);
+        await expect(hero).toContainText(PAYLOADS.engine);
+        await expect(hero).toContainText(PAYLOADS.chassis);
 
         expect(dialogs).toHaveLength(0);
     });
 
-    test('hero quick-facts fields do not contain raw HTML tag characters', async ({ page }) => {
-        // .fw-bold.fs-5 divs inside the hero card hold chassis, color, engine, and registry ID
-        const heroFields = page.locator('.card.bg-primary .fw-bold.fs-5');
-        const count = await heroFields.count();
-        expect(count).toBeGreaterThan(0);
+    test('website href keeps the quote-break payload inside the attribute', async ({ page }) => {
+        // Website is owner-level (issue #1963). The Owner Information card
+        // renders it as a link with its own URL as the link text. The payload
+        // has an https scheme, so OwnerView::websiteUrl() keeps it, and only
+        // the href escaping stops the attribute breakout. Unit tests in
+        // OwnerViewTest cover the javascript: scheme filter.
+        await page.goto(`app/owner/cars/details.php?car_id=${seeded.carId}`, { waitUntil: 'networkidle' });
 
-        for (let i = 0; i < count; i++) {
-            const text = await heroFields.nth(i).textContent();
-            if (text && text.trim()) {
-                expect(text).not.toMatch(/<script/i);
-                expect(text).not.toMatch(/onerror=/i);
-                expect(text).not.toContain('<img');
-            }
-        }
+        const ownerCard = page.locator('.registry-card', { hasText: 'Owner Information' });
+        // Positive control: the owner card and its website link rendered.
+        await expect(ownerCard).toHaveCount(1);
+        const websiteLink = ownerCard.locator('dl a[target="_blank"][rel="noopener noreferrer"]');
+        await expect(websiteLink).toHaveCount(1);
+
+        // Escaped output decodes back to the full payload. Raw output ends the
+        // href at the first quote and adds an onmouseover attribute.
+        await expect(websiteLink).toHaveAttribute('href', PAYLOADS.website);
+        await expect(ownerCard.locator('[onmouseover]')).toHaveCount(0);
     });
-
-    test('vehicle information dl/dd values do not contain injected markup', async ({ page }) => {
-        const vehicleCard = page.locator('.registry-card').first();
-        const ddElements = vehicleCard.locator('dd');
-        const count = await ddElements.count();
-
-        for (let i = 0; i < count; i++) {
-            const text = await ddElements.nth(i).textContent();
-            if (text && text.trim()) {
-                expect(text).not.toMatch(/<script/i);
-                expect(text).not.toMatch(/onerror=/i);
-            }
-        }
-    });
-
-    test('breadcrumb car title renders as plain text', async ({ page }) => {
-        const breadcrumb = page.locator('.breadcrumb-item.active');
-        await expect(breadcrumb).toBeVisible();
-
-        const text = await breadcrumb.textContent();
-        expect(text).not.toMatch(/<script/i);
-        expect(text).not.toMatch(/onerror=/i);
-    });
-
-    test('website href does not contain unescaped quotes or javascript protocol', async ({ page }) => {
-        // Website is owner-level (issue #1963) and now rendered in the Owner
-        // Information card as a plain link (its own URL as link text), not the
-        // "Visit Website" button that used to live in the vehicle info card's
-        // Ownership & History section.
-        //
-        // Uses CAR_ID_WITH_WEBSITE rather than the describe block's default
-        // CAR_ID_WITH_HISTORY: the latter has an empty owner website in the
-        // test DB, which let this test previously pass having executed zero
-        // real assertions in the loop below (count === 0). The
-        // toBeGreaterThan(0) guard below turns that silent no-op into a
-        // failure if the fixture ever again points at a car with no website.
-        await page.goto(WEBSITE_DETAILS_URL, { waitUntil: 'networkidle' });
-
-        const websiteLinks = page.locator('dl a[target="_blank"][rel="noopener noreferrer"]');
-        const count = await websiteLinks.count();
-        expect(count).toBeGreaterThan(0);
-
-        for (let i = 0; i < count; i++) {
-            const href = await websiteLinks.nth(i).getAttribute('href');
-            if (href) {
-                expect(href).not.toMatch(/javascript:/i);
-                expect(href).not.toContain('"');
-            }
-        }
-    });
-
-    test('no injected script elements inside card bodies', async ({ page }) => {
-        // Script tags inside .card-body would indicate XSS injection through car fields
-        const injectedScripts = await page.locator('.registry-card .card-body script').count();
-        expect(injectedScripts).toBe(0);
-    });
-
 });
 
 test.describe('Car details — Ownership & History section visibility', () => {

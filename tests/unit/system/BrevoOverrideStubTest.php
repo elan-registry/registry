@@ -123,30 +123,31 @@ final class BrevoOverrideStubTest extends TestCase
         $this->assertSame($content, file_get_contents($path));
     }
 
-    public function test_sweep_missingFile_returnsFalseWithNoWarning(): void
+    /**
+     * @return array<string, array{0: 'sweep'|'matches', 1: bool}>
+     */
+    public static function unusablePathProvider(): array
     {
-        $path = $this->tempDir . '/does-not-exist.php';
-
-        $warnings = [];
-        set_error_handler(function (int $errno, string $errstr) use (&$warnings): bool {
-            $warnings[] = $errstr;
-            return true;
-        });
-
-        try {
-            $result = BrevoOverrideStub::sweep($path);
-        } finally {
-            restore_error_handler();
-        }
-
-        $this->assertFalse($result);
-        $this->assertSame([], $warnings, 'sweep() must not emit any PHP warning for a missing file.');
+        return [
+            'sweep, missing file'        => ['sweep', false],
+            'sweep, directory at path'   => ['sweep', true],
+            'matches, missing file'      => ['matches', false],
+            'matches, directory at path' => ['matches', true],
+        ];
     }
 
-    public function test_sweep_directoryAtPath_returnsFalseWithNoWarning(): void
+    /**
+     * @param 'sweep'|'matches' $method
+     */
+    #[DataProvider('unusablePathProvider')]
+    public function test_unusablePath_returnsFalseWithNoWarning(string $method, bool $pathIsDirectory): void
     {
-        $path = $this->tempDir . '/a-directory';
-        mkdir($path);
+        if ($pathIsDirectory) {
+            $path = $this->tempDir . '/a-directory';
+            mkdir($path);
+        } else {
+            $path = $this->tempDir . '/does-not-exist.php';
+        }
 
         $warnings = [];
         set_error_handler(function (int $errno, string $errstr) use (&$warnings): bool {
@@ -155,14 +156,18 @@ final class BrevoOverrideStubTest extends TestCase
         });
 
         try {
-            $result = BrevoOverrideStub::sweep($path);
+            $result = BrevoOverrideStub::$method($path);
         } finally {
             restore_error_handler();
         }
 
         $this->assertFalse($result);
-        $this->assertSame([], $warnings, 'sweep() must not emit any PHP warning for a directory path.');
-        $this->assertDirectoryExists($path);
+        $this->assertSame([], $warnings, "{$method}() must not emit any PHP warning for this path.");
+        if ($pathIsDirectory) {
+            // A false result alone does not prove that sweep() left the directory
+            // alone. Only sweep() can delete, but the check costs nothing for matches().
+            $this->assertDirectoryExists($path);
+        }
     }
 
     public function test_sweep_emptyFile_returnsFalse(): void
@@ -191,47 +196,6 @@ final class BrevoOverrideStubTest extends TestCase
         file_put_contents($path, $content);
 
         $this->assertFalse(BrevoOverrideStub::matches($path));
-    }
-
-    public function test_matches_missingFile_returnsFalseWithNoWarning(): void
-    {
-        $path = $this->tempDir . '/does-not-exist.php';
-
-        $warnings = [];
-        set_error_handler(function (int $errno, string $errstr) use (&$warnings): bool {
-            $warnings[] = $errstr;
-            return true;
-        });
-
-        try {
-            $result = BrevoOverrideStub::matches($path);
-        } finally {
-            restore_error_handler();
-        }
-
-        $this->assertFalse($result);
-        $this->assertSame([], $warnings, 'matches() must not emit any PHP warning for a missing file.');
-    }
-
-    public function test_matches_directoryAtPath_returnsFalseWithNoWarning(): void
-    {
-        $path = $this->tempDir . '/a-directory';
-        mkdir($path);
-
-        $warnings = [];
-        set_error_handler(function (int $errno, string $errstr) use (&$warnings): bool {
-            $warnings[] = $errstr;
-            return true;
-        });
-
-        try {
-            $result = BrevoOverrideStub::matches($path);
-        } finally {
-            restore_error_handler();
-        }
-
-        $this->assertFalse($result);
-        $this->assertSame([], $warnings, 'matches() must not emit any PHP warning for a directory path.');
     }
 
     /**

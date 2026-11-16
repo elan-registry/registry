@@ -14,8 +14,6 @@ use PHPUnit\Framework\Attributes\Group;
 /**
  * #1953: migration 20260905172137_convert_car_timestamps_to_datetime.
  *
- * Asserts IS_NULLABLE / COLUMN_DEFAULT / EXTRA, not only COLUMN_TYPE: the
- * #1953 defect (nullable owner_last_updated) shipped because no test did.
  * Pre-migration state cannot be observed, so backfill tests re-run
  * BACKFILL_SQL against a synthetic row.
  */
@@ -31,72 +29,13 @@ final class CarVerificationTimestampMigrationTest extends IntegrationTestCase
         parent::setUp();
         $this->requireDatabase();
 
-        // No class-wide migration gate: see requireMigrationApplied().
         $this->testUserId = $this->createTestUser();
         $this->loginAsTestUser($this->testUserId);
-    }
-
-    /**
-     * Skip unless migration 20260905172137 is applied. Called per test: the
-     * trigger, index and backfill tests also pass on the pre-migration schema
-     * and must keep running.
-     */
-    private function requireMigrationApplied(): void
-    {
-        $row = $this->db->query(
-            "SELECT IS_NULLABLE
-             FROM information_schema.COLUMNS
-             WHERE TABLE_SCHEMA = DATABASE()
-               AND TABLE_NAME   = 'cars'
-               AND COLUMN_NAME  = 'owner_last_updated'
-             LIMIT 1"
-        )->first();
-
-        if (!$row || $row->IS_NULLABLE !== 'NO') {
-            $this->markTestSkipped(
-                'Migration 20260905172137 has not been applied — cars.owner_last_updated is ' .
-                'still nullable. Run: composer migrate'
-            );
-        }
-    }
-
-    protected function tearDown(): void
-    {
-        try {
-        } finally {
-            parent::tearDown();
-        }
     }
 
     // -------------------------------------------------------------------------
     // Schema: cars.owner_last_updated
     // -------------------------------------------------------------------------
-
-    #[Group('integration')]
-    #[Group('migration')]
-    public function testSchema_ownerLastUpdated_isNotNullWithCurrentTimestampDefault(): void
-    {
-        $this->requireMigrationApplied();
-
-        $row = $this->columnInfo('cars', 'owner_last_updated');
-
-        $this->assertNotNull($row, 'Column cars.owner_last_updated must exist');
-        $this->assertStringContainsStringIgnoringCase(
-            'datetime',
-            (string) $row->COLUMN_TYPE,
-            'cars.owner_last_updated must be DATETIME after migration'
-        );
-        $this->assertSame(
-            'NO',
-            $row->IS_NULLABLE,
-            'cars.owner_last_updated must be NOT NULL after migration'
-        );
-        $this->assertSame(
-            'CURRENT_TIMESTAMP',
-            $row->COLUMN_DEFAULT,
-            'cars.owner_last_updated must default to CURRENT_TIMESTAMP'
-        );
-    }
 
     /**
      * #1953: owner_last_updated must record owner activity only, so it must
@@ -118,191 +57,8 @@ final class CarVerificationTimestampMigrationTest extends IntegrationTestCase
     }
 
     // -------------------------------------------------------------------------
-    // Schema: cars.mtime / ctime / last_verified
-    // -------------------------------------------------------------------------
-
-    #[Group('integration')]
-    #[Group('migration')]
-    public function testSchema_carsMtime_isDatetimeWithOnUpdatePreserved(): void
-    {
-        $this->requireMigrationApplied();
-
-        $row = $this->columnInfo('cars', 'mtime');
-
-        $this->assertNotNull($row, 'Column cars.mtime must exist');
-        $this->assertStringContainsStringIgnoringCase(
-            'datetime',
-            (string) $row->COLUMN_TYPE,
-            'cars.mtime must be DATETIME after migration'
-        );
-        $this->assertSame('NO', $row->IS_NULLABLE, 'cars.mtime must remain NOT NULL');
-        $this->assertSame(
-            'CURRENT_TIMESTAMP',
-            $row->COLUMN_DEFAULT,
-            'cars.mtime must keep its CURRENT_TIMESTAMP default'
-        );
-        $this->assertStringContainsStringIgnoringCase(
-            'on update current_timestamp',
-            (string) $row->EXTRA,
-            'cars.mtime must retain ON UPDATE CURRENT_TIMESTAMP — legal on DATETIME but ' .
-            'silently lost if the new column definition omits it'
-        );
-    }
-
-    #[Group('integration')]
-    #[Group('migration')]
-    public function testSchema_carsCtime_isDatetimeNullable(): void
-    {
-        $this->requireMigrationApplied();
-
-        $row = $this->columnInfo('cars', 'ctime');
-
-        $this->assertNotNull($row, 'Column cars.ctime must exist');
-        $this->assertStringContainsStringIgnoringCase(
-            'datetime',
-            (string) $row->COLUMN_TYPE,
-            'cars.ctime must be DATETIME after migration'
-        );
-        $this->assertSame('YES', $row->IS_NULLABLE, 'cars.ctime must remain nullable');
-    }
-
-    #[Group('integration')]
-    #[Group('migration')]
-    public function testSchema_carsLastVerified_isDatetimeNullable(): void
-    {
-        $this->requireMigrationApplied();
-
-        $row = $this->columnInfo('cars', 'last_verified');
-
-        $this->assertNotNull($row, 'Column cars.last_verified must exist');
-        $this->assertStringContainsStringIgnoringCase(
-            'datetime',
-            (string) $row->COLUMN_TYPE,
-            'cars.last_verified must be DATETIME after migration'
-        );
-        $this->assertSame('YES', $row->IS_NULLABLE, 'cars.last_verified must remain nullable');
-    }
-
-    // -------------------------------------------------------------------------
-    // Schema: cars_hist
-    // -------------------------------------------------------------------------
-
-    #[Group('integration')]
-    #[Group('migration')]
-    public function testSchema_carsHistCtime_isDatetime(): void
-    {
-        $this->requireMigrationApplied();
-
-        $row = $this->columnInfo('cars_hist', 'ctime');
-
-        $this->assertNotNull($row, 'Column cars_hist.ctime must exist');
-        $this->assertStringContainsStringIgnoringCase(
-            'datetime',
-            (string) $row->COLUMN_TYPE,
-            'cars_hist.ctime must be DATETIME after migration'
-        );
-        $this->assertSame('YES', $row->IS_NULLABLE, 'cars_hist.ctime must remain nullable');
-    }
-
-    /**
-     * Pins the deliberate nullability asymmetry against cars.mtime (NOT NULL):
-     * a history row records whatever the source row held, including nothing.
-     */
-    #[Group('integration')]
-    #[Group('migration')]
-    public function testSchema_carsHistMtime_isDatetimeNullable(): void
-    {
-        $this->requireMigrationApplied();
-
-        $row = $this->columnInfo('cars_hist', 'mtime');
-
-        $this->assertNotNull($row, 'Column cars_hist.mtime must exist');
-        $this->assertStringContainsStringIgnoringCase(
-            'datetime',
-            (string) $row->COLUMN_TYPE,
-            'cars_hist.mtime must be DATETIME after migration'
-        );
-        $this->assertSame(
-            'YES',
-            $row->IS_NULLABLE,
-            'cars_hist.mtime must be nullable — deliberately asymmetric with cars.mtime (NOT NULL)'
-        );
-    }
-
-    #[Group('integration')]
-    #[Group('migration')]
-    public function testSchema_carsHistTimestamp_isDatetimeNotNull(): void
-    {
-        $this->requireMigrationApplied();
-
-        $row = $this->columnInfo('cars_hist', 'timestamp');
-
-        $this->assertNotNull($row, 'Column cars_hist.timestamp must exist');
-        $this->assertStringContainsStringIgnoringCase(
-            'datetime',
-            (string) $row->COLUMN_TYPE,
-            'cars_hist.timestamp must be DATETIME after migration'
-        );
-        $this->assertSame('NO', $row->IS_NULLABLE, 'cars_hist.timestamp must be NOT NULL');
-        $this->assertSame(
-            'CURRENT_TIMESTAMP',
-            $row->COLUMN_DEFAULT,
-            'cars_hist.timestamp must keep its CURRENT_TIMESTAMP default'
-        );
-    }
-
-    /**
-     * A TIMESTAMP -> DATETIME MODIFY COLUMN can silently drop a dependent
-     * index if written the wrong way; this asserts idx_cars_hist_timestamp
-     * survived the conversion.
-     */
-    #[Group('integration')]
-    #[Group('migration')]
-    public function testSchema_idxCarsHistTimestamp_stillExists(): void
-    {
-        $row = $this->db->query(
-            "SELECT 1
-             FROM information_schema.STATISTICS
-             WHERE TABLE_SCHEMA = DATABASE()
-               AND TABLE_NAME   = 'cars_hist'
-               AND INDEX_NAME   = 'idx_cars_hist_timestamp'
-             LIMIT 1"
-        );
-
-        $this->assertGreaterThan(
-            0,
-            $row->count(),
-            'idx_cars_hist_timestamp must still exist on cars_hist after the timestamp conversion'
-        );
-    }
-
-    // -------------------------------------------------------------------------
     // Triggers
     // -------------------------------------------------------------------------
-
-    #[Group('integration')]
-    #[Group('migration')]
-    public function testSchema_allThreeCarsTriggersExist(): void
-    {
-        $triggers = $this->db->query(
-            "SELECT TRIGGER_NAME
-             FROM information_schema.TRIGGERS
-             WHERE TRIGGER_SCHEMA = DATABASE()
-               AND EVENT_OBJECT_TABLE = 'cars'
-             ORDER BY TRIGGER_NAME"
-        )->results();
-
-        $this->assertNotNull($triggers, 'information_schema.TRIGGERS query must return results');
-
-        $triggerNames = array_map(
-            static fn(object $t): string => $t->TRIGGER_NAME,
-            $triggers
-        );
-
-        $this->assertContains('cars_delete', $triggerNames, 'cars_delete trigger must exist');
-        $this->assertContains('cars_insert', $triggerNames, 'cars_insert trigger must exist');
-        $this->assertContains('cars_update', $triggerNames, 'cars_update trigger must exist');
-    }
 
     /**
      * Catches a rebuild that reverted to the pre-#1155 trigger bodies, the

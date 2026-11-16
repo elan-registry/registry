@@ -10,6 +10,7 @@ use ElanRegistry\Car\CarValidator;
 use ElanRegistry\Exceptions\CarValidationException;
 
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -50,36 +51,26 @@ class CarModelTest extends TestCase
         }
     }
 
-    public function testGetAvailableInYearReturnsCorrectModels(): void
+    /**
+     * @return array<string, array{int, string}>
+     */
+    public static function yearSeriesProvider(): array
     {
-        $models = $this->carModel->getAvailableInYear(1970);
-
-        $this->assertIsArray($models);
-        $this->assertGreaterThan(0, count($models), 'Year 1970 should have models');
-
-        $series = array_unique(array_map(fn($m) => $m->series_normalized, $models));
-        $this->assertContains('S4', $series, 'S4 should be available in 1970');
-        $this->assertContains('Sprint', $series, 'Sprint should be available in 1970');
+        return [
+            '1963 has S1'      => [1963, 'S1'],
+            '1970 has S4'      => [1970, 'S4'],
+            '1970 has Sprint'  => [1970, 'Sprint'],
+            '1974 has +2S/130' => [1974, '+2S/130'],
+        ];
     }
 
-    public function testGetAvailableInYear1963(): void
+    #[DataProvider('yearSeriesProvider')]
+    public function testGetAvailableInYearIncludesSeries(int $year, string $expectedSeries): void
     {
-        $models = $this->carModel->getAvailableInYear(1963);
-
-        $this->assertGreaterThan(0, count($models));
+        $models = $this->carModel->getAvailableInYear($year);
 
         $series = array_unique(array_map(fn($m) => $m->series_normalized, $models));
-        $this->assertContains('S1', $series);
-    }
-
-    public function testGetAvailableInYear1974(): void
-    {
-        $models = $this->carModel->getAvailableInYear(1974);
-
-        $this->assertGreaterThan(0, count($models));
-
-        $series = array_unique(array_map(fn($m) => $m->series_normalized, $models));
-        $this->assertContains('+2S/130', $series);
+        $this->assertContains($expectedSeries, $series);
     }
 
     public function testGetAvailableInYear1965ExcludesBadRow(): void
@@ -197,20 +188,23 @@ class CarModelTest extends TestCase
         $this->assertNull($model);
     }
 
-    public function testByValueS1Race26R(): void
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function raceSeriesProvider(): array
     {
-        $model = $this->carModel->byValue('S1|Race|26R');
-        $this->assertNotNull($model);
-        $this->assertSame('S1', $model->series);
-        $this->assertSame('Race', $model->variant);
-        $this->assertSame('26R', $model->type_code);
+        return [
+            'S1 race' => ['S1'],
+            'S2 race' => ['S2'],
+        ];
     }
 
-    public function testByValueS2Race26R(): void
+    #[DataProvider('raceSeriesProvider')]
+    public function testByValueReturnsRaceModel(string $series): void
     {
-        $model = $this->carModel->byValue('S2|Race|26R');
+        $model = $this->carModel->byValue("{$series}|Race|26R");
         $this->assertNotNull($model);
-        $this->assertSame('S2', $model->series);
+        $this->assertSame($series, $model->series);
         $this->assertSame('Race', $model->variant);
         $this->assertSame('26R', $model->type_code);
     }
@@ -279,29 +273,24 @@ class CarModelTest extends TestCase
         $this->assertEquals($totalByRange, $totalByGroup, 'Total model-year combinations should match');
     }
 
-    public function testExistsValidModel(): void
+    /**
+     * @return array<string, array{string, string, string}>
+     */
+    public static function existingModelProvider(): array
     {
-        $exists = $this->carModel->exists('S4', 'FHC', '36');
-        $this->assertTrue($exists);
+        return [
+            'S4 FHC 36'     => ['S4', 'FHC', '36'],
+            'Sprint FHC 36' => ['Sprint', 'FHC', '36'],
+            'Sprint DHC 45' => ['Sprint', 'DHC', '45'],
+            'S1 Race 26R'   => ['S1', 'Race', '26R'],
+            'S2 Race 26R'   => ['S2', 'Race', '26R'],
+        ];
     }
 
-    public function testExistsSprintModel(): void
+    #[DataProvider('existingModelProvider')]
+    public function testExistsReturnsTrueForKnownModel(string $series, string $variant, string $typeCode): void
     {
-        $fhc = $this->carModel->exists('Sprint', 'FHC', '36');
-        $this->assertTrue($fhc);
-
-        $dhc = $this->carModel->exists('Sprint', 'DHC', '45');
-        $this->assertTrue($dhc);
-    }
-
-    public function testExistsS1Race26R(): void
-    {
-        $this->assertTrue($this->carModel->exists('S1', 'Race', '26R'));
-    }
-
-    public function testExistsS2Race26R(): void
-    {
-        $this->assertTrue($this->carModel->exists('S2', 'Race', '26R'));
+        $this->assertTrue($this->carModel->exists($series, $variant, $typeCode));
     }
 
     public function testExistsInvalidVariant(): void

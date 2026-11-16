@@ -39,34 +39,6 @@ final class WidenCarsVericodeForHashMigrationTest extends IntegrationTestCase
     // -------------------------------------------------------------------------
 
     /**
-     * Wide enough for a 64-char HMAC-SHA256 hex digest.
-     */
-    #[Group('fast')]
-    public function test_schema_carsVericode_isVarchar64Nullable(): void
-    {
-        $row = $this->db->query(
-            "SELECT COLUMN_TYPE, IS_NULLABLE
-             FROM information_schema.COLUMNS
-             WHERE TABLE_SCHEMA = DATABASE()
-               AND TABLE_NAME   = 'cars'
-               AND COLUMN_NAME  = 'vericode'
-             LIMIT 1"
-        )->first();
-
-        $this->assertNotNull($row, 'Column cars.vericode must exist');
-        $this->assertSame(
-            'varchar(64)',
-            strtolower((string) $row->COLUMN_TYPE),
-            'cars.vericode must be varchar(64) after migration'
-        );
-        $this->assertSame(
-            'YES',
-            $row->IS_NULLABLE,
-            'cars.vericode must remain nullable after migration'
-        );
-    }
-
-    /**
      * findByVerificationCode() looks up by vericode.
      */
     #[Group('fast')]

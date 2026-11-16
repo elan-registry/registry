@@ -79,54 +79,6 @@ parameters:
 			path: app/views/email/_member_to_owner.php
 
 		-
-			message: '#^Parameter \#1 \$card of static method ElanRegistry\\Documentation\\DocumentPortalTemplate\:\:renderDocumentCard\(\) expects array\{title\: string, icon\: string, url\: string, buttonText\: string, headerClass\?\: string, buttonClass\?\: string, cardClass\?\: string, description\?\: string, \.\.\.\}, array\{icon\: ''fa\-car'', url\: ''/test'', buttonText\: ''View''\} given\.$#'
-			identifier: argument.type
-			count: 1
-			path: tests/unit/classes/DocumentPortalTemplateTest.php
-
-		-
-			message: '#^Parameter \#1 \$card of static method ElanRegistry\\Documentation\\DocumentPortalTemplate\:\:renderDocumentCard\(\) expects array\{title\: string, icon\: string, url\: string, buttonText\: string, headerClass\?\: string, buttonClass\?\: string, cardClass\?\: string, description\?\: string, \.\.\.\}, array\{title\: ''Title'', icon\: ''fa\-car'', buttonText\: ''View''\} given\.$#'
-			identifier: argument.type
-			count: 1
-			path: tests/unit/classes/DocumentPortalTemplateTest.php
-
-		-
-			message: '#^Parameter \#1 \$card of static method ElanRegistry\\Documentation\\DocumentPortalTemplate\:\:renderDocumentCard\(\) expects array\{title\: string, icon\: string, url\: string, buttonText\: string, headerClass\?\: string, buttonClass\?\: string, cardClass\?\: string, description\?\: string, \.\.\.\}, array\{title\: ''Title'', icon\: ''fa\-car'', url\: ''/test''\} given\.$#'
-			identifier: argument.type
-			count: 1
-			path: tests/unit/classes/DocumentPortalTemplateTest.php
-
-		-
-			message: '#^Parameter \#1 \$card of static method ElanRegistry\\Documentation\\DocumentPortalTemplate\:\:renderDocumentCard\(\) expects array\{title\: string, icon\: string, url\: string, buttonText\: string, headerClass\?\: string, buttonClass\?\: string, cardClass\?\: string, description\?\: string, \.\.\.\}, array\{title\: ''Title'', url\: ''/test'', buttonText\: ''View''\} given\.$#'
-			identifier: argument.type
-			count: 1
-			path: tests/unit/classes/DocumentPortalTemplateTest.php
-
-		-
-			message: '#^Parameter \#1 \$config of static method ElanRegistry\\Documentation\\DocumentPortalTemplate\:\:renderPortalHeader\(\) expects array\{title\: string, description\: string, titleIcon\?\: string, headerClass\?\: string, leadText\?\: string, isAdmin\?\: bool\}, array\{description\: ''Desc''\} given\.$#'
-			identifier: argument.type
-			count: 1
-			path: tests/unit/classes/DocumentPortalTemplateTest.php
-
-		-
-			message: '#^Parameter \#1 \$config of static method ElanRegistry\\Documentation\\DocumentPortalTemplate\:\:renderPortalHeader\(\) expects array\{title\: string, description\: string, titleIcon\?\: string, headerClass\?\: string, leadText\?\: string, isAdmin\?\: bool\}, array\{title\: ''Title''\} given\.$#'
-			identifier: argument.type
-			count: 1
-			path: tests/unit/classes/DocumentPortalTemplateTest.php
-
-		-
-			message: '#^Parameter \#1 \$links of static method ElanRegistry\\Documentation\\DocumentPortalTemplate\:\:renderNavFooter\(\) expects list\<array\{label\: string, url\: string, icon\?\: string, btnClass\?\: string\}\>, array\{array\{label\: ''Home''\}\} given\.$#'
-			identifier: argument.type
-			count: 1
-			path: tests/unit/classes/DocumentPortalTemplateTest.php
-
-		-
-			message: '#^Parameter \#1 \$links of static method ElanRegistry\\Documentation\\DocumentPortalTemplate\:\:renderNavFooter\(\) expects list\<array\{label\: string, url\: string, icon\?\: string, btnClass\?\: string\}\>, array\{array\{url\: ''/''\}\} given\.$#'
-			identifier: argument.type
-			count: 1
-			path: tests/unit/classes/DocumentPortalTemplateTest.php
-
-		-
 			message: '#^File ends with a trailing whitespace\. This may cause problems when running the code in the web browser\. Remove the closing \?\> mark or remove the whitespace\.$#'
 			identifier: whitespace.fileEnd
 			count: 1

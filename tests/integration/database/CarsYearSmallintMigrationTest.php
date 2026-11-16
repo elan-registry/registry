@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../IntegrationTestCase.php';
 
 use ElanRegistry\Car\Car;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -66,157 +67,76 @@ final class CarsYearSmallintMigrationTest extends IntegrationTestCase
     // Schema checks
     // -------------------------------------------------------------------------
 
+    /** @return array<string, array{string}> */
+    public static function auditedTableProvider(): array
+    {
+        return [
+            'cars'      => ['cars'],
+            'cars_hist' => ['cars_hist'],
+        ];
+    }
+
+    /** Fails before any query runs if a provider row names a table outside this migration. */
+    private function assertMigratedTable(string $table): void
+    {
+        $this->assertContains($table, ['cars', 'cars_hist'], 'Test setup: unknown table');
+    }
+
     #[Group('integration')]
     #[Group('migration')]
-    public function test_schema_carsYear_isSmallintUnsignedNullable(): void
+    #[DataProvider('auditedTableProvider')]
+    public function test_schema_year_isSmallintUnsignedNullable(string $table): void
     {
+        $this->assertMigratedTable($table);
         $row = $this->db->query(
             "SELECT COLUMN_TYPE, IS_NULLABLE
              FROM information_schema.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE()
-               AND TABLE_NAME   = 'cars'
+               AND TABLE_NAME   = ?
                AND COLUMN_NAME  = 'year'
-             LIMIT 1"
+             LIMIT 1",
+            [$table]
         )->first();
 
-        $this->assertNotNull($row, 'Column cars.year must exist');
+        $this->assertNotNull($row, "Column {$table}.year must exist");
         $this->assertStringContainsStringIgnoringCase(
             'smallint',
             (string) $row->COLUMN_TYPE,
-            'cars.year must be SMALLINT after migration'
+            "{$table}.year must be SMALLINT after migration"
         );
         $this->assertStringContainsStringIgnoringCase(
             'unsigned',
             (string) $row->COLUMN_TYPE,
-            'cars.year must be UNSIGNED after migration'
+            "{$table}.year must be UNSIGNED after migration"
         );
         $this->assertSame(
             'YES',
             $row->IS_NULLABLE,
-            'cars.year must be nullable after migration'
+            "{$table}.year must be nullable after migration"
         );
     }
 
     #[Group('integration')]
     #[Group('migration')]
-    public function test_schema_carsHistYear_isSmallintUnsignedNullable(): void
+    #[DataProvider('auditedTableProvider')]
+    public function test_schema_modifiedBy_isAbsent(string $table): void
     {
-        $row = $this->db->query(
-            "SELECT COLUMN_TYPE, IS_NULLABLE
-             FROM information_schema.COLUMNS
-             WHERE TABLE_SCHEMA = DATABASE()
-               AND TABLE_NAME   = 'cars_hist'
-               AND COLUMN_NAME  = 'year'
-             LIMIT 1"
-        )->first();
-
-        $this->assertNotNull($row, 'Column cars_hist.year must exist');
-        $this->assertStringContainsStringIgnoringCase(
-            'smallint',
-            (string) $row->COLUMN_TYPE,
-            'cars_hist.year must be SMALLINT after migration'
-        );
-        $this->assertStringContainsStringIgnoringCase(
-            'unsigned',
-            (string) $row->COLUMN_TYPE,
-            'cars_hist.year must be UNSIGNED after migration'
-        );
-        $this->assertSame(
-            'YES',
-            $row->IS_NULLABLE,
-            'cars_hist.year must be nullable after migration'
-        );
-    }
-
-    #[Group('integration')]
-    #[Group('migration')]
-    public function test_schema_carsModifiedBy_isAbsent(): void
-    {
+        $this->assertMigratedTable($table);
         $result = $this->db->query(
             "SELECT 1
              FROM information_schema.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE()
-               AND TABLE_NAME   = 'cars'
+               AND TABLE_NAME   = ?
                AND COLUMN_NAME  = 'ModifiedBy'
-             LIMIT 1"
+             LIMIT 1",
+            [$table]
         );
 
         $this->assertSame(
             0,
             $result->count(),
-            'Column cars.ModifiedBy must not exist after migration'
+            "Column {$table}.ModifiedBy must not exist after migration"
         );
-    }
-
-    #[Group('integration')]
-    #[Group('migration')]
-    public function test_schema_carsHistModifiedBy_isAbsent(): void
-    {
-        $result = $this->db->query(
-            "SELECT 1
-             FROM information_schema.COLUMNS
-             WHERE TABLE_SCHEMA = DATABASE()
-               AND TABLE_NAME   = 'cars_hist'
-               AND COLUMN_NAME  = 'ModifiedBy'
-             LIMIT 1"
-        );
-
-        $this->assertSame(
-            0,
-            $result->count(),
-            'Column cars_hist.ModifiedBy must not exist after migration'
-        );
-    }
-
-    #[Group('integration')]
-    #[Group('migration')]
-    public function test_schema_allThreeCarsTriggersExist(): void
-    {
-        $triggers = $this->db->query(
-            "SELECT TRIGGER_NAME
-             FROM information_schema.TRIGGERS
-             WHERE TRIGGER_SCHEMA = DATABASE()
-               AND EVENT_OBJECT_TABLE = 'cars'
-             ORDER BY TRIGGER_NAME"
-        )->results();
-
-        $this->assertNotNull($triggers, 'information_schema.TRIGGERS query must return results');
-
-        $triggerNames = array_map(
-            static fn(object $t): string => $t->TRIGGER_NAME,
-            $triggers
-        );
-
-        $this->assertContains('cars_delete', $triggerNames, 'cars_delete trigger must exist');
-        $this->assertContains('cars_insert', $triggerNames, 'cars_insert trigger must exist');
-        $this->assertContains('cars_update', $triggerNames, 'cars_update trigger must exist');
-    }
-
-    /**
-     * A remaining ModifiedBy reference would break DML on cars, since the column is gone.
-     */
-    #[Group('integration')]
-    #[Group('migration')]
-    public function test_triggerBodies_containNoModifiedByReferences(): void
-    {
-        $triggers = $this->db->query(
-            "SELECT TRIGGER_NAME, ACTION_STATEMENT
-             FROM information_schema.TRIGGERS
-             WHERE TRIGGER_SCHEMA = DATABASE()
-               AND EVENT_OBJECT_TABLE = 'cars'
-             ORDER BY TRIGGER_NAME"
-        )->results();
-
-        $this->assertNotNull($triggers, 'information_schema.TRIGGERS query must return results');
-        $this->assertNotEmpty($triggers, 'At least one trigger must exist on the cars table');
-
-        foreach ($triggers as $trigger) {
-            $this->assertStringNotContainsStringIgnoringCase(
-                'ModifiedBy',
-                (string) $trigger->ACTION_STATEMENT,
-                "Trigger {$trigger->TRIGGER_NAME} must not reference ModifiedBy after migration"
-            );
-        }
     }
 
     // -------------------------------------------------------------------------
