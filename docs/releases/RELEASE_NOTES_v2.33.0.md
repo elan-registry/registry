@@ -1,6 +1,6 @@
 # Elan Registry v2.33.0 Release Notes
 
-**Release Date:** November 13, 2026
+**Release Date:** November 15, 2026
 **Type:** Minor Release - Search Visitors Find the Right Page
 
 A search visitor lands on the correct production page, not a 404, a test-site page, or a duplicate URL.
@@ -14,7 +14,7 @@ A search visitor lands on the correct production page, not a 404, a test-site pa
 
 ## Admin-Facing Changes
 
-- `test.elanregistry.org` now tells search engines not to index its pages. Deploy steps: `DEPLOYMENT.md`, "Test host indexing block".
+- `test.elanregistry.org` now tells search engines not to index its pages.
 
 ## Issues Resolved
 
