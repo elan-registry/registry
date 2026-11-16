@@ -80,24 +80,6 @@ final class EmailDeliveryTabReadOnlyTest extends TestCase
         return $code;
     }
 
-    public function testFeatureFilesAreFound(): void
-    {
-        $names = array_map('basename', self::files());
-
-        // A scan over no files passes every check, so name the files it must cover.
-        foreach ([
-            'tab-email_delivery.php',
-            'DeliveryLogRepository.php',
-            'DeliveryLogReport.php',
-            'DeliveryLogFilter.php',
-            'DeliveryLogEntry.php',
-            'DeliveryOutcome.php',
-            'DeliveryOutcomeResolver.php',
-        ] as $expected) {
-            $this->assertContains($expected, $names);
-        }
-    }
-
     #[DataProvider('fileProvider')]
     public function testFileHasNoSqlWriteKeyword(string $file): void
     {

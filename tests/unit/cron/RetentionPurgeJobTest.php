@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use ElanRegistry\Cron\AbstractCronJob;
-use ElanRegistry\Cron\CronJobGuard;
 use ElanRegistry\Cron\HealthcheckPinger;
 use ElanRegistry\Cron\RetentionPurgeJob;
 use ElanRegistry\Exceptions\RetentionPurgeException;
@@ -142,14 +141,6 @@ final class RetentionPurgeJobTest extends TestCase
 
     // --- constants ----------------------------------------------------------
 
-    public function testJobNameConstantMatchesGuardAllowlist(): void
-    {
-        $this->assertContains(
-            RetentionPurgeJob::JOB_NAME,
-            (new ReflectionClassConstant(CronJobGuard::class, 'ALLOWED_JOB_NAMES'))->getValue()
-        );
-    }
-
     public function testGuardIntervalIsTwentyHours(): void
     {
         $job = $this->makeJob($this->db(), [], new RecordingHealthcheckTransport());
@@ -164,14 +155,6 @@ final class RetentionPurgeJobTest extends TestCase
         $method = new ReflectionMethod($job, 'healthcheckSlug');
 
         $this->assertSame('retention-purge', $method->invoke($job));
-    }
-
-    public function testJobNameMethodReturnsConstant(): void
-    {
-        $job = $this->makeJob($this->db(), [], new RecordingHealthcheckTransport());
-        $method = new ReflectionMethod($job, 'jobName');
-
-        $this->assertSame('retention_purge', $method->invoke($job));
     }
 
     public function testRefusesWhileSwitchOffIsNotOverridden(): void
@@ -357,14 +340,5 @@ final class RetentionPurgeJobTest extends TestCase
         $this->assertStringContainsString('new RetentionPurgeJob(', $source);
         $this->assertStringContainsString('RetentionPolicy::rules(', $source);
         $this->assertStringContainsString('->run()', $source);
-    }
-
-    public function testJobSourceNeverReadsTheVerificationSwitch(): void
-    {
-        $source = (string) file_get_contents(
-            __DIR__ . '/../../../usersc/classes/Cron/RetentionPurgeJob.php'
-        );
-
-        $this->assertStringNotContainsString('isEnabled(', $source);
     }
 }

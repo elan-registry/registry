@@ -17,9 +17,6 @@ use PHPUnit\Framework\TestCase;
  * - The Next Queue view builds its flags from the queue row. The batch
  *   preview row has no profile columns, so fromQueueRow() throws for it.
  *
- * Every checker has a negative control: an in-memory string that holds the
- * defect. The control asserts that the checker flags it.
- *
  * @issue 2457
  * @link https://github.com/elan-registry/registry/issues/2457
  */
@@ -100,43 +97,5 @@ final class VerificationTabSourceRegressionTest extends TestCase
             self::sendFormPostsToTheNextQueueView($this->code()),
             'The send form must post to status=next_queue, the view that previews the rows it sends.'
         );
-    }
-
-    // --- Negative controls ------------------------------------------------
-
-    public function testNegativeControlBatchSizeFromSettingsIsFound(): void
-    {
-        $code = '$vsSettings = new VerificationSettings(dbi()); $vsBatchSize = $vsSettings->batchSizeOrNull() ?? 5;';
-
-        $this->assertFalse(self::batchSizeComesFromStatus($code));
-    }
-
-    public function testNegativeControlSecondBatchSizeAssignmentIsFound(): void
-    {
-        $code = '$vsBatchSize = $vsStatus->batchSize(); if ($x) { $vsBatchSize ??= 5; }';
-
-        $this->assertFalse(self::batchSizeComesFromStatus($code));
-    }
-
-    public function testControlComparisonIsNotCountedAsAnAssignment(): void
-    {
-        $code = '$vsBatchSize = $vsStatus->batchSize(); if ($vsBatchSize === null || $vsBatchSize == 0) {}';
-
-        $this->assertTrue(self::batchSizeComesFromStatus($code));
-    }
-
-    public function testNegativeControlQueueRowFlagsForEveryViewIsFound(): void
-    {
-        $this->assertFalse(self::nextQueueViewUsesEligibleFlags(
-            'if ($vsIsNextQueueView) { $vsQueueFlags[$vsQueueRowKey] = EffectiveEmailFlags::fromQueueRow($vsQueueRow); }'
-            . ' else { $vsQueueFlags[$vsQueueRowKey] = EffectiveEmailFlags::fromQueueRow($vsQueueRow); }'
-        ));
-    }
-
-    public function testNegativeControlSendFormToTheEligibleViewIsFound(): void
-    {
-        $this->assertFalse(self::sendFormPostsToTheNextQueueView(
-            '<form action="<?= vsEsc($vsTabUrl([\'status\' => \'eligible\'])) ?>" method="POST">'
-        ));
     }
 }

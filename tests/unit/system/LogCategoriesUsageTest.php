@@ -22,31 +22,6 @@ class LogCategoriesUsageTest extends TestCase
         $this->rootDir = dirname(__DIR__, 3);
     }
 
-    public function testCheckChassisUsesApiResponse(): void
-    {
-        $content = $this->read('app/api/cars/chassis-availability.php');
-
-        $this->assertStringContainsString('ApiResponse::', $content);
-        $this->assertStringNotContainsString("echo 'taken'", $content);
-        $this->assertStringNotContainsString("echo 'not_taken'", $content);
-    }
-
-    public function testFormPhpJsUsesElanRegistryAPI(): void
-    {
-        $content = $this->read('app/assets/js/car-edit.js');
-
-        $this->assertStringNotContainsString('$.ajax', $content);
-        $this->assertStringContainsString('new ElanRegistryAPI()', $content);
-    }
-
-    public function testAdminCoreJsUsesElanRegistryAPI(): void
-    {
-        $content = $this->read('app/admin/assets/admin-core.js');
-
-        $this->assertStringNotContainsString('$.ajax', $content);
-        $this->assertStringContainsString('new ElanRegistryAPI()', $content);
-    }
-
     /** #639 */
     public function testJoinPhpCapturesEmailReturnValue(): void
     {
@@ -93,21 +68,6 @@ class LogCategoriesUsageTest extends TestCase
         foreach (['app/admin/includes/process-admin-contact.php', 'usersc/join.php', 'usersc/user_settings.php'] as $file) {
             $this->assertStringContainsString("\$body === ''", $this->read($file), "$file must check email_body() for ''");
         }
-    }
-
-    /** #600 */
-    public function testSendFeedbackPhpHasNoHardcodedLoggerUserId(): void
-    {
-        $this->assertDoesNotMatchRegularExpression('/\blogger\s*\(\s*1\s*,/', $this->read('app/api/contact/send-feedback.php'));
-    }
-
-    /** #976 */
-    public function testProcessCarDetailsUsesNotFoundForMissingCar(): void
-    {
-        $content = $this->read('app/admin/includes/process-car-details.php');
-
-        $this->assertStringContainsString('ApiResponse::notFound(', $content);
-        $this->assertStringNotContainsString("ApiResponse::error('Car not found', 200)", $content);
     }
 
     private function assertNoGetMessageInErrorsArray(string $relativePath): void

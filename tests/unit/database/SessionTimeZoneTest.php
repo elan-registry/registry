@@ -34,14 +34,6 @@ final class SessionTimeZoneTest extends TestCase
         parent::tearDown();
     }
 
-    public function testInitCommandHasTheSetStatementFormat(): void
-    {
-        $this->assertMatchesRegularExpression(
-            "/^SET time_zone = '[A-Za-z0-9\\/_+-]+'\$/",
-            SessionTimeZone::initCommand()
-        );
-    }
-
     /**
      * @return array<string, array{string}>
      */

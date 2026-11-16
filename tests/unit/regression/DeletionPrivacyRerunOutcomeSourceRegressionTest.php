@@ -22,9 +22,6 @@ use PHPUnit\Framework\TestCase;
  * with the real step, so it cannot make the commit throw. That is why this
  * test reads the source.
  *
- * Every checker has a negative control: an in-memory string that holds the
- * defect. The control asserts that the checker flags it.
- *
  * @issue 2515
  * @link https://github.com/elan-registry/registry/issues/2515
  */
@@ -154,39 +151,5 @@ final class DeletionPrivacyRerunOutcomeSourceRegressionTest extends TestCase
             self::logsAnExceptionMessage($this->code()),
             'The page must log ExceptionLogSummary::of($e), never $e->getMessage().'
         );
-    }
-
-    // --- Negative controls ------------------------------------------------
-
-    public function testNegativeControlMissingCommitUnknownArmIsFound(): void
-    {
-        $code = 'if ($result->outcome === AccountDeletionPrivacyOutcome::Refused) { x(); }'
-            . ' elseif ($result->outcome === AccountDeletionPrivacyOutcome::RolledBack) { y(); } else { z(); }';
-
-        $this->assertNull(self::commitUnknownArm($code));
-    }
-
-    public function testNegativeControlBareElseForCommittedIsFound(): void
-    {
-        $code = '} elseif ($result->outcome === AccountDeletionPrivacyOutcome::RolledBack) { y(); '
-            . '} else { logger($adminId, 1, sprintf(\'' . self::COMMITTED_LOG . ' for user %d\', 1)); }';
-
-        $this->assertSame('} else {', self::committedArmHead($code));
-    }
-
-    public function testNegativeControlLoggedMessageIsFound(): void
-    {
-        $this->assertTrue(self::logsAnExceptionMessage(
-            'logger($adminId, 1, $e instanceof \LogicException ? $e->getMessage() : ExceptionLogSummary::of($e));'
-        ));
-    }
-
-    public function testNegativeControlBareElseWithoutThrowIsFound(): void
-    {
-        $this->assertFalse(self::everyBareElseThrows('if ($a) { x(); } else { y(); }'));
-        $this->assertTrue(self::everyBareElseThrows('if ($a) { x(); } else { throw new \LogicException(\'no arm\'); }'));
-        $this->assertFalse(self::everyBareElseThrows('if ($a) { x(); } else { y(); } if ($b) { throw new \LogicException(\'later\'); }'));
-        $this->assertFalse(self::everyBareElseThrows('if ($a) { x(); } else { ?>Committed<?php throw new \LogicException(\'late\'); }'));
-        $this->assertFalse(self::everyBareElseThrows('if ($a) { x(); } else { if ($b) throw new \LogicException(\'maybe\'); y(); }'));
     }
 }

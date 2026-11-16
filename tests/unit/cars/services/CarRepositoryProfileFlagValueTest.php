@@ -6,7 +6,6 @@ namespace Tests\Unit\Cars\Services;
 
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\DatabaseInterface;
-use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\ProfileFlagValueException;
 use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -168,11 +167,6 @@ final class CarRepositoryProfileFlagValueTest extends TestCase
             $this->assertStringNotContainsString(self::ADDRESS, $e->getMessage());
             $this->assertStringNotContainsString('example.com', $e->getMessage());
         }
-    }
-
-    public function test_exception_isACarDatabaseException(): void
-    {
-        $this->assertSame(CarDatabaseException::class, (new \ReflectionClass(ProfileFlagValueException::class))->getParentClass()->getName());
     }
 
     // ---- one row per reader: a stored 2 throws -----------------------

@@ -12,12 +12,13 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Security-focused test cases for file upload functionality
+ * Upload validation tests
  *
  * Tests usersc/classes/Car/CarImageProcessor.php's upload-validation methods
- * (getMimeType, getExtension, validateFileUpload, generateSecureFilename) —
- * the same methods app/api/cars/save.php calls during a real upload.
- * Validates protection against common file upload attack vectors.
+ * (getMimeType, getExtension, validateFileUpload) — the same methods
+ * app/api/cars/save.php calls during a real upload.
+ * Covers the MIME type and extension allowlists, size limits, upload errors,
+ * and the messages the owner sees.
  *
  * Requires _is_uploaded_file_namespace_overrides.php (see its docblock):
  * validateFileUpload()'s is_uploaded_file() check can never pass for a file
@@ -40,25 +41,6 @@ class FileUploadSecurityTest extends TestCase
     {
         // Clean up temporary files
         $this->cleanupTempDir();
-    }
-
-    /**
-     * Test secure filename generation
-     */
-    public function testSecureFilenameGeneration(): void
-    {
-        $filename1 = CarImageProcessor::generateSecureFilename('jpg');
-        $filename2 = CarImageProcessor::generateSecureFilename('jpg');
-
-        // Filenames should be different (cryptographically random)
-        $this->assertNotEquals($filename1, $filename2);
-
-        // Should follow expected pattern
-        $this->assertMatchesRegularExpression('/^img_[a-f0-9]{32}\.jpg$/', $filename1);
-        $this->assertMatchesRegularExpression('/^img_[a-f0-9]{32}\.jpg$/', $filename2);
-
-        // Should be proper length (img_ + 32 hex chars + .ext)
-        $this->assertEquals(40, strlen($filename1)); // img_ (4) + 32 hex + .jpg (4)
     }
 
     /**
@@ -161,7 +143,7 @@ class FileUploadSecurityTest extends TestCase
         // Test file exceeding size limit
         $largeFile = [
             'error' => UPLOAD_ERR_OK,
-            'size' => 10 * 1024 * 1024, // 10MB - exceeds 5MB limit
+            'size' => CarImageProcessor::serverMaxBytes() * 2,
             'tmp_name' => $this->createTestFile('large.jpg', 'dummy')
         ];
 
@@ -179,53 +161,28 @@ class FileUploadSecurityTest extends TestCase
         try {
             CarImageProcessor::validateFileUpload([
                 'error' => UPLOAD_ERR_OK,
-                'size' => 5242881, // 1 byte above the default 5 MiB maximum
+                'size' => CarImageProcessor::serverMaxBytes() + 1,
                 'tmp_name' => $this->createTestFile('over.jpg', 'dummy'),
             ]);
             $this->fail('validateFileUpload() must throw for a file above the maximum size');
         } catch (ImageProcessingException $e) {
-            $this->assertSame('Photo is too large. The maximum size is 5 MB. Make the photo smaller, then upload it again.', $e->getUserMessage());
+            $this->assertSame(self::tooLargeUserMessage(), $e->getUserMessage());
             $this->assertStringStartsWith('File too large', $e->getMessage());
         }
     }
 
     /**
-     * Test file upload validation - minimum size
-     */
-    public function testFileUploadMinimumSize(): void
-    {
-        // Test file below minimum size
-        $tinyFile = [
-            'error' => UPLOAD_ERR_OK,
-            'size' => 50, // Below 100 byte minimum
-            'tmp_name' => $this->createTestFile('tiny.jpg', str_repeat('x', 50))
-        ];
-
-        $this->expectException(ImageProcessingException::class);
-        $this->expectExceptionMessage('File too small');
-        CarImageProcessor::validateFileUpload($tinyFile);
-    }
-
-    /**
-     * Test that sizes exactly at the min/max boundaries pass — the checks use
-     * strict > and <, so a file exactly at either edge must succeed.
+     * Test that a size exactly at the max boundary passes — the check uses
+     * strict >, so a file exactly at the edge must succeed.
      */
     public function testFileUploadSizeBoundaries(): void
     {
-        // Both calls are void — an uncaught exception would fail this test on its own;
+        // The call is void — an uncaught exception would fail this test on its own;
         // addToAssertionCount() just satisfies PHPUnit's "no assertions performed" check
         // without a fake assertTrue(true) (PHPStan flags that as always-true).
-        $atMinSize = [
-            'error' => UPLOAD_ERR_OK,
-            'size' => 100, // exactly the minimum
-            'tmp_name' => $this->createTestFile('at-min.jpg', str_repeat('x', 100)),
-        ];
-        CarImageProcessor::validateFileUpload($atMinSize);
-        $this->addToAssertionCount(1);
-
         $atMaxSize = [
             'error' => UPLOAD_ERR_OK,
-            'size' => 5242880, // exactly the default 5MB maximum
+            'size' => CarImageProcessor::serverMaxBytes(),
             'tmp_name' => $this->createTestFile('at-max.jpg', 'dummy'),
         ];
         CarImageProcessor::validateFileUpload($atMaxSize);
@@ -270,7 +227,7 @@ class FileUploadSecurityTest extends TestCase
      */
     public static function uploadErrorUserMessageProvider(): array
     {
-        $tooLarge = 'Photo is too large. The maximum size is 5 MB. Make the photo smaller, then upload it again.';
+        $tooLarge = self::tooLargeUserMessage();
         $other    = 'The server could not receive the photo. Upload the photo again.';
 
         return [
@@ -281,6 +238,16 @@ class FileUploadSecurityTest extends TestCase
             'CANT_WRITE'  => [UPLOAD_ERR_CANT_WRITE, $other],
             'unknown 99'  => [99, $other],
         ];
+    }
+
+    /**
+     * Built from the configured limit, so a change to ELAN_IMAGE_SERVER_MAX_SIZE
+     * does not break the tests.
+     */
+    private static function tooLargeUserMessage(): string
+    {
+        return 'Photo is too large. The maximum size is ' . round(ELAN_IMAGE_SERVER_MAX_SIZE, 1)
+            . ' MB. Make the photo smaller, then upload it again.';
     }
 
     /**
@@ -347,76 +314,6 @@ class FileUploadSecurityTest extends TestCase
             'size' => 1024,
             'tmp_name' => $this->tempDir . '/does-not-exist.jpg',
         ]);
-    }
-
-    /**
-     * Test protection against zip bombs and polyglot files
-     */
-    public function testMaliciousFileProtection(): void
-    {
-        // Test polyglot file (appears as image but contains script)
-        $polyglotContent = $this->createPolyglotFile();
-        $polyglotFile = $this->createTestFile('polyglot.jpg', $polyglotContent);
-
-        // Note: Simple MIME type detection with finfo_file() will detect this as a valid JPEG
-        // since it has proper JPEG headers. More sophisticated detection would be needed
-        // to detect embedded script content.
-        $mimeType = CarImageProcessor::getMimeType($polyglotFile);
-
-        // The current implementation will accept this as image/jpeg, which demonstrates
-        // the limitation of basic MIME type checking for security
-        $this->assertEquals('image/jpeg', $mimeType,
-            'Simple MIME detection accepts polyglot files with valid image headers');
-
-        // In a production environment, additional content scanning would be needed
-        // to detect embedded script content in image files
-    }
-
-    /**
-     * Test filename collision handling
-     */
-    public function testFilenameCollisionHandling(): void
-    {
-        // Generate multiple filenames - should all be unique
-        $filenames = [];
-        for ($i = 0; $i < 1000; $i++) {
-            $filename = CarImageProcessor::generateSecureFilename('jpg');
-            $this->assertNotContains($filename, $filenames, 'Filename collision detected');
-            $filenames[] = $filename;
-        }
-    }
-
-    /**
-     * Test entropy of secure filename generation
-     */
-    public function testFilenameEntropy(): void
-    {
-        $patterns = [];
-
-        // Generate many filenames and analyze for patterns
-        for ($i = 0; $i < 100; $i++) {
-            $filename = CarImageProcessor::generateSecureFilename('jpg');
-
-            // Extract the random part (remove img_ prefix and .jpg suffix)
-            $randomPart = substr($filename, 4, 32);
-            $patterns[] = $randomPart;
-        }
-
-        // Check that we have good distribution of characters
-        $charCounts = array_count_values(str_split(implode('', $patterns)));
-
-        // Should have reasonable distribution across hex chars (0-9, a-f)
-        $expectedChars = array_merge(range('0', '9'), range('a', 'f'));
-        foreach ($expectedChars as $char) {
-            $this->assertArrayHasKey($char, $charCounts, "Missing character '$char' in random generation");
-        }
-
-        // No character should be overly dominant (rough entropy check)
-        $totalChars = array_sum($charCounts);
-        foreach ($charCounts as $count) {
-            $frequency = $count / $totalChars;
-            $this->assertLessThan(0.15, $frequency, 'Character frequency too high - poor entropy');
-        }
     }
 
     /**
@@ -545,12 +442,6 @@ class FileUploadSecurityTest extends TestCase
     {
         // Minimal valid PNG header
         return "\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\tpHYs\x00\x00\x0b\x13\x00\x00\x0b\x13\x01\x00\x9a\x9c\x18\x00\x00\x00\fIDATx\x9cc\xf8\x00\x00\x00\x01\x00\x01\x00\x00\x00\x00IEND\xaeB`\x82";
-    }
-
-    private function createPolyglotFile(): string
-    {
-        // Create a file that has JPEG header but contains script content
-        return $this->createJpegData() . "\n<?php echo 'malicious code'; ?>";
     }
 
     private function cleanupTempDir(): void

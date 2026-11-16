@@ -10,7 +10,9 @@ use PHPUnit\Framework\TestCase;
  * Source pins for the admin AJAX guards. The endpoints need users/init.php and
  * exit on rejection, so PHPUnit cannot run them. Matching is token-based, so a
  * commented-out guard does not count. It proves the call exists, not that it
- * runs first. Only process-user-details.php has an HTTP rejection test (Playwright).
+ * runs first. It does not check what requireAdminAjax() does inside.
+ * tests/integration/AdminAjaxGuardBehaviorTest.php checks that. Only
+ * process-user-details.php has an HTTP rejection test (Playwright).
  */
 #[Group('fast')]
 #[Group('unit')]
@@ -101,67 +103,6 @@ final class AdminAjaxGuardTest extends TestCase
             $guarded,
             "{$relativePath} must call requireAdminAjax(), or securePage() plus Token::check() (comments are ignored)"
         );
-    }
-
-    /**
-     * Scoped to the function body, so calls elsewhere in the file cannot satisfy it.
-     */
-    public function testRequireAdminAjaxContainsRoleAndCsrfChecks(): void
-    {
-        $source = file_get_contents(self::projectRoot() . '/usersc/includes/custom_functions.php');
-        $this->assertIsString($source, 'usersc/includes/custom_functions.php must be readable');
-
-        $body = self::extractFunctionBodyTokens($source, 'requireAdminAjax');
-        $this->assertNotNull($body, 'requireAdminAjax() must be defined in usersc/includes/custom_functions.php');
-
-        $this->assertTrue(
-            self::tokensCallFunction($body, 'isRegistryAdmin'),
-            'requireAdminAjax() must call isRegistryAdmin() for the admin-role check'
-        );
-        $this->assertTrue(
-            self::tokensCallStaticMethod($body, 'Token', 'check'),
-            'requireAdminAjax() must call Token::check() for CSRF validation'
-        );
-    }
-
-    /**
-     * @return list<array{int, string, int}|string>|null
-     */
-    public static function extractFunctionBodyTokens(string $source, string $name): ?array
-    {
-        $tokens = self::significantTokens($source);
-        $count = count($tokens);
-
-        for ($i = 0; $i < $count - 1; $i++) {
-            if (!self::isToken($tokens[$i], T_FUNCTION)
-                || !self::isToken($tokens[$i + 1], T_STRING)
-                || strcasecmp($tokens[$i + 1][1], $name) !== 0
-            ) {
-                continue;
-            }
-
-            $open = $i + 2;
-            while ($open < $count && $tokens[$open] !== '{') {
-                $open++;
-            }
-
-            $depth = 0;
-            for ($j = $open; $j < $count; $j++) {
-                $text = is_array($tokens[$j]) ? $tokens[$j][1] : $tokens[$j];
-                // T_CURLY_OPEN / T_DOLLAR_OPEN_CURLY_BRACES text ends in '{' and closes with '}'.
-                if ($text === '{' || str_ends_with($text, '{')) {
-                    $depth++;
-                } elseif ($text === '}') {
-                    $depth--;
-                    if ($depth === 0) {
-                        return array_slice($tokens, $open + 1, $j - $open - 1);
-                    }
-                }
-            }
-            return null;
-        }
-
-        return null;
     }
 
     /**

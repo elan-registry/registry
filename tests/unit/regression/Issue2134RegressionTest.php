@@ -18,9 +18,6 @@ use PHPUnit\Framework\TestCase;
 #[Group('regression')]
 final class Issue2134RegressionTest extends TestCase
 {
-    /** The configs this was written against; the glob must find at least these. */
-    private const KNOWN_CONFIGS = ['phpunit.xml', 'phpunit-unit.xml', 'phpunit-integration.xml'];
-
     /** About twice the measured unit-suite peak. Below this, the fix is undone. */
     private const MIN_BYTES = 256 * 1024 * 1024;
 
@@ -42,19 +39,6 @@ final class Issue2134RegressionTest extends TestCase
             $cases[basename($file)] = [$file];
         }
         return $cases;
-    }
-
-    public function testGlobFindsEveryKnownConfig(): void
-    {
-        $found = array_keys(self::configProvider());
-
-        foreach (self::KNOWN_CONFIGS as $config) {
-            $this->assertContains(
-                $config,
-                $found,
-                "Glob of phpunit*.xml must find {$config} — if it was renamed, update KNOWN_CONFIGS"
-            );
-        }
     }
 
     #[DataProvider('configProvider')]

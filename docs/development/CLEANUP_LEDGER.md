@@ -281,10 +281,6 @@ after an item is written.
 - [ ] No test proves the `phpstan.neon` wiring of the path-based rules. A typo in a `files:` or `exemptPages:` entry, or a different working directory for `projectRoot`, makes the rule silently check nothing. Add a smoke test that runs PHPStan with the real config on one known violation per rule. (found in #2327)
 - [ ] `PageMetadataBeforeInitRule` does not report an `exemptPages` entry whose file was deleted or moved, or no longer calls `securePage()`. Report it as a stale exemption. (found in #2327)
 
-### `tests/unit/uploads/FileUploadSecurityTest.php` (test quality)
-
-- [ ] The expected text "The maximum size is 5 MB" (~L187, ~L273) and the size `5242880 // exactly the default 5MB maximum` (~L228) are fixed values. The test passes with the old default and breaks when someone raises `ELAN_IMAGE_SERVER_MAX_SIZE`. Build the text from `ELAN_IMAGE_SERVER_MAX_SIZE` and the size from `CarImageProcessor::serverMaxBytes()` (found in /flow:finish-milestone v2.32.0)
-
 ### `usersc/classes/Car/Car.php` + `app/api/cars/save.php`
 
 - [ ] `removeTmpImages()` skips a name that fails `isValidFilename()` with no log, and treats `glob() === false` as "no resized copies". Log a `LOG_CATEGORY_FILE_ERROR` row before `continue`, and check `glob()` for `false` before the `[]` fallback (found in /flow:finish-milestone v2.32.0)

@@ -21,11 +21,11 @@ require_once __DIR__ . '/../../Support/CronJobRunsReaderFakeDatabase.php';
  * CronJobEnabledState outcomes plus the three lastRunAt shapes a caller can
  * receive (missing/unreadable row, "never run" row, and a parsed timestamp)
  * in a single read. `state()` and `lastRunAt()` are thin wrappers around
- * `status()` and get a light smoke test each rather than full duplicate
- * coverage. Logging is asserted separately: only the two fault cases
- * (MISSING, UNREADABLE) log under LOG_CATEGORY_CRON_JOB_FAILURE — DISABLED
- * and ENABLED are routine display reads and must stay silent (see the class
- * docblock).
+ * `status()`. tests/integration/CronJobRunsReaderDatabaseTest.php covers
+ * them. In this file, logging is asserted for `status()`: only the two fault
+ * cases (MISSING, UNREADABLE) log under LOG_CATEGORY_CRON_JOB_FAILURE —
+ * DISABLED and ENABLED are routine display reads and must stay silent (see
+ * CronJobRunsReader's class docblock).
  */
 #[Group('fast')]
 final class CronJobRunsReaderTest extends TestCase
@@ -274,31 +274,6 @@ final class CronJobRunsReaderTest extends TestCase
             $mockLogEntries[0]['message'],
             'The message must name the migration an operator has to run'
         );
-    }
-
-    // =========================================================================
-    // state() / lastRunAt() — thin wrappers around status()
-    // =========================================================================
-
-    public function testStateReturnsSameStateAsStatus(): void
-    {
-        $db = (new CronJobRunsReaderFakeDatabase())->withRow('brevo_reconciliation', enabled: true);
-
-        $this->assertSame(
-            CronJobEnabledState::ENABLED,
-            (new CronJobRunsReader($db))->state('brevo_reconciliation')
-        );
-    }
-
-    public function testLastRunAtReturnsSameValueAsStatus(): void
-    {
-        $expected = '2026-09-01 12:34:56';
-        $db = (new CronJobRunsReaderFakeDatabase())->withRow('brevo_reconciliation', enabled: true, lastRunAt: $expected);
-
-        $result = (new CronJobRunsReader($db))->lastRunAt('brevo_reconciliation');
-
-        $this->assertInstanceOf(DateTimeImmutable::class, $result);
-        $this->assertSame($expected, $result->format('Y-m-d H:i:s'));
     }
 
     // =========================================================================

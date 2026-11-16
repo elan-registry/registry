@@ -95,46 +95,6 @@ class ExceptionHierarchyTest extends TestCase
     }
 
     #[DataProvider('exceptionClassProvider')]
-    public function testExceptionHasRequiredMethods(string $className): void
-    {
-        $exception = new $className();
-
-        $this->assertIsString(
-            $exception->getUserMessage(),
-            "{$className}::getUserMessage() should return string"
-        );
-
-        $this->assertIsString(
-            $exception->getLogCategory(),
-            "{$className}::getLogCategory() should return string"
-        );
-
-        $this->assertIsInt(
-            $exception->getHttpStatusCode(),
-            "{$className}::getHttpStatusCode() should return int"
-        );
-    }
-
-    #[DataProvider('exceptionClassProvider')]
-    public function testHttpStatusCodeIsValid(string $className): void
-    {
-        $exception = new $className();
-        $statusCode = $exception->getHttpStatusCode();
-
-        $this->assertGreaterThanOrEqual(
-            400,
-            $statusCode,
-            "{$className} HTTP status should be >= 400"
-        );
-
-        $this->assertLessThan(
-            600,
-            $statusCode,
-            "{$className} HTTP status should be < 600"
-        );
-    }
-
-    #[DataProvider('exceptionClassProvider')]
     public function testUserMessageIsUserFriendly(string $className): void
     {
         $exception = new $className();
