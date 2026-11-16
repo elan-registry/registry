@@ -276,6 +276,7 @@ test.describe('Internal Links Discovery and Testing (Logged In)', () => {
     console.log(`Navigable pages: ${navigableLinks.length}`);
     console.log(`Downloadable files: ${downloadableLinks.length}`);
     console.log(`Total unique links: ${uniqueLinks.length}\n`);
+    expect(navigableLinks.length, 'Link discovery found no navigable links, so the loop below would check nothing').toBeGreaterThan(0);
 
     let successCount = 0;
     let failCount = 0;

@@ -1,9 +1,11 @@
 // Behavioral tests for the Bootstrap 5 modals used on admin pages.
 // Covers: CSRF rejection of car deletion, JS errors on page load, Cancel
 // behavior of the confirmation and input modals, the input modal opening with
-// its default value, and XSS prevention via textContent in #confirmMessage.
-// The confirmation modal checks target the backup cleanup confirmation modal
-// (button[data-action="performBackupCleanup"]) in Area 2.
+// its default value, and that #confirmMessage holds no <script> or <img> after
+// the cleanup modal opens. The confirmation modal checks target the backup
+// cleanup confirmation modal (button[data-action="performBackupCleanup"]) in
+// Area 2. performBackupCleanup() writes a fixed innerHTML string, so these
+// tests do not cover the textContent path in deleteBackup().
 
 const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn } = require('./auth-helper.js');

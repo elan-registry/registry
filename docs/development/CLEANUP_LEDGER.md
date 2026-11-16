@@ -39,6 +39,10 @@ after an item is written.
 
 - [ ] "When you review error handling" names only the last-resort fallback as an allowed `\Throwable` catch. `ERROR_HANDLING.md` also documents the page-section fault-domain catch (`VerificationTabStatus::read()`, `tab-verification.php`, #2364) as a deliberate exception. Add it to the rule, so reviewers do not flag those files (found in #1844)
 
+### `app/admin/assets/backup-operations.js` (test coverage)
+
+- [ ] No test covers `deleteBackup()` (~L214), the one path that puts a variable (the file name) into `#confirmMessage`. It uses `textContent`. The XSS test in `admin-modal-confirmation.spec.js` opens the cleanup modal, which writes a fixed `innerHTML` string. Add a test that opens the delete confirmation for a file with a hostile name (found in #2699)
+
 ### `app/admin/includes/account-cleanup-helpers.php`
 
 - [ ] Replace 8 × `throw new RuntimeException` with a typed `AccountCleanupException extends ElanRegistryException`. Handle it in `app/api/admin/account-cleanup-data.php` with `ApiResponse` and `LogCategories` (from #1637)
