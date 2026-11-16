@@ -168,10 +168,6 @@ after an item is written.
 
 - [ ] `BrevoOverrideStub` writes `"<?php\n"` and `sweep()` deletes any file with that exact content. Add a unique marker comment to the stub content (found in /finish-milestone v2.30.7)
 
-### `tests/integration/AdminCarReassignmentTest.php` + `tests/integration/SendOwnerEmailNoOwnerTest.php` (test-only)
-
-- [ ] Three copies of the `noowner` id lookup (`SELECT id FROM users WHERE username = ?`): `AdminCarReassignmentTest` ~L26 and ~L65, and `SendOwnerEmailNoOwnerTest::noownerId()`. Move one helper into `IntegrationTestCase` that reads `AppConstants::NOOWNER_USERNAME` (found in #2505)
-
 ### `tests/integration/AdminClearBlockAndOptOutTest.php` (test coverage)
 
 - [ ] Only the `CLEARED` outcome runs an import afterwards. Add one after a shared-address (and moved-address) Clear Block: Brevo's entry with its original `blockedAt` and with none; the flag stays clear and the other account does not change (found in /finish-milestone v2.30.9)
@@ -188,6 +184,10 @@ after an item is written.
 ### `tests/integration/CarEditOwnerColumnRefreshTest.php`
 
 - [ ] `testOwnerSelfEditSetsOwnerLastUpdatedButAdminEditDoesNot` only checks that the new `owner_last_updated` is later than a date two years ago, and does not count `cars_hist` rows. Bound it with `assertEqualsWithDelta(time(), ..., 60)` and assert one new history row (found while working on #1929)
+
+### `tests/integration/CarTransferTest.php` + `tests/integration/SendOwnerEmailNoOwnerTest.php` (test-only)
+
+- [ ] Four copies of the `noowner` id lookup (`SELECT id FROM users WHERE username = ...`): `CarTransferTest` ~L340, ~L375 and ~L436 (#2402 moved the `AdminCarReassignmentTest` copies there), and `SendOwnerEmailNoOwnerTest::noownerId()`. Move one helper into `IntegrationTestCase` that reads `AppConstants::NOOWNER_USERNAME` (found in #2505)
 
 ### `tests/integration/HeadTagsCanonicalRenderTest.php` + `tests/integration/VerifyCarLandingPageTest.php` + `tests/Support/UserscPageClient.php` (test-only)
 
