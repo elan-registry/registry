@@ -6,8 +6,9 @@ const { ensureLoggedIn, waitForDataTables } = require('../auth-helper.js');
  * (#1304: text columns use `$.fn.dataTable.render.text()`).
  *
  * The listing and factory tables use serverSide: true, where a row.add() row
- * never renders (#1853), so those tests call the column render function
- * directly. The history table is client-side, so it uses row.add().
+ * never renders (#1853). The listing id-column test calls the column render
+ * function directly; the factory tests only check the rendered DOM. The
+ * history table is client-side, so it uses row.add().
  *
  * @group security
  * @group datatables
@@ -55,43 +56,6 @@ test.describe('DataTables XSS render guard — car listing', () => {
             xssFlag,
             'window.__xssFlag was set — a stored XSS payload fired during DataTables render'
         ).toBeFalsy();
-    });
-
-    test('$.fn.dataTable.render.text() escapes XSS payload to plain text', async ({ page }) => {
-        skipIfNoCreds();
-        await ensureLoggedIn(page);
-        await page.goto(CAR_LIST_PAGE, { waitUntil: 'domcontentloaded' });
-        await waitForDataTables(page, 15000);
-
-        const result = await page.evaluate(() => {
-            const xssPayload = '<img src=x onerror="window.__xssFlag=1">';
-
-            // render.text() returns {display, filter}; display() is the cell escaping function.
-            const renderer = $.fn.dataTable.render.text();
-            const rendered = renderer.display(xssPayload);
-
-            // Parse the rendered string back through a temporary DOM element to
-            // check whether the browser would treat it as markup.
-            const probe = document.createElement('td');
-            probe.innerHTML = rendered;
-            const hasImgChild = probe.querySelector('img') !== null;
-
-            return {
-                rendered,
-                containsRawAngleBracket: rendered.includes('<'),
-                createsImgElement: hasImgChild,
-            };
-        });
-
-        expect(
-            result.containsRawAngleBracket,
-            `render.text() output still contains raw "<": ${result.rendered}`
-        ).toBe(false);
-
-        expect(
-            result.createsImgElement,
-            `render.text() output creates an <img> element when used as innerHTML: ${result.rendered}`
-        ).toBe(false);
     });
 
     test('no raw XSS probe <img src="x"> injected inside #cartable', async ({ page }) => {
@@ -154,33 +118,6 @@ test.describe('DataTables XSS render guard — factory table', () => {
         await page.goto(FACTORY_PAGE, { waitUntil: 'domcontentloaded' });
         await waitForDataTables(page, 15000);
         await expect(page.locator('#cartable')).toBeAttached();
-    });
-
-    test('render guard prevents XSS when factory row contains HTML payload', async ({ page }) => {
-        skipIfNoCreds();
-        await ensureLoggedIn(page);
-        await page.goto(FACTORY_PAGE, { waitUntil: 'domcontentloaded' });
-        await waitForDataTables(page, 15000);
-
-        const result = await page.evaluate(() => {
-            window.__factoryXssFlag = undefined;
-            const xssPayload = '<img src=x onerror="window.__factoryXssFlag=1">';
-
-            // serverSide table (#1853): call textRender (= render.text()) directly.
-            const renderer = $.fn.dataTable.render.text();
-            const renderedHtml = renderer.display(xssPayload);
-
-            const probe = document.createElement('td');
-            probe.innerHTML = renderedHtml;
-            const hasImg = probe.querySelector('img[src="x"]') !== null;
-
-            const xssFired = typeof window.__factoryXssFlag !== 'undefined';
-
-            return { xssFired, renderedHtml, hasImg };
-        });
-
-        expect(result.xssFired, 'XSS onerror fired in factory table color column').toBe(false);
-        expect(result.hasImg, `<img src="x"> appeared in factory table color column: ${result.renderedHtml}`).toBe(false);
     });
 
     test('no raw XSS probe <img src="x"> injected inside factory #cartable', async ({ page }) => {

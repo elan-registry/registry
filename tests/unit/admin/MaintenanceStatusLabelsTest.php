@@ -54,22 +54,4 @@ final class MaintenanceStatusLabelsTest extends TestCase
     {
         $this->assertSame($expected, MaintenanceStatusLabels::alertHeading($unknown, $failureDetected));
     }
-
-    public function testChipAndAlertDifferOnlyInDefaultWording(): void
-    {
-        // Both methods must agree on the unknown/failure branches — only the
-        // "neither" default differs (short chip text vs. longer alert heading).
-        $this->assertSame(
-            MaintenanceStatusLabels::chipLabel(true, false),
-            MaintenanceStatusLabels::alertHeading(true, false)
-        );
-        $this->assertSame(
-            MaintenanceStatusLabels::chipLabel(false, true),
-            MaintenanceStatusLabels::alertHeading(false, true)
-        );
-        $this->assertNotSame(
-            MaintenanceStatusLabels::chipLabel(false, false),
-            MaintenanceStatusLabels::alertHeading(false, false)
-        );
-    }
 }

@@ -153,6 +153,9 @@ Rules:
   changed.
 - Declare `#[Group('integration')]` and `#[Group('migration')]` on the class.
   PHPUnit does not inherit groups from the base class.
+- The test is temporary. Delete it one release after the migration deploys to
+  production, unless it tests code still in use. See
+  `docs/development/TESTING_STRATEGY.md`, "Migration Tests".
 
 ```php
 <?php
@@ -189,11 +192,6 @@ The sandbox tests run with the integration tests: `composer test:integration`,
 `composer test:medium` (the unit tests plus `tests/integration/database`), and the pre-push hook
 when the push changes PHP under `app/`, `usersc/classes/`, `tests/integration/`,
 or `database/migrations/`. They do not run in CI.
-
-For full examples, see `AddCarsVerificationAttemptsColumnsSandboxTest` and
-`RenameErVerificationSettingsUnmatchedCounterMigrationTest`. Both extend
-`MigrationSandboxTestCase`. The second keeps its original name from before the
-harness.
 
 ## Recovery from a Failed Migration
 

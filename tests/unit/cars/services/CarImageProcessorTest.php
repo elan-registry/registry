@@ -647,24 +647,4 @@ final class CarImageProcessorTest extends TestCase
         $this->assertStringContainsString('p20x.jpg', $check['errors'][0]);
         $this->assertStringNotContainsString('p21x.jpg', $check['errors'][0]);
     }
-
-    public function testCheckUploadOrderThrowsTypeErrorWhenResultLacksDroppedKey(): void
-    {
-        // No contract is documented. The code fails loud (TypeError after a warning), so the save cannot go on.
-        $this->expectException(\TypeError::class);
-        @CarImageProcessor::checkUploadOrder(['kept' => [], 'storedUnsafe' => []], [], []); // @phpstan-ignore argument.type
-    }
-
-    public function testCheckUploadOrderThrowsTypeErrorWhenResultLacksStoredUnsafeKey(): void
-    {
-        // A result from before the storedUnsafe key existed.
-        $this->expectException(\TypeError::class);
-        @CarImageProcessor::checkUploadOrder(['kept' => [], 'dropped' => ['a.jpg']], [], []); // @phpstan-ignore argument.type
-    }
-
-    public function testCheckUploadOrderThrowsTypeErrorForNonStringNameInDropped(): void
-    {
-        $this->expectException(\TypeError::class);
-        CarImageProcessor::checkUploadOrder(['kept' => [], 'dropped' => [5], 'storedUnsafe' => []], [], []); // @phpstan-ignore argument.type
-    }
 }

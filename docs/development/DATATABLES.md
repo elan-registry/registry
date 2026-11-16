@@ -333,7 +333,7 @@ Verifies the `car_id` subquery against a real database:
 
 - `testFactoryRowContainsCarIdWhenChassisMatches()`
 - `testFactoryRowCarIdIsNullWhenNoChassisMatch()`
-- `testFactoryDataTablesResponseIncludesCarIdField()`
+
 **Coverage Areas**:
 
 - Real database queries

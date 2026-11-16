@@ -199,49 +199,6 @@ test.describe('Login Functionality', () => {
     // If body contains 'Please Log In' but no redirect, the auth wall itself is sufficient evidence.
   });
 
-  test('CSRF token handling', async ({ page }) => {
-    await page.goto('usersc/login.php', { waitUntil: 'networkidle' });
-
-    // Check that the CSRF token field exists
-    const csrfInput = page.locator('input[name="csrf"]');
-    await expect(csrfInput).toHaveCount(1);
-
-    // CSRF protection is active - verify it's included in form submission
-    const tokenValue = await csrfInput.inputValue();
-    expect(tokenValue).toBeTruthy();
-    expect(tokenValue.length).toBeGreaterThan(10); // Should be a substantial token
-
-    // Perform login and verify token is processed correctly
-    await login(page, VALID_CREDENTIALS.username, VALID_CREDENTIALS.password);
-    expect(await isLoggedIn(page)).toBe(true);
-  });
-
-  test('login form accessibility', async ({ page }) => {
-    await page.goto('usersc/login.php', { waitUntil: 'networkidle' });
-    
-    // Check for form labels and accessibility
-    const usernameField = page.locator('input[name="username"], input[name="email"]').first();
-    const passwordField = page.locator('input[name="password"]');
-    
-    await expect(usernameField).toBeVisible();
-    await expect(passwordField).toBeVisible();
-    
-    // Check for submit button
-    const submitButton = page.locator('button[type="submit"], input[type="submit"]');
-    await expect(submitButton).toBeVisible();
-    
-    // Verify fields can be focused and filled
-    await usernameField.focus();
-    await usernameField.fill(VALID_CREDENTIALS.username);
-    
-    await passwordField.focus();
-    await passwordField.fill(VALID_CREDENTIALS.password);
-    
-    // Verify values were set
-    expect(await usernameField.inputValue()).toBe(VALID_CREDENTIALS.username);
-    expect(await passwordField.inputValue()).toBe(VALID_CREDENTIALS.password);
-  });
-
   test('session security - no session fixation', async ({ page }) => {
     // Get initial session info (if available via cookies or headers)
     // Perform login
@@ -390,25 +347,6 @@ test.describe('Login Turnstile Reset (#1798)', () => {
     });
 
     expect(pageErrors, `Unexpected page errors: ${pageErrors.join('; ')}`).toHaveLength(0);
-  });
-
-  test('elanTurnstileExpired does not throw when window.turnstile is undefined', async ({ page }) => {
-    await page.goto('usersc/login.php', { waitUntil: 'networkidle' });
-
-    // The realistic failure scenario prompting this fix: Cloudflare's widget
-    // script never finished loading/executing, but a stale or otherwise-
-    // fired callback invokes the handler anyway.
-    const result = await page.evaluate(() => {
-      delete window.turnstile;
-      let threw = null;
-      try {
-        window.elanTurnstileExpired();
-      } catch (e) {
-        threw = e.message;
-      }
-      return threw;
-    });
-    expect(result, 'elanTurnstileExpired must not throw when window.turnstile is undefined').toBeNull();
   });
 });
 

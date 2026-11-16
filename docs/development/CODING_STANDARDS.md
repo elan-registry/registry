@@ -246,7 +246,9 @@ vendor/bin/phpunit -c phpunit-unit.xml tests/unit/phpstan
 ```
 
 Prefer a PHPStan rule to a test that scans source text. A rule checks every
-analysed file and a text scan checks only a fixed list.
+analysed file and a text scan checks only a fixed list. The other rules for
+new tests are in
+[TESTING_STRATEGY.md, "Writing a Test That Earns Its Place"](TESTING_STRATEGY.md#writing-a-test-that-earns-its-place).
 
 ---
 

@@ -148,18 +148,6 @@ final class CarRepositoryProfileFlagReadersTest extends IntegrationTestCase
         );
     }
 
-    public function testRepositorySqlHasNoMaxOverTheProfileFlagColumns(): void
-    {
-        $source = (string) file_get_contents(dirname(__DIR__, 4) . '/usersc/classes/Car/CarRepository.php');
-        $this->assertNotSame('', $source);
-
-        $this->assertSame(
-            0,
-            preg_match('/MAX\s*\(\s*(p\.|profiles\.)?email_(opted_out|blocked|bounced|suppressed)/i', $source),
-            'With a unique profiles.user_id the flag readers read the one row. MAX() over the flag columns is the old duplicate-row workaround'
-        );
-    }
-
     public function testBlockedFlagWithUnknownCauseIsStillActive(): void
     {
         $owner = $this->createOwner('unknowncause');

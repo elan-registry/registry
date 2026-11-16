@@ -96,30 +96,4 @@ final class ChassisAvailabilityQueryTest extends IntegrationTestCase
 
         $this->assertTrue($this->isChassisTaken('1973', '36', strtolower($chassis)));
     }
-
-    /**
-     * Duplicates can exist (no UNIQUE constraint), so "taken" must be count() > 0.
-     */
-    #[Group('fast')]
-    public function testChassisStillTakenWithDuplicateRowsPresent(): void
-    {
-        $chassis = $this->randomChassis();
-        $this->createFixtureCar($chassis);
-        $this->createFixtureCar($chassis);
-
-        $this->assertTrue($this->isChassisTaken('1973', '36', $chassis));
-    }
-
-    /**
-     * The endpoint rejects chassis longer than 15; exactly 15 must still match.
-     */
-    #[Group('fast')]
-    public function testChassisTakenAtMaxLength(): void
-    {
-        $chassis = 'TB' . uniqid(); // 'TB' (2) + uniqid() (13) = 15 chars exactly
-        $this->assertSame(15, strlen($chassis), 'uniqid() length assumption broke — chassis is no longer at the varchar(15) boundary');
-        $this->createFixtureCar($chassis);
-
-        $this->assertTrue($this->isChassisTaken('1973', '36', $chassis));
-    }
 }

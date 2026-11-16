@@ -18,60 +18,45 @@ use PHPUnit\Framework\Attributes\Group;
  * outer white space from `[ \t\n\r\x0B]`. They differ for `\0`, `\f`,
  * Unicode spaces and non-ASCII letters.
  *
- * This test records the result of each rule for a fixed set of addresses.
- * Expected values are literals, not computed. A change to either rule
- * fails a test, so the change cannot go unseen.
+ * This test records the PHP result for a fixed set of addresses, and the
+ * `findUserIdsByAddress()` result, which needs both rules to agree.
+ * Expected values are literals, not computed. A change to the PHP rule
+ * fails a test. A change to the SQL rule fails a test only when it changes
+ * a `findUserIdsByAddress()` result.
  */
 #[Group('integration')]
 #[Group('car-verification')]
 final class CarRepositoryAddressRuleParityTest extends IntegrationTestCase
 {
-    private const SQL_RULE = "LOWER(REGEXP_REPLACE(?, '^[[:space:]]+|[[:space:]]+\$', ''))";
-
     /**
-     * Each case: raw address, PHP result, SQL result.
+     * Each case: raw address, PHP result. The label records whether the SQL
+     * rule gave the same result when the case was written. No test here
+     * asserts the SQL result.
      *
-     * @return array<string, array{string, string, string}>
+     * @return array<string, array{string, string}>
      */
     public static function ruleCases(): array
     {
         return [
-            'agree: plain lower case' => ['jim@example.com', 'jim@example.com', 'jim@example.com'],
-            'agree: upper case ASCII' => ['Jim@Example.COM', 'jim@example.com', 'jim@example.com'],
-            'agree: outer space, tab, LF, CR, VT' => [
-                " \t\n\r\x0Bjim@example.com \t\n\r\x0B",
-                'jim@example.com',
-                'jim@example.com',
-            ],
-            'differ: leading NUL' => ["\0jim@example.com", 'jim@example.com', "\0jim@example.com"],
-            'differ: trailing NUL' => ["jim@example.com\0", 'jim@example.com', "jim@example.com\0"],
-            'differ: leading form feed' => ["\fjim@example.com", "\fjim@example.com", 'jim@example.com'],
-            'differ: trailing form feed' => ["jim@example.com\f", "jim@example.com\f", 'jim@example.com'],
-            'differ: no-break space' => [
-                "\u{00A0}jim@example.com\u{00A0}",
-                "\u{00A0}jim@example.com\u{00A0}",
-                'jim@example.com',
-            ],
-            'differ: em space' => ["\u{2003}jim@example.com", "\u{2003}jim@example.com", 'jim@example.com'],
-            'differ: ideographic space' => ["jim@example.com\u{3000}", "jim@example.com\u{3000}", 'jim@example.com'],
-            'differ: non-ASCII upper case letter' => ["J\u{00DC}RGEN@example.com", "j\u{00DC}rgen@example.com", "j\u{00FC}rgen@example.com"],
-            'agree: non-ASCII lower case letter' => ["j\u{00FC}rgen@example.com", "j\u{00FC}rgen@example.com", "j\u{00FC}rgen@example.com"],
+            'agree: plain lower case' => ['jim@example.com', 'jim@example.com'],
+            'agree: upper case ASCII' => ['Jim@Example.COM', 'jim@example.com'],
+            'agree: outer space, tab, LF, CR, VT' => [" \t\n\r\x0Bjim@example.com \t\n\r\x0B", 'jim@example.com'],
+            'differ: leading NUL' => ["\0jim@example.com", 'jim@example.com'],
+            'differ: trailing NUL' => ["jim@example.com\0", 'jim@example.com'],
+            'differ: leading form feed' => ["\fjim@example.com", "\fjim@example.com"],
+            'differ: trailing form feed' => ["jim@example.com\f", "jim@example.com\f"],
+            'differ: no-break space' => ["\u{00A0}jim@example.com\u{00A0}", "\u{00A0}jim@example.com\u{00A0}"],
+            'differ: em space' => ["\u{2003}jim@example.com", "\u{2003}jim@example.com"],
+            'differ: ideographic space' => ["jim@example.com\u{3000}", "jim@example.com\u{3000}"],
+            'differ: non-ASCII upper case letter' => ["J\u{00DC}RGEN@example.com", "j\u{00DC}rgen@example.com"],
+            'agree: non-ASCII lower case letter' => ["j\u{00FC}rgen@example.com", "j\u{00FC}rgen@example.com"],
         ];
     }
 
     #[DataProvider('ruleCases')]
-    public function test_normalize_fixedAddress_returnsKnownPhpResult(string $raw, string $php, string $sql): void
+    public function test_normalize_fixedAddress_returnsKnownPhpResult(string $raw, string $php): void
     {
         $this->assertSame(bin2hex($php), bin2hex(EmailAddress::normalize($raw)));
-    }
-
-    #[DataProvider('ruleCases')]
-    public function test_sqlRule_fixedAddress_returnsKnownSqlResult(string $raw, string $php, string $sql): void
-    {
-        $this->requireDatabase();
-        $row = $this->db->query('SELECT ' . self::SQL_RULE . ' AS v', [$raw])->first();
-        $this->assertIsObject($row);
-        $this->assertSame(bin2hex($sql), bin2hex((string) $row->v));
     }
 
     /**

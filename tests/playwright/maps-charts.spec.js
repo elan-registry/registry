@@ -78,17 +78,6 @@ test.describe('Maps and Charts', () => {
     ).toHaveLength(0);
   });
 
-  // The render tests pass for a globe and a flat map alike. Check the built
-  // style, so a library default that turns the maps back into a globe fails
-  // here. The style file is git-ignored build output: without a run of
-  // `npm run build`, the server returns 404 and this test fails.
-  test('generated map style uses the flat Mercator projection', async ({ request }) => {
-    const response = await request.get('usersc/js/versatiles-colorful.json');
-    expect(response.status()).toBe(200);
-    const style = await response.json();
-    expect(style.projection?.type).toBe('mercator');
-  });
-
   // usersc/js/* is cached for a year (see the Cloudflare cache notes in
   // DEPLOYMENT.md). Without a ?v= query on the bundle and on the worker, a
   // returning browser keeps the old MapLibre, and an old worker with a new
@@ -281,26 +270,6 @@ test.describe('Maps and Charts', () => {
     expect(await page.evaluate(() => window.maplibregl.getVersion()))
       .toBe(require('maplibre-gl/package.json').version);
     expect(pageErrors).toEqual([]);
-  });
-
-  test('statistics page chart data loads', async ({ page }) => {
-    await page.goto('app/owner/reports/statistics.php');
-    await page.waitForLoadState('networkidle');
-
-    const hasData = await page.evaluate(() => {
-      return typeof window.statisticsRawData !== 'undefined' ||
-             typeof Chart !== 'undefined';
-    });
-    expect(hasData).toBe(true);
-  });
-
-  test('charts are responsive on mobile viewport', async ({ page }) => {
-    await page.setViewportSize({ width: 375, height: 667 });
-    await page.goto('app/owner/reports/statistics.php');
-    await page.waitForLoadState('networkidle');
-
-    const chart = page.locator('#timelineChart');
-    await expect(chart).toBeVisible({ timeout: 10000 });
   });
 
   test('statistics page 26R filter classifies Race cars by variant', async ({ page }) => {

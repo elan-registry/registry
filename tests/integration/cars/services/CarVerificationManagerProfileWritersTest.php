@@ -1018,9 +1018,9 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
             $this->assertSame($flagsBefore, $this->getOwnerEmailFlags($fixture['owner']), 'Test setup: the writer must write nothing');
 
             $this->assertSame(
-                1205,
+                3572,
                 $this->lockWaitErrorCode($second, $fixture['owner']),
-                'A second connection must time out on the row lock while the first transaction is open'
+                'A second connection must fail at once on the row lock while the first transaction is open'
             );
         } finally {
             $this->repo->rollback();
@@ -1049,16 +1049,16 @@ final class CarVerificationManagerProfileWritersTest extends IntegrationTestCase
     }
 
     /**
-     * Ask a second connection for the row lock, with a 1-second wait.
+     * Ask a second connection for the row lock, with no wait. NOWAIT fails at
+     * once, so the probe does not wait for a lock timeout (#2395).
      *
-     * @return int|null MySQL error code 1205 on a lock wait timeout, null when the lock was granted
+     * @return int|null MySQL error code 3572 (ER_LOCK_NOWAIT) when another transaction holds the lock, null when the lock was granted
      */
     private function lockWaitErrorCode(PDO $connection, int $ownerId): ?int
     {
-        $connection->exec('SET SESSION innodb_lock_wait_timeout = 1');
         $connection->beginTransaction();
         try {
-            $stmt = $connection->prepare('SELECT id FROM profiles WHERE user_id = ? FOR UPDATE');
+            $stmt = $connection->prepare('SELECT id FROM profiles WHERE user_id = ? FOR UPDATE NOWAIT');
             $stmt->execute([$ownerId]);
             $stmt->fetchAll();
 

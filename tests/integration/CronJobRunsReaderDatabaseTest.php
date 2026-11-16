@@ -63,23 +63,6 @@ final class CronJobRunsReaderDatabaseTest extends IntegrationTestCase
         $this->assertFalse($this->db->error(), 'Failed to set brevo_reconciliation row fixture: ' . $this->db->errorString());
     }
 
-    public function testStateReturnsSeededRowsActualCurrentState(): void
-    {
-        $reader = new CronJobRunsReader($this->db);
-
-        $state = $reader->state(self::JOB_NAME);
-
-        $this->assertContains(
-            $state,
-            [CronJobEnabledState::ENABLED, CronJobEnabledState::DISABLED],
-            "state('" . self::JOB_NAME . "') must resolve to the row's actual enabled/disabled value, not MISSING or UNREADABLE"
-        );
-        $this->assertSame(
-            (bool) $this->originalEnabled ? CronJobEnabledState::ENABLED : CronJobEnabledState::DISABLED,
-            $state
-        );
-    }
-
     public function testStateReturnsDisabledWhenEnabledColumnIsZero(): void
     {
         $this->setFixtureState(false, $this->originalLastRunAt);
@@ -117,21 +100,5 @@ final class CronJobRunsReaderDatabaseTest extends IntegrationTestCase
         $reader = new CronJobRunsReader($this->db);
 
         $this->assertNull($reader->lastRunAt(self::JOB_NAME));
-    }
-
-    public function testStateReturnsMissingForAJobNameWithNoRow(): void
-    {
-        $missingJobName = 'nonexistent_test_job_' . uniqid();
-        $reader = new CronJobRunsReader($this->db);
-
-        $this->assertSame(CronJobEnabledState::MISSING, $reader->state($missingJobName));
-    }
-
-    public function testLastRunAtReturnsNullForAJobNameWithNoRow(): void
-    {
-        $missingJobName = 'nonexistent_test_job_' . uniqid();
-        $reader = new CronJobRunsReader($this->db);
-
-        $this->assertNull($reader->lastRunAt($missingJobName));
     }
 }

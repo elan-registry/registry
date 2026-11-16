@@ -4,8 +4,9 @@
 // maintenance-scripts.php). This spec confirms the page renders successfully and
 // the BackupManager/script-enumeration wiring in maintenance.php didn't throw
 // before reaching markup — it does not duplicate the <title> check already in
-// admin-page-titles.spec.js or the modal DOM/CSRF checks already in
-// admin-modal-confirmation.spec.js.
+// admin-page-titles.spec.js. Modal behavior (open/cancel, XSS in
+// #confirmMessage) checks are in admin-modal-confirmation.spec.js. That file also
+// checks app/admin/index.php: CSRF rejection of car deletion, and JS errors on load.
 
 const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn } = require('./auth-helper.js');

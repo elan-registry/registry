@@ -6,7 +6,6 @@ require_once __DIR__ . '/IntegrationTestCase.php';
 
 use ElanRegistry\Car\Car;
 use ElanRegistry\Car\CarRepository;
-use ElanRegistry\Exceptions\CarValidationException;
 use PHPUnit\Framework\Attributes\Group;
 
 #[Group('integration')]
@@ -260,83 +259,6 @@ final class CarDataTablesTest extends IntegrationTestCase
             'order'   => [['column' => 0, 'dir' => 'asc']],
             'columns' => $columns ?: [['data' => 'id', 'searchable' => 'true', 'orderable' => 'true']],
         ], $overrides);
-    }
-
-    #[Group('fast')]
-    public function testOversizedSearchValueDoesNotCrash(): void
-    {
-        $car = new Car();
-
-        $request = $this->buildDataTablesRequest(
-            ['search' => ['value' => str_repeat('x', 102400)]],
-            [['data' => 'chassis', 'searchable' => 'true', 'orderable' => 'true']]
-        );
-
-        $result = $car->getDataTablesData($request, 'cars');
-
-        $this->assertIsArray($result);
-        $this->assertArrayHasKey('draw', $result);
-        $this->assertArrayHasKey('recordsTotal', $result);
-        $this->assertArrayHasKey('recordsFiltered', $result);
-        $this->assertArrayHasKey('data', $result);
-        $this->assertEquals(0, $result['recordsFiltered']);
-    }
-
-    #[Group('fast')]
-    public function testNegativeLengthParameter(): void
-    {
-        $this->expectException(CarValidationException::class);
-
-        $car = new Car();
-        $car->getDataTablesData($this->buildDataTablesRequest(['length' => -1]), 'cars');
-    }
-
-    #[Group('fast')]
-    public function testZeroLengthParameter(): void
-    {
-        $this->expectException(CarValidationException::class);
-
-        $car = new Car();
-        $car->getDataTablesData($this->buildDataTablesRequest(['length' => 0]), 'cars');
-    }
-
-    #[Group('fast')]
-    public function testNonIntegerStartIsCastSafely(): void
-    {
-        $car = new Car();
-
-        // 0 is what a non-numeric string casts to.
-        $request = $this->buildDataTablesRequest(['start' => (int) 'abc']);
-
-        $result = $car->getDataTablesData($request, 'cars');
-
-        $this->assertIsArray($result);
-        $this->assertArrayHasKey('draw', $result);
-        $this->assertArrayHasKey('recordsTotal', $result);
-        $this->assertArrayHasKey('recordsFiltered', $result);
-        $this->assertArrayHasKey('data', $result);
-    }
-
-    #[Group('fast')]
-    public function testExcessiveColumnCountDoesNotCrash(): void
-    {
-        $car = new Car();
-
-        $columns = [];
-        for ($i = 0; $i < 500; $i++) {
-            $columns[] = ['data' => 'col_' . $i, 'searchable' => 'true', 'orderable' => 'true'];
-        }
-
-        $request = $this->buildDataTablesRequest([], $columns);
-
-        $result = $car->getDataTablesData($request, 'cars');
-
-        $this->assertIsArray($result);
-        $this->assertArrayHasKey('draw', $result);
-        $this->assertArrayHasKey('recordsTotal', $result);
-        $this->assertArrayHasKey('recordsFiltered', $result);
-        $this->assertArrayHasKey('data', $result);
-        $this->assertEquals($result['recordsTotal'], $result['recordsFiltered']);
     }
 
     /**

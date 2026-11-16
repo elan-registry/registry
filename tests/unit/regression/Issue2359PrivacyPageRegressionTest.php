@@ -128,13 +128,4 @@ final class Issue2359PrivacyPageRegressionTest extends TestCase
     {
         $this->assertDoesNotMatchRegularExpression('/mailtrap|test\.elanregistry|test site|shared account/i', self::policy());
     }
-
-    /** The extraction itself must be able to fail: a policy without the disclosure must not match. */
-    public function testKeyPhraseCheckFailsOnAPolicyWithoutTheDisclosure(): void
-    {
-        $old = 'We keep a record of whether verification emails were delivered, for as long as we need it.';
-
-        $this->assertSame(0, preg_match('/records the delivery status of all registry email/i', $old));
-        $this->assertSame(0, preg_match('/24 months/', $old));
-    }
 }

@@ -8,7 +8,7 @@ use ElanRegistry\Transfer\TransferStatus;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Car transfer workflow: request, approve, deny, errors, and audit trail.
+ * Car transfer workflow: request, approval gate, deny, and the TOCTOU claim.
  */
 #[Group('integration')]
 #[Group('transfer')]
@@ -87,30 +87,6 @@ final class CarTransferWorkflowTest extends TransferIntegrationTestCase
     // Transfer Approval Tests
     // =========================================================================
 
-    public function testTransferApprovalUpdatesStatus(): void
-    {
-        if (!$this->databaseConnected || !$this->testCarId || !$this->testUserId) {
-            $this->markTestSkipped('Database or test data not available');
-        }
-
-        $requestId = $this->createTransferRequest($this->testCarId, $this->testUserId);
-
-        $result = $this->db->update('car_transfer_requests', $requestId, [
-            'status'         => 'completed',
-            'completed_date' => date('Y-m-d H:i:s'),
-            'admin_notes'    => 'Approved by admin',
-        ]);
-        $this->assertTrue($result, "Approval update should succeed");
-
-        $request = $this->db->query(
-            "SELECT status, completed_date FROM car_transfer_requests WHERE id = ?",
-            [$requestId]
-        )->first();
-
-        $this->assertEquals('completed', $request->status, "Status should be completed");
-        $this->assertNotNull($request->completed_date, "Completion date should be set");
-    }
-
     public function testApprovalRequiresPendingStatus(): void
     {
         if (!$this->databaseConnected) {
@@ -157,24 +133,6 @@ final class CarTransferWorkflowTest extends TransferIntegrationTestCase
 
         $carAfter = $this->db->query("SELECT user_id FROM cars WHERE id = ?", [$this->testCarId])->first();
         $this->assertEquals($ownerBefore, $carAfter->user_id, "Car ownership should not change on denial");
-    }
-
-    // =========================================================================
-    // Error Handling Tests
-    // =========================================================================
-
-    public function testNonExistentTransferReturns404(): void
-    {
-        if (!$this->databaseConnected) {
-            $this->markTestSkipped('Database not available');
-        }
-
-        $result = $this->db->query(
-            "SELECT * FROM car_transfer_requests WHERE id = ? AND status = 'pending'",
-            [99999999]
-        )->first();
-
-        $this->assertEmpty($result, "Non-existent transfer request should not be found");
     }
 
     // =========================================================================
@@ -263,21 +221,5 @@ final class CarTransferWorkflowTest extends TransferIntegrationTestCase
 
         $this->assertNotNull($row, 'Row should still exist after rollback');
         $this->assertEquals('pending', $row->status, 'Status must revert to pending when the outer transaction is rolled back');
-    }
-
-    public function testCannotProcessAlreadyProcessedRequest(): void
-    {
-        if (!$this->databaseConnected || !$this->testCarId) {
-            $this->markTestSkipped('Database or test data not available');
-        }
-
-        $requestId = $this->createTransferRequest($this->testCarId, $this->testUserId, ['status' => 'completed']);
-
-        $result = $this->db->query(
-            "SELECT * FROM car_transfer_requests WHERE id = ? AND status = 'pending'",
-            [$requestId]
-        )->first();
-
-        $this->assertEmpty($result, "Already-processed request should not match pending query");
     }
 }

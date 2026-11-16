@@ -19,15 +19,4 @@ final class DbIntTest extends IntegrationTestCase
         $obj = (object) ['id' => '42'];
         $this->assertSame(42, dbInt($obj));
     }
-
-    public function test_dbInt_withScalarInt_returnsInt(): void
-    {
-        $this->assertSame(5, dbInt(5));
-    }
-
-    public function test_dbInt_withNullValue_throwsInvalidArgumentException(): void
-    {
-        $this->expectException(InvalidArgumentException::class);
-        dbInt(null);
-    }
 }

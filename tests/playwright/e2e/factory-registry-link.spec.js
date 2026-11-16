@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { waitForDataTables } = require('../auth-helper.js');
+const { waitForDataTables, assertNoConsoleErrors } = require('../auth-helper.js');
 
 test.describe('Factory Page - Registry Link Feature', () => {
   // Run these tests with the admin project
@@ -10,38 +10,13 @@ test.describe('Factory Page - Registry Link Feature', () => {
   });
 
   test('should load factory page without errors', async ({ page }) => {
-    // Navigate to Factory page
-    await page.goto('app/owner/cars/factory.php');
-    await page.waitForLoadState('domcontentloaded');
+    // The helper registers its console listener before goto, so errors thrown
+    // during page load are captured.
+    await assertNoConsoleErrors(page, 'app/owner/cars/factory.php', 'factory.php');
+    console.log('✓ Factory page loaded with no console errors');
 
-    console.log('✓ Factory page loaded');
-
-    // Check for page title
-    const heading = page.locator('h2:has-text("Elan Factory Information")');
-    await expect(heading).toBeVisible();
-    console.log('✓ Factory Information heading visible');
-
-    // Check for data table
-    const table = page.locator('#cartable');
-    await expect(table).toBeVisible();
-    console.log('✓ Factory data table visible');
-
-    // Check for console errors
-    const errors = [];
-    page.on('console', (msg) => {
-      if (msg.type() === 'error') {
-        errors.push(msg.text());
-      }
-    });
-
-    // Wait a bit for any lazy-loaded errors
-    await page.waitForTimeout(1000);
-
-    if (errors.length === 0) {
-      console.log('✓ No console errors');
-    } else {
-      console.log('⚠ Console errors found:', errors);
-    }
+    await expect(page.locator('h2:has-text("Elan Factory Information")')).toBeVisible();
+    await expect(page.locator('#cartable')).toBeVisible();
   });
 
   test('should display Registry Link column in table header', async ({ page }) => {
@@ -170,33 +145,6 @@ test.describe('Factory Page - Registry Link Feature', () => {
       console.log('✓ No "Check failed" errors on page 2');
     } else {
       console.log('⚠ Only 1 page of data, skipping pagination test');
-    }
-  });
-
-  test('should load Registry Links within reasonable time', async ({ page }) => {
-    const startTime = Date.now();
-
-    await page.goto('app/owner/cars/factory.php');
-
-    // Wait for table
-    await waitForDataTables(page);
-
-    // Registry Link renders synchronously — wait for containers to appear
-    await page.waitForSelector('.registry-link-container', { timeout: 10000 });
-
-    const endTime = Date.now();
-    const loadTime = endTime - startTime;
-
-    console.log(`✓ Page loaded in ${loadTime}ms`);
-
-    // Verify page loaded in reasonable time (under 5 seconds typical)
-    // This is informational, not a hard requirement
-    if (loadTime > 5000) {
-      console.log(`⚠ Page took longer than expected: ${loadTime}ms`);
-    } else if (loadTime > 3000) {
-      console.log(`⚠ Page took moderate time: ${loadTime}ms`);
-    } else {
-      console.log(`✓ Page loaded quickly: ${loadTime}ms`);
     }
   });
 

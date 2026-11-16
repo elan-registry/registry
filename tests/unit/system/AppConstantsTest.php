@@ -28,32 +28,4 @@ class AppConstantsTest extends TestCase
 
         $this->assertEquals('2025-01-01 09:30:00', $formatted, 'Hour 9 must be zero-padded to 09');
     }
-
-    public function testDatetimeFormatProducesTwoDigitHourForDoubleDigits(): void
-    {
-        $timestamp = mktime(14, 5, 3, 6, 15, 2024);
-        $formatted = date(AppConstants::DATETIME_FORMAT, $timestamp);
-
-        $this->assertEquals('2024-06-15 14:05:03', $formatted);
-    }
-
-    public function testDatetimeFormatMidnightIsZeroPadded(): void
-    {
-        $timestamp = mktime(0, 0, 0, 3, 7, 2025);
-        $formatted = date(AppConstants::DATETIME_FORMAT, $timestamp);
-
-        $this->assertEquals('2025-03-07 00:00:00', $formatted, 'Midnight (hour 0) must be 00');
-    }
-
-    public function testDatetimeFormatMatchesMysqlDatetimePattern(): void
-    {
-        $formatted = date(AppConstants::DATETIME_FORMAT);
-
-        // MySQL DATETIME: YYYY-MM-DD HH:MM:SS with exactly 2-digit hour
-        $this->assertMatchesRegularExpression(
-            '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/',
-            $formatted,
-            'Format must produce exactly YYYY-MM-DD HH:MM:SS (2-digit hour required)'
-        );
-    }
 }

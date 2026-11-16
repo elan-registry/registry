@@ -87,21 +87,9 @@ final class EmailEventRekeyReportAuthTest extends IntegrationTestCase
     {
         $result = $this->invokeEndpoint(self::SCRIPT, [], null);
 
+        // The positive marker, as for the editor: a crash would also show no report.
+        $this->assertSame(0, $result['exitCode'], substr($result['raw'], 0, 500));
+        $this->assertSame(302, $result['httpCode'], 'securePage() must redirect a visitor who is not logged in');
         $this->assertStringNotContainsString('Email Event Re-key Report', $result['raw']);
-    }
-
-    public function testSecurePageComesBeforeIsAdminAndBeforeAnyRead(): void
-    {
-        $source = (string) file_get_contents(__DIR__ . '/../../' . self::SCRIPT);
-
-        $securePage = strpos($source, 'securePage($php_self)');
-        $isAdmin = strpos($source, 'isAdmin()');
-        $queries = strpos($source, 'new EmailEventRekeyQueries');
-
-        $this->assertNotFalse($securePage, 'The script must call securePage($php_self)');
-        $this->assertNotFalse($isAdmin, 'The script must call isAdmin()');
-        $this->assertNotFalse($queries);
-        $this->assertLessThan($isAdmin, $securePage, 'securePage($php_self) must come before isAdmin()');
-        $this->assertLessThan($queries, $isAdmin, 'isAdmin() must come before the first read');
     }
 }

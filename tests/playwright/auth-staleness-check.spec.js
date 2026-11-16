@@ -4,8 +4,7 @@
 // be exercised against fakes.
 //
 // Lives at tests/playwright/ root (not e2e/) so the `chromium` project picks
-// it up — that project's testIgnore excludes '**/e2e/**' entirely. Mirrors
-// fixtures.spec.js, the existing precedent for a page-less spec here.
+// it up — that project's testIgnore excludes '**/e2e/**' entirely.
 //
 // `isLoggedIn` is a real (non-injectable) import inside the module, so the
 // stale/valid cases are driven through it rather than around it: the fake

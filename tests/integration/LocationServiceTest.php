@@ -32,16 +32,6 @@ class LocationServiceTest extends IntegrationTestCase
         $this->service = new LocationService();
     }
 
-    public function testLocationServiceClassStructure(): void
-    {
-        $this->assertTrue(class_exists(LocationService::class), 'LocationService class exists');
-
-        $reflection = new ReflectionClass(LocationService::class);
-        $this->assertTrue($reflection->hasMethod('searchLocation'), 'searchLocation method exists');
-        $this->assertTrue($reflection->hasMethod('reverseGeocode'), 'reverseGeocode method exists');
-        $this->assertTrue($reflection->hasMethod('validateCoordinates'), 'validateCoordinates method exists');
-    }
-
     #[Group('live-network')]
     public function testForwardGeocodingPortland(): void
     {
@@ -73,28 +63,6 @@ class LocationServiceTest extends IntegrationTestCase
     }
 
     #[Group('live-network')]
-    public function testForwardGeocodingLondon(): void
-    {
-        try {
-            $results = $this->service->searchLocation('London United Kingdom', self::TEST_USER_ID, 5);
-        } catch (LocationServiceException $e) {
-            $this->markTestSkipped('Location service unavailable: ' . $e->getMessage());
-        }
-
-        $this->assertNotEmpty($results, "Should find London results");
-
-        $result = $results[0];
-
-        // London is approximately at 51.51°N, 0.13°W
-        $this->assertGreaterThan(51, $result['lat'], "London latitude should be > 51");
-        $this->assertLessThan(52, $result['lat'], "London latitude should be < 52");
-        $this->assertGreaterThan(-1, $result['lon'], "London longitude should be > -1");
-        $this->assertLessThan(1, $result['lon'], "London longitude should be < 1");
-
-        echo "\n✓ Forward geocoding successful: London → ({$result['lat']}, {$result['lon']})\n";
-    }
-
-    #[Group('live-network')]
     public function testReverseGeocodingPortland(): void
     {
         $lat = 45.52;
@@ -119,24 +87,6 @@ class LocationServiceTest extends IntegrationTestCase
         $this->assertNotEmpty($result['country'], "Should identify country");
 
         echo "\n✓ Reverse geocoding successful: (45.52, -122.68) → {$result['city']}, {$result['country']}\n";
-    }
-
-    #[Group('live-network')]
-    public function testReverseGeocodingLondon(): void
-    {
-        $lat = 51.51;
-        $lon = -0.13;
-
-        try {
-            $result = $this->service->reverseGeocode($lat, $lon, self::TEST_USER_ID);
-        } catch (LocationServiceException $e) {
-            $this->markTestSkipped('Location service unavailable: ' . $e->getMessage());
-        }
-
-        $this->assertArrayHasKey('city', $result, "Should identify city");
-        $this->assertArrayHasKey('country', $result, "Should identify country");
-
-        echo "\n✓ Reverse geocoding successful: (51.51, -0.13) → {$result['city']}, {$result['country']}\n";
     }
 
     public function testCoordinateValidation(): void

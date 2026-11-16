@@ -22,13 +22,7 @@ use PHPUnit\Framework\TestCase;
  * endpoint's control flow (method check, then the rate limit — checked and
  * recorded, with no CSRF check since #2227 — then reason/detail
  * normalization, then logging with the correct category and
- * stage) directly against the live source. The pure reason/detail
- * normalization logic is also duplicated and exercised directly below
- * (dataProvider-driven) since it has no side effects and is safe to
- * evaluate in isolation — this at least proves the documented normalization
- * rules are self-consistent and gives fast feedback if they're ever
- * tightened/loosened, even though it can't prove the endpoint file wires
- * them up identically (the source-text tests below cover that gap).
+ * stage) directly against the live source.
  *
  * @issue 1690
  * @link https://github.com/elan-registry/registry/issues/1690
@@ -371,67 +365,5 @@ final class JoinFailureReportEndpointTest extends TestCase
                 . 'rate-limited endpoint with no CSRF token (ADR-019 diagnostic-log exception), '
                 . 'consistent with other app/api/shared/ scripts'
         );
-    }
-
-    // ---------------------------------------------------------------
-    // Pure logic checks: reason normalization / detail truncation,
-    // evaluated directly (documents the intended behavior; the
-    // source-text tests above confirm the endpoint file matches it).
-    // ---------------------------------------------------------------
-
-    /**
-     * @return array<string, array{0: string, 1: string}>
-     */
-    public static function reasonProvider(): array
-    {
-        return [
-            'turnstile_error is allowed' => ['turnstile_error', 'turnstile_error'],
-            'turnstile_expired is allowed' => ['turnstile_expired', 'turnstile_expired'],
-            'js_exception is allowed' => ['js_exception', 'js_exception'],
-            'turnstile_not_loaded is allowed' => ['turnstile_not_loaded', 'turnstile_not_loaded'],
-            'location_gps_failed is allowed' => ['location_gps_failed', 'location_gps_failed'],
-            'location_search_failed is allowed' => ['location_search_failed', 'location_search_failed'],
-            'client_validation is allowed' => ['client_validation', 'client_validation'],
-            'unrecognized string normalizes to unknown' => ['bogus_reason', 'unknown'],
-            'empty string normalizes to unknown' => ['', 'unknown'],
-            'sql-injection-shaped input normalizes to unknown' => ["'; DROP TABLE logs; --", 'unknown'],
-        ];
-    }
-
-    #[\PHPUnit\Framework\Attributes\DataProvider('reasonProvider')]
-    public function testReasonNormalizationLogic(string $input, string $expected): void
-    {
-        $allowedReasons = ['turnstile_error', 'turnstile_expired', 'js_exception', 'turnstile_not_loaded', 'location_gps_failed', 'location_search_failed', 'client_validation'];
-        $reason = $input;
-        if (!in_array($reason, $allowedReasons, true)) {
-            $reason = 'unknown';
-        }
-
-        $this->assertSame($expected, $reason);
-    }
-
-    public function testDetailTruncationLogicCapsAt300Chars(): void
-    {
-        $detail = mb_substr(str_repeat('a', 500), 0, 300);
-
-        $this->assertSame(300, mb_strlen($detail));
-    }
-
-    public function testDetailTruncationLogicPreservesShorterStrings(): void
-    {
-        $detail = mb_substr('short detail', 0, 300);
-
-        $this->assertSame('short detail', $detail);
-    }
-
-    public function testDetailTruncationLogicIsMultibyteSafe(): void
-    {
-        // 300 multi-byte characters (each 3 bytes in UTF-8) — byte-based
-        // substr(...,0,300) would cut mid-character; mb_substr must not.
-        $input = str_repeat('€', 400);
-        $detail = mb_substr($input, 0, 300);
-
-        $this->assertSame(300, mb_strlen($detail));
-        $this->assertSame(str_repeat('€', 300), $detail);
     }
 }

@@ -13,8 +13,8 @@ use PDOException;
  *
  * Migration 20261012000000_move_deliverability_flags_to_profiles moves the
  * email deliverability flags from `cars` to `profiles`. The migration keeps
- * its reads in this class so that a test can call the same rules and compare
- * the decisions with the migrated rows.
+ * its reads in this class. Only the migration calls it now: its sandbox tests
+ * were deleted one release after it deployed (#2395).
  *
  * The class works on both schemas that it can meet:
  *
@@ -61,7 +61,10 @@ final class DeliverabilityMigrationQueries
     /** The `cars_hist` row of an admin Mark Bounced. */
     private const OPERATION_BOUNCED = 'EMAIL BOUNCED';
 
-    /** The `cars_hist` rows that end an opt-out: owner Resume and admin Clear Suppression. */
+    /**
+     * The `cars_hist` rows that end an opt-out: owner Resume and admin Clear
+     * Suppression (a former action, replaced in #2357).
+     */
     private const OPERATIONS_OPT_OUT_CLEAR = ['SUPPRESSION CLEARED BY OWNER', 'EMAIL SUPPRESSION CLEARED'];
 
     /** Upper limit of IDs in one IN() list. */
@@ -229,7 +232,8 @@ final class DeliverabilityMigrationQueries
      *
      * An owner opt-out writes an `EMAIL SUPPRESSED` row to `cars_hist` for
      * each car. When the latest such row for the owner has no later Resume or
-     * Clear Suppression row, the opt-out still stands, whatever the address.
+     * Clear Suppression row (a former admin action, replaced in #2357), the
+     * opt-out still stands, whatever the address.
      * This keeps a car-only opt-out (pre-#1883 data, or a failed profile write)
      * as the person's refusal. The row must carry the owner's own user ID, so
      * an opt-out never moves to the next owner of a transferred car.

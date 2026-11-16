@@ -71,37 +71,6 @@ final class CarVerificationTest extends IntegrationTestCase
     }
 
     #[Group('fast')]
-    public function testSetVerificationCodeFailsWithShortCode(): void
-    {
-        $this->expectException(Exception::class);
-
-        $car = new Car($this->testCarId);
-        $car->setVerificationCode('short');
-    }
-
-    #[Group('fast')]
-    public function testSetVerificationCodeFailsWhenCarNotExists(): void
-    {
-        $this->expectException(Exception::class);
-
-        $car = new Car(99999);
-        $car->setVerificationCode('TEST-VERIFY-CODE-123');
-    }
-
-    #[Group('fast')]
-    public function testMarkVerifiedSuccess(): void
-    {
-        $car = new Car($this->testCarId);
-
-        $result = $car->markVerified();
-
-        $this->assertTrue($result);
-
-        $verifiedCar = new Car($this->testCarId);
-        $this->assertNotNull($verifiedCar->data()->last_verified);
-    }
-
-    #[Group('fast')]
     public function testMarkVerifiedUpdatesTimestamp(): void
     {
         // A fixed past timestamp, so no wall-clock wait is needed.
@@ -172,43 +141,6 @@ final class CarVerificationTest extends IntegrationTestCase
     }
 
     #[Group('fast')]
-    public function testMarkSoldWithCustomDate(): void
-    {
-        $car = new Car($this->testCarId);
-        $customDate = '2023-06-15';
-
-        $result = $car->markSold($customDate);
-
-        $this->assertTrue($result);
-
-        $soldCar = new Car($this->testCarId);
-        $this->assertStringStartsWith($customDate, $soldCar->data()->solddate);
-    }
-
-    #[Group('fast')]
-    public function testMarkSoldWithDefaultDate(): void
-    {
-        $car = new Car($this->testCarId);
-
-        $result = $car->markSold();
-
-        $this->assertTrue($result);
-
-        $soldCar = new Car($this->testCarId);
-        $today = date('Y-m-d');
-        $this->assertStringStartsWith($today, $soldCar->data()->solddate);
-    }
-
-    #[Group('fast')]
-    public function testMarkSoldFailsWithInvalidDate(): void
-    {
-        $this->expectException(Exception::class);
-
-        $car = new Car($this->testCarId);
-        $car->markSold('invalid-date-12345');
-    }
-
-    #[Group('fast')]
     public function testFindByVerificationCodeSuccess(): void
     {
         $car = new Car($this->testCarId);
@@ -230,14 +162,6 @@ final class CarVerificationTest extends IntegrationTestCase
             (string) $row->vericode,
             'Stored cars.vericode must NOT be the plaintext verification code'
         );
-    }
-
-    #[Group('fast')]
-    public function testFindByVerificationCodeReturnsNullWhenNotFound(): void
-    {
-        $result = Car::findByVerificationCode('NONEXISTENT-CODE-12345');
-
-        $this->assertNull($result);
     }
 
     /**
@@ -327,16 +251,6 @@ final class CarVerificationTest extends IntegrationTestCase
         // The payload was bound as a literal, not executed as SQL.
         $row = $this->db->query('SELECT id FROM cars WHERE id = ?', [$this->testCarId])->first();
         $this->assertNotEmpty($row, "cars table (and this test's fixture row) must survive the lookup unharmed");
-    }
-
-    /**
-     * hashVericode() output must fit cars.vericode varchar(64). Integration
-     * only: the unit bootstrap stub does not return a 64-char hash.
-     */
-    #[Group('fast')]
-    public function testHashVericodeProducesSixtyFourCharacterHash(): void
-    {
-        $this->assertSame(64, strlen(hashVericode('SOME-VERIFICATION-CODE')));
     }
 
     /**

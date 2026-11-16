@@ -44,6 +44,10 @@ after an item is written.
 
 - [ ] The #2246 comment (~L19-21) says the Test host sends noindex on every response. LiteSpeed does not add the header to `Redirect` and `RedirectMatch` responses. Say so, or point to DEPLOYMENT.md, "Test host indexing block (#2246)" (found in /flow:finish-milestone v2.33.0)
 
+### `app/admin/assets/backup-operations.js` (test coverage)
+
+- [ ] No test covers `deleteBackup()` (~L214), the one path that puts a variable (the file name) into `#confirmMessage`. It uses `textContent`. The XSS test in `admin-modal-confirmation.spec.js` opens the cleanup modal, which writes a fixed `innerHTML` string. Add a test that opens the delete confirmation for a file with a hostile name (found in #2699)
+
 ### `app/admin/includes/account-cleanup-helpers.php`
 
 - [ ] Replace 8 × `throw new RuntimeException` with a typed `AccountCleanupException extends ElanRegistryException`. Handle it in `app/api/admin/account-cleanup-data.php` with `ApiResponse` and `LogCategories` (from #1637)
@@ -77,6 +81,7 @@ after an item is written.
 ### `app/admin/index.php`
 
 - [ ] The `car_photos_apply` case is about 270 lines of parsing and message building inside the switch (~L1115). Move the parsing and the result messages into a small helper class, so that unit tests can cover them without a page request (found in #2644)
+- [ ] The comment before the command switch (~L525) says CSRF is checked "above (line ~176)". The `Token::check()` gate is now at ~L344. Name the gate, not a line number (found in #2699)
 
 ### `app/admin/scripts/maintenance/21-Fix-Page-Permissions.php` + `app/admin/scripts/maintenance/26-Reconcile-Owner-Fields.php` + `app/api/webhooks/brevo.php` + `usersc/classes/Car/CarAdministrationService.php` + `usersc/classes/Car/CarVerificationSendService.php` + `usersc/includes/custom_functions.php` + `usersc/plugins/hooker/hooks/user_form_hook.php` (logger guards)
 
@@ -184,10 +189,6 @@ after an item is written.
 
 - [ ] `testOwnerSelfEditSetsOwnerLastUpdatedButAdminEditDoesNot` only checks that the new `owner_last_updated` is later than a date two years ago, and does not count `cars_hist` rows. Bound it with `assertEqualsWithDelta(time(), ..., 60)` and assert one new history row (found while working on #1929)
 
-### `tests/integration/EmailEventRekeyReportAuthTest.php` (test coverage)
-
-- [ ] `testVisitorWhoIsNotLoggedInIsRefusedAndGetsNoReport` checks only that no report shows. A crash passes too. Assert exit code 0 and HTTP 302, as the editor test does (found in #2358 review)
-
 ### `tests/integration/HeadTagsCanonicalRenderTest.php` + `tests/integration/VerifyCarLandingPageTest.php` + `tests/Support/UserscPageClient.php` (test-only)
 
 - [ ] Each file repeats the DB env propagation to the `php -S` process, the router bootstrap (autoload, Dotenv `.env.test.local`, chdir, require) and a curl wrapper that splits headers and reads `Location`. Move them to one `tests/Support` helper. Also use `trackNewRateLimitRows()` in place of the blanket `us_rate_limits` delete in both test classes (found in #1960)
@@ -218,11 +219,15 @@ after an item is written.
 
 ### `tests/integration/cars/services/CarRepositoryProfileFlagReadersTest.php`
 
-- [ ] `testRepositorySqlHasNoMaxOverTheProfileFlagColumns` (~L151) and `testCarDetailsPageLoadsTheOwnerProfileStateForTheCard` (~L392) read source text with `file_get_contents()`. Replace them with behavior tests (found in #2330)
+- [ ] `testCarDetailsPageLoadsTheOwnerProfileStateForTheCard` (~L440) reads source text with `file_get_contents()`. Replace it with a behavior test (found in #2330)
 
 ### `tests/playwright/admin-verification-dashboard.spec.js` (test coverage)
 
 - [ ] No test covers the queue and activity forms binding when the switch is absent (#2457). The probe-failure path needs a failing DB (see the note at L267) (found in /flow:finish-milestone v2.31.0)
+
+### `tests/playwright/ajax-endpoints.spec.js` (test quality)
+
+- [ ] The contact-owner bad-token test (~L419) asserts only 403 and `success:false`. The owner check in `send-owner-email.php` also returns 403, so the test still passes if `Token::check` stops working. Also assert the CSRF error message (found in #2699)
 
 ### `tests/playwright/car-add-invalid-purchasedate.spec.js` + `tests/unit/cars/CarActionsSaveWiringTest.php` (test quality)
 
@@ -241,10 +246,6 @@ after an item is written.
 ### `tests/unit/SitemapServiceTest.php`
 
 - [ ] The sitemap-vs-canonical parity test (~L150) uses `makeService([])`, so it covers static URLs only. Add one car, and compare its `details.php?car_id=N` URL with `CanonicalUrl::build()` (found in /flow:finish-milestone v2.33.0)
-
-### `tests/unit/admin/VerificationBannerReasonTest.php` (test quality)
-
-- [ ] The unreadable-banner check matches `app/admin/index.php` source with regexes, so a rename breaks it, and it does not check the outer `if ($verificationBannerSeverity !== null)` gate. Replace it with a render test when an `index.php` render harness exists (found in #2102 review)
 
 ### `tests/unit/cars/services/AdminVerificationQueueUrlStateTest.php` (test quality)
 
@@ -272,8 +273,7 @@ after an item is written.
 
 ### `tests/unit/regression/Issue2360SendPolicySourceRegressionTest.php`
 
-- [ ] The source-position checks at ~L317, ~L322 and ~L353 repeat behavior tests (`SendOwnerEmailSendPolicyTest` ~L246, ~L334, `AdminContactSendPolicyTest`). Delete them, and keep the tests of the checker helper (found in /finish-milestone v2.30.8)
-- [ ] Replace the source check at ~L328 (policy check after the template render) with a behavior test: with a missing template, a blocked recipient and a clean recipient get the same error, and the log has no policy line (found in /finish-milestone v2.30.8)
+- [ ] Replace the source check `test_endpoint_policyCallComesAfterTemplateRender` (policy check after the template render) with a behavior test: with a missing template, a blocked recipient and a clean recipient get the same error, and the log has no policy line (found in /finish-milestone v2.30.8)
 
 ### `tests/unit/regression/Issue2460OwnerContactTagSourceRegressionTest.php` (test quality)
 
@@ -312,10 +312,6 @@ after an item is written.
 ### `tests/unit/system/RobotsTxtPolicyTest.php`
 
 - [ ] The `testTestEnvironmentLockdownFilesExist` docblock (~L133) says the Test override files stop indexing. Since #2246, `robots-test.txt` allows crawl and the `.htaccess` `X-Robots-Tag` header stops indexing. Reword the docblock and the method name (found in #2246)
-
-### `tests/unit/uploads/FileUploadSecurityTest.php` (test quality)
-
-- [ ] The expected text "The maximum size is 5 MB" (~L187, ~L273) and the size `5242880 // exactly the default 5MB maximum` (~L228) are fixed values. The test passes with the old default and breaks when someone raises `ELAN_IMAGE_SERVER_MAX_SIZE`. Build the text from `ELAN_IMAGE_SERVER_MAX_SIZE` and the size from `CarImageProcessor::serverMaxBytes()` (found in /flow:finish-milestone v2.32.0)
 
 ### `usersc/classes/AppConstants.php` + `usersc/classes/Car/CarAdministrationService.php` + `app/admin/scripts/maintenance/26-Reconcile-Owner-Fields.php` + `app/admin/index.php` + `app/admin/includes/tab-verification.php` + `app/admin/includes/account-cleanup-helpers.php` + `app/verify/verify_car.php`
 
@@ -434,12 +430,8 @@ after an item is written.
   - Check first: the gitignored upstream plugin code may reference some of these constants. A search of tracked files cannot see it.
   - Check first: the admin log viewer may filter by the stored category *values*. Old `logs` rows keep their values after a constant goes.
   - Check first: `docs/development/LOG_CATEGORIES.md` lists the constants.
-  - Check first: `ApiResponseTest.php` (~406, ~692) and `CarUpdateRepositoryFailureTest.php` (~106) use two of them.
+  - Check first: `ApiResponseTest.php` (`testWithLoggingIsImmutable`, `testToArrayDoesNotIncludePendingLog`) and `CarUpdateRepositoryFailureTest.php` (~106) use two of them.
   - Do this with #1997, which splits the overloaded categories in the same file.
-
-### `usersc/classes/Migration/DeliverabilityMigrationQueries.php` + `tests/integration/database/DeliverabilityMigrationFixture.php`
-
-- [ ] The "admin Clear Suppression" text (queries L64, L232; fixture L28) describes legacy `cars_hist` rows. Add "former action, replaced in #2357" so a reader does not look for it (found in /finish-milestone v2.30.9)
 
 ### `usersc/classes/Owner.php` + `usersc/user_settings.php` + `app/verify/verify_car.php` + `usersc/classes/Car/EmailEventApplier.php`
 

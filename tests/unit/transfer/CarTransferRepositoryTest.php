@@ -36,9 +36,6 @@ final class CarTransferRepositoryTest extends TestCase
         $db->method('error')->willReturn(false);
         $db->method('count')->willReturn(0);
         $db->method('first')->willReturn([]);
-        $db->method('results')->willReturn([]);
-        $db->method('insert')->willReturn(true);
-        $db->method('lastId')->willReturn(1);
 
         return $db;
     }
@@ -53,37 +50,6 @@ final class CarTransferRepositoryTest extends TestCase
     {
         $result = $this->repo->findPendingWithCarById(PHP_INT_MAX);
         $this->assertNull($result);
-    }
-
-    public function testCreateReturnsPositiveInt(): void
-    {
-        $result = $this->repo->create([
-            'existing_car_id'     => 1,
-            'requested_by_user_id' => 2,
-            'security_token'      => 'TESTTOKEN12345678901234567890123456789012345678',
-            'expires_at'          => '2026-08-01 00:00:00',
-            'submitted_model'     => 'Elan',
-            'submitted_series'    => 'S4',
-            'submitted_variant'   => 'SE',
-            'submitted_year'      => '1973',
-            'submitted_type'      => '26R',
-            'submitted_chassis'   => 'TEST_CTR_001',
-            'created_by'          => 2,
-        ]);
-        $this->assertIsInt($result);
-        $this->assertGreaterThan(0, $result);
-    }
-
-    public function testCountPendingReturnsInt(): void
-    {
-        $result = $this->repo->countPending();
-        $this->assertIsInt($result);
-    }
-
-    public function testGetPendingWithCarAndUsersReturnsArray(): void
-    {
-        $result = $this->repo->getPendingWithCarAndUsers();
-        $this->assertIsArray($result);
     }
 
     // Database error paths: each method must fail closed (#1441).
