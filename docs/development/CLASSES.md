@@ -1136,7 +1136,7 @@ another owner's car is never an owner action.
 | Owner removes a photo | `Car::removeImage($file, true)` → `CarRepository::updateImage(..., $ownerLastUpdated)` | Yes | `CarImageOwnerFreshnessTest::testOwnerRemovalResetsOwnerLastUpdatedAndWritesOneHistoryRow` |
 | Verify link | `CarVerificationManager::markVerified()` | Yes | `CarVerificationTest::testMarkVerifiedResetsOwnerLastUpdatedWithOneHistoryRow` |
 | Sold link | `CarVerificationManager::markSold()` | Yes | `CarVerificationTest::testMarkSoldResetsOwnerLastUpdatedWithOneHistoryRow` |
-| Car creation | column default (`NOT NULL`, `CURRENT_TIMESTAMP`), set by migration `20260905172137` | Set, not reset | Not an owner action, so no reset test. `CarVerificationTimestampMigrationTest::testSchema_ownerLastUpdated_isNotNullWithCurrentTimestampDefault` checks that the column is `NOT NULL` |
+| Car creation | column default (`NOT NULL`, `CURRENT_TIMESTAMP`), set by migration `20260905172137` | Set, not reset | Not an owner action, so no reset test. |
 | Opt-out link | `CarVerificationManager::setSuppressedForOwner()` | No: opting out confirms nothing | `CarVerificationManagerSuppressForOwnerTest::testOptOutDoesNotChangeOwnerLastUpdated` |
 | Owner email or profile change, synced to cars | `Owner::syncOwnerFieldsToCars()` | No: it would mark every car fresh | `OwnerSyncOwnerFieldsToCarsTest::testOwnerLastUpdatedUnchangedAndCarStaysVerificationEligible` |
 | Ownership transfer | `CarAdministrationService::transfer()` | No: a transfer is not a re-attestation (#1878) | `CarTransferTest::testTransferDoesNotChangeOwnerLastUpdated` |

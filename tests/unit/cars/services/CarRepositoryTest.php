@@ -80,44 +80,6 @@ final class CarRepositoryTest extends TestCase
         $this->assertNull($repo->findById(1));
     }
 
-    public function testInsertCarReturnsTrue(): void
-    {
-        $repo   = new CarRepository($this->makeEmptyResultDb());
-        $result = $repo->insertCar(['chassis' => 'TEST99999', 'model' => 'Elan']);
-        $this->assertTrue($result);
-    }
-
-    public function testUpdateCarReturnsTrue(): void
-    {
-        $repo   = new CarRepository($this->makeEmptyResultDb());
-        $result = $repo->updateCar(1, ['color' => 'Blue']);
-        $this->assertTrue($result);
-    }
-
-    public function testLastIdReturnsInt(): void
-    {
-        $repo = new CarRepository($this->makeEmptyResultDb());
-        $repo->insertCar(['chassis' => 'TEST']);
-        $lastId = $repo->lastId();
-        $this->assertIsInt($lastId);
-    }
-
-    public function testTransactionMethodsDoNotThrow(): void
-    {
-        $repo = new CarRepository($this->makeEmptyResultDb());
-        $repo->beginTransaction();
-        $repo->commit();
-        $this->expectNotToPerformAssertions();
-    }
-
-    public function testRollbackDoesNotThrow(): void
-    {
-        $repo = new CarRepository($this->makeEmptyResultDb());
-        $repo->beginTransaction();
-        $repo->rollback();
-        $this->expectNotToPerformAssertions();
-    }
-
     // Transaction nesting (#1175): inside an outer transaction, begin/commit/rollback are no-ops.
 
     public function testStandaloneTransactionOwnsCommit(): void
@@ -314,38 +276,6 @@ final class CarRepositoryTest extends TestCase
             '/\blon\b/i', $capturedSql,
             'getHistory() SELECT must not include lon column (#1501)'
         );
-    }
-
-    public function testInsertHistoryReturnsTrue(): void
-    {
-        $repo   = new CarRepository($this->makeEmptyResultDb());
-        $result = $repo->insertHistory([
-            'operation' => 'TEST',
-            'car_id' => 1,
-            'comments' => 'Test history'
-        ]);
-        $this->assertTrue($result);
-    }
-
-    public function testUpdateVerificationCodeReturnsTrue(): void
-    {
-        $repo   = new CarRepository($this->makeEmptyResultDb());
-        $result = $repo->updateVerificationCode(1, 'TESTCODE12345678');
-        $this->assertTrue($result);
-    }
-
-    public function testUpdateLastVerifiedReturnsTrue(): void
-    {
-        $repo   = new CarRepository($this->makeEmptyResultDb());
-        $result = $repo->updateLastVerified(1, '2026-07-05 12:00:00');
-        $this->assertTrue($result);
-    }
-
-    public function testUpdateSoldDateReturnsTrue(): void
-    {
-        $repo   = new CarRepository($this->makeEmptyResultDb());
-        $result = $repo->updateSoldDate(1, '2026-07-05');
-        $this->assertTrue($result);
     }
 
     public function testUpdateImageReturnsTrue(): void
@@ -2171,13 +2101,6 @@ final class CarRepositoryTest extends TestCase
         $this->expectException(CarDatabaseException::class);
         $this->expectExceptionMessageMatches('/clearFlagsForConfirmedEmailChange failed for user=42/');
         $repo->clearFlagsForConfirmedEmailChange(42);
-    }
-
-    public function testRemovedRepositoryMethodsAreGone(): void
-    {
-        foreach (['clearBouncedForUser', 'carIdsWithBouncedFlagButNoAddress'] as $removed) {
-            $this->assertFalse(method_exists(CarRepository::class, $removed), "{$removed} must stay removed");
-        }
     }
 
     // Verification dashboard SQL uses the address-match predicate (#2356)

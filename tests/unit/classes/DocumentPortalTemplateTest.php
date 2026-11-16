@@ -5,130 +5,146 @@ declare(strict_types=1);
 use PHPUnit\Framework\TestCase;
 use ElanRegistry\Documentation\DocumentPortalTemplate;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
  * DocumentPortalTemplate class tests
  *
  * Tests static rendering utilities for documentation portal pages.
+ *
+ * @phpstan-type PortalHeaderConfig array{
+ *     title: string,
+ *     description: string,
+ *     titleIcon?: string,
+ *     headerClass?: string,
+ *     leadText?: string,
+ *     isAdmin?: bool
+ * }
+ * @phpstan-type DocumentCardConfig array{
+ *     title: string,
+ *     icon: string,
+ *     url: string,
+ *     buttonText: string,
+ *     headerClass?: string,
+ *     buttonClass?: string,
+ *     cardClass?: string,
+ *     description?: string,
+ *     metadata?: string,
+ *     listItems?: list<array{icon: string, text: string}>,
+ *     buttonIcon?: string,
+ *     headerStyle?: string,
+ *     buttonStyle?: string,
+ *     buttonTarget?: string,
+ *     secondaryButton?: array{url: string, text: string, class?: string, icon?: string, download?: bool, target?: string},
+ *     colClass?: string
+ * }
+ * @phpstan-type NavFooterLinks list<array{label: string, url: string, icon?: string, btnClass?: string}>
  */
 #[Group('fast')]
 #[Group('documentation')]
 final class DocumentPortalTemplateTest extends TestCase
 {
+    private const array BASE_HEADER = [
+        'title'       => 'Title',
+        'description' => 'Desc',
+    ];
+
+    private const array BASE_CARD = [
+        'title'      => 'Title',
+        'icon'       => 'fa-car',
+        'url'        => '/test',
+        'buttonText' => 'View',
+    ];
+
     // ============================================================
     // renderPortalHeader TESTS
     // ============================================================
 
-    public function testRenderPortalHeaderContainsTitleAndDescription(): void
+    /**
+     * @return array<string, array{PortalHeaderConfig, list<string>, list<string>}>
+     */
+    public static function portalHeaderProvider(): array
     {
-        $html = DocumentPortalTemplate::renderPortalHeader([
-            'title' => 'Portal Title',
-            'description' => 'Portal description text',
-        ]);
-
-        $this->assertStringContainsString('Portal Title', $html);
-        $this->assertStringContainsString('Portal description text', $html);
+        return [
+            'contains title and description' => [
+                ['title' => 'Portal Title', 'description' => 'Portal description text'],
+                ['Portal Title', 'Portal description text'],
+                [],
+            ],
+            'applies header class' => [
+                [...self::BASE_HEADER, 'headerClass' => 'bg-danger'],
+                ['card-header bg-danger'],
+                [],
+            ],
+            'shows lead text when provided' => [
+                [...self::BASE_HEADER, 'leadText' => 'This is lead text'],
+                ["class='lead'", 'This is lead text'],
+                [],
+            ],
+            'omits lead text when absent' => [
+                self::BASE_HEADER,
+                [],
+                ["class='lead'"],
+            ],
+            'shows admin banner when isAdmin true' => [
+                [...self::BASE_HEADER, 'isAdmin' => true],
+                ['alert-warning', 'Administrator Access Required'],
+                [],
+            ],
+            'hides admin banner by default' => [
+                self::BASE_HEADER,
+                [],
+                ['alert-warning'],
+            ],
+            'escapes title' => [
+                [...self::BASE_HEADER, 'title' => '<script>alert("xss")</script>'],
+                ['&lt;script&gt;'],
+                ['<script>'],
+            ],
+            'shows title icon when provided' => [
+                [...self::BASE_HEADER, 'title' => 'FAQ & User Guides', 'titleIcon' => 'fa-question-circle'],
+                [
+                    "<i class='fas fa-question-circle'></i>",
+                    "<h1 class='mb-0 card-header-er-primary-text'><i class='fas fa-question-circle'></i> FAQ &amp; User Guides</h1>",
+                ],
+                [],
+            ],
+            'omits title icon when absent' => [
+                self::BASE_HEADER,
+                [],
+                ["<i class='fas"],
+            ],
+            'escapes lead text' => [
+                [...self::BASE_HEADER, 'leadText' => '<script>xss</script>'],
+                ['&lt;script&gt;'],
+                ['<script>'],
+            ],
+            // Color token regression rows (issue #757)
+            'uses default header class' => [
+                self::BASE_HEADER,
+                ['card-header card-header-er-primary'],
+                [],
+            ],
+            'description has primary text class' => [
+                self::BASE_HEADER,
+                ["class='card-header-er-primary-text mb-0'"],
+                [],
+            ],
+        ];
     }
 
-    public function testRenderPortalHeaderAppliesHeaderClass(): void
+    /**
+     * @param PortalHeaderConfig $config
+     * @param list<string>       $contains    Fragments the HTML must contain
+     * @param list<string>       $notContains Fragments the HTML must not contain
+     */
+    #[DataProvider('portalHeaderProvider')]
+    public function testRenderPortalHeaderRendersExpectedMarkup(array $config, array $contains, array $notContains): void
     {
-        $html = DocumentPortalTemplate::renderPortalHeader([
-            'title' => 'Title',
-            'description' => 'Desc',
-            'headerClass' => 'bg-danger',
-        ]);
+        $html = DocumentPortalTemplate::renderPortalHeader($config);
 
-        $this->assertStringContainsString('card-header bg-danger', $html);
-    }
-
-    public function testRenderPortalHeaderShowsLeadTextWhenProvided(): void
-    {
-        $html = DocumentPortalTemplate::renderPortalHeader([
-            'title' => 'Title',
-            'description' => 'Desc',
-            'leadText' => 'This is lead text',
-        ]);
-
-        $this->assertStringContainsString("class='lead'", $html);
-        $this->assertStringContainsString('This is lead text', $html);
-    }
-
-    public function testRenderPortalHeaderOmitsLeadTextWhenAbsent(): void
-    {
-        $html = DocumentPortalTemplate::renderPortalHeader([
-            'title' => 'Title',
-            'description' => 'Desc',
-        ]);
-
-        $this->assertStringNotContainsString("class='lead'", $html);
-    }
-
-    public function testRenderPortalHeaderShowsAdminBannerWhenIsAdminTrue(): void
-    {
-        $html = DocumentPortalTemplate::renderPortalHeader([
-            'title' => 'Title',
-            'description' => 'Desc',
-            'isAdmin' => true,
-        ]);
-
-        $this->assertStringContainsString('alert-warning', $html);
-        $this->assertStringContainsString('Administrator Access Required', $html);
-    }
-
-    public function testRenderPortalHeaderHidesAdminBannerByDefault(): void
-    {
-        $html = DocumentPortalTemplate::renderPortalHeader([
-            'title' => 'Title',
-            'description' => 'Desc',
-        ]);
-
-        $this->assertStringNotContainsString('alert-warning', $html);
-    }
-
-    public function testRenderPortalHeaderEscapesTitle(): void
-    {
-        $html = DocumentPortalTemplate::renderPortalHeader([
-            'title' => '<script>alert("xss")</script>',
-            'description' => 'Desc',
-        ]);
-
-        $this->assertStringContainsString('&lt;script&gt;', $html);
-        $this->assertStringNotContainsString('<script>', $html);
-    }
-
-    public function testRenderPortalHeaderShowsTitleIconWhenProvided(): void
-    {
-        $html = DocumentPortalTemplate::renderPortalHeader([
-            'title' => 'FAQ & User Guides',
-            'description' => 'Desc',
-            'titleIcon' => 'fa-question-circle',
-        ]);
-
-        $this->assertStringContainsString("<i class='fas fa-question-circle'></i>", $html);
-        $this->assertStringContainsString("<h1 class='mb-0 card-header-er-primary-text'><i class='fas fa-question-circle'></i> FAQ &amp; User Guides</h1>", $html);
-    }
-
-    public function testRenderPortalHeaderOmitsTitleIconWhenAbsent(): void
-    {
-        $html = DocumentPortalTemplate::renderPortalHeader([
-            'title' => 'Title',
-            'description' => 'Desc',
-        ]);
-
-        $this->assertStringNotContainsString("<i class='fas", $html);
-    }
-
-    public function testRenderPortalHeaderEscapesLeadText(): void
-    {
-        $html = DocumentPortalTemplate::renderPortalHeader([
-            'title'       => 'Title',
-            'description' => 'Desc',
-            'leadText'    => '<script>xss</script>',
-        ]);
-
-        $this->assertStringContainsString('&lt;script&gt;', $html);
-        $this->assertStringNotContainsString('<script>', $html);
+        $this->assertMarkup($html, $contains, $notContains);
     }
 
     public function testRenderPortalHeaderThrowsOnMissingTitle(): void
@@ -153,257 +169,199 @@ final class DocumentPortalTemplateTest extends TestCase
     // renderDocumentCard TESTS
     // ============================================================
 
-    public function testRenderDocumentCardContainsTitle(): void
+    /**
+     * @return array<string, array{DocumentCardConfig, list<string>, list<string>}>
+     */
+    public static function documentCardProvider(): array
     {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title' => 'Card Title',
-            'icon' => 'fa-car',
-            'url' => '/test',
-            'buttonText' => 'View',
-        ]);
-
-        $this->assertStringContainsString('Card Title', $html);
-        $this->assertStringContainsString('<h5', $html);
-    }
-
-    public function testRenderDocumentCardContainsIcon(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title' => 'Title',
-            'icon' => 'fa-car',
-            'url' => '/test',
-            'buttonText' => 'View',
-        ]);
-
-        $this->assertStringContainsString('fas fa-car', $html);
-    }
-
-    public function testRenderDocumentCardContainsLink(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title' => 'Title',
-            'icon' => 'fa-car',
-            'url' => '/docs/page',
-            'buttonText' => 'View',
-        ]);
-
-        $this->assertStringContainsString("href='/docs/page'", $html);
-    }
-
-    public function testRenderDocumentCardContainsButtonText(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title' => 'Title',
-            'icon' => 'fa-car',
-            'url' => '/test',
-            'buttonText' => 'Open Document',
-        ]);
-
-        $this->assertStringContainsString('Open Document', $html);
-    }
-
-    public function testRenderDocumentCardAppliesHeaderClass(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title' => 'Title',
-            'icon' => 'fa-car',
-            'url' => '/test',
-            'buttonText' => 'View',
-            'headerClass' => 'bg-success text-white',
-        ]);
-
-        $this->assertStringContainsString('card-header bg-success text-white', $html);
-    }
-
-    public function testRenderDocumentCardAppliesButtonClass(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title' => 'Title',
-            'icon' => 'fa-car',
-            'url' => '/test',
-            'buttonText' => 'View',
-            'buttonClass' => 'btn-danger btn-lg',
-        ]);
-
-        $this->assertStringContainsString('btn btn-danger btn-lg', $html);
-    }
-
-    public function testRenderDocumentCardAppliesCustomCardClass(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title' => 'Title',
-            'icon' => 'fa-car',
-            'url' => '/test',
-            'buttonText' => 'View',
-            'cardClass' => 'custom-card-class',
-        ]);
-
-        $this->assertStringContainsString('custom-card-class', $html);
-        $this->assertStringNotContainsString('registry-card', $html);
-    }
-
-    public function testRenderDocumentCardUsesDefaultCardClass(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title' => 'Title',
-            'icon' => 'fa-car',
-            'url' => '/test',
-            'buttonText' => 'View',
-        ]);
-
-        $this->assertStringContainsString('registry-card', $html);
-    }
-
-    public function testRenderDocumentCardShowsDescriptionWhenProvided(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title' => 'Title',
-            'icon' => 'fa-car',
-            'url' => '/test',
-            'buttonText' => 'View',
-            'description' => 'A detailed description',
-        ]);
-
-        $this->assertStringContainsString('card-text', $html);
-        $this->assertStringContainsString('A detailed description', $html);
-    }
-
-    public function testRenderDocumentCardOmitsDescriptionWhenAbsent(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title' => 'Title',
-            'icon' => 'fa-car',
-            'url' => '/test',
-            'buttonText' => 'View',
-        ]);
-
-        $this->assertStringNotContainsString('card-text', $html);
-    }
-
-    public function testRenderDocumentCardShowsMetadataWhenProvided(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title' => 'Title',
-            'icon' => 'fa-car',
-            'url' => '/test',
-            'buttonText' => 'View',
-            'metadata' => 'Last updated: 2024-01-01',
-        ]);
-
-        $this->assertStringContainsString('small text-muted', $html);
-        $this->assertStringContainsString('Last updated: 2024-01-01', $html);
-    }
-
-    public function testRenderDocumentCardRendersListItems(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title' => 'Title',
-            'icon' => 'fa-car',
-            'url' => '/test',
-            'buttonText' => 'View',
-            'listItems' => [
-                ['icon' => 'fa-check', 'text' => 'Item one'],
-                ['icon' => 'fa-star', 'text' => 'Item two'],
+        return [
+            'contains title' => [
+                [...self::BASE_CARD, 'title' => 'Card Title'],
+                ['Card Title', '<h5'],
+                [],
             ],
-        ]);
-
-        $this->assertStringContainsString('list-unstyled', $html);
-        $this->assertStringContainsString('Item one', $html);
-        $this->assertStringContainsString('Item two', $html);
-        $this->assertStringContainsString('fas fa-check', $html);
-        $this->assertStringContainsString('fas fa-star', $html);
+            'contains icon' => [
+                self::BASE_CARD,
+                ['fas fa-car'],
+                [],
+            ],
+            'contains link' => [
+                [...self::BASE_CARD, 'url' => '/docs/page'],
+                ["href='/docs/page'"],
+                [],
+            ],
+            'contains button text' => [
+                [...self::BASE_CARD, 'buttonText' => 'Open Document'],
+                ['Open Document'],
+                [],
+            ],
+            'applies header class' => [
+                [...self::BASE_CARD, 'headerClass' => 'bg-success text-white'],
+                ['card-header bg-success text-white'],
+                [],
+            ],
+            'applies button class' => [
+                [...self::BASE_CARD, 'buttonClass' => 'btn-danger btn-lg'],
+                ['btn btn-danger btn-lg'],
+                [],
+            ],
+            'applies custom card class' => [
+                [...self::BASE_CARD, 'cardClass' => 'custom-card-class'],
+                ['custom-card-class'],
+                ['registry-card'],
+            ],
+            'uses default card class' => [
+                self::BASE_CARD,
+                ['registry-card'],
+                [],
+            ],
+            'shows description when provided' => [
+                [...self::BASE_CARD, 'description' => 'A detailed description'],
+                ['card-text', 'A detailed description'],
+                [],
+            ],
+            'omits description when absent' => [
+                self::BASE_CARD,
+                [],
+                ['card-text'],
+            ],
+            'shows metadata when provided' => [
+                [...self::BASE_CARD, 'metadata' => 'Last updated: 2024-01-01'],
+                ['small text-muted', 'Last updated: 2024-01-01'],
+                [],
+            ],
+            'renders list items' => [
+                [...self::BASE_CARD, 'listItems' => [
+                    ['icon' => 'fa-check', 'text' => 'Item one'],
+                    ['icon' => 'fa-star', 'text' => 'Item two'],
+                ]],
+                ['list-unstyled', 'Item one', 'Item two', 'fas fa-check', 'fas fa-star'],
+                [],
+            ],
+            'omits list when empty' => [
+                self::BASE_CARD,
+                [],
+                ['list-unstyled'],
+            ],
+            'applies header style' => [
+                [...self::BASE_CARD, 'headerStyle' => 'background-color: #ff0000'],
+                ["style='background-color: #ff0000'"],
+                [],
+            ],
+            'applies button style' => [
+                [...self::BASE_CARD, 'buttonStyle' => 'min-width: 120px'],
+                ["style='min-width: 120px'"],
+                [],
+            ],
+            'renders button icon' => [
+                [...self::BASE_CARD, 'buttonIcon' => 'fa-arrow-right'],
+                ['fas fa-arrow-right'],
+                [],
+            ],
+            'escapes title' => [
+                [...self::BASE_CARD, 'title' => '<script>xss</script>'],
+                ['&lt;script&gt;'],
+                ['<script>'],
+            ],
+            'escapes description' => [
+                [...self::BASE_CARD, 'description' => '<script>xss</script>'],
+                ['&lt;script&gt;'],
+                ['<script>'],
+            ],
+            'escapes metadata' => [
+                [...self::BASE_CARD, 'metadata' => '<b onmouseover="evil()">metadata</b>'],
+                ['&lt;b '],
+                ['<b '],
+            ],
+            'button target adds target attribute' => [
+                [...self::BASE_CARD, 'buttonTarget' => '_blank'],
+                ["target='_blank'"],
+                [],
+            ],
+            'button target blank adds rel attribute' => [
+                [...self::BASE_CARD, 'buttonTarget' => '_blank'],
+                ["rel='noopener noreferrer'"],
+                [],
+            ],
+            'omits target when not provided' => [
+                self::BASE_CARD,
+                [],
+                ['target=', 'rel='],
+            ],
+            'secondary button renders url' => [
+                [...self::BASE_CARD, 'secondaryButton' => [
+                    'url'  => '/download/file.pdf',
+                    'text' => 'Download PDF',
+                ]],
+                ["href='/download/file.pdf'", 'Download PDF'],
+                [],
+            ],
+            'secondary button applies class' => [
+                [...self::BASE_CARD, 'secondaryButton' => [
+                    'url'   => '/download',
+                    'text'  => 'Download',
+                    'class' => 'btn-warning btn-sm',
+                ]],
+                ['btn btn-warning btn-sm'],
+                [],
+            ],
+            'secondary button renders icon' => [
+                [...self::BASE_CARD, 'secondaryButton' => [
+                    'url'  => '/download',
+                    'text' => 'Download',
+                    'icon' => 'fa-download',
+                ]],
+                ['fas fa-download'],
+                [],
+            ],
+            'secondary button renders download attribute' => [
+                [...self::BASE_CARD, 'secondaryButton' => [
+                    'url'      => '/download',
+                    'text'     => 'Download',
+                    'download' => true,
+                ]],
+                [' download'],
+                [],
+            ],
+            'secondary button target blank adds rel attribute' => [
+                [...self::BASE_CARD, 'secondaryButton' => [
+                    'url'    => '/docs/file.pdf',
+                    'text'   => 'Open',
+                    'target' => '_blank',
+                ]],
+                ["target='_blank'", "rel='noopener noreferrer'"],
+                [],
+            ],
+            // Color token regression rows (issue #757)
+            'title heading has primary text class' => [
+                [...self::BASE_CARD, 'title' => 'Card Title'],
+                ["class='mb-0 card-header-er-primary-text'"],
+                [],
+            ],
+            'uses default header class' => [
+                self::BASE_CARD,
+                ['card-header card-header-er-primary'],
+                [],
+            ],
+            'uses default button class' => [
+                self::BASE_CARD,
+                ['btn btn-primary btn-sm'],
+                [],
+            ],
+        ];
     }
 
-    public function testRenderDocumentCardOmitsListWhenEmpty(): void
+    /**
+     * @param DocumentCardConfig $card
+     * @param list<string>       $contains    Fragments the HTML must contain
+     * @param list<string>       $notContains Fragments the HTML must not contain
+     */
+    #[DataProvider('documentCardProvider')]
+    public function testRenderDocumentCardRendersExpectedMarkup(array $card, array $contains, array $notContains): void
     {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title' => 'Title',
-            'icon' => 'fa-car',
-            'url' => '/test',
-            'buttonText' => 'View',
-        ]);
+        $html = DocumentPortalTemplate::renderDocumentCard($card);
 
-        $this->assertStringNotContainsString('list-unstyled', $html);
-    }
-
-    public function testRenderDocumentCardAppliesHeaderStyle(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title' => 'Title',
-            'icon' => 'fa-car',
-            'url' => '/test',
-            'buttonText' => 'View',
-            'headerStyle' => 'background-color: #ff0000',
-        ]);
-
-        $this->assertStringContainsString("style='background-color: #ff0000'", $html);
-    }
-
-    public function testRenderDocumentCardAppliesButtonStyle(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title' => 'Title',
-            'icon' => 'fa-car',
-            'url' => '/test',
-            'buttonText' => 'View',
-            'buttonStyle' => 'min-width: 120px',
-        ]);
-
-        $this->assertStringContainsString("style='min-width: 120px'", $html);
-    }
-
-    public function testRenderDocumentCardRendersButtonIcon(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title' => 'Title',
-            'icon' => 'fa-car',
-            'url' => '/test',
-            'buttonText' => 'View',
-            'buttonIcon' => 'fa-arrow-right',
-        ]);
-
-        $this->assertStringContainsString('fas fa-arrow-right', $html);
-    }
-
-    public function testRenderDocumentCardEscapesTitle(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title' => '<script>xss</script>',
-            'icon' => 'fa-car',
-            'url' => '/test',
-            'buttonText' => 'View',
-        ]);
-
-        $this->assertStringContainsString('&lt;script&gt;', $html);
-        $this->assertStringNotContainsString('<script>', $html);
-    }
-
-    public function testRenderDocumentCardEscapesDescription(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title'       => 'Title',
-            'icon'        => 'fa-car',
-            'url'         => '/test',
-            'buttonText'  => 'View',
-            'description' => '<script>xss</script>',
-        ]);
-
-        $this->assertStringContainsString('&lt;script&gt;', $html);
-        $this->assertStringNotContainsString('<script>', $html);
-    }
-
-    public function testRenderDocumentCardEscapesMetadata(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title'      => 'Title',
-            'icon'       => 'fa-car',
-            'url'        => '/test',
-            'buttonText' => 'View',
-            'metadata'   => '<b onmouseover="evil()">metadata</b>',
-        ]);
-
-        $this->assertStringNotContainsString('<b ', $html);
-        $this->assertStringContainsString('&lt;b ', $html);
+        $this->assertMarkup($html, $contains, $notContains);
     }
 
     public function testRenderDocumentCardThrowsOnMissingTitle(): void
@@ -450,131 +408,6 @@ final class DocumentPortalTemplateTest extends TestCase
         ]);
     }
 
-    public function testRenderDocumentCardButtonTargetAddsTargetAttribute(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title'        => 'Title',
-            'icon'         => 'fa-car',
-            'url'          => '/test',
-            'buttonText'   => 'View',
-            'buttonTarget' => '_blank',
-        ]);
-
-        $this->assertStringContainsString("target='_blank'", $html);
-    }
-
-    public function testRenderDocumentCardButtonTargetBlankAddsRelAttribute(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title'        => 'Title',
-            'icon'         => 'fa-car',
-            'url'          => '/test',
-            'buttonText'   => 'View',
-            'buttonTarget' => '_blank',
-        ]);
-
-        $this->assertStringContainsString("rel='noopener noreferrer'", $html);
-    }
-
-    public function testRenderDocumentCardOmitsTargetWhenNotProvided(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title'      => 'Title',
-            'icon'       => 'fa-car',
-            'url'        => '/test',
-            'buttonText' => 'View',
-        ]);
-
-        $this->assertStringNotContainsString('target=', $html);
-        $this->assertStringNotContainsString('rel=', $html);
-    }
-
-    public function testRenderDocumentCardSecondaryButtonRendersUrl(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title'           => 'Title',
-            'icon'            => 'fa-car',
-            'url'             => '/test',
-            'buttonText'      => 'View',
-            'secondaryButton' => [
-                'url'  => '/download/file.pdf',
-                'text' => 'Download PDF',
-            ],
-        ]);
-
-        $this->assertStringContainsString("href='/download/file.pdf'", $html);
-        $this->assertStringContainsString('Download PDF', $html);
-    }
-
-    public function testRenderDocumentCardSecondaryButtonAppliesClass(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title'           => 'Title',
-            'icon'            => 'fa-car',
-            'url'             => '/test',
-            'buttonText'      => 'View',
-            'secondaryButton' => [
-                'url'   => '/download',
-                'text'  => 'Download',
-                'class' => 'btn-warning btn-sm',
-            ],
-        ]);
-
-        $this->assertStringContainsString('btn btn-warning btn-sm', $html);
-    }
-
-    public function testRenderDocumentCardSecondaryButtonRendersIcon(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title'           => 'Title',
-            'icon'            => 'fa-car',
-            'url'             => '/test',
-            'buttonText'      => 'View',
-            'secondaryButton' => [
-                'url'  => '/download',
-                'text' => 'Download',
-                'icon' => 'fa-download',
-            ],
-        ]);
-
-        $this->assertStringContainsString('fas fa-download', $html);
-    }
-
-    public function testRenderDocumentCardSecondaryButtonRendersDownloadAttribute(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title'           => 'Title',
-            'icon'            => 'fa-car',
-            'url'             => '/test',
-            'buttonText'      => 'View',
-            'secondaryButton' => [
-                'url'      => '/download',
-                'text'     => 'Download',
-                'download' => true,
-            ],
-        ]);
-
-        $this->assertStringContainsString(' download', $html);
-    }
-
-    public function testRenderDocumentCardSecondaryButtonTargetBlankAddsRelAttribute(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title'           => 'Title',
-            'icon'            => 'fa-car',
-            'url'             => '/test',
-            'buttonText'      => 'View',
-            'secondaryButton' => [
-                'url'    => '/docs/file.pdf',
-                'text'   => 'Open',
-                'target' => '_blank',
-            ],
-        ]);
-
-        $this->assertStringContainsString("target='_blank'", $html);
-        $this->assertStringContainsString("rel='noopener noreferrer'", $html);
-    }
-
     public function testRenderDocumentCardOmitsSecondaryButtonWhenAbsent(): void
     {
         $html = DocumentPortalTemplate::renderDocumentCard([
@@ -592,42 +425,44 @@ final class DocumentPortalTemplateTest extends TestCase
     // renderDocumentCardGrid TESTS
     // ============================================================
 
-    public function testRenderDocumentCardGridWrapsInRow(): void
+    /**
+     * @return array<string, array{list<array<string, mixed>>, string|null, list<string>, list<string>}>
+     */
+    public static function documentCardGridProvider(): array
     {
-        $html = DocumentPortalTemplate::renderDocumentCardGrid([
-            ['title' => 'T', 'icon' => 'fa-car', 'url' => '/', 'buttonText' => 'V'],
-        ]);
+        $card = ['title' => 'T', 'icon' => 'fa-car', 'url' => '/', 'buttonText' => 'V'];
 
-        $this->assertStringContainsString("class='row", $html);
+        return [
+            'wraps in row' => [[$card], null, ["class='row"], []],
+            'applies default col class' => [[$card], null, ['col-lg-4'], []],
+            'applies custom col class' => [[$card], 'col-md-6', ['col-md-6'], []],
+            'per-card col class override' => [
+                [[...$card, 'colClass' => 'col-lg-6']],
+                null,
+                ['col-lg-6'],
+                ['col-lg-4'],
+            ],
+        ];
     }
 
-    public function testRenderDocumentCardGridAppliesDefaultColClass(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCardGrid([
-            ['title' => 'T', 'icon' => 'fa-car', 'url' => '/', 'buttonText' => 'V'],
-        ]);
+    /**
+     * @param list<array<string, mixed>> $cards
+     * @param string|null                $colClass    Grid column class, or null for the default
+     * @param list<string>               $contains    Fragments the HTML must contain
+     * @param list<string>               $notContains Fragments the HTML must not contain
+     */
+    #[DataProvider('documentCardGridProvider')]
+    public function testRenderDocumentCardGridRendersExpectedMarkup(
+        array $cards,
+        ?string $colClass,
+        array $contains,
+        array $notContains
+    ): void {
+        $html = $colClass === null
+            ? DocumentPortalTemplate::renderDocumentCardGrid($cards)
+            : DocumentPortalTemplate::renderDocumentCardGrid($cards, $colClass);
 
-        $this->assertStringContainsString('col-lg-4', $html);
-    }
-
-    public function testRenderDocumentCardGridAppliesCustomColClass(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCardGrid(
-            [['title' => 'T', 'icon' => 'fa-car', 'url' => '/', 'buttonText' => 'V']],
-            'col-md-6'
-        );
-
-        $this->assertStringContainsString('col-md-6', $html);
-    }
-
-    public function testRenderDocumentCardGridPerCardColClassOverride(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCardGrid([
-            ['title' => 'T', 'icon' => 'fa-car', 'url' => '/', 'buttonText' => 'V', 'colClass' => 'col-lg-6'],
-        ]);
-
-        $this->assertStringContainsString('col-lg-6', $html);
-        $this->assertStringNotContainsString('col-lg-4', $html);
+        $this->assertMarkup($html, $contains, $notContains);
     }
 
     public function testRenderDocumentCardGridReturnsEmptyStringForEmptyArray(): void
@@ -641,85 +476,95 @@ final class DocumentPortalTemplateTest extends TestCase
     // renderSectionHeading TESTS
     // ============================================================
 
-    public function testRenderSectionHeadingContainsTitle(): void
+    /**
+     * @return array<string, array{string, string, string|null, list<string>, list<string>}>
+     */
+    public static function sectionHeadingProvider(): array
     {
-        $html = DocumentPortalTemplate::renderSectionHeading('fa-code', 'Developer Tools');
-
-        $this->assertStringContainsString('Developer Tools', $html);
+        return [
+            'contains title' => ['fa-code', 'Developer Tools', null, ['Developer Tools'], []],
+            'contains icon' => ['fa-code', 'Title', null, ['fas fa-code'], []],
+            'applies color class' => ['fa-code', 'Title', 'text-danger', ['fas fa-code text-danger'], []],
+            'omits color class when empty' => ['fa-code', 'Title', null, ["class='fas fa-code'"], ['text-danger']],
+            'escapes title' => ['fa-code', '<script>xss</script>', null, ['&lt;script&gt;'], ['<script>']],
+        ];
     }
 
-    public function testRenderSectionHeadingContainsIcon(): void
-    {
-        $html = DocumentPortalTemplate::renderSectionHeading('fa-code', 'Title');
+    /**
+     * @param string       $icon        Font Awesome icon class
+     * @param string       $title       Heading text
+     * @param string|null  $colorClass  Icon color class, or null for the default
+     * @param list<string> $contains    Fragments the HTML must contain
+     * @param list<string> $notContains Fragments the HTML must not contain
+     */
+    #[DataProvider('sectionHeadingProvider')]
+    public function testRenderSectionHeadingRendersExpectedMarkup(
+        string $icon,
+        string $title,
+        ?string $colorClass,
+        array $contains,
+        array $notContains
+    ): void {
+        $html = $colorClass === null
+            ? DocumentPortalTemplate::renderSectionHeading($icon, $title)
+            : DocumentPortalTemplate::renderSectionHeading($icon, $title, $colorClass);
 
-        $this->assertStringContainsString('fas fa-code', $html);
-    }
-
-    public function testRenderSectionHeadingAppliesColorClass(): void
-    {
-        $html = DocumentPortalTemplate::renderSectionHeading('fa-code', 'Title', 'text-danger');
-
-        $this->assertStringContainsString('fas fa-code text-danger', $html);
-    }
-
-    public function testRenderSectionHeadingOmitsColorClassWhenEmpty(): void
-    {
-        $html = DocumentPortalTemplate::renderSectionHeading('fa-code', 'Title');
-
-        $this->assertStringContainsString("class='fas fa-code'", $html);
-        $this->assertStringNotContainsString('text-danger', $html);
-    }
-
-    public function testRenderSectionHeadingEscapesTitle(): void
-    {
-        $html = DocumentPortalTemplate::renderSectionHeading('fa-code', '<script>xss</script>');
-
-        $this->assertStringContainsString('&lt;script&gt;', $html);
-        $this->assertStringNotContainsString('<script>', $html);
+        $this->assertMarkup($html, $contains, $notContains);
     }
 
     // ============================================================
     // renderNavFooter TESTS
     // ============================================================
 
-    public function testRenderNavFooterRendersLinks(): void
+    /**
+     * @return array<string, array{NavFooterLinks, list<string>, list<string>}>
+     */
+    public static function navFooterProvider(): array
     {
-        $html = DocumentPortalTemplate::renderNavFooter([
-            ['label' => 'Home', 'url' => '/'],
-            ['label' => 'Docs', 'url' => '/docs'],
-        ]);
-
-        $this->assertStringContainsString('Home', $html);
-        $this->assertStringContainsString('Docs', $html);
-        $this->assertStringContainsString("href='/'", $html);
-        $this->assertStringContainsString("href='/docs'", $html);
+        return [
+            'renders links' => [
+                [
+                    ['label' => 'Home', 'url' => '/'],
+                    ['label' => 'Docs', 'url' => '/docs'],
+                ],
+                ['Home', 'Docs', "href='/'", "href='/docs'"],
+                [],
+            ],
+            'renders icon' => [
+                [['label' => 'Home', 'url' => '/', 'icon' => 'fa-home']],
+                ['fas fa-home'],
+                [],
+            ],
+            'omits icon when absent' => [
+                [['label' => 'Home', 'url' => '/']],
+                [],
+                ['fas'],
+            ],
+            'applies btn class' => [
+                [['label' => 'Home', 'url' => '/', 'btnClass' => 'btn-success']],
+                ['btn btn-success'],
+                [],
+            ],
+            // Color token regression row (issue #757)
+            'uses default btn class' => [
+                [['label' => 'Home', 'url' => '/']],
+                ['btn btn-outline-primary'],
+                [],
+            ],
+        ];
     }
 
-    public function testRenderNavFooterRendersIcon(): void
+    /**
+     * @param NavFooterLinks $links
+     * @param list<string>   $contains    Fragments the HTML must contain
+     * @param list<string>   $notContains Fragments the HTML must not contain
+     */
+    #[DataProvider('navFooterProvider')]
+    public function testRenderNavFooterRendersExpectedMarkup(array $links, array $contains, array $notContains): void
     {
-        $html = DocumentPortalTemplate::renderNavFooter([
-            ['label' => 'Home', 'url' => '/', 'icon' => 'fa-home'],
-        ]);
+        $html = DocumentPortalTemplate::renderNavFooter($links);
 
-        $this->assertStringContainsString('fas fa-home', $html);
-    }
-
-    public function testRenderNavFooterOmitsIconWhenAbsent(): void
-    {
-        $html = DocumentPortalTemplate::renderNavFooter([
-            ['label' => 'Home', 'url' => '/'],
-        ]);
-
-        $this->assertStringNotContainsString('fas', $html);
-    }
-
-    public function testRenderNavFooterAppliesBtnClass(): void
-    {
-        $html = DocumentPortalTemplate::renderNavFooter([
-            ['label' => 'Home', 'url' => '/', 'btnClass' => 'btn-success'],
-        ]);
-
-        $this->assertStringContainsString('btn btn-success', $html);
+        $this->assertMarkup($html, $contains, $notContains);
     }
 
     public function testRenderNavFooterReturnsEmptyStringForEmptyArray(): void
@@ -747,70 +592,19 @@ final class DocumentPortalTemplateTest extends TestCase
         ]);
     }
 
-    // --- Color token regression tests (issue #757) ---
-
-    public function testRenderPortalHeaderUsesDefaultHeaderClass(): void
+    /**
+     * Assert that the HTML contains each fragment in $contains and none in $notContains.
+     *
+     * @param list<string> $contains    Fragments the HTML must contain
+     * @param list<string> $notContains Fragments the HTML must not contain
+     */
+    private function assertMarkup(string $html, array $contains, array $notContains = []): void
     {
-        $html = DocumentPortalTemplate::renderPortalHeader([
-            'title'       => 'Title',
-            'description' => 'Desc',
-        ]);
-
-        $this->assertStringContainsString("card-header card-header-er-primary", $html);
-    }
-
-    public function testRenderPortalHeaderDescriptionHasPrimaryTextClass(): void
-    {
-        $html = DocumentPortalTemplate::renderPortalHeader([
-            'title'       => 'Title',
-            'description' => 'Desc',
-        ]);
-
-        $this->assertStringContainsString("class='card-header-er-primary-text mb-0'", $html);
-    }
-
-    public function testRenderDocumentCardTitleHeadingHasPrimaryTextClass(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title'      => 'Card Title',
-            'icon'       => 'fa-car',
-            'url'        => '/test',
-            'buttonText' => 'View',
-        ]);
-
-        $this->assertStringContainsString("class='mb-0 card-header-er-primary-text'", $html);
-    }
-
-    public function testRenderDocumentCardUsesDefaultHeaderClass(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title'      => 'Title',
-            'icon'       => 'fa-car',
-            'url'        => '/test',
-            'buttonText' => 'View',
-        ]);
-
-        $this->assertStringContainsString("card-header card-header-er-primary", $html);
-    }
-
-    public function testRenderDocumentCardUsesDefaultButtonClass(): void
-    {
-        $html = DocumentPortalTemplate::renderDocumentCard([
-            'title'      => 'Title',
-            'icon'       => 'fa-car',
-            'url'        => '/test',
-            'buttonText' => 'View',
-        ]);
-
-        $this->assertStringContainsString("btn btn-primary btn-sm", $html);
-    }
-
-    public function testRenderNavFooterUsesDefaultBtnClass(): void
-    {
-        $html = DocumentPortalTemplate::renderNavFooter([
-            ['label' => 'Home', 'url' => '/'],
-        ]);
-
-        $this->assertStringContainsString('btn btn-outline-primary', $html);
+        foreach ($contains as $fragment) {
+            $this->assertStringContainsString($fragment, $html);
+        }
+        foreach ($notContains as $fragment) {
+            $this->assertStringNotContainsString($fragment, $html);
+        }
     }
 }

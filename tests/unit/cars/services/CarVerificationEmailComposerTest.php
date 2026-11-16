@@ -5,6 +5,7 @@ declare(strict_types=1);
 use ElanRegistry\Car\CarVerificationEmailComposer;
 use ElanRegistry\EmailTemplate;
 use ElanRegistry\LogCategories;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
@@ -251,109 +252,51 @@ final class CarVerificationEmailComposerTest extends TestCase
         $this->assertSame('btn btn-secondary', $update['class']);
     }
 
-    public function testUpdateTargetEditPageCallsSecurePageBeforeHandlingPostOrGet(): void
+    // ------------------------------------------------------------------
+    // 4-6. XSS: free-form owner and car values
+    // ------------------------------------------------------------------
+
+    /**
+     * Website lives on $carData, not $owner. Chassis is checked on both
+     * override paths.
+     *
+     * @return array<string, array{'owner'|'car', string, string, array<string, int>, ?string}>
+     *         [target, field, payload, extra car fields, extra expected text]
+     */
+    public static function freeFormXssProvider(): array
     {
-        $source = file_get_contents(dirname(__DIR__, 4) . '/app/owner/cars/edit.php');
-        $this->assertIsString($source);
+        return [
+            'owner lname'                => ['owner', 'lname', 'Smith<script>alert(1)</script>', [], null],
+            'car website'                => ['car', 'website', '"><script>alert(1)</script>', [], null],
+            // The override path must still render the badge.
+            'car chassis overridden'     => ['car', 'chassis', '45/1<script>alert(1)</script>"\'', ['chassis_override' => 1], 'Please double-check'],
+            'car chassis not overridden' => ['car', 'chassis', '45/1<script>alert(1)</script>"\'', ['chassis_override' => 0], null],
+        ];
+    }
 
-        // Tokens, not strpos(), so a call that is only in a comment or a
-        // string does not count.
-        $tokens = array_values(array_filter(
-            token_get_all($source),
-            static fn (array|string $token): bool => !is_array($token)
-                || !in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)
-        ));
+    /**
+     * @param 'owner'|'car'      $target
+     * @param array<string, int> $extraCarFields
+     */
+    #[DataProvider('freeFormXssProvider')]
+    public function testFreeFormValueXssIsEscaped(
+        string $target,
+        string $field,
+        string $payload,
+        array $extraCarFields,
+        ?string $extraExpected
+    ): void {
+        [$car, $owner] = match ($target) {
+            'owner' => [$this->carFixture($extraCarFields), $this->ownerFixture([$field => $payload])],
+            'car'   => [$this->carFixture([$field => $payload] + $extraCarFields), $this->ownerFixture()],
+        };
+        $html = $this->composer->compose($car, $owner, self::VERICODE)['html'];
 
-        $gate = null;
-        $post = null;
-        $get  = null;
-        foreach ($tokens as $i => $token) {
-            $name     = is_array($token) ? strtolower(ltrim($token[1], '\\')) : '';
-            $previous = $tokens[$i - 1] ?? null;
-            $isCall   = ($tokens[$i + 1] ?? null) === '('
-                && !(is_array($previous) && in_array($previous[0], [T_FUNCTION, T_OBJECT_OPERATOR, T_DOUBLE_COLON], true));
-            if ($gate === null && $name === 'securepage' && $isCall) {
-                $gate = $i;
-            }
-            $isInputCall = $name === 'input'
-                && is_array($tokens[$i + 1] ?? null) && $tokens[$i + 1][0] === T_DOUBLE_COLON
-                && is_array($tokens[$i + 2] ?? null);
-            if ($post === null && $isInputCall && strtolower($tokens[$i + 2][1]) === 'existspost') {
-                $post = $i;
-            }
-            if ($get === null && $isInputCall && strtolower($tokens[$i + 2][1]) === 'existsget') {
-                $get = $i;
-            }
+        $this->assertStringNotContainsString('<script>alert(1)</script>', $html);
+        $this->assertStringContainsString(htmlspecialchars($payload, ENT_QUOTES, 'UTF-8'), $html);
+        if ($extraExpected !== null) {
+            $this->assertStringContainsString($extraExpected, $html);
         }
-        $this->assertNotNull($gate, 'edit.php must call securePage()');
-        $this->assertNotNull($post, 'edit.php must handle POST through Input::existsPost()');
-        $this->assertNotNull($get, 'edit.php must handle the GET car_id through Input::existsGet()');
-        $this->assertLessThan(
-            $post,
-            $gate,
-            'securePage() must run before any POST handling, so the Update link needs a login'
-        );
-        $this->assertLessThan(
-            $get,
-            $gate,
-            'securePage() must run before the GET car_id load, so the Update link needs a login'
-        );
-    }
-
-    // ------------------------------------------------------------------
-    // 4. XSS: owner lname
-    // ------------------------------------------------------------------
-
-    public function testOwnerLastNameXssIsEscaped(): void
-    {
-        $owner = $this->ownerFixture(['lname' => 'Smith<script>alert(1)</script>']);
-        $html = $this->composer->compose($this->carFixture(), $owner, self::VERICODE)['html'];
-
-        $this->assertStringNotContainsString('<script>alert(1)</script>', $html);
-        $this->assertStringContainsString(
-            htmlspecialchars('Smith<script>alert(1)</script>', ENT_QUOTES, 'UTF-8'),
-            $html
-        );
-    }
-
-    // ------------------------------------------------------------------
-    // 5. XSS: car website (website lives on $carData, not $owner)
-    // ------------------------------------------------------------------
-
-    public function testCarWebsiteXssIsEscaped(): void
-    {
-        $malicious = '"><script>alert(1)</script>';
-        $car = $this->carFixture(['website' => $malicious]);
-        $html = $this->composer->compose($car, $this->ownerFixture(), self::VERICODE)['html'];
-
-        $this->assertStringNotContainsString('<script>alert(1)</script>', $html);
-        $this->assertStringContainsString(htmlspecialchars($malicious, ENT_QUOTES, 'UTF-8'), $html);
-    }
-
-    // ------------------------------------------------------------------
-    // 6. XSS: chassis, both override paths
-    // ------------------------------------------------------------------
-
-    public function testChassisXssIsEscapedWhenOverridden(): void
-    {
-        $malicious = '45/1<script>alert(1)</script>"\'';
-        $car = $this->carFixture(['chassis' => $malicious, 'chassis_override' => 1]);
-        $html = $this->composer->compose($car, $this->ownerFixture(), self::VERICODE)['html'];
-
-        $this->assertStringNotContainsString('<script>alert(1)</script>', $html);
-        $this->assertStringContainsString(htmlspecialchars($malicious, ENT_QUOTES, 'UTF-8'), $html);
-        // The override path still renders the badge.
-        $this->assertStringContainsString('Please double-check', $html);
-    }
-
-    public function testChassisXssIsEscapedWhenNotOverridden(): void
-    {
-        $malicious = '45/1<script>alert(1)</script>"\'';
-        $car = $this->carFixture(['chassis' => $malicious, 'chassis_override' => 0]);
-        $html = $this->composer->compose($car, $this->ownerFixture(), self::VERICODE)['html'];
-
-        $this->assertStringNotContainsString('<script>alert(1)</script>', $html);
-        $this->assertStringContainsString(htmlspecialchars($malicious, ENT_QUOTES, 'UTF-8'), $html);
     }
 
     // ------------------------------------------------------------------

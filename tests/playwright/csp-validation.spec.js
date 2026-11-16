@@ -52,73 +52,77 @@ function setupCSPViolationMonitoring(page) {
 
 test.describe('CSP Validation Tests', () => {
   
-  test('Statistics page should not have CSP violations', async ({ page }) => {
-    const cspViolations = setupCSPViolationMonitoring(page);
-    
-    // Navigate to statistics page
-    await page.goto('app/owner/reports/statistics.php');
-    
-    // Wait for page to fully load including external resources
-    await page.waitForLoadState('networkidle');
-    
-    // Wait a bit more for dynamic resources like Google Charts
-    await page.waitForTimeout(3000);
-    
-    // Check for CSP violations
-    if (cspViolations.length > 0) {
-      console.log('CSP Violations found:', cspViolations);
-    }
-    
-    expect(cspViolations, `Found ${cspViolations.length} CSP violations: ${JSON.stringify(cspViolations, null, 2)}`).toHaveLength(0);
-  });
+  // Each row opens one page and expects zero CSP violations. `open` returns
+  // after the page and its late resources (charts, maps) have loaded.
+  const zeroViolationPages = [
+    {
+      name: 'Statistics page',
+      open: async (page) => {
+        await page.goto('app/owner/reports/statistics.php');
+        await page.waitForLoadState('networkidle');
+        // Charts load their resources after networkidle.
+        await page.waitForTimeout(3000);
+      },
+    },
+    {
+      name: 'Car details page',
+      open: async (page) => {
+        await page.goto('app/owner/cars/index.php');
+        await page.waitForLoadState('networkidle');
+        const firstCarLink = page.locator('a[href*="details.php?car_id="]').first();
+        test.skip(await firstCarLink.count() === 0, 'The car list has no cars in this database, so no details page can open');
+        await firstCarLink.click();
+        await page.waitForLoadState('networkidle');
+        await page.waitForTimeout(2000);
+      },
+    },
+    {
+      name: 'Car listing page',
+      open: async (page) => {
+        await page.goto('app/owner/cars/index.php');
+        await page.waitForLoadState('networkidle');
+        await page.waitForTimeout(2000);
+      },
+    },
+    {
+      name: 'Login page',
+      open: async (page) => {
+        await page.goto('usersc/login.php', { waitUntil: 'networkidle' });
+        await page.waitForTimeout(1000);
+      },
+    },
+    {
+      name: 'Home page',
+      open: async (page) => {
+        await page.goto('');
+        await page.waitForLoadState('networkidle');
+        await page.waitForTimeout(1000);
+      },
+    },
+    {
+      // An anonymous visit may redirect to login. The check then covers the
+      // redirect target.
+      name: 'Contact feedback page',
+      open: async (page) => {
+        await page.goto('app/owner/contact/index.php');
+        await page.waitForLoadState('networkidle');
+        await page.waitForTimeout(1000);
+      },
+    },
+  ];
 
-  test('Car details page should not have CSP violations', async ({ page }) => {
-    const cspViolations = setupCSPViolationMonitoring(page);
-    
-    // First get a car ID to test with
-    await page.goto('app/owner/cars/index.php');
-    await page.waitForLoadState('networkidle');
-    
-    // Click on first car link if available
-    const firstCarLink = page.locator('a[href*="details.php?car_id="]').first();
-    test.skip(await firstCarLink.count() === 0, 'No cars available for testing');
+  // A deleted row would silently drop a page from the CSP check.
+  expect(zeroViolationPages.length).toBe(6);
 
-    await firstCarLink.click();
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(2000);
+  for (const { name, open } of zeroViolationPages) {
+    test(`${name} should not have CSP violations`, async ({ page }) => {
+      const cspViolations = setupCSPViolationMonitoring(page);
 
-    expect(cspViolations, `Found ${cspViolations.length} CSP violations: ${JSON.stringify(cspViolations, null, 2)}`).toHaveLength(0);
-  });
+      await open(page);
 
-  test('Car listing page should not have CSP violations', async ({ page }) => {
-    const cspViolations = setupCSPViolationMonitoring(page);
-    
-    await page.goto('app/owner/cars/index.php');
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(2000);
-    
-    expect(cspViolations, `Found ${cspViolations.length} CSP violations: ${JSON.stringify(cspViolations, null, 2)}`).toHaveLength(0);
-  });
-
-  test('Login page should not have CSP violations', async ({ page }) => {
-    const cspViolations = setupCSPViolationMonitoring(page);
-    
-    await page.goto('usersc/login.php', { waitUntil: 'networkidle' });
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(1000);
-    
-    expect(cspViolations, `Found ${cspViolations.length} CSP violations: ${JSON.stringify(cspViolations, null, 2)}`).toHaveLength(0);
-  });
-
-  test('Home page should not have CSP violations', async ({ page }) => {
-    const cspViolations = setupCSPViolationMonitoring(page);
-
-    await page.goto('');
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(1000);
-
-    expect(cspViolations, `Found ${cspViolations.length} CSP violations: ${JSON.stringify(cspViolations, null, 2)}`).toHaveLength(0);
-  });
+      expect(cspViolations, `Found ${cspViolations.length} CSP violations: ${JSON.stringify(cspViolations, null, 2)}`).toHaveLength(0);
+    });
+  }
 
   test('Statistics page external resources should load', async ({ page }) => {
     const cspViolations = setupCSPViolationMonitoring(page);
@@ -186,17 +190,6 @@ test.describe('CSP Validation Tests', () => {
     expect(nonce1, 'First response must contain a nonce').not.toBeNull();
     expect(nonce2, 'Second response must contain a nonce').not.toBeNull();
     expect(nonce1, 'Nonce must be different on each request — static nonce breaks the entire CSP strategy').not.toBe(nonce2);
-  });
-
-  test('contact feedback page should not have CSP violations', async ({ page }) => {
-    const cspViolations = setupCSPViolationMonitoring(page);
-
-    await page.goto('app/owner/contact/index.php');
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(1000);
-
-    // Page may redirect to login — CSP check still valid on redirect target
-    expect(cspViolations, `Found ${cspViolations.length} CSP violations: ${JSON.stringify(cspViolations, null, 2)}`).toHaveLength(0);
   });
 
   test('no requests to Google Maps domains on car details page', async ({ page }) => {

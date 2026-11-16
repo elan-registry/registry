@@ -3,9 +3,9 @@
 declare(strict_types=1);
 
 use ElanRegistry\OwnerView;
-use PHPUnit\Framework\TestCase;
-
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\TestCase;
 
 /**
  * OwnerView class tests
@@ -71,107 +71,82 @@ final class OwnerViewTest extends TestCase
     // qualityBadgeClass() TESTS
     // ============================================================
 
-    public function testQualityBadgeClass_Score100_ReturnsSuccess(): void
+    /**
+     * @return array<string, array{float, string}>
+     */
+    public static function qualityBadgeClassProvider(): array
     {
-        $this->assertSame('success', OwnerView::qualityBadgeClass(100.0));
+        return [
+            'score 100' => [100.0, 'success'],
+            'score 80 lower success bound' => [80.0, 'success'],
+            'score 79.9 just below success' => [79.9, 'warning'],
+            'score 60 lower warning bound' => [60.0, 'warning'],
+            'score 59.9 just below warning' => [59.9, 'danger'],
+            'score 0' => [0.0, 'danger'],
+        ];
     }
 
-    public function testQualityBadgeClass_Score80_ReturnsSuccess(): void
+    #[DataProvider('qualityBadgeClassProvider')]
+    public function testQualityBadgeClass_ReturnsClassForScore(float $score, string $expected): void
     {
-        $this->assertSame('success', OwnerView::qualityBadgeClass(80.0));
-    }
-
-    public function testQualityBadgeClass_Score79_9_ReturnsWarning(): void
-    {
-        $this->assertSame('warning', OwnerView::qualityBadgeClass(79.9));
-    }
-
-    public function testQualityBadgeClass_Score60_ReturnsWarning(): void
-    {
-        $this->assertSame('warning', OwnerView::qualityBadgeClass(60.0));
-    }
-
-    public function testQualityBadgeClass_Score59_9_ReturnsDanger(): void
-    {
-        $this->assertSame('danger', OwnerView::qualityBadgeClass(59.9));
-    }
-
-    public function testQualityBadgeClass_Score0_ReturnsDanger(): void
-    {
-        $this->assertSame('danger', OwnerView::qualityBadgeClass(0.0));
+        $this->assertSame($expected, OwnerView::qualityBadgeClass($score));
     }
 
     // ============================================================
     // displayQualityBadge() TESTS
     // ============================================================
 
-    public function testDisplayQualityBadge_Score100_ContainsSuccessClass(): void
+    /**
+     * @return array<string, array{float, string}>
+     */
+    public static function displayQualityBadgeProvider(): array
     {
-        $this->assertStringContainsString('text-bg-success', OwnerView::displayQualityBadge(100.0));
+        return [
+            'score 100 success class' => [100.0, 'text-bg-success'],
+            'score 60 warning class' => [60.0, 'text-bg-warning'],
+            'score 0 danger class' => [0.0, 'text-bg-danger'],
+            'badge class' => [75.0, 'badge'],
+            'quality label' => [75.0, 'Quality:'],
+        ];
     }
 
-    public function testDisplayQualityBadge_Score60_ContainsWarningClass(): void
+    #[DataProvider('displayQualityBadgeProvider')]
+    public function testDisplayQualityBadge_ContainsExpectedMarkup(float $score, string $needle): void
     {
-        $this->assertStringContainsString('text-bg-warning', OwnerView::displayQualityBadge(60.0));
-    }
-
-    public function testDisplayQualityBadge_Score0_ContainsDangerClass(): void
-    {
-        $this->assertStringContainsString('text-bg-danger', OwnerView::displayQualityBadge(0.0));
-    }
-
-    public function testDisplayQualityBadge_ContainsBadge(): void
-    {
-        $this->assertStringContainsString('badge', OwnerView::displayQualityBadge(75.0));
-    }
-
-    public function testDisplayQualityBadge_ContainsQualityLabel(): void
-    {
-        $this->assertStringContainsString('Quality:', OwnerView::displayQualityBadge(75.0));
+        $this->assertStringContainsString($needle, OwnerView::displayQualityBadge($score));
     }
 
     // ============================================================
     // displayQualityProgressBar() TESTS
     // ============================================================
 
-    public function testDisplayQualityProgressBar_Score75_ContainsWidth(): void
+    /**
+     * A null height calls the method without the argument, to cover the default.
+     *
+     * @return array<string, array{float, ?string, string}>
+     */
+    public static function displayQualityProgressBarProvider(): array
     {
-        $this->assertStringContainsString('width: 75%', OwnerView::displayQualityProgressBar(75.0));
+        return [
+            'score 75 width' => [75.0, null, 'width: 75%'],
+            'score 75 warning class' => [75.0, null, 'bg-warning'],
+            'score 100 success class' => [100.0, null, 'bg-success'],
+            'score 0 danger class' => [0.0, null, 'bg-danger'],
+            'default height 8px' => [50.0, null, 'height: 8px'],
+            'custom height' => [50.0, '20px', '20px'],
+            'progress-bar class' => [50.0, null, 'progress-bar'],
+            'aria-valuenow' => [50.0, null, 'aria-valuenow'],
+        ];
     }
 
-    public function testDisplayQualityProgressBar_Score75_ContainsWarningClass(): void
+    #[DataProvider('displayQualityProgressBarProvider')]
+    public function testDisplayQualityProgressBar_ContainsExpectedMarkup(float $score, ?string $height, string $needle): void
     {
-        $this->assertStringContainsString('bg-warning', OwnerView::displayQualityProgressBar(75.0));
-    }
+        $html = $height === null
+            ? OwnerView::displayQualityProgressBar($score)
+            : OwnerView::displayQualityProgressBar($score, $height);
 
-    public function testDisplayQualityProgressBar_Score100_ContainsSuccessClass(): void
-    {
-        $this->assertStringContainsString('bg-success', OwnerView::displayQualityProgressBar(100.0));
-    }
-
-    public function testDisplayQualityProgressBar_Score0_ContainsDangerClass(): void
-    {
-        $this->assertStringContainsString('bg-danger', OwnerView::displayQualityProgressBar(0.0));
-    }
-
-    public function testDisplayQualityProgressBar_DefaultHeight_Contains8px(): void
-    {
-        $this->assertStringContainsString('height: 8px', OwnerView::displayQualityProgressBar(50.0));
-    }
-
-    public function testDisplayQualityProgressBar_CustomHeight_ContainsCustomValue(): void
-    {
-        $this->assertStringContainsString('20px', OwnerView::displayQualityProgressBar(50.0, '20px'));
-    }
-
-    public function testDisplayQualityProgressBar_ContainsProgressBar(): void
-    {
-        $this->assertStringContainsString('progress-bar', OwnerView::displayQualityProgressBar(50.0));
-    }
-
-    public function testDisplayQualityProgressBar_ContainsAriaValuenow(): void
-    {
-        $this->assertStringContainsString('aria-valuenow', OwnerView::displayQualityProgressBar(50.0));
+        $this->assertStringContainsString($needle, $html);
     }
 
     public function testDisplayQualityProgressBar_InvalidHeight_FallsBackToDefault(): void

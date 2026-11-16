@@ -148,31 +148,16 @@ test.describe('Factory Page - Registry Link Feature', () => {
     }
   });
 
-  test('"View Car" button should navigate to car details page', async ({ page, context }) => {
+  test('"View Car" button should navigate to car details page', async ({ page }) => {
     await page.goto('app/owner/cars/factory.php');
 
     // Wait for table and AJAX
     await waitForDataTables(page);
     await page.waitForSelector('.registry-link-container', { timeout: 10000 });
 
-    // Find a View Car button
     const viewButton = page.locator('.registry-link-container .btn-primary').first();
-    const isVisible = await viewButton.isVisible();
-
-    if (isVisible) {
-      // Get the button href
-      const href = await viewButton.getAttribute('href');
-      console.log(`✓ View Car button found with href: ${href}`);
-
-      // Verify href is to details page
-      expect(href).toContain('details.php');
-      console.log('✓ href points to details page');
-
-      expect(href).toMatch(/car_id=\d+/);
-      console.log('✓ href includes car_id parameter');
-    } else {
-      console.log('⚠ No "View Car" button found (test data may not have matching cars)');
-    }
+    await expect(viewButton).toBeVisible();
+    await expect(viewButton).toHaveAttribute('href', /details\.php\?car_id=\d+/);
   });
 
   test('should not make any request to chassis-lookup.php', async ({ page }) => {

@@ -169,19 +169,22 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
   });
 
 
-  test('owner contact endpoint requires authentication', async ({ page }) => {
-    // Test the owner-to-owner contact system
-    const response = await page.request.post('app/api/contact/send-owner-email.php', {
+  test('owner contact endpoint requires authentication', async ({ request }) => {
+    // The bare `request` fixture has no session cookie, unlike `page` after
+    // the beforeEach login. securePage() sends an anonymous caller to the
+    // login page before the CSRF check, so the reply is a redirect, not JSON.
+    const response = await request.post('app/api/contact/send-owner-email.php', {
       form: {
         car_id: '1',
         to_user_id: '1',
         message: 'Interest in your Lotus Elan',
         csrf: 'test_token'
-      }
+      },
+      maxRedirects: 0
     });
 
-    // Should either work (200) or require better authentication
-    expect([200, 401, 403]).toContain(response.status());
+    expect(response.status()).toBe(302);
+    expect(response.headers()['location']).toMatch(/users\/login\.php$/);
   });
 
   test('list.php rows carry badges, badges_html, and no freshness fields', async ({ page }) => {
@@ -429,6 +432,9 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
     expect(response.status()).toBe(403);
     const jsonResponse = await response.json();
     expect(jsonResponse).toHaveProperty('success', false);
+    // The owner check also returns 403. The message proves the CSRF check
+    // rejected the request.
+    expect(jsonResponse).toHaveProperty('message', 'Invalid CSRF token');
   });
 
   test('location search endpoint enforces method, CSRF, and validation checks', async ({ page }) => {
@@ -623,95 +629,42 @@ test.describe('Issue #1913 — public read-only DataTables endpoints survive a l
     await page.context().clearCookies();
   });
 
-  test('list.php with no csrf field at all returns 200 with populated data', async ({ page }) => {
-    const response = await page.request.post('app/api/cars/list.php', {
-      form: {
-        draw: '1',
-        start: '0',
-        length: '10'
-      }
+  const DATATABLES_FORM = { draw: '1', start: '0', length: '10' };
+  const GARBAGE_CSRF = { csrf: 'this-is-not-a-valid-token' };
+
+  // list.php and factory-list.php answer in the DataTables format. Only the
+  // no-token rows ask for at least one data row, as before.
+  const expectDataTablesBody = (minRows) => (json) => {
+    expect(json).toHaveProperty('data');
+    expect(Array.isArray(json.data)).toBe(true);
+    expect(json.data.length).toBeGreaterThanOrEqual(minRows);
+  };
+  // statistics.php answers in the ApiResponse format.
+  const expectApiBody = (json) => {
+    expect(json).toHaveProperty('success', true);
+    expect(json).toHaveProperty('data');
+  };
+
+  const publicEndpointRows = [
+    { title: 'list.php with no csrf field at all returns 200 with populated data', url: 'app/api/cars/list.php', form: DATATABLES_FORM, expectBody: expectDataTablesBody(1) },
+    { title: 'list.php with a garbage/expired csrf token returns 200', url: 'app/api/cars/list.php', form: { ...DATATABLES_FORM, ...GARBAGE_CSRF }, expectBody: expectDataTablesBody(0) },
+    { title: 'factory-list.php with no csrf field at all returns 200 with populated data', url: 'app/api/cars/factory-list.php', form: DATATABLES_FORM, expectBody: expectDataTablesBody(1) },
+    { title: 'factory-list.php with a garbage/expired csrf token returns 200', url: 'app/api/cars/factory-list.php', form: { ...DATATABLES_FORM, ...GARBAGE_CSRF }, expectBody: expectDataTablesBody(0) },
+    { title: 'statistics.php with no csrf field at all returns 200', url: 'app/api/shared/statistics.php', form: { tab: 'production' }, expectBody: expectApiBody },
+    { title: 'statistics.php with a garbage/expired csrf token returns 200', url: 'app/api/shared/statistics.php', form: { tab: 'production', ...GARBAGE_CSRF }, expectBody: expectApiBody },
+  ];
+
+  // An empty or shortened table cannot fail. Pin the row count.
+  expect(publicEndpointRows.length).toBe(6);
+
+  for (const { title, url, form, expectBody } of publicEndpointRows) {
+    test(title, async ({ page }) => {
+      const response = await page.request.post(url, { form });
+
+      expect(response.status()).toBe(200);
+      expectBody(await response.json());
     });
-
-    expect(response.status()).toBe(200);
-    const jsonResponse = await response.json();
-    expect(jsonResponse).toHaveProperty('data');
-    expect(Array.isArray(jsonResponse.data)).toBe(true);
-    expect(jsonResponse.data.length).toBeGreaterThan(0);
-  });
-
-  test('list.php with a garbage/expired csrf token returns 200', async ({ page }) => {
-    const response = await page.request.post('app/api/cars/list.php', {
-      form: {
-        draw: '1',
-        start: '0',
-        length: '10',
-        csrf: 'this-is-not-a-valid-token'
-      }
-    });
-
-    expect(response.status()).toBe(200);
-    const jsonResponse = await response.json();
-    expect(jsonResponse).toHaveProperty('data');
-    expect(Array.isArray(jsonResponse.data)).toBe(true);
-  });
-
-  test('factory-list.php with no csrf field at all returns 200 with populated data', async ({ page }) => {
-    const response = await page.request.post('app/api/cars/factory-list.php', {
-      form: {
-        draw: '1',
-        start: '0',
-        length: '10'
-      }
-    });
-
-    expect(response.status()).toBe(200);
-    const jsonResponse = await response.json();
-    expect(jsonResponse).toHaveProperty('data');
-    expect(Array.isArray(jsonResponse.data)).toBe(true);
-    expect(jsonResponse.data.length).toBeGreaterThan(0);
-  });
-
-  test('factory-list.php with a garbage/expired csrf token returns 200', async ({ page }) => {
-    const response = await page.request.post('app/api/cars/factory-list.php', {
-      form: {
-        draw: '1',
-        start: '0',
-        length: '10',
-        csrf: 'this-is-not-a-valid-token'
-      }
-    });
-
-    expect(response.status()).toBe(200);
-    const jsonResponse = await response.json();
-    expect(jsonResponse).toHaveProperty('data');
-    expect(Array.isArray(jsonResponse.data)).toBe(true);
-  });
-
-  test('statistics.php with no csrf field at all returns 200', async ({ page }) => {
-    const response = await page.request.post('app/api/shared/statistics.php', {
-      form: {
-        tab: 'production'
-      }
-    });
-
-    expect(response.status()).toBe(200);
-    const jsonResponse = await response.json();
-    expect(jsonResponse).toHaveProperty('success', true);
-    expect(jsonResponse).toHaveProperty('data');
-  });
-
-  test('statistics.php with a garbage/expired csrf token returns 200', async ({ page }) => {
-    const response = await page.request.post('app/api/shared/statistics.php', {
-      form: {
-        tab: 'production',
-        csrf: 'this-is-not-a-valid-token'
-      }
-    });
-
-    expect(response.status()).toBe(200);
-    const jsonResponse = await response.json();
-    expect(jsonResponse).toHaveProperty('success', true);
-  });
+  }
 });
 
 test.describe('Admin AJAX Endpoints — Unauthenticated Access', () => {

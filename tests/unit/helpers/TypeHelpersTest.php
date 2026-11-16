@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\TypeHelpers;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
@@ -13,87 +14,56 @@ use PHPUnit\Framework\TestCase;
 #[Group('fast')]
 final class TypeHelpersTest extends TestCase
 {
-    public function testToIntWithObjectProperty(): void
+    /**
+     * The optional third column is the property name. Rows without it call
+     * toInt() with no property argument, so the 'id' default is under test.
+     *
+     * @return array<string, array{0: mixed, 1: int, 2?: string}>
+     */
+    public static function toIntValidInputProvider(): array
     {
-        $obj = (object) ['id' => '42', 'name' => 'test'];
-        $this->assertSame(42, TypeHelpers::toInt($obj));
+        return [
+            'object default property numeric string' => [(object) ['id' => '42', 'name' => 'test'], 42],
+            'object custom property' => [(object) ['user_id' => '7', 'name' => 'test'], 7, 'user_id'],
+            'integer' => [5, 5],
+            'numeric string' => ['123', 123],
+            'object int property' => [(object) ['id' => 99], 99],
+            'zero integer' => [0, 0],
+            'zero string' => ['0', 0],
+            'decimal string truncates' => ['12.9', 12],
+        ];
     }
 
-    public function testToIntWithObjectCustomProperty(): void
+    #[DataProvider('toIntValidInputProvider')]
+    public function testToIntReturnsInteger(mixed $value, int $expected, string ...$property): void
     {
-        $obj = (object) ['user_id' => '7', 'name' => 'test'];
-        $this->assertSame(7, TypeHelpers::toInt($obj, 'user_id'));
+        $this->assertSame($expected, TypeHelpers::toInt($value, ...$property));
     }
 
-    public function testToIntWithIntegerValue(): void
+    /**
+     * @return array<string, array{mixed, ?string}>
+     */
+    public static function toIntInvalidInputProvider(): array
     {
-        $this->assertSame(5, TypeHelpers::toInt(5));
+        return [
+            'boolean true' => [true, null],
+            // Intentional: isset() cannot tell a null property from a missing one.
+            'object null property' => [(object) ['id' => null], "Property 'id' does not exist on object"],
+            'null' => [null, null],
+            'empty string' => ['', null],
+            'non-numeric string' => ['abc', null],
+            'object missing property' => [(object) ['name' => 'test'], null],
+        ];
     }
 
-    public function testToIntWithNumericString(): void
-    {
-        $this->assertSame(123, TypeHelpers::toInt('123'));
-    }
-
-    public function testToIntWithObjectIntProperty(): void
-    {
-        $obj = (object) ['id' => 99];
-        $this->assertSame(99, TypeHelpers::toInt($obj));
-    }
-
-    public function testToIntWithZeroInteger(): void
-    {
-        $this->assertSame(0, TypeHelpers::toInt(0));
-    }
-
-    public function testToIntWithZeroString(): void
-    {
-        $this->assertSame(0, TypeHelpers::toInt('0'));
-    }
-
-    public function testToIntWithDecimalStringTruncates(): void
-    {
-        $this->assertSame(12, TypeHelpers::toInt('12.9'));
-    }
-
-    public function testToIntThrowsOnBooleanTrue(): void
+    #[DataProvider('toIntInvalidInputProvider')]
+    public function testToIntThrowsOnInvalidInput(mixed $value, ?string $message): void
     {
         $this->expectException(InvalidArgumentException::class);
-        TypeHelpers::toInt(true);
-    }
-
-    public function testToIntWithObjectNullProperty_throwsPropertyDoesNotExist(): void
-    {
-        // Intentional: isset() cannot tell a null property from a missing one.
-        $obj = (object) ['id' => null];
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage("Property 'id' does not exist on object");
-        TypeHelpers::toInt($obj);
-    }
-
-    public function testToIntThrowsOnNull(): void
-    {
-        $this->expectException(InvalidArgumentException::class);
-        TypeHelpers::toInt(null);
-    }
-
-    public function testToIntThrowsOnEmptyString(): void
-    {
-        $this->expectException(InvalidArgumentException::class);
-        TypeHelpers::toInt('');
-    }
-
-    public function testToIntThrowsOnNonNumericString(): void
-    {
-        $this->expectException(InvalidArgumentException::class);
-        TypeHelpers::toInt('abc');
-    }
-
-    public function testToIntThrowsOnMissingProperty(): void
-    {
-        $obj = (object) ['name' => 'test'];
-        $this->expectException(InvalidArgumentException::class);
-        TypeHelpers::toInt($obj, 'id');
+        if ($message !== null) {
+            $this->expectExceptionMessage($message);
+        }
+        TypeHelpers::toInt($value, 'id');
     }
 
     /**

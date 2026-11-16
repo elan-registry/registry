@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { ensureLoggedIn, navigateAndWait, waitForDataTables, handleAuthRequired } = require('./auth-helper.js');
+const { ensureLoggedIn, login, navigateAndWait, waitForDataTables } = require('./auth-helper.js');
 
 test.describe('Core Functionality After Refactoring', () => {
   test('DataTables loads and works on car listing', async ({ page }) => {
@@ -22,24 +22,32 @@ test.describe('Core Functionality After Refactoring', () => {
   // markup at all, regardless of auth state (see that file's header for
   // both stories in full).
 
-  test('contact form submission works', async ({ page }) => {
+  test('contact form rejects a one-character comment with a 422 and an error toast', async ({ page }) => {
+    test.skip(
+      !process.env.E2E_DEV_ADMIN_USERNAME || !process.env.E2E_DEV_ADMIN_PASSWORD,
+      'Set E2E_DEV_ADMIN_USERNAME and E2E_DEV_ADMIN_PASSWORD in .env.local: the contact page requires login'
+    );
+    await login(page);
     await navigateAndWait(page, 'app/owner/contact/index.php');
 
-    await handleAuthRequired(
-      page,
-      async () => {
-        await page.fill('input[name="name"]', 'Test User');
-        await page.fill('input[name="email"]', 'test@example.com');
-        await page.fill('textarea[name="message"]', 'This is a test message for the Elan Registry contact form.');
+    // One character passes the HTML required check but fails the server's
+    // two-character minimum, so the request reaches validation and no email
+    // is sent.
+    await page.getByRole('textbox', { name: 'Your Feedback' }).fill('x');
 
-        await page.click('button[type="submit"], input[type="submit"]');
-
-        // Wait for the response; any non-crash outcome is acceptable here.
-        await page.waitForTimeout(2000);
-        const hasAlert = await page.locator('.alert, .message, .notification').count();
-        expect(hasAlert).toBeGreaterThanOrEqual(0); // Just checking it doesn't crash
-      }
+    const responsePromise = page.waitForResponse(
+      (response) => response.url().includes('app/api/contact/send-feedback.php')
     );
+    await page.getByRole('button', { name: 'Send Feedback' }).click();
+    const response = await responsePromise;
+
+    expect(response.status()).toBe(422);
+    const body = await response.json();
+    expect(body).toHaveProperty('success', false);
+    expect(body.errors.comments).toBe('Please enter your feedback.');
+
+    // contact-form.js shows the response message through window.usError().
+    await expect(page.locator('.us-toast:has(.us-bar-danger) .toast-body')).toContainText('Validation failed');
   });
 
   test('NEW badge does not appear on factory listing page', async ({ page }) => {

@@ -225,10 +225,6 @@ after an item is written.
 
 - [ ] No test covers the queue and activity forms binding when the switch is absent (#2457). The probe-failure path needs a failing DB (see the note at L267) (found in /flow:finish-milestone v2.31.0)
 
-### `tests/playwright/ajax-endpoints.spec.js` (test quality)
-
-- [ ] The contact-owner bad-token test (~L419) asserts only 403 and `success:false`. The owner check in `send-owner-email.php` also returns 403, so the test still passes if `Token::check` stops working. Also assert the CSRF error message (found in #2699)
-
 ### `tests/playwright/car-add-invalid-purchasedate.spec.js` + `tests/unit/cars/CarActionsSaveWiringTest.php` (test quality)
 
 - [ ] The photo test (~L181) passes when `uploadImages()` never saw the file, because the "no leftover temp file" check holds with no file written. Also assert that `cardetails.image` holds one stored `img_<hex>.jpg` name (found in /flow:finish-milestone v2.32.0)
@@ -241,7 +237,7 @@ after an item is written.
 
 ### `tests/playwright/local/fixtures/` + `tests/integration/database/EmailEventRekeyMigrationFixture.php`
 
-- [ ] Seven `seed-*.php` fixtures and the migration fixture each copy the `er_deleted_user_addresses` cleanup: a table-exists check, then a `DELETE ... IN (...)`. Three also copy the username-to-ID lookup. None checks `$db->error()` after the check or the delete, although the cleanup loop in the same files exits on an error. Add one shared helper (for example `Tests\Support\DeletedUserAddressCleanup::forUserIds($db, $ids)`) that checks `error()`, and call it from each fixture (found in #2419)
+- [ ] Eight `seed-*.php` fixtures and the migration fixture each copy the `er_deleted_user_addresses` cleanup: a table-exists check, then a `DELETE ... IN (...)`. All eight also copy the username-to-ID lookup. Only `seed-output-escaping-car.php` checks `$db->error()` after the delete. The others check `error()` after neither the check nor the delete, although the cleanup loop in the same files exits on an error. Add one shared helper (for example `Tests\Support\DeletedUserAddressCleanup::forUserIds($db, $ids)`) that checks `error()`, and call it from each fixture (found in #2419)
 
 ### `tests/unit/SitemapServiceTest.php`
 
@@ -422,7 +418,7 @@ after an item is written.
   - Check first: the gitignored upstream plugin code may reference some of these constants. A search of tracked files cannot see it.
   - Check first: the admin log viewer may filter by the stored category *values*. Old `logs` rows keep their values after a constant goes.
   - Check first: `docs/development/LOG_CATEGORIES.md` lists the constants.
-  - Check first: `ApiResponseTest.php` (`testWithLoggingIsImmutable`, `testToArrayDoesNotIncludePendingLog`) and `CarUpdateRepositoryFailureTest.php` (~106) use two of them.
+  - Check first: `ApiResponseTest.php` (`testBuilderIsImmutable` row `withLogging`, `testToArrayDoesNotIncludePendingLog`) use `DIAGNOSTICS`. `tests/integration/cars/CarUpdateRepositoryFailureTest.php` (~85) names `LOG_CATEGORY_CAR_UPDATE` in an assertion message.
   - Do this with #1997, which splits the overloaded categories in the same file.
 
 ### `usersc/classes/Owner.php` + `usersc/user_settings.php` + `app/verify/verify_car.php` + `usersc/classes/Car/EmailEventApplier.php`

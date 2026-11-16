@@ -141,54 +141,30 @@ final class OwnerProfileTest extends TestCase
         $this->assertSame(85.7, Owner::qualityScoreFromRow($row));
     }
 
-    // Per-field regression tests — catch PROFILE_SIMPLE_FIELD_LABELS key typos.
-    // Each test sets exactly one simple field and leaves everything else blank.
-    // Expected: 1/7 * 100 rounded to 1 decimal = 14.3.
-
-    public function testOnlyFnameScores14point3(): void
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function simpleFieldValueProvider(): array
     {
-        $row        = $this->emptyRow();
-        $row->fname = 'Jim';
-
-        $this->assertSame(14.3, Owner::qualityScoreFromRow($row));
+        return [
+            'fname' => ['fname', 'Jim'],
+            'lname' => ['lname', 'Boone'],
+            'email' => ['email', 'jim@example.com'],
+            'city' => ['city', 'Portland'],
+            'state' => ['state', 'OR'],
+            'country' => ['country', 'USA'],
+        ];
     }
 
-    public function testOnlyLnameScores14point3(): void
+    /**
+     * Per-field regression rows catch PROFILE_SIMPLE_FIELD_LABELS key typos.
+     * One simple field set, all else blank → 1/7 * 100 rounded = 14.3.
+     */
+    #[DataProvider('simpleFieldValueProvider')]
+    public function testOnlyOneSimpleFieldScores14point3(string $field, string $value): void
     {
-        $row        = $this->emptyRow();
-        $row->lname = 'Boone';
-
-        $this->assertSame(14.3, Owner::qualityScoreFromRow($row));
-    }
-
-    public function testOnlyEmailScores14point3(): void
-    {
-        $row        = $this->emptyRow();
-        $row->email = 'jim@example.com';
-
-        $this->assertSame(14.3, Owner::qualityScoreFromRow($row));
-    }
-
-    public function testOnlyCityScores14point3(): void
-    {
-        $row       = $this->emptyRow();
-        $row->city = 'Portland';
-
-        $this->assertSame(14.3, Owner::qualityScoreFromRow($row));
-    }
-
-    public function testOnlyStateScores14point3(): void
-    {
-        $row        = $this->emptyRow();
-        $row->state = 'OR';
-
-        $this->assertSame(14.3, Owner::qualityScoreFromRow($row));
-    }
-
-    public function testOnlyCountryScores14point3(): void
-    {
-        $row          = $this->emptyRow();
-        $row->country = 'USA';
+        $row         = $this->emptyRow();
+        $row->$field = $value;
 
         $this->assertSame(14.3, Owner::qualityScoreFromRow($row));
     }
@@ -234,58 +210,29 @@ final class OwnerProfileTest extends TestCase
         $this->assertSame([], $this->owner->validateProfileCompleteness());
     }
 
-    public function testMissingFnameReturnsFirstName(): void
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function missingSimpleFieldLabelProvider(): array
     {
-        $data        = $this->fullRow();
-        $data->fname = '';
-        $this->injectData($data);
-
-        $this->assertContains('First Name', $this->owner->validateProfileCompleteness());
+        return [
+            'fname' => ['fname', 'First Name'],
+            'lname' => ['lname', 'Last Name'],
+            'email' => ['email', 'Email'],
+            'city' => ['city', 'City'],
+            'state' => ['state', 'State'],
+            'country' => ['country', 'Country'],
+        ];
     }
 
-    public function testMissingLnameReturnsLastName(): void
+    #[DataProvider('missingSimpleFieldLabelProvider')]
+    public function testMissingSimpleFieldReturnsItsLabel(string $field, string $label): void
     {
-        $data        = $this->fullRow();
-        $data->lname = '';
+        $data         = $this->fullRow();
+        $data->$field = '';
         $this->injectData($data);
 
-        $this->assertContains('Last Name', $this->owner->validateProfileCompleteness());
-    }
-
-    public function testMissingEmailReturnsEmail(): void
-    {
-        $data        = $this->fullRow();
-        $data->email = '';
-        $this->injectData($data);
-
-        $this->assertContains('Email', $this->owner->validateProfileCompleteness());
-    }
-
-    public function testMissingCityReturnsCity(): void
-    {
-        $data       = $this->fullRow();
-        $data->city = '';
-        $this->injectData($data);
-
-        $this->assertContains('City', $this->owner->validateProfileCompleteness());
-    }
-
-    public function testMissingStateReturnsState(): void
-    {
-        $data        = $this->fullRow();
-        $data->state = '';
-        $this->injectData($data);
-
-        $this->assertContains('State', $this->owner->validateProfileCompleteness());
-    }
-
-    public function testMissingCountryReturnsCountry(): void
-    {
-        $data          = $this->fullRow();
-        $data->country = '';
-        $this->injectData($data);
-
-        $this->assertContains('Country', $this->owner->validateProfileCompleteness());
+        $this->assertContains($label, $this->owner->validateProfileCompleteness());
     }
 
     /**
