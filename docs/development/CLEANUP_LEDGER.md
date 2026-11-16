@@ -92,10 +92,6 @@ after an item is written.
 
 - [ ] `render()` ~L133 — the inner `showGPS` ternary for the "OR" divider is dead, because the outer `showGPS &&` guard already holds. Use the plain divider (found in #2043)
 
-### `app/assets/js/model-loader.js` (est. −18)
-
-- [ ] Delete `ModelLoader.getModelByValue()` (~99-117). Nothing calls it (JS, PHP, or Playwright). (found in the #2208 audit)
-
 ### `app/views/cars/` (section partials)
 
 - [ ] `_vehicle_info_card` and `_factory_data_card` link the card level to the heading level. Only `h4` gets `card-header-er-l2`, so a nested `h3` card cannot use L2 styling (UI_STANDARDS "Card Hierarchy"). `_owner_info_card`, `_location_map_card` and `_photos_card` always use a plain `card-header`. Give all five partials a card-level variable (found in #2495)
@@ -149,7 +145,6 @@ after an item is written.
 
 ### `package.json` + `scripts/build.js` + `app/assets/js/car-edit.js` (−1 dependency)
 
-- [ ] `@versatiles/style` 9 needs Node 20 or later, but `package.json` has no `engines` field and the repo has no `.nvmrc`. Add `"engines": { "node": ">=20" }` (found in /flow:finish-milestone v2.31.2)
 - [ ] Drop `filepond-plugin-image-exif-orientation`: the package, its `<script>` tag, its `registerPlugin()` argument (car-edit.js ~29), and its copy line (build.js ~47). Current browsers apply EXIF orientation natively. **First upload one rotated phone JPEG with the plugin removed, and confirm that the stored image and the resized variants are upright.** (found in the #2208 audit)
 
 ### `scripts/render-deploy-sheet.sh`
