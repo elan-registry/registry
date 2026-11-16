@@ -37,8 +37,9 @@ async function makePhoto(page) {
 
 /**
  * Submit the hidden Edit-mode form (action=updateCar, car_id, csrf) from the
- * page that is open now. Only this POST puts edit.php in real update mode
- * (#1846). The CSRF token is read from the current page.
+ * page that is open now. This POST puts edit.php in real update mode (#1846).
+ * A GET ?car_id link also does (#2608), but these specs test the POST path.
+ * The CSRF token is read from the current page.
  *
  * @param {import('@playwright/test').Page} page
  * @param {number|string} carId

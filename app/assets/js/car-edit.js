@@ -287,8 +287,7 @@
             const handleProcessError = function(err) {
                 console.error('[edit.php] Photo processing error:', err);
                 $('#message').removeClass('d-none').html('<div class="alert alert-danger">An error occurred processing the photos. Please try again.</div>');
-                unblockSubmit('saving');
-                submitBtn.textContent = submitBtn.dataset.label;
+                restoreSaveButton();
             };
 
             const submission = newFileIds.length > 0
@@ -384,10 +383,14 @@
             $('#csrf').val(data.csrf);
         }
 
-        // Fields and photos stay on the page, so the owner can save again.
-        function showSaveProblem(message) {
+        function restoreSaveButton() {
             unblockSubmit('saving');
             submitBtn.textContent = submitBtn.dataset.label;
+        }
+
+        // Fields and photos stay on the page, so the owner can save again.
+        function showSaveProblem(message) {
+            restoreSaveButton();
             $('#message').removeClass('d-none').html('<div class="alert alert-danger" role="alert">' + message + '</div>');
             document.getElementById('message').scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
@@ -426,14 +429,12 @@
                     leaveAllowed = true;
                     window.location = cfg.urlRoot + 'app/owner/cars/details.php?car_id=' + carId;
                 } else {
-                    unblockSubmit('saving');
-                    submitBtn.textContent = submitBtn.dataset.label;
+                    restoreSaveButton();
                     displayValidationErrors(data);
                 }
             } catch (err) {
                 console.error('[car-edit] submitCarForm failed:', err);
-                unblockSubmit('saving');
-                submitBtn.textContent = submitBtn.dataset.label;
+                restoreSaveButton();
                 $('#message').removeClass('d-none').html('<div class="alert alert-danger">An error occurred. Please try again.</div>');
             }
         }
@@ -541,9 +542,7 @@
      */
     $('#year').change(onYearChange);
 
-    $('#model-load-retry').on('click', function() {
-        onYearChange();
-    });
+    $('#model-load-retry').on('click', onYearChange);
 
     /**
      * Show the model-list error with its Retry button and block Save, because
