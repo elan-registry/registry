@@ -16,10 +16,10 @@ use PHPUnit\Framework\Attributes\Group;
  * The #971 sender-impersonation contract (from_user_id is never read from POST)
  * is pinned at source level in tests/unit/security/SerializedDataRemovalTest.php.
  *
- * IDOR guard coverage gap (#1014): the owner-mismatch comparison in
- * send-owner-email.php (a real car owned by another user) has no test.
- * tests/playwright/security/contact-owner-idor.spec.js posts a nonexistent
- * car_id (999999), so it covers only the car-not-found case.
+ * The IDOR guard (the recipient must own the car) is tested in
+ * SendOwnerEmailOwnerMismatchTest, which uses a real car owned by another
+ * user. A nonexistent car_id reaches the same `!$carOwner || ...` branch in
+ * send-owner-email.php.
  */
 #[Group('integration')]
 #[Group('security')]
