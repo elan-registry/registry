@@ -4,7 +4,7 @@
 
 const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn } = require('./auth-helper.js');
-const { postUpdateCar, routeModels, attemptLeave, giveUserGesture } = require('./car-edit-helpers.js');
+const { makePhoto, postUpdateCar, routeModels, attemptLeave, giveUserGesture } = require('./car-edit-helpers.js');
 const { CAR_ID_STANDARD, CAR_ID_WITH_SPECIAL_CHARS, CAR_ID_WITH_HISTORY } = require('./fixtures.js');
 
 /**
@@ -460,7 +460,9 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
     });
 
     // #838: comments were double-encoded on save (\Input::get()). Checks the
-    // POST sends raw Unicode and the textarea shows it unencoded.
+    // POST sends raw Unicode. The save goes to details.php, so the reload half
+    // is in "edit form textarea pre-fills with plain readable text", which
+    // reads the real DB row.
     test('comments with special characters save and reload as plain text', async ({ page }) => {
         const SPECIAL_CHARS_INPUT = "it´s original registration — é & ñ";
 
@@ -522,18 +524,11 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
                         capturedComments = commentsEntries[0].value;
                     }
 
-                    // Return a mocked success response that echoes the unencoded
-                    // plain-text comments back as the server would after the fix.
+                    // On success, car-edit.js reads only cardetails.id, for the redirect.
                     await route.fulfill({
                         status: 200,
                         contentType: 'application/json',
-                        body: JSON.stringify({
-                            success: true,
-                            cardetails: {
-                                id: 650,
-                                comments: SPECIAL_CHARS_INPUT
-                            }
-                        })
+                        body: JSON.stringify({ success: true, cardetails: { id: 650 } })
                     });
                     return;
                 }
@@ -584,37 +579,9 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
             'POST comments must equal the raw Unicode input exactly (regression #838)'
         ).toBe(SPECIAL_CHARS_INPUT);
 
-        // Assertion B: a double-encoded value would show entity text in the textarea.
-        await page.waitForFunction(
-            (expected) => {
-                const el = document.getElementById('comments');
-                return el && el.value === expected;
-            },
-            SPECIAL_CHARS_INPUT,
-            { timeout: 5000 }
-        ).catch((err) => {
-            // Only swallow TimeoutError — the assertion below produces the clear failure message.
-            // Any other error (navigation, crashed page) should propagate immediately.
-            if (err.constructor.name !== 'TimeoutError') { throw err; }
-        });
-
-        const textareaValue = await commentsTextarea.inputValue();
-
-        expect(
-            textareaValue,
-            'Textarea must NOT display HTML entities after reload ' +
-            '(regression #838: double-encoding would show &amp;#180;s instead of ´s)'
-        ).not.toContain('&amp;');
-
-        expect(
-            textareaValue,
-            'Textarea must NOT display the HTML entity &#039; after reload (regression #838)'
-        ).not.toContain('&#039;');
-
-        expect(
-            textareaValue,
-            'Textarea must display the raw Unicode string after mock server response (regression #838)'
-        ).toBe(SPECIAL_CHARS_INPUT);
+        // A successful save leaves edit.php for the details page of the car
+        // id that the mock returns.
+        await page.waitForURL(/details\.php\?car_id=650\b/, { timeout: 10000 });
     });
 
     // Existing LOCAL image plus one new upload: only the new file is in
@@ -682,18 +649,14 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
             await route.fallback();
         });
 
-        // Add a synthetic new file alongside the existing LOCAL image
-        const fileAdded = await page.evaluate(() => {
-            const root = document.querySelector('.filepond--root');
-            const instance = window.FilePond && window.FilePond.find(root);
-            if (!instance) { return 'window.FilePond.find() returned no instance for .filepond--root'; }
-            const jpegBytes = new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0xFF, 0xD9]);
-            const file = new File([new Blob([jpegBytes], { type: 'image/jpeg' })], 'new-photo.jpg', { type: 'image/jpeg' });
-            instance.addFile(file);
-            return true;
+        // Add a new file alongside the existing LOCAL image. It must be a JPEG
+        // the browser can decode: FilePond sets LOAD_ERROR on one it cannot,
+        // and the form then refuses to save (#2660).
+        await page.locator('input.filepond--browser').setInputFiles({
+            name: 'new-photo.jpg',
+            mimeType: 'image/jpeg',
+            buffer: await makePhoto(page),
         });
-
-        expect(fileAdded, 'Could not add a synthetic file to FilePond').toBe(true);
 
         // Must succeed: otherwise the "exactly one new upload" assertion fails confusingly.
         await page.waitForFunction(
@@ -1071,17 +1034,21 @@ test.describe('encode-at-output regression — special chars in car text fields 
 
         expect(page.url(), 'details.php must render for an authenticated session, not redirect to login').not.toContain('login');
 
-        // A missing fixture row would make the entity assertions vacuous.
-        const bodyText = await page.locator('body').textContent();
+        // details.php sends a missing car to the cars index, which would make
+        // the entity assertions vacuous.
         expect(
-            bodyText,
+            page.url(),
             `Car ${CAR_ID_WITH_SPECIAL_CHARS} must exist in the local DB with migrated special-character text — see fixtures.js`
-        ).not.toMatch(/not found|does not exist/i);
+        ).toContain(`details.php?car_id=${CAR_ID_WITH_SPECIAL_CHARS}`);
+
+        // innerText of the content wrapper: textContent also returns inline
+        // <script> source, and the footer's escapeHtml() holds a literal '&amp;'.
+        const pageText = await page.locator('.page-wrapper').innerText();
 
         // Assert no visible HTML entity strings in any text content
-        expect(bodyText, 'Details page must not render literal &amp; entity strings').not.toContain('&amp;');
-        expect(bodyText, "Details page must not render literal &#039; entity strings").not.toContain('&#039;');
-        expect(bodyText, 'Details page must not render literal &lt; entity strings').not.toContain('&lt;');
+        expect(pageText, 'Details page must not render literal &amp; entity strings').not.toContain('&amp;');
+        expect(pageText, "Details page must not render literal &#039; entity strings").not.toContain('&#039;');
+        expect(pageText, 'Details page must not render literal &lt; entity strings').not.toContain('&lt;');
     });
 
     test('edit form textarea pre-fills with plain readable text', async ({ page }) => {
