@@ -125,6 +125,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         // Wait for FilePond to initialise (it registers itself on DOMContentLoaded)
         await page.waitForFunction(
             () => typeof window.FilePond !== 'undefined' && document.querySelector('.filepond--root') !== null,
+            null,
             { timeout: 15000 }
         );
 
@@ -312,6 +313,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
 
         await page.waitForFunction(
             () => typeof window.FilePond !== 'undefined' && document.querySelector('.filepond--root') !== null,
+            null,
             { timeout: 15000 }
         );
 
@@ -398,15 +400,25 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
 
         expect(fileAdded, 'Could not add a synthetic file to FilePond').toBe(true);
 
-        // Must succeed: a rejected file would make the sentinel assertion vacuous.
-        await page.waitForFunction(
+        // Wait for IDLE: processFiles() never resolves for an item still loading,
+        // and a rejected file would make the sentinel assertion vacuous.
+        const addedFileStatus = await page.waitForFunction(
             () => {
                 const root = document.querySelector('.filepond--root');
                 const instance = window.FilePond && window.FilePond.find(root);
-                return instance && instance.getFiles().length > 0;
+                const added = instance && instance.getFiles()[0];
+                if (!added) { return false; }
+                const { IDLE, LOAD_ERROR } = window.FilePond.FileStatus;
+                return added.status === IDLE || added.status === LOAD_ERROR ? added.status : false;
             },
+            null,
             { timeout: 5000 }
-        );
+        ).then((handle) => handle.jsonValue());
+
+        expect(
+            addedFileStatus,
+            'The added file must reach FileStatus.IDLE — LOAD_ERROR (8) blocks the save (#2660)'
+        ).toBe(await page.evaluate(() => window.FilePond.FileStatus.IDLE));
 
         // Verify the file is present and is NOT a LOCAL file (it has no metadata.serverFilename)
         const fileOrigin = await page.evaluate(() => {
@@ -460,9 +472,9 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
     });
 
     // #838: comments were double-encoded on save (\Input::get()). Checks the
-    // POST sends raw Unicode. The save goes to details.php, so the reload half
-    // is in "edit form textarea pre-fills with plain readable text", which
-    // reads the real DB row.
+    // POST sends raw Unicode. The save is mocked, so no test here checks what
+    // save.php stores. "edit form textarea pre-fills with plain readable text"
+    // checks how a stored row renders.
     test('comments with special characters save and reload as plain text', async ({ page }) => {
         const SPECIAL_CHARS_INPUT = "it´s original registration — é & ñ";
 
@@ -486,6 +498,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         // Wait for FilePond to initialise (confirms the full form JS has loaded)
         await page.waitForFunction(
             () => typeof window.FilePond !== 'undefined' && document.querySelector('.filepond--root') !== null,
+            null,
             { timeout: 15000 }
         );
 
@@ -528,7 +541,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
                     await route.fulfill({
                         status: 200,
                         contentType: 'application/json',
-                        body: JSON.stringify({ success: true, cardetails: { id: 650 } })
+                        body: JSON.stringify({ success: true, cardetails: { id: CAR_ID_WITH_SPECIAL_CHARS } })
                     });
                     return;
                 }
@@ -581,7 +594,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
 
         // A successful save leaves edit.php for the details page of the car
         // id that the mock returns.
-        await page.waitForURL(/details\.php\?car_id=650\b/, { timeout: 10000 });
+        await page.waitForURL(new RegExp(`details\\.php\\?car_id=${CAR_ID_WITH_SPECIAL_CHARS}\\b`), { timeout: 10000 });
     });
 
     // Existing LOCAL image plus one new upload: only the new file is in
@@ -598,6 +611,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
 
         await page.waitForFunction(
             () => typeof window.FilePond !== 'undefined' && document.querySelector('.filepond--root') !== null,
+            null,
             { timeout: 15000 }
         );
 
@@ -614,6 +628,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
                 const instance = window.FilePond && window.FilePond.find(root);
                 return instance && instance.getFiles().length > 0;
             },
+            null,
             { timeout: 10000 }
         );
 
@@ -649,24 +664,35 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
             await route.fallback();
         });
 
-        // Add a new file alongside the existing LOCAL image. It must be a JPEG
-        // the browser can decode: FilePond sets LOAD_ERROR on one it cannot,
-        // and the form then refuses to save (#2660).
+        // Add a new file alongside the existing LOCAL image. It must be at
+        // least CarImageProcessor::MIN_FILE_BYTES (100): FilePond's size check
+        // sets LOAD_ERROR on a smaller file, and the form then refuses to save
+        // (#2660).
         await page.locator('input.filepond--browser').setInputFiles({
             name: 'new-photo.jpg',
             mimeType: 'image/jpeg',
             buffer: await makePhoto(page),
         });
 
-        // Must succeed: otherwise the "exactly one new upload" assertion fails confusingly.
-        await page.waitForFunction(
+        // Wait for IDLE: processFiles() never resolves for an item still loading,
+        // and the save refuses an item in LOAD_ERROR.
+        const newFileStatus = await page.waitForFunction(
             () => {
                 const root = document.querySelector('.filepond--root');
                 const instance = window.FilePond && window.FilePond.find(root);
-                return instance && instance.getFiles().length >= 2;
+                const added = instance && instance.getFiles().find((f) => f.origin !== window.FilePond.FileOrigin.LOCAL);
+                if (!added) { return false; }
+                const { IDLE, LOAD_ERROR } = window.FilePond.FileStatus;
+                return added.status === IDLE || added.status === LOAD_ERROR ? added.status : false;
             },
+            null,
             { timeout: 5000 }
-        );
+        ).then((handle) => handle.jsonValue());
+
+        expect(
+            newFileStatus,
+            'The added file must reach FileStatus.IDLE — LOAD_ERROR (8) blocks the save (#2660)'
+        ).toBe(await page.evaluate(() => window.FilePond.FileStatus.IDLE));
 
         const submitBtn = page.locator('#submit');
         await expect(submitBtn, 'edit.php must render a #submit button').toBeVisible();
@@ -681,7 +707,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         // Every assertion below reads this payload — without it they are vacuous.
         expect(
             capturedRequest,
-            'Form submit POST was not captured — processFiles() did not resolve for the synthetic file'
+            'Form submit POST was not captured — processFiles() did not resolve for the added file'
         ).not.toBeNull();
 
         const contentType = capturedRequest.contentType;
