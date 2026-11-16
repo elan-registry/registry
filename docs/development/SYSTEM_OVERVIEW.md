@@ -171,8 +171,12 @@ detail, factory and statistics pages — as public.
   it gives the sender the same response as for a sent message (`SendPolicy`,
   see EMAIL_SYSTEM.md). The endpoint refuses a `noowner` recipient with a 409
   response and a readable message. It writes no log row and no `EmailError`
-  row for that refusal. The form page redirects a `noowner` car to the car
-  details page with an information message.
+  row for that refusal. The endpoint also refuses an owner whose address is
+  malformed, with a 409 response and a readable message. It writes an
+  `EmailError` row under the sender's user id. The row's note names the
+  recipient's user id (`to_user_id=N`), so an admin can correct the
+  address. The form page redirects a `noowner` car to the car details page
+  with an information message.
 - **Send feedback to the registrar** (`app/owner/contact/index.php`).
 
 ### 3.3. Editor and administrator
