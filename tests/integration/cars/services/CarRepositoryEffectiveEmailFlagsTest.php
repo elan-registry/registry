@@ -108,22 +108,23 @@ final class CarRepositoryEffectiveEmailFlagsTest extends IntegrationTestCase
     }
 
     /**
-     * A flag whose stored address is only white space applies (fail closed).
-     * The detail address is returned as stored, and currentEmail holds the
-     * address that the flag applies to. EffectiveEmailFlagsSharedTableTest
-     * covers the NULL and empty stored addresses.
+     * A flag with no usable stored address applies (fail closed). The detail
+     * address is returned as stored, and currentEmail holds the address that
+     * the flag applies to.
      *
-     * @return array<string, array{0: string}>
+     * @return array<string, array{0: ?string}>
      */
     public static function missingAddressProvider(): array
     {
         return [
+            'NULL address'             => [null],
+            'empty address'            => [''],
             'white-space-only address' => [" \t "],
         ];
     }
 
     #[DataProvider('missingAddressProvider')]
-    public function testFlagWithMissingAddressApplies(string $stored): void
+    public function testFlagWithMissingAddressApplies(?string $stored): void
     {
         $ownerId = $this->createOwner('current-' . uniqid() . '@example.com');
         $this->setOwnerBlocked($ownerId, 'placeholder@example.com', '2026-04-05 06:07:08', null);

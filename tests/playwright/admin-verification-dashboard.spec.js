@@ -458,7 +458,7 @@ test.describe('Admin Verification Dashboard', () => {
             await pill.click();
             await page.waitForLoadState('networkidle');
 
-            await expect.soft(page, `"${status}" pill sets ?status=`).toHaveURL(new RegExp(`[?&]status=${status}(&|$)`));
+            expect.soft(new URL(page.url()).searchParams.get('status'), `"${status}" pill sets ?status=`).toBe(status);
             await expect.soft(pill, `"${status}" pill is active`).toHaveClass(/active/);
             await expect.soft(pill, `"${status}" pill has aria-current="page"`).toHaveAttribute('aria-current', 'page');
 
@@ -1048,13 +1048,12 @@ test.describe('Admin Verification Dashboard editor read-only contract', () => {
         await expectBlockedAndOptedOutFilters(page);
     });
 
-    test('an editor sees the Status panel before Automatic Sending, and the Brevo row', async ({ page }) => {
-        await test.step('Status panel directly before Automatic Sending', async () => {
-            await expectPanelBeforeAutomaticSending(page);
-        });
-        await test.step('Brevo row', async () => {
-            await expectBrevoRow(page);
-        });
+    test('an editor sees the Status panel directly before Automatic Sending', async ({ page }) => {
+        await expectPanelBeforeAutomaticSending(page);
+    });
+
+    test('an editor sees the Brevo row', async ({ page }) => {
+        await expectBrevoRow(page);
     });
 
     test('an editor session sees every mutating verification control read-only, not interactive', async ({ page }) => {
