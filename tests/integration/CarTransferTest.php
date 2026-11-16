@@ -338,7 +338,7 @@ final class CarTransferTest extends IntegrationTestCase
         $previousBefore = $this->getOwnerEmailFlags($this->testUserId);
 
         $noOwner = $this->db->query("SELECT id FROM users WHERE username = 'noowner'")->first();
-        $this->assertNotNull($noOwner, 'noowner system account must exist for this test');
+        $this->assertIsObject($noOwner, 'noowner system account must exist for this test');
         $noOwnerProfilesBefore = (int) $this->db->query(
             'SELECT COUNT(*) AS cnt FROM profiles WHERE user_id = ?',
             [(int) $noOwner->id]
@@ -362,6 +362,45 @@ final class CarTransferTest extends IntegrationTestCase
             [$flaggedCarId]
         )->first();
         $this->assertIsObject($histRow, 'Expected a NEWOWNER row in cars_hist');
+    }
+
+    /**
+     * #1562: the car goes to the seeded noowner account, not a hardcoded ID.
+     * #1878: reassignment to noowner is not a change of owner, so solddate stays.
+     */
+    #[Group('fast')]
+    public function testSystemAccountReassignmentMovesCarToNoownerAndPreservesSoldDate(): void
+    {
+        $carId = $this->createTestCar($this->testUserId, ['chassis' => 'TR' . uniqid(), 'solddate' => '2020-01-01']);
+
+        $noOwner = $this->db->query("SELECT id FROM users WHERE username = 'noowner'")->first();
+        $this->assertIsObject($noOwner, 'noowner system account missing — run composer migrate (RegisterNoownerAccount)');
+
+        $car = new Car($carId);
+        $car->transfer((int) $noOwner->id, 'Integration test: noowner reassignment preserves solddate', 'NEWOWNER', $this->testUserId);
+
+        $after = $this->db->query('SELECT user_id, solddate FROM cars WHERE id = ?', [$carId])->first();
+        $this->assertSame(
+            (int) $noOwner->id,
+            (int) $after->user_id,
+            'Car must be reassigned to the dynamically-resolved noowner ID, not a hardcoded value'
+        );
+        $this->assertSame(
+            '2020-01-01',
+            $after->solddate,
+            'Reassigning to the seeded noowner account must not clear solddate — it is not a change of owner'
+        );
+
+        $hist = $this->db->query(
+            "SELECT solddate FROM cars_hist WHERE car_id = ? AND operation = 'NEWOWNER'",
+            [$carId]
+        );
+        $this->assertSame(1, $hist->count());
+        $this->assertSame(
+            '2020-01-01',
+            $hist->first()->solddate,
+            'The NEWOWNER history row must carry the preserved solddate for a noowner reassignment'
+        );
     }
 
     /**
@@ -396,7 +435,7 @@ final class CarTransferTest extends IntegrationTestCase
         ]);
 
         $noOwner = $this->db->query("SELECT id FROM users WHERE username = 'noowner'")->first();
-        $this->assertNotNull($noOwner, 'noowner system account must exist for this test');
+        $this->assertIsObject($noOwner, 'noowner system account must exist for this test');
 
         $car = new Car($verifiedCarId);
         $car->transfer((int) $noOwner->id, 'Test reassignment to noowner', 'NEWOWNER', $this->testUserId);

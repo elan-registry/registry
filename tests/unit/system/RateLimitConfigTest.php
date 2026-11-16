@@ -91,6 +91,36 @@ final class RateLimitConfigTest extends TestCase
         $this->assertSame(300, $rateLimits['verification_code_attempt']['total_window']);
     }
 
+    /**
+     * Presence check for the two buckets of the join flow (#1690):
+     * usersc/join.php checks registration_attempt, and the join-failure beacon
+     * checks join_failure_beacon.
+     */
+    public function testRegistrationAttemptAndJoinFailureBeaconActionsArePresent(): void
+    {
+        $this->loadRateLimits('registration_attempt');
+        $this->loadRateLimits('join_failure_beacon');
+    }
+
+    /**
+     * The beacon has its own bucket so that beacon traffic cannot use up the
+     * tight registration_attempt cap for all visitors behind one shared IP
+     * (#1690). Its ceiling must stay higher.
+     */
+    public function testJoinFailureBeaconIpMaxIsHigherThanRegistrationAttemptIpMax(): void
+    {
+        $this->loadRateLimits('registration_attempt');
+        $rateLimits = $this->loadRateLimits('join_failure_beacon');
+        $this->assertArrayHasKey('ip_max', $rateLimits['registration_attempt']);
+        $this->assertArrayHasKey('ip_max', $rateLimits['join_failure_beacon']);
+
+        $this->assertGreaterThan(
+            $rateLimits['registration_attempt']['ip_max'],
+            $rateLimits['join_failure_beacon']['ip_max'],
+            'join_failure_beacon.ip_max must be greater than registration_attempt.ip_max'
+        );
+    }
+
     /** Gates the Brevo webhook auth-failure log line, not the 401 (#2087). */
     public function testBrevoWebhookAuthFailureActionIsConfigured(): void
     {

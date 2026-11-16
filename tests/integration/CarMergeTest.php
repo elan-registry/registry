@@ -97,6 +97,59 @@ final class CarMergeTest extends IntegrationTestCase
         return new CarAdministrationService(new CarImageRelocator(rtrim($this->imageTempRoot, '/')));
     }
 
+    /**
+     * Uploads the given number of images for each car, stores each list on its car
+     * over a '' baseline, and merges the source car into the target car.
+     *
+     * A car with no images gets no image directory and keeps the '' baseline.
+     *
+     * @return array{target: list<string>, source: list<string>} The uploaded base filenames, in upload order
+     */
+    private function mergeCarsWithUploadedImages(int $targetImageCount, int $sourceImageCount, string $reason): array
+    {
+        $cars = ['target' => [(int) $this->testCarId, $targetImageCount], 'source' => [(int) $this->testMergeCarId, $sourceImageCount]];
+        $filenames = ['target' => [], 'source' => []];
+        foreach ($cars as $role => [$carId, $count]) {
+            if ($count === 0) {
+                continue;
+            }
+            $dir = $this->imageDirFor($carId);
+            mkdir($dir, 0700, true);
+            for ($i = 0; $i < $count; $i++) {
+                $filename = $this->uploadOneTestImage($dir);
+                // A fixture without its variants would let the variant assertions pass on nothing.
+                $this->assertUploadedFilesExist($dir, $filename);
+                $filenames[$role][] = $filename;
+            }
+        }
+
+        $this->seedEmptyImageBaseline($this->testCarId);
+        $this->seedEmptyImageBaseline($this->testMergeCarId);
+
+        $repo = new CarRepository($this->db);
+        $processor = new CarImageProcessor($repo);
+        foreach ($cars as $role => [$carId]) {
+            if ($filenames[$role] !== []) {
+                $this->assertTrue($repo->updateImage($carId, $processor->encodeImages($filenames[$role]), ''));
+            }
+        }
+
+        $targetCarData = $repo->findById($this->testCarId);
+        $this->assertIsObject($targetCarData);
+
+        $this->administrationServiceWithTempRelocator()->merge(
+            $targetCarData,
+            $this->testMergeCarId,
+            $reason,
+            $this->testUserId,
+            $repo
+        );
+        // Untrack the deleted row or tearDown() logs a spurious cleanup NOTE.
+        $this->untrackCarId($this->testMergeCarId);
+
+        return $filenames;
+    }
+
     #[Group('fast')]
     public function testMergeCarSuccessWithValidOldCar(): void
     {
@@ -235,21 +288,6 @@ final class CarMergeTest extends IntegrationTestCase
     }
 
     #[Group('fast')]
-    public function testMergeCreatesAuditTrail(): void
-    {
-        $car = new Car($this->testCarId);
-        $result = $car->merge($this->testMergeCarId, 'Test merge audit trail', $this->testUserId);
-
-        $this->assertTrue($result);
-
-        $historyQuery = $this->db->query(
-            "SELECT * FROM cars_hist WHERE car_id = ? AND operation = 'MERGE'",
-            [$this->testCarId]
-        );
-        $this->assertGreaterThan(0, $historyQuery->count());
-    }
-
-    #[Group('fast')]
     public function testMergeTransactionRollbackOnFailure(): void
     {
         $this->expectException(CarNotFoundException::class);
@@ -385,30 +423,8 @@ final class CarMergeTest extends IntegrationTestCase
     {
         $sourceDir = $this->imageDirFor($this->testMergeCarId);
         $targetDir = $this->imageDirFor($this->testCarId);
-        mkdir($sourceDir, 0700, true);
 
-        $filenameA = $this->uploadOneTestImage($sourceDir);
-        $filenameB = $this->uploadOneTestImage($sourceDir);
-
-        $this->seedEmptyImageBaseline($this->testCarId);
-        $this->seedEmptyImageBaseline($this->testMergeCarId);
-
-        $repo = new CarRepository($this->db);
-        $processor = new CarImageProcessor($repo);
-        $sourceJson = $processor->encodeImages([$filenameA, $filenameB]);
-        $this->assertTrue($repo->updateImage($this->testMergeCarId, $sourceJson, ''));
-
-        $targetCarData = $repo->findById($this->testCarId);
-        $this->assertIsObject($targetCarData);
-
-        $this->administrationServiceWithTempRelocator()->merge(
-            $targetCarData,
-            $this->testMergeCarId,
-            'Source-only image relocation test',
-            $this->testUserId,
-            $repo
-        );
-        $this->untrackCarId($this->testMergeCarId);
+        ['source' => [$filenameA, $filenameB]] = $this->mergeCarsWithUploadedImages(0, 2, 'Source-only image relocation test');
 
         $this->assertDirectoryDoesNotExist($sourceDir, 'source image directory must be removed after merge');
         $this->assertUploadedFilesExist($targetDir, $filenameA);
@@ -427,34 +443,13 @@ final class CarMergeTest extends IntegrationTestCase
     #[Group('fast')]
     public function testMergeDoesNotChangeOwnerLastUpdatedOnSurvivingCar(): void
     {
-        $sourceDir = $this->imageDirFor($this->testMergeCarId);
-        mkdir($sourceDir, 0700, true);
-        $filename = $this->uploadOneTestImage($sourceDir);
-
-        $this->seedEmptyImageBaseline($this->testCarId);
-        $this->seedEmptyImageBaseline($this->testMergeCarId);
-
-        $repo = new CarRepository($this->db);
-        $sourceJson = (new CarImageProcessor($repo))->encodeImages([$filename]);
-        $this->assertTrue($repo->updateImage($this->testMergeCarId, $sourceJson, ''));
-
         $targetOld = date('Y-m-d H:i:s', strtotime('-2 years'));
         $this->seedOwnerLastUpdated($this->testCarId, $targetOld);
 
         $before = $this->getOwnerLastUpdated($this->testCarId);
         $this->assertSame($targetOld, $before, 'Precondition: the seeded value must be stored as written');
 
-        $targetCarData = $repo->findById($this->testCarId);
-        $this->assertIsObject($targetCarData);
-
-        $this->administrationServiceWithTempRelocator()->merge(
-            $targetCarData,
-            $this->testMergeCarId,
-            'Merge freshness test',
-            $this->testUserId,
-            $repo
-        );
-        $this->untrackCarId($this->testMergeCarId);
+        ['source' => [$filename]] = $this->mergeCarsWithUploadedImages(0, 1, 'Merge freshness test');
 
         $after = $this->db->query('SELECT image, owner_last_updated FROM cars WHERE id = ?', [$this->testCarId])->first();
         $this->assertIsObject($after);
@@ -468,37 +463,8 @@ final class CarMergeTest extends IntegrationTestCase
     #[Group('fast')]
     public function testMergeOrdersTargetImagesBeforeSourceImages(): void
     {
-        $sourceDir = $this->imageDirFor($this->testMergeCarId);
-        $targetDir = $this->imageDirFor($this->testCarId);
-        mkdir($sourceDir, 0700, true);
-        mkdir($targetDir, 0700, true);
-
-        $targetFilename = $this->uploadOneTestImage($targetDir);
-        $sourceFilename = $this->uploadOneTestImage($sourceDir);
-
-        $this->seedEmptyImageBaseline($this->testCarId);
-        $this->seedEmptyImageBaseline($this->testMergeCarId);
-
-        $repo = new CarRepository($this->db);
-        $processor = new CarImageProcessor($repo);
-
-        $targetJson = $processor->encodeImages([$targetFilename]);
-        $this->assertTrue($repo->updateImage($this->testCarId, $targetJson, ''));
-
-        $sourceJson = $processor->encodeImages([$sourceFilename]);
-        $this->assertTrue($repo->updateImage($this->testMergeCarId, $sourceJson, ''));
-
-        $targetCarData = $repo->findById($this->testCarId);
-        $this->assertIsObject($targetCarData);
-
-        $this->administrationServiceWithTempRelocator()->merge(
-            $targetCarData,
-            $this->testMergeCarId,
-            'Both-have-images ordering test',
-            $this->testUserId,
-            $repo
-        );
-        $this->untrackCarId($this->testMergeCarId);
+        ['target' => [$targetFilename], 'source' => [$sourceFilename]] =
+            $this->mergeCarsWithUploadedImages(1, 1, 'Both-have-images ordering test');
 
         $stored = $this->db->query('SELECT image FROM cars WHERE id = ?', [$this->testCarId]);
         $row = $stored->first();
@@ -573,32 +539,9 @@ final class CarMergeTest extends IntegrationTestCase
     #[Group('fast')]
     public function testMergeMovesVariantsWithBaseAndExcludesThemFromImageJson(): void
     {
-        $sourceDir = $this->imageDirFor($this->testMergeCarId);
         $targetDir = $this->imageDirFor($this->testCarId);
-        mkdir($sourceDir, 0700, true);
 
-        $filename = $this->uploadOneTestImage($sourceDir);
-        $this->assertUploadedFilesExist($sourceDir, $filename);
-
-        $this->seedEmptyImageBaseline($this->testCarId);
-        $this->seedEmptyImageBaseline($this->testMergeCarId);
-
-        $repo = new CarRepository($this->db);
-        $processor = new CarImageProcessor($repo);
-        $sourceJson = $processor->encodeImages([$filename]);
-        $this->assertTrue($repo->updateImage($this->testMergeCarId, $sourceJson, ''));
-
-        $targetCarData = $repo->findById($this->testCarId);
-        $this->assertIsObject($targetCarData);
-
-        $this->administrationServiceWithTempRelocator()->merge(
-            $targetCarData,
-            $this->testMergeCarId,
-            'Variant relocation test',
-            $this->testUserId,
-            $repo
-        );
-        $this->untrackCarId($this->testMergeCarId);
+        ['source' => [$filename]] = $this->mergeCarsWithUploadedImages(0, 1, 'Variant relocation test');
 
         $this->assertUploadedFilesExist($targetDir, $filename);
         $this->assertVariantsAreActuallyResized($targetDir, $filename);

@@ -272,10 +272,6 @@ after an item is written.
 
 - [ ] The regex needs the exact `email(...['tags'=>...]+$replyOpts)` text, and the constant test is a tautology. Assert `sendinblueTagFromFile(<endpoint path>) === OWNER_CONTACT_EMAIL_TAG`, and add a mock-Brevo send in `SendOwnerEmailSendPolicyTest` that checks the plugin row `tags` (found in /finish-milestone v2.30.9)
 
-### `tests/unit/regression/JoinFailureReportUsesDedicatedRateLimitBucketRegressionTest.php`
-
-- [ ] Rename `testExactlyOneConfigEntryExistsPerAction`. It asserts presence, not uniqueness (from #2169)
-
 ### `tests/unit/security/AdminAjaxGuardTest.php`
 
 - [ ] Move `significantTokens()` / `tokensCallFunction()` into one `tests/Support/` helper, shared with the sibling pins from #2161 (from #2169)

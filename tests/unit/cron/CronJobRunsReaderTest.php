@@ -21,7 +21,7 @@ require_once __DIR__ . '/../../Support/CronJobRunsReaderFakeDatabase.php';
  * CronJobEnabledState outcomes plus the three lastRunAt shapes a caller can
  * receive (missing/unreadable row, "never run" row, and a parsed timestamp)
  * in a single read. `state()` and `lastRunAt()` are thin wrappers around
- * `status()`. tests/integration/CronJobRunsReaderDatabaseTest.php covers
+ * `status()`. tests/integration/CronJobRunsIntegrationTest.php covers
  * them. In this file, logging is asserted for `status()`: only the two fault
  * cases (MISSING, UNREADABLE) log under LOG_CATEGORY_CRON_JOB_FAILURE —
  * DISABLED and ENABLED are routine display reads and must stay silent (see

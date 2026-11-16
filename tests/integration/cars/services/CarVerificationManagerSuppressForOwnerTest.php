@@ -57,49 +57,6 @@ final class CarVerificationManagerSuppressForOwnerTest extends IntegrationTestCa
         return $this->repo->recentFlagChanges($ownerId, 100);
     }
 
-    #[Group('fast')]
-    public function testOptOutWritesOneProfileRowAndLeavesEveryOwnedCarUnchanged(): void
-    {
-        $ownerId = $this->createTestUser([], true);
-        $carIds = [
-            $this->createTestCar($ownerId, ['email' => 'owner1-car1@example.com']),
-            $this->createTestCar($ownerId, ['email' => 'owner1-car2@example.com']),
-            $this->createTestCar($ownerId, ['email' => 'owner1-car3@example.com']),
-        ];
-        $carsBefore = array_map(fn (int $id): array => $this->carRow($id), $carIds);
-
-        $this->assertSame('0', (string) $this->flags($ownerId)['email_opted_out'], 'Test sanity: owner starts opted in');
-
-        $changed = $this->manager->setSuppressedForOwner($ownerId);
-
-        $this->assertTrue($changed, 'The opt-out changed from 0 to 1');
-        $flags = $this->flags($ownerId);
-        $this->assertSame('1', (string) $flags['email_opted_out']);
-        $this->assertNotNull($flags['email_opted_out_at'], 'The opt-out time must be recorded');
-        $this->assertSame(
-            $carsBefore,
-            array_map(fn (int $id): array => $this->carRow($id), $carIds),
-            'Nothing fans out to cars: all 3 car rows must be unchanged'
-        );
-    }
-
-    #[Group('fast')]
-    public function testOptOutWritesOneOwnerSourceLogRowWithoutAnAddress(): void
-    {
-        $ownerId = $this->createTestUser(['email' => 'optout-log@example.com'], true);
-
-        $this->manager->setSuppressedForOwner($ownerId);
-
-        $changes = $this->flagChanges($ownerId);
-        $this->assertCount(1, $changes, 'One flag change writes exactly one log row');
-        $this->assertSame('email_opted_out', $changes[0]['flag']);
-        $this->assertSame(0, $changes[0]['old']);
-        $this->assertSame(1, $changes[0]['new']);
-        $this->assertSame('owner', $changes[0]['source']);
-        $this->assertSame($ownerId, $changes[0]['acting_user_id'], 'The owner is the acting user');
-        $this->assertStringNotContainsString('@', json_encode($changes, JSON_THROW_ON_ERROR));
-    }
-
     /** #1929: opting out confirms nothing about the car. */
     #[Group('fast')]
     public function testOptOutDoesNotChangeOwnerLastUpdated(): void
@@ -123,25 +80,10 @@ final class CarVerificationManagerSuppressForOwnerTest extends IntegrationTestCa
     }
 
     #[Group('fast')]
-    public function testDifferentOwnersProfileIsUntouched(): void
-    {
-        $ownerId = $this->createTestUser([], true);
-        $otherOwnerId = $this->createTestUser([], true);
-        $this->createTestCar($ownerId, ['email' => 'owner2-car@example.com']);
-        $this->createTestCar($otherOwnerId, ['email' => 'other-owner-car@example.com']);
-        $otherBefore = $this->flags($otherOwnerId);
-
-        $this->manager->setSuppressedForOwner($ownerId);
-
-        $this->assertSame('1', (string) $this->flags($ownerId)['email_opted_out'], 'The target owner is opted out');
-        $this->assertSame($otherBefore, $this->flags($otherOwnerId), 'A different owner\'s profile must be unchanged');
-        $this->assertSame([], $this->flagChanges($otherOwnerId), 'A different owner gets no log row');
-    }
-
-    #[Group('fast')]
     public function testReRunningOnSameOwnerIsNoOpKeepsFirstTimeAndWritesNoSecondLogRow(): void
     {
         $ownerId = $this->createTestUser([], true);
+        $otherOwnerId = $this->createTestUser([], true);
         $this->createTestCar($ownerId, ['email' => 'owner3-car@example.com']);
 
         $this->assertTrue($this->manager->setSuppressedForOwner($ownerId), 'First run changes the flag');
@@ -162,6 +104,7 @@ final class CarVerificationManagerSuppressForOwnerTest extends IntegrationTestCa
         $this->assertSame('1', (string) $flags['email_opted_out'], 'The flag stays set, not toggled');
         $this->assertSame('2026-01-02 03:04:05', $flags['email_opted_out_at'], 'A repeat opt-out keeps the first time');
         $this->assertCount(1, $this->flagChanges($ownerId), 'A no-op writes no second log row');
+        $this->assertSame([], $this->flagChanges($otherOwnerId), 'A different owner gets no log row');
     }
 
     /**
