@@ -4,24 +4,47 @@
 
     var cfg = window.editCarConfig;
 
+    // Several async paths (photo hydration, model repopulation, save) can each
+    // need the button off; it re-enables only when none of them still does.
+    const submitBtn = document.getElementById('submit');
+    const submitBlockers = new Set();
+    function blockSubmit(reason) {
+        submitBlockers.add(reason);
+        submitBtn.disabled = true;
+    }
+    function unblockSubmit(reason) {
+        submitBlockers.delete(reason);
+        if (submitBlockers.size === 0) {
+            submitBtn.disabled = false;
+        }
+    }
+
+    // Field values when the page became ready; null until then. The
+    // unsaved-changes guard compares against it.
+    let savedSnapshot = null;
+    function formSnapshot() {
+        return JSON.stringify(
+            ['#year', '#model', '#chassis', '#color', '#engine', '#purchasedate', '#solddate', '#comments']
+                .map(function(selector) {
+                    // Until the list loads, #model is empty; the saved model is
+                    // the value the owner sees as unchanged.
+                    return selector === '#model' && savedModelPending ? cfg.model : $(selector).val();
+                })
+        );
+    }
+    function takeSnapshot() {
+        savedSnapshot = formSnapshot();
+    }
+    // Set just before a redirect that follows a completed request, so the
+    // unsaved-changes guard does not ask about input the server already has.
+    let leaveAllowed = false;
+
+    // Edit mode only: true until the saved model is selected in the loaded list.
+    let savedModelPending = Boolean(cfg.isUpdate);
+
     $(document).ready(function() {
         const car_id = $('#car_id').val();
         $('#message').addClass('d-none');
-
-        // Several async paths (photo hydration, model repopulation, save) can each
-        // need the button off; it re-enables only when none of them still does.
-        const submitBtn = document.getElementById('submit');
-        const submitBlockers = new Set();
-        function blockSubmit(reason) {
-            submitBlockers.add(reason);
-            submitBtn.disabled = true;
-        }
-        function unblockSubmit(reason) {
-            submitBlockers.delete(reason);
-            if (submitBlockers.size === 0) {
-                submitBtn.disabled = false;
-            }
-        }
 
         const solddateRow = document.getElementById('solddate-row');
         const solddateInput = document.getElementById('solddate');
@@ -205,6 +228,25 @@
             }
         });
 
+        // Removal of a stored photo posts to save.php at once, so only new
+        // (non-LOCAL) photos are unsaved changes.
+        function isDirty() {
+            const fieldsChanged = savedSnapshot !== null && formSnapshot() !== savedSnapshot;
+            const hasNewPhotos = pond.getFiles().some(function(item) {
+                return item.origin !== FilePond.FileOrigin.LOCAL;
+            });
+            return fieldsChanged || hasNewPhotos;
+        }
+
+        // The browser shows its own text; a custom message is ignored.
+        function warnBeforeUnload(event) {
+            if (!leaveAllowed && isDirty()) {
+                event.preventDefault();
+                event.returnValue = '';
+            }
+        }
+        window.addEventListener('beforeunload', warnBeforeUnload);
+
         submitBtn.addEventListener('click', function(e) {
             e.stopPropagation();
             e.preventDefault();
@@ -245,8 +287,7 @@
             const handleProcessError = function(err) {
                 console.error('[edit.php] Photo processing error:', err);
                 $('#message').removeClass('d-none').html('<div class="alert alert-danger">An error occurred processing the photos. Please try again.</div>');
-                unblockSubmit('saving');
-                submitBtn.textContent = submitBtn.dataset.label;
+                restoreSaveButton();
             };
 
             const submission = newFileIds.length > 0
@@ -255,7 +296,26 @@
             submission.catch(handleProcessError);
         });
 
-        async function submitCarForm() {
+        // The button says "Add Car" or "Update Car", not "Save".
+        function loggedOutMessage() {
+            return 'You are logged out. Log in again in a new tab, then select ' + submitBtn.dataset.label + ' again.';
+        }
+        function stalePageMessage() {
+            return 'This page is out of date. Your changes are still on this page. Select ' + submitBtn.dataset.label +
+                ' again. If this message shows again, copy your comments, then reload the page.';
+        }
+
+        // save.php also sends 403 when the owner may not change the car. Only a
+        // token rejection can succeed on a retry.
+        async function isTokenRejection(response) {
+            if (response.status !== 403) {
+                return false;
+            }
+            const body = await response.clone().json().catch(function() { return {}; });
+            return body.message === 'Invalid CSRF token';
+        }
+
+        function buildCarFormData() {
             const formData = new FormData();
             formData.append('action', $('#action').val());
             formData.append('csrf', $('#csrf').val());
@@ -296,25 +356,85 @@
                 formData.append('file[]', new Blob([]), 'blob');
             }
 
+            return formData;
+        }
+
+        // The form data is built again on each send, so a retry carries the new token.
+        function postCarForm() {
+            return fetch(cfg.urlRoot + 'app/api/cars/save.php', {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                body: buildCarFormData()
+            });
+        }
+
+        /**
+         * Get the session's current token and write it to #csrf. Each new
+         * ElanRegistryAPI reads #csrf, so the photo calls use it too.
+         * @returns {Promise<void>}
+         * @throws {ApiError} When the request fails; status 401 when the session has ended
+         * @throws {Error} When the response has no token
+         */
+        async function refreshCsrfToken() {
+            const data = await new ElanRegistryAPI().get(cfg.urlRoot + 'app/api/shared/csrf-token.php');
+            if (!data.csrf) {
+                throw new Error('Token response has no token');
+            }
+            $('#csrf').val(data.csrf);
+        }
+
+        function restoreSaveButton() {
+            unblockSubmit('saving');
+            submitBtn.textContent = submitBtn.dataset.label;
+        }
+
+        // Fields and photos stay on the page, so the owner can save again.
+        function showSaveProblem(message) {
+            restoreSaveButton();
+            $('#message').removeClass('d-none').html('<div class="alert alert-danger" role="alert">' + message + '</div>');
+            document.getElementById('message').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        async function submitCarForm() {
             try {
-                const response = await fetch(cfg.urlRoot + 'app/api/cars/save.php', {
-                    method: 'POST',
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
-                    body: formData
-                });
+                let response = await postCarForm();
+
+                // A token rejection means the session changed after the page
+                // loaded, for example a new login in another tab. Send once more
+                // with the current token; a second rejection is final.
+                if (await isTokenRejection(response)) {
+                    try {
+                        await refreshCsrfToken();
+                    } catch (err) {
+                        console.error('[car-edit] Token refresh failed:', err);
+                        showSaveProblem(err.status === 401 ? loggedOutMessage() : stalePageMessage());
+                        return;
+                    }
+                    response = await postCarForm();
+                    if (await isTokenRejection(response)) {
+                        showSaveProblem(stalePageMessage());
+                        return;
+                    }
+                }
+
+                if (response.status === 401) {
+                    showSaveProblem(loggedOutMessage());
+                    return;
+                }
+
                 const data = await response.json();
 
                 if (data.success === true) {
-                    window.location = cfg.urlRoot + 'app/owner/cars/details.php?car_id=' + data.cardetails.id;
+                    const carId = data.cardetails.id;
+                    leaveAllowed = true;
+                    window.location = cfg.urlRoot + 'app/owner/cars/details.php?car_id=' + carId;
                 } else {
-                    unblockSubmit('saving');
-                    submitBtn.textContent = submitBtn.dataset.label;
+                    restoreSaveButton();
                     displayValidationErrors(data);
                 }
             } catch (err) {
                 console.error('[car-edit] submitCarForm failed:', err);
-                unblockSubmit('saving');
-                submitBtn.textContent = submitBtn.dataset.label;
+                restoreSaveButton();
                 $('#message').removeClass('d-none').html('<div class="alert alert-danger">An error occurred. Please try again.</div>');
             }
         }
@@ -373,49 +493,13 @@
         }
         // Pre-populate dropdown menus if we are updating a car
         if (cfg.isUpdate) {
-            const year = cfg.year;
-            const modelValue = cfg.model;
-
             // Await the model list instead of guessing its load time: a slow
             // models.php left #model empty and save.php rejected the form (#2295).
-            // ModelLoader swallows a models.php failure and resolves with an empty
-            // list rather than rejecting, so a failed load must be detected here by
-            // checking the option list, not by catching a rejection.
+            // The 'models' blocker stays until applySavedModel() runs, so a
+            // failed load cannot save an empty model.
             blockSubmit('models');
-            $('#year').val(year);
-            onYearChange().then(function() {
-                // Only the placeholder option means the list for this year never
-                // loaded — ModelLoader swallowed the failure. A saved model that is
-                // simply not valid for this year is a different, recoverable case:
-                // the list did load, so #model stays enabled for the owner to pick
-                // a model, rather than locking Save with no way out.
-                if ($('#model option').length <= 1) {
-                    throw new Error('Model list for year ' + year + ' failed to load');
-                }
-                $('#model').val(modelValue).trigger('change');
-                if ($('#model').val() !== modelValue) {
-                    console.warn('[edit.php] Saved model "' + modelValue + '" is not valid for year ' + year);
-                    // .val(modelValue) with no matching option leaves selectedIndex
-                    // -1, so .val() reads back null and a later save would send the
-                    // string "null" instead of an empty selection. Clear it explicitly
-                    // so the owner sees an unselected dropdown, not a stuck one.
-                    $('#model').val('').trigger('change');
-                    $('#message').removeClass('d-none').html(
-                        '<div class="alert alert-warning">The saved model is not valid for this year. ' +
-                        'Please select a model.</div>'
-                    );
-                }
-                $('#chassis').trigger('blur');
-                unblockSubmit('models');
-            }).catch(function(err) {
-                console.error('[edit.php] Model repopulation failed:', err);
-                $('#message').removeClass('d-none').html(
-                    '<div class="alert alert-warning">The model list could not be loaded. ' +
-                    'Please refresh the page before making changes to avoid losing your saved model.</div>'
-                );
-                // 'models' blocker stays set on purpose: saving now would send an
-                // empty model, which save.php rejects.
-            });
+            $('#year').val(cfg.year);
+            onYearChange();
 
             // Show all fields
             $('#color, #engine, #purchasedate, #solddate, #comments').prop('disabled', false);
@@ -425,6 +509,9 @@
             $('#car_id').text($('#car_id').val());
             $('#carHeader').html('<h2><strong>Update car</strong><h2>');
         }
+        // Taken now, not after the model list loads: input typed while the
+        // list loads must count as a change.
+        takeSnapshot();
     });
 
     // Car Validation
@@ -455,7 +542,52 @@
      */
     $('#year').change(onYearChange);
 
+    $('#model-load-retry').on('click', onYearChange);
+
+    /**
+     * Show the model-list error with its Retry button and block Save, because
+     * a save without a model is rejected by save.php.
+     */
+    function showModelLoadError() {
+        $('#model').prop('disabled', true);
+        $('#model-load-error').removeClass('d-none');
+        blockSubmit('models');
+    }
+
+    /**
+     * Select the car's saved model in the loaded list (Edit mode) and unblock Save
+     */
+    function applySavedModel() {
+        const year = cfg.year;
+        const modelValue = cfg.model;
+        // The code below can clear an invalid saved model. That is not an owner
+        // change, so a form that was clean stays clean.
+        const wasClean = formSnapshot() === savedSnapshot;
+        savedModelPending = false;
+
+        $('#model').val(modelValue).trigger('change');
+        if ($('#model').val() !== modelValue) {
+            console.warn('[edit.php] Saved model "' + modelValue + '" is not valid for year ' + year);
+            // .val(modelValue) with no matching option leaves selectedIndex
+            // -1, so .val() reads back null and a later save would send the
+            // string "null" instead of an empty selection. Clear it explicitly
+            // so the owner sees an unselected dropdown, not a stuck one.
+            $('#model').val('').trigger('change');
+            $('#message').removeClass('d-none').html(
+                '<div class="alert alert-warning">The saved model is not valid for this year. ' +
+                'Please select a model.</div>'
+            );
+        }
+        $('#chassis').trigger('blur');
+
+        if (wasClean) {
+            takeSnapshot();
+        }
+        unblockSubmit('models');
+    }
+
     async function onYearChange() {
+        $('#model-load-error').addClass('d-none');
         validYear = $('#year option:selected').val();
         $('#year_icon').toggleClass('fa-thumbs-up', Boolean(validYear)).toggleClass('fa-thumbs-down', !Boolean(validYear)).toggleClass('is-valid', Boolean(validYear)).toggleClass('is-invalid', !Boolean(validYear));
         $('#year').toggleClass('is-valid', Boolean(validYear)).toggleClass('is-invalid', !Boolean(validYear));
@@ -478,7 +610,13 @@
 
         // Load model dropdown for selected year
         if (validYear) {
-            await ModelLoader.populateModelDropdown(validYear, $('#model'));
+            try {
+                await ModelLoader.populateModelDropdown(validYear, $('#model'));
+            } catch (err) {
+                console.error('[car-edit] Model list could not be loaded:', err);
+                showModelLoadError();
+                return;
+            }
 
             //Display appropriate chassis text
             if (validYear < 1970) {
@@ -502,6 +640,14 @@
             if ($('#chassis').val() && $('#action').val() === 'updateCar') {
                 $('#chassis').trigger('blur');
             }
+
+            if (savedModelPending) {
+                applySavedModel();
+            } else {
+                unblockSubmit('models');
+            }
+        } else if (!savedModelPending) {
+            unblockSubmit('models');
         }
     }
     // Validate Model
@@ -680,6 +826,7 @@
 
     // Handle success modal OK button
     $('#transferSuccessOkBtn').click(function() {
+        leaveAllowed = true;
         window.location.href = cfg.urlRoot + 'app/owner/cars/';
     });
 

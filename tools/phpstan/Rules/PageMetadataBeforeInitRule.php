@@ -21,9 +21,11 @@ use PHPStan\Rules\RuleErrorBuilder;
 
 /**
  * A page must assign $pageTitle and $pageDescription before it requires
- * users/init.php (#1432, #1484). The loader reads isset($pageTitle) once, at
- * init time. A later assignment has no effect and the page shows the site-wide
- * defaults.
+ * users/init.php (#1432, #1484). The loader checks isset($pageTitle) once, at
+ * init time, and sets a fallback title when it is not set. The value set
+ * before init is the page's fallback. A page may assign the value again after
+ * init and before elanregistry_prep.php, because the header reads it at render
+ * time.
  *
  * A page is a file under app/, docs/, or error/ (or a listed root/usersc file)
  * that calls securePage(). Action handlers, scripts, and API endpoints are not
@@ -134,7 +136,8 @@ final class PageMetadataBeforeInitRule implements Rule
             if ($line >= $initLine) {
                 $errors[] = RuleErrorBuilder::message(sprintf(
                     'Assign $%s before the require_once of users/init.php (line %d). '
-                    . 'The loader reads it at init time, so a later assignment has no effect.',
+                    . 'The value set before init is the fallback for the page. To change it per request, '
+                    . 'assign it again after init and before elanregistry_prep.php (elanregistry_overrides section 6).',
                     $variable,
                     $initLine
                 ))

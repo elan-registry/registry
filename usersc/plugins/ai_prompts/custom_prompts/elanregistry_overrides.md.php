@@ -198,14 +198,13 @@ See `docs/development/CODING_STANDARDS.md` and `docs/development/STRICT_TYPE_HAN
 ## 6. Page titles and meta descriptions: set `$pageTitle` and `$pageDescription` before init.php
 
 Every page file should override the generic site-wide `<title>` and meta description with page-specific values.
-ElanRegistry pages can set two variables — `$pageTitle` and `$pageDescription` — which override defaults
-and populate both the HTML `<title>` tag and social-share metadata (og:title, twitter:title, og:description, twitter:description).
-
-**The critical requirement: both variables MUST be assigned before the file calls `require_once '.../init.php'`.
-If set after, they have no effect.**
+ElanRegistry pages set two variables, `$pageTitle` and `$pageDescription`. They populate the HTML `<title>` tag
+and the social-share metadata (og:title, twitter:title, og:description, twitter:description).
 
 **Rule:** Every page file (any file that calls `securePage()` and renders a page, not action handlers or API
-endpoints) should have `$pageTitle` and `$pageDescription` set at the top, before `require_once`.
+endpoints) assigns `$pageTitle` and `$pageDescription` as string literals at the top, before
+`require_once '.../init.php'`. The PHPStan rule `PageMetadataBeforeInitRule` enforces only the order: each
+variable has an assignment before init. It does not check that the value is a string literal.
 
 ```php
 // ✅ CORRECT — set before init.php
@@ -213,34 +212,74 @@ $pageTitle = 'Descriptive Title — Key Terms';
 $pageDescription = 'One or two sentences summarizing the page for search snippets and social-share previews.';
 
 require_once '../../users/init.php';
-
-// ❌ WRONG — too late, loader already resolved the fallback title
-require_once '../../../users/init.php';
-// ...
-$pageTitle = 'Some Title'; // Too late — loader.php only checks isset() once at init time
 ```
 
-**Why this matters:** `users/includes/loader.php` runs synchronously when init.php is required and checks
-`isset($pageTitle)` exactly once. If the variable does not exist at that moment, the loader sets a fallback
-title and never checks again. The meta description and social tags derive from both variables via
-`usersc/includes/head_tags.php`, which runs later when the header template renders. Three admin pages today
-(tracked separately in #1430) suffer from this bug — they set the title and description after requiring
-init.php, so users and search engines see the generic site title instead. This is a real timing pitfall that
-exists in production.
+**Why before init:** `users/includes/loader.php` runs when the page requires init.php. It checks
+`isset($pageTitle)` once. If the variable does not exist, the loader sets a fallback title from
+`$pageTitleKey` or the `pages` table, or an empty string. The value that the page sets before init is the
+page's fallback.
 
-**`$pageTitle` must always be a hardcoded string literal, never built from request or database data.**
-`users/template/header1_must_include.php` outputs `$pageTitle` into `<title>` **without** `htmlspecialchars()`
-(unlike every other use of these two variables, which is escaped). Every page in this convention sets a plain
-literal, so this is safe today — but assigning `$pageTitle` from `$_GET`, `$_POST`, or a DB column would open
-an XSS hole in the `<title>` tag specifically. Never do that.
+**When the values are read:** the header reads `$pageTitle` and `$pageDescription` at render time, not at init
+time. `users/includes/template/header1_must_include.php` first requires `usersc/includes/head_tags.php`, which
+reads both variables for the meta and social tags, and later echoes `$pageTitle` into `<title>`. Both files run inside
+the page's second require, `require_once '.../elanregistry_prep.php'`
+(→ `users/includes/template/prep.php` → the active template's `header.php` →
+`header1_must_include.php` → `head_tags.php`). So an assignment after init and
+before `elanregistry_prep.php` changes the rendered values. An assignment after `elanregistry_prep.php` has no
+effect.
+
+**Per-record titles:** a page may assign `$pageTitle` and `$pageDescription` again after init and before
+`elanregistry_prep.php`, when the values depend on a loaded record. Keep the before-init literal as the
+fallback. Obey these rules:
+
+- Build the value with a closed-set builder. The builder uses only validated fields (for example a year in a
+  fixed range, a model from a fixed list, a chassis number that matches a strict pattern). It emits no
+  HTML-special characters (`<`, `>`, `"`, `'`, `&`).
+- Never put request data or owner free text (nickname, notes, color) in the value.
+- Escape `$pageTitle` with `htmlspecialchars()` in the page. The upstream header echoes `$pageTitle` **without**
+  escaping (unlike every other use of these two variables). For the builder's character set the escape changes
+  nothing, so `head_tags.php` does not double-encode `og:title`.
+
+```php
+// app/owner/cars/details.php
+$pageTitle = 'Car Details';                 // fallback, before init
+// ...
+require_once '../../../users/init.php';
+// securePage(), load the car, redirect when it does not exist
+$pageTitle = htmlspecialchars(CarView::buildPageTitle($carData, $modelKnown), ENT_QUOTES, 'UTF-8');
+$pageDescription = CarView::buildPageDescription($carData, $modelKnown);
+require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
+```
+
+**Never assign `$pageTitle` from `$_GET`, `$_POST`, or a raw DB column.** That opens an XSS hole in the
+`<title>` tag. `docs/pdf-viewer.php` sets a per-document title from a closed dictionary before init. That is
+the other approved pattern.
 
 **Actionable instruction:** Whenever a change touches a page file (a file that calls `securePage()` to render
-a page, not an action handler or parser), check whether it already has `$pageTitle` and `$pageDescription` set.
-If it doesn't, add them as part of the PR's scope — as hardcoded literals only. This is a low-effort,
-high-impact improvement that improves SEO, search previews, and social-media sharing for every page.
+a page, not an action handler or parser), check whether it already sets `$pageTitle` and `$pageDescription`.
+If it does not, add them as string literals before init as part of the PR's scope. This improves SEO, search
+previews, and social-media sharing for every page.
 
-See `docs/reference/paint-colors.php` for the canonical correct example — this pattern was rolled out to
-11 pages as part of issue #1432.
+See `docs/reference/paint-colors.php` for the standard example. Issue #1432 rolled out this pattern to 11 pages.
+
+**`$pageCanonicalUrl` sets the canonical URL.** `head_tags.php` writes one value to `<link rel="canonical">`,
+`og:url`, and `twitter:url`. The default is the origin plus the script path, with no query string. A final
+`index.php` segment becomes its directory (`/app/owner/cars/index.php` → `/app/owner/cars/`). So tracking
+parameters and crafted query strings never reach the canonical.
+
+A page sets `$pageCanonicalUrl` before `elanregistry_prep.php` only when a query parameter identifies the
+resource. Build it with `ElanRegistry\CanonicalUrl::build()` from validated values only:
+
+```php
+// app/owner/cars/details.php — car_id identifies the car. $host is empty when
+// the request's host is not trusted, so fall back to getBaseUrl().
+$origin = !empty($host) ? $current_origin : getBaseUrl();
+$pageCanonicalUrl = CanonicalUrl::build($origin, $php_self, ['car_id' => (int) $carID]);
+```
+
+To find the pages that set it, run `grep -rn 'pageCanonicalUrl =' app docs`. Every other page uses the
+default. A login-gated or `noindex` page that reads query parameters keeps the default canonical. Do not set it
+from `$current_url` or `$request_uri`. They include the raw query string.
 
 **A third variable, `$pageRobots`, follows the same before-`init.php` convention** (introduced in #1371) for
 pages that should carry a non-default `<meta name="robots">` value — e.g. `$pageRobots = 'noindex, follow';`
@@ -250,7 +289,7 @@ just reads its live value with a plain `!empty($pageRobots) ? $pageRobots : 'ind
 style as the existing `$pageDescription` fallback). The mechanism differs from `$pageTitle`, but the
 before-`init.php` requirement still applies in practice: `head_tags.php` doesn't render as part of `init.php`
 itself — it's reached via the page's *second* require, `require_once '.../elanregistry_prep.php'`
-(→ `users/includes/template/prep.php` → the active template's `header.php` → `head_tags.php`). Every page in
+(the include chain is in "When the values are read" above). Every page in
 this convention issues that require immediately after `init.php`, so setting `$pageRobots` any time before it
 — same as `$pageTitle`/`$pageDescription` — is what actually matters; "before `init.php`" is the simple,
 safe-by-construction rule to follow given that adjacency.

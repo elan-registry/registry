@@ -54,6 +54,9 @@
   "keywords": [],
   "author": "",
   "license": "AGPL-3.0-only",
+  "engines": {
+    "node": ">=20"
+  },
   "type": "commonjs",
   "bugs": {
     "url": "https://github.com/elan-registry/registry/issues"

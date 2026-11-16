@@ -1,3 +1,4 @@
-# Block all crawlers from the test subdomain
+# Test subdomain: crawl is allowed so that Google sees the X-Robots-Tag
+# noindex header from .htaccess (#2246). Do not add Disallow: /.
 User-agent: *
-Disallow: /
+Allow: /

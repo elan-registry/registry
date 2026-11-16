@@ -42,15 +42,16 @@ paths:
 
 ## Car hero card buttons
 
-The hero card renders one of five contexts. `app/views/cars/_car_hero_actions.php`
+The hero card renders one of six contexts. `app/views/cars/_car_hero_actions.php`
 picks the context in its `switch`. Read that file for the current button sets.
 
 | Context | User | Primary goal | Actions rendered |
 | --- | --- | --- | --- |
 | `owner_detail` | Owner viewing their car | Verify public display | Update Car |
-| `admin_detail` | Admin or editor viewing any car | Manage registry data | Admin Edit Car, Contact Owner |
+| `admin_detail` | Admin or editor viewing any car | Manage registry data | Admin Edit Car, Contact Owner (on a `noowner` car: status line "This car has no current owner.", Admin Edit Car only) |
 | `visitor_detail` | Logged-in enthusiast | Learn about / contact | Contact Owner |
-| `guest_detail` | Anonymous visitor | Browse | Log in to contact owner |
+| `no_owner_detail` | Logged-in enthusiast on a `noowner` car | Contact the registry | Status line "This car has no current owner.", Contact the Registry |
+| `guest_detail` | Anonymous visitor | Browse | Log in to contact owner (on a `noowner` car: status line only) |
 | `owner_account` | Owner on their own account page | Manage their car | Update Car, View Details |
 
 - Partials take a `$context` string or an `$options` array. Use the form that

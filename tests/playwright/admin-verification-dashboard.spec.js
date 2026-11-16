@@ -478,11 +478,7 @@ test.describe('Admin Verification Dashboard', () => {
         const response = await page.goto(`${TAB_URL}&status=${marker}&show=100`, { waitUntil: 'networkidle' });
         expect(response.status()).toBe(200);
         expect(await page.locator('body').textContent()).not.toContain('Fatal error');
-        // The page head echoes the request URL in its canonical and social
-        // meta tags (upstream, escaped). The tab prints no part of the value.
-        const bodyHtml = (await response.text()).split(/<body/i)[1] ?? '';
-        expect(bodyHtml.length, 'the page has a body').toBeGreaterThan(0);
-        expect(bodyHtml, 'the unknown value is not in the page body').not.toContain(marker);
+        expect(await response.text(), 'the unknown value is not in the page').not.toContain(marker);
 
         await expect(page.locator('a.filter-pill[data-status="eligible"]')).toHaveClass(/active/);
         await expect(page.locator('a.filter-pill.active')).toHaveCount(1);

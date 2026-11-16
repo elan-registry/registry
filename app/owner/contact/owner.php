@@ -7,6 +7,8 @@
  * @author Elan Registry Admin
  * @copyright 2025
  */
+use ElanRegistry\AppConstants;
+use ElanRegistry\Car\CarRepository;
 use ElanRegistry\LogCategories;
 use ElanRegistry\OwnerView;
 
@@ -22,17 +24,12 @@ if ($carID <= 0) {
     Redirect::to('/');
 }
 
-$carQuery = $db->get('cars', ['id', '=', $carID]);
-if ($carQuery === false) {
-    logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "contact/owner.php: DB error looking up car_id=$carID");
-    Redirect::to('/');
-}
-$carResults = $carQuery->results();
-if (empty($carResults)) {
+$carRow = (new CarRepository(dbi()))->findById($carID);
+if ($carRow === null) {
     Redirect::to('/');
 }
 
-$ownerQuery = $db->get('users', ['id', '=', (int) $carResults[0]->user_id]);
+$ownerQuery = $db->get('users', ['id', '=', (int) $carRow->user_id]);
 if ($ownerQuery === false) {
     logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "contact/owner.php: DB error looking up owner for car_id=$carID");
     Redirect::to('/');
@@ -42,6 +39,13 @@ if (empty($ownerResults)) {
     Redirect::to('/');
 }
 $ownerData = $ownerResults[0];
+
+// The noowner system account has an undeliverable address (ADR-010), so the
+// form would only lead to a refused send (#2505).
+if ($ownerData->username === AppConstants::NOOWNER_USERNAME) {
+    usWarning('This car has no current owner. Use the Feedback form to contact the registry.');
+    Redirect::to($us_url_root . 'app/owner/cars/details.php?car_id=' . $carID);
+}
 
 $from = [
     'id'    => $user->data()->id,

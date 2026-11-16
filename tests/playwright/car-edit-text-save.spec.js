@@ -4,6 +4,7 @@
 
 const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn } = require('./auth-helper.js');
+const { postUpdateCar, routeModels, attemptLeave, giveUserGesture } = require('./car-edit-helpers.js');
 const { CAR_ID_STANDARD, CAR_ID_WITH_SPECIAL_CHARS, CAR_ID_WITH_HISTORY } = require('./fixtures.js');
 
 /**
@@ -625,28 +626,8 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
 
         expect(page.url(), 'edit.php must render for an authenticated session, not redirect to login').not.toContain('login');
 
-        const csrfToken = await page.locator('#csrf').inputValue();
-        expect(csrfToken, 'edit.php must render a #csrf hidden field to obtain a token from').toBeTruthy();
-
         // Do not mock fetchImages: a mock can lose the race with the POST reload.
-        await Promise.all([
-            page.waitForLoadState('domcontentloaded'),
-            page.evaluate(({ csrf, carId }) => {
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.action = window.location.pathname;
-                const fields = { csrf, action: 'updateCar', car_id: String(carId) };
-                for (const [name, value] of Object.entries(fields)) {
-                    const input = document.createElement('input');
-                    input.type = 'hidden';
-                    input.name = name;
-                    input.value = value;
-                    form.appendChild(input);
-                }
-                document.body.appendChild(form);
-                form.submit();
-            }, { csrf: csrfToken, carId: CAR_ID_WITH_HISTORY }),
-        ]);
+        await postUpdateCar(page, CAR_ID_WITH_HISTORY);
 
         await page.waitForFunction(
             () => typeof window.FilePond !== 'undefined' && document.querySelector('.filepond--root') !== null,
@@ -780,9 +761,6 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
 
         expect(page.url(), 'edit.php must render for an authenticated session, not redirect to login').not.toContain('login');
 
-        const csrfToken = await page.locator('#csrf').inputValue();
-        expect(csrfToken, 'edit.php must render a #csrf hidden field to obtain a token from').toBeTruthy();
-
         // Set the delay before the POST, so it is in effect when the ready handler runs.
         await page.route('**/app/api/cars/models.php', async (route) => {
             await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -791,27 +769,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
 
         const navigationStart = Date.now();
 
-        await Promise.all([
-            page.waitForLoadState('domcontentloaded'),
-            page.evaluate(({ csrf, carId }) => {
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.action = window.location.pathname;
-                const fields = { csrf, action: 'updateCar', car_id: String(carId) };
-                for (const [name, value] of Object.entries(fields)) {
-                    const input = document.createElement('input');
-                    input.type = 'hidden';
-                    input.name = name;
-                    input.value = value;
-                    form.appendChild(input);
-                }
-                document.body.appendChild(form);
-                form.submit();
-            }, { csrf: csrfToken, carId: CAR_ID_WITH_HISTORY }),
-        ]);
-
-        // A bare evaluate() right after the POST can hit "Execution context was destroyed".
-        await page.waitForFunction(() => typeof window.editCarConfig !== 'undefined', { timeout: 15000 });
+        await postUpdateCar(page, CAR_ID_WITH_HISTORY);
 
         const isUpdateMode = await page.evaluate(() => window.editCarConfig?.isUpdate === true);
         expect(
@@ -909,68 +867,55 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         ).toBe(expectedModel);
     });
 
-    // #2295 failure path: ModelLoader swallows a models.php error and returns
-    // an empty list, so #submit must stay blocked. Waits for #message text,
-    // not visibility: the pond 'addfile' handler can hide #message. A bare
-    // toBeDisabled() would pass without the fix (#submit starts disabled).
-    test('update mode: #submit stays disabled when the model dropdown fails to load', async ({ page }) => {
+    // #2295 failure path (reworked in #1455): a models.php error shows an inline
+    // error with Retry and keeps #submit blocked. Retry reloads the list,
+    // reselects the saved model, and enables Save. A bare toBeDisabled() would
+    // pass without the fix (#submit starts disabled), so the error is asserted first.
+    test('update mode: models.php failure shows Retry and blocks Save until Retry loads the saved model', async ({ page }) => {
         await page.goto('app/owner/cars/edit.php', { waitUntil: 'domcontentloaded' });
 
         expect(page.url(), 'edit.php must render for an authenticated session, not redirect to login').not.toContain('login');
 
-        const csrfToken = await page.locator('#csrf').inputValue();
-        expect(csrfToken, 'edit.php must render a #csrf hidden field to obtain a token from').toBeTruthy();
+        const models = await routeModels(page);
 
-        await page.route('**/app/api/cars/models.php', async (route) => {
-            await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ success: false }) });
-        });
-
-        await Promise.all([
-            page.waitForLoadState('domcontentloaded'),
-            page.evaluate(({ csrf, carId }) => {
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.action = window.location.pathname;
-                const fields = { csrf, action: 'updateCar', car_id: String(carId) };
-                for (const [name, value] of Object.entries(fields)) {
-                    const input = document.createElement('input');
-                    input.type = 'hidden';
-                    input.name = name;
-                    input.value = value;
-                    form.appendChild(input);
-                }
-                document.body.appendChild(form);
-                form.submit();
-            }, { csrf: csrfToken, carId: CAR_ID_WITH_HISTORY }),
-        ]);
-
-        await page.waitForFunction(() => typeof window.editCarConfig !== 'undefined', { timeout: 15000 });
+        await postUpdateCar(page, CAR_ID_WITH_HISTORY);
 
         const isUpdateMode = await page.evaluate(() => window.editCarConfig?.isUpdate === true);
         expect(
             isUpdateMode,
             'POST with action=updateCar must render edit.php in real update mode'
         ).toBe(true);
+        const savedModel = await page.evaluate(() => window.editCarConfig?.model);
+        expect(savedModel, 'window.editCarConfig.model must be a non-empty saved value for CAR_ID_WITH_HISTORY').toBeTruthy();
 
         const submitBtn = page.locator('#submit');
         await expect(submitBtn, 'edit.php must render a #submit button').toBeVisible();
 
-        // Wait for the failure to land; #submit is disabled before models.php answers.
         await expect(
-            page.locator('#message'),
-            'onYearChange() must settle into the models.php failure branch (regression #2295)'
-        ).toContainText('model list could not be loaded', { timeout: 10000 });
-
-        await expect(
-            submitBtn,
-            '#submit must stay disabled when models.php fails — a failed load must not be mistaken for a load that never started (regression #2295)'
-        ).toBeDisabled();
-
-        const modelValue = await page.locator('#model').inputValue();
+            page.getByTestId('model-load-error'),
+            'a models.php failure must show the inline model-list error (regression #2295, #1455)'
+        ).toBeVisible({ timeout: 10000 });
+        await expect(page.getByTestId('model-load-retry')).toBeVisible();
+        await expect(submitBtn, '#submit must stay disabled when models.php fails (regression #2295)').toBeDisabled();
+        await expect(page.locator('#model')).toBeDisabled();
         expect(
-            modelValue,
+            await page.locator('#model').inputValue(),
             '#model must not silently hold the saved value when its own option list failed to load'
         ).toBe('');
+
+        models.fail = false;
+        await page.getByTestId('model-load-retry').click();
+
+        await expect(page.getByTestId('model-load-error'), 'a good Retry must hide the error').toBeHidden();
+        await expect(page.locator('#model'), 'Retry must reselect the saved model').toHaveValue(savedModel);
+        await expect(submitBtn, 'Retry must enable Save').toBeEnabled();
+
+        // Retry reselects the saved model. That is not an owner change, so
+        // leaving must not ask (wasClean in applySavedModel).
+        await giveUserGesture(page);
+        const result = await attemptLeave(page);
+        expect(result.dialogs, 'an untouched form after Retry leaves without a dialog').toEqual([]);
+        expect(result.closed).toBe(true);
     });
 
     // #2295: the list loads but excludes the saved model (real data case).
@@ -981,29 +926,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
 
         expect(page.url(), 'edit.php must render for an authenticated session, not redirect to login').not.toContain('login');
 
-        const csrfToken = await page.locator('#csrf').inputValue();
-        expect(csrfToken, 'edit.php must render a #csrf hidden field to obtain a token from').toBeTruthy();
-
-        await Promise.all([
-            page.waitForLoadState('domcontentloaded'),
-            page.evaluate(({ csrf, carId }) => {
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.action = window.location.pathname;
-                const fields = { csrf, action: 'updateCar', car_id: String(carId) };
-                for (const [name, value] of Object.entries(fields)) {
-                    const input = document.createElement('input');
-                    input.type = 'hidden';
-                    input.name = name;
-                    input.value = value;
-                    form.appendChild(input);
-                }
-                document.body.appendChild(form);
-                form.submit();
-            }, { csrf: csrfToken, carId: CAR_ID_WITH_HISTORY }),
-        ]);
-
-        await page.waitForFunction(() => typeof window.editCarConfig !== 'undefined', { timeout: 15000 });
+        await postUpdateCar(page, CAR_ID_WITH_HISTORY);
 
         const isUpdateMode = await page.evaluate(() => window.editCarConfig?.isUpdate === true);
         expect(
@@ -1025,26 +948,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
             await route.fulfill({ response, json: body });
         });
 
-        await Promise.all([
-            page.waitForLoadState('domcontentloaded'),
-            page.evaluate(({ csrf, carId }) => {
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.action = window.location.pathname;
-                const fields = { csrf, action: 'updateCar', car_id: String(carId) };
-                for (const [name, value] of Object.entries(fields)) {
-                    const input = document.createElement('input');
-                    input.type = 'hidden';
-                    input.name = name;
-                    input.value = value;
-                    form.appendChild(input);
-                }
-                document.body.appendChild(form);
-                form.submit();
-            }, { csrf: csrfToken, carId: CAR_ID_WITH_HISTORY }),
-        ]);
-
-        await page.waitForFunction(() => typeof window.editCarConfig !== 'undefined', { timeout: 15000 });
+        await postUpdateCar(page, CAR_ID_WITH_HISTORY);
 
         const submitBtn = page.locator('#submit');
         const modelSelect = page.locator('#model');
@@ -1066,6 +970,13 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
             modelSelect.locator('option'),
             'the model list must have genuinely loaded (more than just the placeholder)'
         ).not.toHaveCount(1);
+
+        // The code cleared the invalid saved model. That is not an owner change,
+        // so leaving must not ask (wasClean in applySavedModel).
+        await giveUserGesture(page);
+        const result = await attemptLeave(page);
+        expect(result.dialogs, 'clearing an invalid saved model is not an owner change').toEqual([]);
+        expect(result.closed).toBe(true);
     });
 });
 
