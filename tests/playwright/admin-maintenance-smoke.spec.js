@@ -12,35 +12,31 @@ const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn } = require('./auth-helper.js');
 
 test.describe('Admin Maintenance Page Smoke', () => {
+    let response;
+
     test.beforeEach(async ({ page }) => {
         await ensureLoggedIn(page);
-        await page.goto('app/admin/maintenance.php', { waitUntil: 'networkidle' });
+        response = await page.goto('app/admin/maintenance.php', { waitUntil: 'networkidle' });
     });
 
-    test('page loads successfully with no fatal error', async ({ page }) => {
-        const response = await page.goto('app/admin/maintenance.php', { waitUntil: 'networkidle' });
-
-        expect(response.status()).toBe(200);
+    test('page loads successfully with no fatal error, heading, and CSRF token', async ({ page }) => {
+        expect(response.status(), 'page returns 200').toBe(200);
 
         const bodyText = await page.locator('body').textContent();
-        expect(bodyText).not.toContain('Fatal error');
+        expect(bodyText, 'page has no fatal error').not.toContain('Fatal error');
+
+        await expect.soft(page.getByRole('heading', { name: 'Registry Maintenance', level: 1 }), 'Registry Maintenance heading').toBeVisible();
+        await expect.soft(page.locator('input[name="csrf"]'), 'CSRF token input').toBeAttached();
     });
 
-    test('renders page heading and CSRF token', async ({ page }) => {
-        await expect(page.getByRole('heading', { name: 'Registry Maintenance', level: 1 })).toBeVisible();
-        await expect(page.locator('input[name="csrf"]')).toBeAttached();
-    });
+    test('renders all three card headings and the card anchors', async ({ page }) => {
+        await expect.soft(page.getByRole('heading', { name: 'Backups', level: 2 }), 'Backups heading').toBeVisible();
+        await expect.soft(page.getByRole('heading', { name: 'One-time Migrations', level: 2 }), 'One-time Migrations heading').toBeVisible();
+        await expect.soft(page.getByRole('heading', { name: 'Maintenance Tasks', level: 2 }), 'Maintenance Tasks heading').toBeVisible();
 
-    test('renders all three card headings', async ({ page }) => {
-        await expect(page.getByRole('heading', { name: 'Backups', level: 2 })).toBeVisible();
-        await expect(page.getByRole('heading', { name: 'One-time Migrations', level: 2 })).toBeVisible();
-        await expect(page.getByRole('heading', { name: 'Maintenance Tasks', level: 2 })).toBeVisible();
-    });
-
-    test('backups and migrations card anchors are attached', async ({ page }) => {
         // Confirms the BackupManager construction and script-enumeration calls
         // in maintenance.php completed without throwing before reaching markup.
-        await expect(page.locator('#backups-card')).toBeAttached();
-        await expect(page.locator('#migrations-card')).toBeAttached();
+        await expect.soft(page.locator('#backups-card'), 'backups card anchor').toBeAttached();
+        await expect.soft(page.locator('#migrations-card'), 'migrations card anchor').toBeAttached();
     });
 });

@@ -108,16 +108,17 @@ final class CarRepositoryEffectiveEmailFlagsTest extends IntegrationTestCase
     }
 
     /**
-     * A flag with no stored address applies (fail closed). The detail address
-     * is null, and currentEmail holds the address that the flag applies to.
+     * A flag with no usable stored address applies (fail closed). The detail
+     * address is returned as stored, and currentEmail holds the address that
+     * the flag applies to.
      *
      * @return array<string, array{0: ?string}>
      */
     public static function missingAddressProvider(): array
     {
         return [
-            'NULL address'              => [null],
-            'empty address'             => [''],
+            'NULL address'             => [null],
+            'empty address'            => [''],
             'white-space-only address' => [" \t "],
         ];
     }
@@ -144,17 +145,16 @@ final class CarRepositoryEffectiveEmailFlagsTest extends IntegrationTestCase
     }
 
     /**
-     * A users.email with a trailing tab or newline equals the stored address.
+     * A users.email with a trailing CRLF equals the stored address.
+     * EffectiveEmailFlagsSharedTableTest covers the match for each trailing
+     * white space. This row checks that currentEmail is returned as stored.
      *
      * @return array<string, array{0: string}>
      */
     public static function whiteSpaceEmailProvider(): array
     {
         return [
-            'trailing tab'     => ["\t"],
-            'trailing newline' => ["\n"],
-            'trailing CRLF'    => ["\r\n"],
-            'trailing spaces'  => ['  '],
+            'trailing CRLF' => ["\r\n"],
         ];
     }
 

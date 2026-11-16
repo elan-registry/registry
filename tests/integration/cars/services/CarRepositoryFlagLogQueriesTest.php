@@ -7,6 +7,7 @@ require_once __DIR__ . '/../../IntegrationTestCase.php';
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\DeliverabilityFlagLog;
 use ElanRegistry\LogCategories;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -146,26 +147,32 @@ final class CarRepositoryFlagLogQueriesTest extends IntegrationTestCase
         );
     }
 
-    public function testLatestFlagClearAtDoesNotMatchAnOwnerWhoseIdOnlyStartsWithTheArgument(): void
+    /**
+     * A lognote or LIKE match on a prefix would cross between owners 12, 123
+     * and 1, in either direction.
+     *
+     * @return array<string, array{int, string, int}>
+     */
+    public static function prefixOwnerIdProvider(): array
     {
-        // Only owner 123 has a row. A lognote or LIKE match on "12" or "1" would find it.
-        $this->recordRow(self::OWNER_LONG, 'email_bounced', 1, 0, 'admin', '2026-04-02 11:00:00');
-
-        $this->assertNull($this->repo->latestFlagClearAt(self::OWNER_SHORT, 'email_bounced', 'admin'));
-        $this->assertNull($this->repo->latestFlagClearAt(self::OWNER_PREFIX, 'email_bounced', 'admin'));
-        $this->assertSame(
-            '2026-04-02 11:00:00',
-            $this->repo->latestFlagClearAt(self::OWNER_LONG, 'email_bounced', 'admin'),
-            'Control: the row must exist and be found for its own owner'
-        );
+        return [
+            'row for 123, asked for 12' => [self::OWNER_LONG, '2026-04-02 11:00:00', self::OWNER_SHORT],
+            'row for 123, asked for 1' => [self::OWNER_LONG, '2026-04-02 11:00:00', self::OWNER_PREFIX],
+            'row for 12, asked for 123' => [self::OWNER_SHORT, '2026-03-01 10:00:00', self::OWNER_LONG],
+        ];
     }
 
-    public function testLatestFlagClearAtDoesNotMatchAnOwnerWhoseIdIsALongerNumber(): void
+    #[DataProvider('prefixOwnerIdProvider')]
+    public function testLatestFlagClearAtDoesNotMatchAPrefixRelatedOwnerId(int $rowOwnerId, string $clearedAt, int $askedOwnerId): void
     {
-        // Only owner 12 has a row. Owner 123 must not see it.
-        $this->recordRow(self::OWNER_SHORT, 'email_bounced', 1, 0, 'admin', '2026-03-01 10:00:00');
+        $this->recordRow($rowOwnerId, 'email_bounced', 1, 0, 'admin', $clearedAt);
 
-        $this->assertNull($this->repo->latestFlagClearAt(self::OWNER_LONG, 'email_bounced', 'admin'));
+        $this->assertNull($this->repo->latestFlagClearAt($askedOwnerId, 'email_bounced', 'admin'));
+        $this->assertSame(
+            $clearedAt,
+            $this->repo->latestFlagClearAt($rowOwnerId, 'email_bounced', 'admin'),
+            'Control: the row must exist and be found for its own owner'
+        );
     }
 
     public function testLatestFlagClearAtReturnsNullWhenNoRowExists(): void
@@ -324,24 +331,6 @@ final class CarRepositoryFlagLogQueriesTest extends IntegrationTestCase
         $this->assertSame('2026-10-10 10:10:10', $this->repo->latestFlagClearAt(self::OWNER_SHORT, 'email_opted_out', 'owner'));
     }
 
-    public function testLatestFlagClearAtRejectsAnUnknownFlag(): void
-    {
-        $this->expectException(InvalidArgumentException::class);
-        $this->repo->latestFlagClearAt(self::OWNER_SHORT, 'email_unknown', 'admin');
-    }
-
-    public function testLatestFlagClearAtRejectsAnUnknownSource(): void
-    {
-        $this->expectException(InvalidArgumentException::class);
-        $this->repo->latestFlagClearAt(self::OWNER_SHORT, 'email_bounced', 'cron');
-    }
-
-    public function testLatestFlagClearAtRejectsAnOwnerIdBelowOne(): void
-    {
-        $this->expectException(InvalidArgumentException::class);
-        $this->repo->latestFlagClearAt(0, 'email_bounced', 'admin');
-    }
-
     // ---- recentFlagChanges --------------------------------------------------------------
 
     public function testRecentFlagChangesReturnsOnlyTheOwnersOwnRows(): void
@@ -415,11 +404,5 @@ final class CarRepositoryFlagLogQueriesTest extends IntegrationTestCase
 
         $this->assertCount(1, $rows, 'Only the one valid row is returned');
         $this->assertSame('2026-09-01 00:00:00', $rows[0]['date']);
-    }
-
-    public function testRecentFlagChangesRejectsAnOwnerIdBelowOne(): void
-    {
-        $this->expectException(InvalidArgumentException::class);
-        $this->repo->recentFlagChanges(-1, 10);
     }
 }

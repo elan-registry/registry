@@ -449,21 +449,23 @@ test.describe('Admin Verification Dashboard', () => {
     // --- Pill + URL round trip ---------------------------------------------
 
     // AC: clicking each of the 9 pills updates ?status= and the visible rows.
-    for (const { status } of QUEUE_PILLS) {
-        test(`"${status}" pill updates ?status= and marks itself active`, async ({ page }) => {
-            await page.goto('app/admin/index.php?tab=verification', { waitUntil: 'networkidle' });
+    // One page load; each click navigates to the next pill's view.
+    test('each pill updates ?status= and marks itself active', async ({ page }) => {
+        await page.goto('app/admin/index.php?tab=verification', { waitUntil: 'networkidle' });
 
-            await page.locator(`a.filter-pill[data-status="${status}"]`).click();
+        for (const { status } of QUEUE_PILLS) {
+            const pill = page.locator(`a.filter-pill[data-status="${status}"]`);
+            await pill.click();
             await page.waitForLoadState('networkidle');
 
-            expect(new URL(page.url()).searchParams.get('status')).toBe(status);
-            await expect(page.locator(`a.filter-pill[data-status="${status}"]`)).toHaveClass(/active/);
-            await expect(page.locator(`a.filter-pill[data-status="${status}"]`)).toHaveAttribute('aria-current', 'page');
+            expect.soft(new URL(page.url()).searchParams.get('status'), `"${status}" pill sets ?status=`).toBe(status);
+            await expect.soft(pill, `"${status}" pill is active`).toHaveClass(/active/);
+            await expect.soft(pill, `"${status}" pill has aria-current="page"`).toHaveAttribute('aria-current', 'page');
 
             // Exactly one pill is active at a time.
-            await expect(page.locator('a.filter-pill.active')).toHaveCount(1);
-        });
-    }
+            await expect.soft(page.locator('a.filter-pill.active'), `only one pill is active after "${status}"`).toHaveCount(1);
+        }
+    });
 
     // AC: an unknown status= value shows the Eligible view, and the page never
     // prints it. app/admin/index.php's allow-list check replaces it with

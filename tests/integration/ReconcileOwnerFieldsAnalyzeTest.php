@@ -6,6 +6,7 @@ require_once __DIR__ . '/IntegrationTestCase.php';
 require_once __DIR__ . '/../../app/admin/includes/fix-script-core.php';
 
 use ElanRegistry\DatabaseInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\FakeDatabase;
 
@@ -351,50 +352,37 @@ final class ReconcileOwnerFieldsAnalyzeTest extends IntegrationTestCase
     }
 
     /**
-     * An empty owner website against a real car website is not a conflict:
-     * the owner has no competing value, so it syncs normally.
+     * An empty owner website has no competing value, and an empty car
+     * website has nothing to lose, so neither side is a conflict.
+     *
+     * @return array<string, array{string, string, string}>
      */
-    public function testEmptyOwnerWebsiteAgainstRealCarWebsiteIsNotAConflict(): void
+    public static function emptyWebsiteSideProvider(): array
     {
-        $userId = $this->createTestUser([
-            'fname' => 'Blank',
-            'lname' => 'Profile',
-            'email' => 'blank-profile@example.com',
-        ]);
-        $this->createTestProfile($userId, ['website' => '']);
-        $carId = $this->createTestCar($userId, ['website' => 'https://carsite.example.com']);
-
-        $conflictCarIds = array_column(findWebsiteConflictCars(dbi()), 'carId');
-        $this->assertNotContains($carId, $conflictCarIds, 'An empty owner website has nothing to protect the car from');
-
-        $this->assertNotContains(
-            $userId,
-            findOwnerIdsWithWebsiteConflict(dbi()),
-            'An owner must not be held back when their own website is empty'
-        );
-
-        // ...and it is still ordinary drift, so it does get repaired.
-        $this->assertContains($userId, findOwnerIdsWithDrift(dbi()));
+        return [
+            'empty owner website, real car website' => ['', 'https://carsite.example.com', 'blank-profile@example.com'],
+            'real owner website, empty car website' => ['https://owner.example.com', '', 'empty-carsite@example.com'],
+        ];
     }
 
-    /** An empty car website is not a conflict: there is nothing to lose. */
-    public function testEmptyCarWebsiteIsNotAConflict(): void
+    #[DataProvider('emptyWebsiteSideProvider')]
+    public function testEmptyWebsiteOnOneSideIsNotAConflict(string $ownerWebsite, string $carWebsite, string $email): void
     {
         $userId = $this->createTestUser([
             'fname' => 'Empty',
-            'lname' => 'CarSite',
-            'email' => 'empty-carsite@example.com',
+            'lname' => 'Website',
+            'email' => $email,
         ]);
-        $this->createTestProfile($userId, ['website' => 'https://owner.example.com']);
-        $carId = $this->createTestCar($userId, ['website' => '']);
+        $this->createTestProfile($userId, ['website' => $ownerWebsite]);
+        $carId = $this->createTestCar($userId, ['website' => $carWebsite]);
 
         $conflictCarIds = array_column(findWebsiteConflictCars(dbi()), 'carId');
-        $this->assertNotContains($carId, $conflictCarIds, 'A car with no website of its own has nothing to protect');
+        $this->assertNotContains($carId, $conflictCarIds, 'An empty website on either side is not a website conflict');
 
         $this->assertNotContains(
             $userId,
             findOwnerIdsWithWebsiteConflict(dbi()),
-            'An owner must not be held back over a car that has no website to lose'
+            'An owner must not be held back when either website is empty'
         );
 
         // ...and it is still ordinary drift, so it does get repaired.

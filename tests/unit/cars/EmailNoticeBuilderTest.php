@@ -524,51 +524,51 @@ final class EmailNoticeBuilderTest extends TestCase
         $this->assertSame($first['contentHash'], $second['contentHash']);
     }
 
-    public function testContentHashChangesWhenTheBounceDateChanges(): void
+    /**
+     * Each row is two states that must give different hashes.
+     *
+     * @return array<string, array{EffectiveEmailFlags, list<string>, EffectiveEmailFlags, list<string>}>
+     */
+    public static function contentHashChangeProvider(): array
     {
-        $old = self::flags(['bounced' => true, 'bouncedAddress' => 'b@example.com', 'bouncedAt' => '2026-09-15 08:00:00']);
-        $new = self::flags(['bounced' => true, 'bouncedAddress' => 'b@example.com', 'bouncedAt' => '2026-10-01 08:00:00']);
+        $blocked = ['blocked' => true, 'blockedAddress' => 'b@example.com'];
+        $unsubscribed = self::flags($blocked + ['blockedCause' => 'unsubscribed']);
 
-        $oldResult = $this->builderFor($old)->buildForOwner(1);
-        $newResult = $this->builderFor($new)->buildForOwner(1);
+        return [
+            'bounce date changes' => [
+                self::flags(['bounced' => true, 'bouncedAddress' => 'b@example.com', 'bouncedAt' => '2026-09-15 08:00:00']),
+                [],
+                self::flags(['bounced' => true, 'bouncedAddress' => 'b@example.com', 'bouncedAt' => '2026-10-01 08:00:00']),
+                [],
+            ],
+            'opt-out is added' => [self::flags($blocked), [], self::flags($blocked + ['optedOut' => true]), []],
+            'causes change'    => [$unsubscribed, [], $unsubscribed, ['spam']],
+            'kind changes'     => [
+                self::flags($blocked),
+                [],
+                self::flags(['bounced' => true, 'bouncedAddress' => 'b@example.com']),
+                [],
+            ],
+        ];
+    }
+
+    /**
+     * @param list<string> $oldCauses
+     * @param list<string> $newCauses
+     */
+    #[DataProvider('contentHashChangeProvider')]
+    public function testContentHashChangesWhenTheStateChanges(
+        EffectiveEmailFlags $oldFlags,
+        array $oldCauses,
+        EffectiveEmailFlags $newFlags,
+        array $newCauses
+    ): void {
+        $oldResult = $this->builderFor($oldFlags, $oldCauses)->buildForOwner(1);
+        $newResult = $this->builderFor($newFlags, $newCauses)->buildForOwner(1);
 
         $this->assertNotNull($oldResult);
         $this->assertNotNull($newResult);
         $this->assertNotSame($oldResult['contentHash'], $newResult['contentHash']);
-    }
-
-    public function testContentHashChangesWhenAnOptOutIsAdded(): void
-    {
-        $base = ['blocked' => true, 'blockedAddress' => 'b@example.com'];
-
-        $without = $this->builderFor(self::flags($base))->buildForOwner(1);
-        $with    = $this->builderFor(self::flags($base + ['optedOut' => true]))->buildForOwner(1);
-
-        $this->assertNotNull($without);
-        $this->assertNotNull($with);
-        $this->assertNotSame($without['contentHash'], $with['contentHash']);
-    }
-
-    public function testContentHashChangesWhenTheCausesChange(): void
-    {
-        $flags = self::flags(['blocked' => true, 'blockedAddress' => 'b@example.com', 'blockedCause' => 'unsubscribed']);
-
-        $one = $this->builderFor($flags, [])->buildForOwner(1);
-        $two = $this->builderFor($flags, ['spam'])->buildForOwner(1);
-
-        $this->assertNotNull($one);
-        $this->assertNotNull($two);
-        $this->assertNotSame($one['contentHash'], $two['contentHash']);
-    }
-
-    public function testContentHashChangesWhenTheKindChanges(): void
-    {
-        $blocked = $this->builderFor(self::flags(['blocked' => true, 'blockedAddress' => 'b@example.com']))->buildForOwner(1);
-        $bounced = $this->builderFor(self::flags(['bounced' => true, 'bouncedAddress' => 'b@example.com']))->buildForOwner(1);
-
-        $this->assertNotNull($blocked);
-        $this->assertNotNull($bounced);
-        $this->assertNotSame($blocked['contentHash'], $bounced['contentHash']);
     }
 
     // --- Raw values ----------------------------------------------------

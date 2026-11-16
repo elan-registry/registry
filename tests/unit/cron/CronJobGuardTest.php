@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use ElanRegistry\Cron\CronJobGuard;
 use ElanRegistry\LogCategories;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Tests\Support\CronJobGuardFakeDatabase;
@@ -152,36 +153,32 @@ final class CronJobGuardTest extends TestCase
      * false on a row that genuinely matched — and one second later, no
      * minimum interval would be enforced at all. See CronJobGuard::claim()'s
      * own inline comment for the full explanation.
+     *
+     * @return array<string, array{int}>
      */
-    public function testClaimRejectsIntervalHoursOfZero(): void
+    public static function rejectedIntervalHoursProvider(): array
     {
-        $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
-
-        $this->assertFalse((new CronJobGuard($db))->claim('brevo_reconciliation', 0));
-        $this->assertSame(
-            '',
-            $db->lastSql(),
-            'An interval of 0 must be rejected before any query is issued'
-        );
+        return [
+            'zero' => [0],
+            // More dangerous than 0: `NOW() - INTERVAL -24 HOUR` is a future
+            // timestamp, so `last_run_at < <future>` would match almost any
+            // existing row and the guard would permit unlimited concurrent
+            // claims. Its own row, since a `< 1` guard miswritten as `=== 0`
+            // still passes the 0 row.
+            'negative' => [-1],
+        ];
     }
 
-    /**
-     * A negative interval is the more dangerous case than 0: `NOW() -
-     * INTERVAL -24 HOUR` is a future timestamp, so `last_run_at < <future>`
-     * would match almost any existing row, turning the guard into a no-op
-     * that permits unlimited concurrent claims. The `< 1` check must reject
-     * this the same way it rejects 0 — tested separately, since a
-     * `< 1` guard could be miswritten as `=== 0` and still pass a 0-only test.
-     */
-    public function testClaimRejectsNegativeIntervalHours(): void
+    #[DataProvider('rejectedIntervalHoursProvider')]
+    public function testClaimRejectsIntervalHoursBelowOne(int $intervalHours): void
     {
         $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
 
-        $this->assertFalse((new CronJobGuard($db))->claim('brevo_reconciliation', -1));
+        $this->assertFalse((new CronJobGuard($db))->claim('brevo_reconciliation', $intervalHours));
         $this->assertSame(
             '',
             $db->lastSql(),
-            'A negative interval must be rejected before any query is issued'
+            'An interval below 1 must be rejected before any query is issued'
         );
     }
 

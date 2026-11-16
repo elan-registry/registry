@@ -275,49 +275,36 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
     // GET never mutates
     // ------------------------------------------------------------------
 
-    public function testGetActionVerifyDoesNotMutateCarRow(): void
+    /**
+     * @return array<string, array{0: string}>
+     */
+    public static function getRequestQuerySuffixProvider(): array
+    {
+        return [
+            'action verify' => ['&action=verify'],
+            'action sold' => ['&action=sold'],
+            'no action landing page' => [''],
+        ];
+    }
+
+    /**
+     * The whole row, mtime included, must be unchanged after the GET, and the
+     * GET must write no VERIFIED or VERIFIED SOLD history row. An UPDATE that
+     * writes the same values leaves mtime unchanged, so the row check alone
+     * cannot prove that no UPDATE ran.
+     */
+    #[DataProvider('getRequestQuerySuffixProvider')]
+    public function testGetDoesNotMutateCarRow(string $querySuffix): void
     {
         $code = $this->issueVericode();
         $before = $this->carRow();
 
-        $result = $this->get('vericode=' . $code . '&action=verify');
+        $result = $this->get('vericode=' . $code . $querySuffix);
 
         $this->assertSame(200, $result['status']);
-
-        $after = $this->carRow();
-        $this->assertSame($before['last_verified'], $after['last_verified'], 'GET must not set last_verified');
-        $this->assertSame($before['owner_last_updated'], $after['owner_last_updated'], 'GET must not touch owner_last_updated');
-        $this->assertSame($before['mtime'], $after['mtime'], 'GET must not touch mtime (proves no UPDATE was issued at all)');
+        $this->assertSame($before, $this->carRow(), 'GET must leave every column unchanged');
         $this->assertSame(0, $this->historyCount('VERIFIED'), 'GET must not write a VERIFIED cars_hist row');
-    }
-
-    public function testGetActionSoldDoesNotMutateCarRow(): void
-    {
-        $code = $this->issueVericode();
-        $before = $this->carRow();
-
-        $result = $this->get('vericode=' . $code . '&action=sold');
-
-        $this->assertSame(200, $result['status']);
-
-        $after = $this->carRow();
-        $this->assertSame($before['solddate'], $after['solddate'], 'GET must not set solddate');
-        $this->assertSame($before['owner_last_updated'], $after['owner_last_updated'], 'GET must not touch owner_last_updated');
-        $this->assertSame($before['mtime'], $after['mtime'], 'GET must not touch mtime (proves no UPDATE was issued at all)');
         $this->assertSame(0, $this->historyCount('VERIFIED SOLD'), 'GET must not write a VERIFIED SOLD cars_hist row');
-    }
-
-    public function testGetWithNoActionLandingPageDoesNotMutateCarRow(): void
-    {
-        $code = $this->issueVericode();
-        $before = $this->carRow();
-
-        $result = $this->get('vericode=' . $code);
-
-        $this->assertSame(200, $result['status']);
-
-        $after = $this->carRow();
-        $this->assertSame($before, $after, 'Plain landing-page GET must leave every column unchanged');
     }
 
     // ------------------------------------------------------------------
@@ -385,81 +372,40 @@ final class VerifyCarLandingPageTest extends IntegrationTestCase
         $this->assertSame($submittedDate, (string) $histRow->solddate, 'cars_hist VERIFIED SOLD row must carry the submitted date');
     }
 
-    public function testPostActionSoldWithFutureDateIsRejectedWithNoWrite(): void
+    /**
+     * Each rejected date must give an inline validation error, not a write
+     * or a fatal.
+     *
+     * @return array<string, array{0: string, 1: string}>
+     */
+    public static function rejectedSoldDateProvider(): array
+    {
+        return [
+            'future date' => [date('Y-m-d', strtotime('+5 days')), 'can&#039;t be in the future'],
+            // The fixture car has year=1968 (set in setUp()), so Jan 1 1968 is the floor.
+            'before the build year' => ['1967-12-31', 'can&#039;t be before the car was built'],
+            'nonsense string' => ['not-a-date', 'valid date'],
+            'impossible calendar date' => ['2026-13-45', 'valid date'],
+        ];
+    }
+
+    #[DataProvider('rejectedSoldDateProvider')]
+    public function testPostActionSoldWithRejectedDateRerendersFormWithNoWrite(string $soldDate, string $expectedError): void
     {
         $code = $this->issueVericode();
         $before = $this->carRow();
-        $futureDate = date('Y-m-d', strtotime('+5 days'));
 
         $result = $this->post('vericode=' . $code . '&action=sold', [
             'vericode' => $code,
-            'solddate' => $futureDate,
+            'solddate' => $soldDate,
         ]);
 
         $this->assertSame(200, $result['status'], 'Rejected submission re-renders the form, no redirect');
-        $this->assertStringContainsString('can&#039;t be in the future', $result['body']);
+        $this->assertStringContainsString($expectedError, $result['body']);
 
         $after = $this->carRow();
-        $this->assertSame($before['solddate'], $after['solddate'], 'Future date must not be written');
+        $this->assertSame($before['solddate'], $after['solddate'], 'Rejected date must not be written');
         $this->assertSame($before['owner_last_updated'], $after['owner_last_updated']);
-        $this->assertSame(0, $this->historyCount('VERIFIED SOLD'));
-    }
-
-    public function testPostActionSoldWithPreBuildYearDateIsRejectedWithNoWrite(): void
-    {
-        // Fixture car has year=1968 (set in setUp()), so Jan 1 1968 is the floor.
-        $code = $this->issueVericode();
-        $before = $this->carRow();
-        $tooEarly = '1967-12-31';
-
-        $result = $this->post('vericode=' . $code . '&action=sold', [
-            'vericode' => $code,
-            'solddate' => $tooEarly,
-        ]);
-
-        $this->assertSame(200, $result['status']);
-        $this->assertStringContainsString('can&#039;t be before the car was built', $result['body']);
-
-        $after = $this->carRow();
-        $this->assertSame($before['solddate'], $after['solddate']);
-        $this->assertSame($before['owner_last_updated'], $after['owner_last_updated']);
-        $this->assertSame(0, $this->historyCount('VERIFIED SOLD'));
-    }
-
-    /** A garbage solddate must give an inline validation error, not a write or a fatal. */
-    public function testPostActionSoldWithNonsenseDateStringIsRejectedWithNoWrite(): void
-    {
-        $code = $this->issueVericode();
-        $before = $this->carRow();
-
-        $result = $this->post('vericode=' . $code . '&action=sold', [
-            'vericode' => $code,
-            'solddate' => 'not-a-date',
-        ]);
-
-        $this->assertSame(200, $result['status'], 'Malformed date must not crash the page');
-        $this->assertStringContainsString('valid date', $result['body']);
-
-        $after = $this->carRow();
-        $this->assertSame($before['solddate'], $after['solddate']);
-        $this->assertSame(0, $this->historyCount('VERIFIED SOLD'));
-    }
-
-    public function testPostActionSoldWithImpossibleCalendarDateIsRejectedWithNoWrite(): void
-    {
-        $code = $this->issueVericode();
-        $before = $this->carRow();
-
-        $result = $this->post('vericode=' . $code . '&action=sold', [
-            'vericode' => $code,
-            'solddate' => '2026-13-45',
-        ]);
-
-        $this->assertSame(200, $result['status'], 'Impossible calendar date must not crash the page');
-        $this->assertStringContainsString('valid date', $result['body']);
-
-        $after = $this->carRow();
-        $this->assertSame($before['solddate'], $after['solddate']);
         $this->assertSame(0, $this->historyCount('VERIFIED SOLD'));
     }
 

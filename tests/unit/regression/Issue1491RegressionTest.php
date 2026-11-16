@@ -44,18 +44,23 @@ final class Issue1491RegressionTest extends TestCase
         $this->assertSame($expected, $result[$field]);
     }
 
-    public function testValidateAndSanitizeFieldsDropsEmptyFname(): void
+    /**
+     * @return array<string, array{0: string}>
+     */
+    public static function emptyNameFieldProvider(): array
     {
-        $result = $this->validator->validateAndSanitizeFields(['fname' => ''], false);
-
-        $this->assertArrayNotHasKey('fname', $result);
+        return [
+            'empty fname' => ['fname'],
+            'empty lname' => ['lname'],
+        ];
     }
 
-    public function testValidateAndSanitizeFieldsDropsEmptyLname(): void
+    #[DataProvider('emptyNameFieldProvider')]
+    public function testValidateAndSanitizeFieldsDropsEmptyNameField(string $field): void
     {
-        $result = $this->validator->validateAndSanitizeFields(['lname' => ''], false);
+        $result = $this->validator->validateAndSanitizeFields([$field => ''], false);
 
-        $this->assertArrayNotHasKey('lname', $result);
+        $this->assertArrayNotHasKey($field, $result);
     }
 
     /**

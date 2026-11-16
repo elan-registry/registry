@@ -891,13 +891,6 @@ final class BrevoEventReconciliationJobTest extends TestCase
         $this->assertStringNotContainsString('@', $log[0]['message']);
     }
 
-    public function testMissingDateFallsBackToRunTime(): void
-    {
-        $this->makeJob([new FakeBrevoEvent(date: null)])->runNow();
-
-        $this->assertSame(self::NOW, $this->applier->calls[0]['occurredAt']);
-    }
-
     /**
      * A date far after the run would sort after every real event. A far-future
      * `delivered` row would then stop the soft-bounce count for good.

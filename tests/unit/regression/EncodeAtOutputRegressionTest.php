@@ -15,8 +15,6 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('regression')]
 final class EncodeAtOutputRegressionTest extends RegressionTestCase
 {
-    private const TESTED_FIELDS = ['comments', 'engine', 'color', 'chassis', 'website', 'fname', 'lname', 'city', 'state', 'country'];
-
     #[DataProvider('zeroValueFieldProvider')]
     public function testLiteralZeroIsNotDiscarded(string $field): void
     {
@@ -28,14 +26,15 @@ final class EncodeAtOutputRegressionTest extends RegressionTestCase
     }
 
     /**
+     * One field is enough: Input::raw() does not depend on the field name, so
+     * each field runs the same code. This test does not call the updaters.
+     *
      * @return array<string, array{string}>
      */
     public static function zeroValueFieldProvider(): array
     {
-        $cases = [];
-        foreach (self::TESTED_FIELDS as $field) {
-            $cases[$field] = [$field];
-        }
-        return $cases;
+        return [
+            'comments' => ['comments'],
+        ];
     }
 }

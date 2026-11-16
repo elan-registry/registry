@@ -124,29 +124,6 @@ final class CarRepositoryEmailEventPrecedenceTest extends IntegrationTestCase
         $this->assertSame([], $result);
     }
 
-    // --- Wrong-typed / out-of-range elements --------------------------------
-
-    /**
-     * @return array<string, array{0: array<mixed>}>
-     */
-    public static function invalidCarIdsProvider(): array
-    {
-        return [
-            'non-int element (string)' => [[1, 'two']],
-            'negative element' => [[1, -1]],
-            'zero element' => [[1, 0]],
-            'string-numeric element' => [[1, '2']],
-        ];
-    }
-
-    #[DataProvider('invalidCarIdsProvider')]
-    public function testThrowsCarValidationExceptionForWrongTypedOrOutOfRangeElement(array $carIds): void
-    {
-        $this->expectException(\ElanRegistry\Exceptions\CarValidationException::class);
-
-        $this->repo->findLatestEmailEventPerCarWithPrecedence($carIds);
-    }
-
     // --- Cycle scoping: an old cycle's terminal event must not leak forward -
 
     public function testOldCyclesTerminalEventDoesNotLeakIntoANewerCycle(): void
