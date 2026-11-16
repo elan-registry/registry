@@ -8,8 +8,9 @@ A search visitor lands on the correct production page, not a 404, a test-site pa
 ## User-Facing Changes
 
 - Old `/stats.php`, `/stories` and `/stories/` links now open the statistics and car stories pages. ([#2247](https://github.com/elan-registry/registry/issues/2247))
-- Each car page now has its own search title and description, and shared links no longer split search ranking. ([#1960](https://github.com/elan-registry/registry/issues/1960))
-- A car with no current owner now says so, and members get "Contact the Registry" in place of a failing form. ([#2505](https://github.com/elan-registry/registry/issues/2505))
+- Each car page now has its own search title and description. ([#1528](https://github.com/elan-registry/registry/issues/1528))
+- Shared links to a car page no longer split search ranking. ([#1960](https://github.com/elan-registry/registry/issues/1960))
+- A car with no current owner now says so, and members see "Contact the Registry" instead. ([#2505](https://github.com/elan-registry/registry/issues/2505))
 - The car form keeps typed changes: it warns before you leave, recovers an expired page, and offers Retry for models. ([#1455](https://github.com/elan-registry/registry/issues/1455))
 
 ## Admin-Facing Changes

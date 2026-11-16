@@ -317,6 +317,10 @@ after an item is written.
 
 - [ ] The expected text "The maximum size is 5 MB" (~L187, ~L273) and the size `5242880 // exactly the default 5MB maximum` (~L228) are fixed values. The test passes with the old default and breaks when someone raises `ELAN_IMAGE_SERVER_MAX_SIZE`. Build the text from `ELAN_IMAGE_SERVER_MAX_SIZE` and the size from `CarImageProcessor::serverMaxBytes()` (found in /flow:finish-milestone v2.32.0)
 
+### `usersc/classes/AppConstants.php` + `usersc/classes/Car/CarAdministrationService.php` + `app/admin/scripts/maintenance/26-Reconcile-Owner-Fields.php` + `app/admin/index.php` + `app/admin/includes/tab-verification.php` + `app/admin/includes/account-cleanup-helpers.php` + `app/verify/verify_car.php`
+
+- [ ] `AppConstants::NOOWNER_USERNAME` (~L70) is the third copy of `'noowner'`. `CarAdministrationService::SYSTEM_ACCOUNT_USERNAME` (~L77) and `RECONCILE_NO_OWNER_USERNAME` in `26-Reconcile-Owner-Fields.php` (~L203) repeat it, and seven inline strings remain: `app/admin/index.php` ~L368, L908, L1021, `tab-verification.php` ~L845, `account-cleanup-helpers.php` ~L27, L57, `verify_car.php` ~L335. Read the shared constant in each (found in /flow:finish-milestone v2.33.0)
+
 ### `usersc/classes/CanonicalUrl.php`
 
 - [ ] `build()` does not check its inputs. An empty-string query value gives `car_id=`, and a path with `?` or `#` gives a malformed URL. Both callers pass trusted values. Document the contract in the docblock (found in /flow:finish-milestone v2.33.0)
