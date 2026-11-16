@@ -113,7 +113,7 @@ final class SendOwnerEmailNoOwnerTest extends IntegrationTestCase
         };
     }
 
-    /** An owner whose address fails FILTER_VALIDATE_EMAIL. The profile row makes the address check the only refusal. */
+    /** An owner whose address fails FILTER_VALIDATE_EMAIL. The profile row lets a request that gets past the address check reach email(), the same as a real owner (#2360). */
     private function createMalformedOwner(): int
     {
         return $this->createTestUser(['email' => 'malformed_' . uniqid()], true);
