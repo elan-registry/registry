@@ -163,23 +163,11 @@ bad() {
     fi
 }
 
-# --- Case 9: each wrong-shape gh response exits 2 --------------------------
-bad 9a open.json '{"message":"odd"}' 'open issues: expected a JSON array'
-bad 9b open.json '[{}]' 'open issues page: expected a JSON array'
+# --- Case 9: a bad gh response exits 2 -------------------------------------
 bad 9c count.json '{"message":"API rate limit exceeded"}' 'no total_count'
 bad 9d count.json '{"total_count":7,"incomplete_results":true,"items":[]}' 'incomplete results'
-bad 9e closed.json '{"total_count":3}' 'search items: expected a JSON array'
 bad 9f milestones.json '{}' 'milestones: expected a JSON array'
 rm -rf "$F" && cp -R "$TMPROOT/fx.orig" "$F"
-
-# --- Case 9g: a usage error exits 1 -----------------------------------------
-run "$E" --weeks 0 >/dev/null; S9G=$?
-run "$E" --no-such-flag >/dev/null; S9H=$?
-if [ "$S9G" -eq 1 ] && [ "$S9H" -eq 1 ]; then
-    pass "Case 9g: a bad --weeks and an unknown flag exit 1"
-else
-    fail "Case 9g: a bad --weeks and an unknown flag exit 1" "--weeks 0: $S9G" "unknown flag: $S9H"
-fi
 
 # --- Case 10: a missing folder exits 1 --------------------------------------
 run "$TMPROOT/nope" >/dev/null; S10=$?

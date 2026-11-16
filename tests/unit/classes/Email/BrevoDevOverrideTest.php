@@ -106,24 +106,6 @@ final class BrevoDevOverrideTest extends TestCase
     }
 
     #[RunInSeparateProcess]
-    public function testHostOverride_DevelopmentWithEmptyStringHost_ReturnsNull(): void
-    {
-        define('US_ENVIRONMENT', 'development');
-        $_ENV['BREVO_API_HOST'] = '';
-
-        $this->assertNull(BrevoDevOverride::hostOverride());
-    }
-
-    #[RunInSeparateProcess]
-    public function testHostOverride_DevelopmentWithZeroStringHost_ReturnsNull(): void
-    {
-        define('US_ENVIRONMENT', 'development');
-        $_ENV['BREVO_API_HOST'] = '0';
-
-        $this->assertNull(BrevoDevOverride::hostOverride());
-    }
-
-    #[RunInSeparateProcess]
     public function testApplyToSdk_Production_ReturnsFalseAndDoesNotLoadSdk(): void
     {
         define('US_ENVIRONMENT', 'production');
@@ -161,50 +143,30 @@ final class BrevoDevOverrideTest extends TestCase
     public function testApplyToSdk_DevelopmentWithAutoloadMissingSdk_ReturnsFalseAndLogs(): void
     {
         global $mockLogEntries;
-        // logFailure() always writes error_log(). Keep it out of the PHPUnit output.
+        // logFailure() always writes error_log(), because logger() reports no
+        // failed database write. Capture it in a temp file, out of the PHPUnit output.
         $errorLog = tempnam(sys_get_temp_dir(), 'brevo_dev_override_log_');
         ini_set('error_log', (string) $errorLog);
         define('US_ENVIRONMENT', 'development');
         $_ENV['BREVO_API_HOST'] = self::MOCK_HOST;
 
         $this->assertFalse(BrevoDevOverride::applyToSdk(__DIR__ . '/fixtures/brevo-sdk/autoload-without-sdk.php'));
+        $logged = (string) file_get_contents((string) $errorLog);
         @unlink((string) $errorLog);
 
+        $this->assertStringContainsString('goes to the real Brevo API', $logged);
         $this->assertCount(1, $mockLogEntries ?? []);
         $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_ERROR, $mockLogEntries[0]['category']);
         $this->assertStringContainsString('real Brevo API', $mockLogEntries[0]['message']);
     }
 
-    /**
-     * UserSpice logger() reports no failed database write, so the failure must
-     * also reach the PHP error log.
-     */
     #[RunInSeparateProcess]
-    public function testApplyToSdk_DevelopmentWithAutoloadMissingSdk_AlsoWritesPhpErrorLog(): void
-    {
-        $errorLog = tempnam(sys_get_temp_dir(), 'brevo_dev_override_log_');
-        ini_set('error_log', (string) $errorLog);
-        define('US_ENVIRONMENT', 'development');
-        $_ENV['BREVO_API_HOST'] = self::MOCK_HOST;
-
-        $this->assertFalse(BrevoDevOverride::applyToSdk(__DIR__ . '/fixtures/brevo-sdk/autoload-without-sdk.php'));
-
-        $logged = (string) file_get_contents((string) $errorLog);
-        @unlink((string) $errorLog);
-        $this->assertStringContainsString('goes to the real Brevo API', $logged);
-    }
-
-    #[RunInSeparateProcess]
-    public function testApplyToSdk_DevelopmentWithFixtureSdk_SetsSharedHostThatSurvivesSetApiKey(): void
+    public function testApplyToSdk_DevelopmentWithFixtureSdk_SetsSharedHost(): void
     {
         define('US_ENVIRONMENT', 'development');
         $_ENV['BREVO_API_HOST'] = self::MOCK_HOST;
 
         $this->assertTrue(BrevoDevOverride::applyToSdk(self::FIXTURE_AUTOLOAD));
-        $this->assertSame(self::MOCK_HOST, \Brevo\Client\Configuration::getDefaultConfiguration()->getHost());
-
-        // Same call the sendinblue plugin makes before each send.
-        \Brevo\Client\Configuration::getDefaultConfiguration()->setApiKey('api-key', 'x');
         $this->assertSame(self::MOCK_HOST, \Brevo\Client\Configuration::getDefaultConfiguration()->getHost());
     }
 

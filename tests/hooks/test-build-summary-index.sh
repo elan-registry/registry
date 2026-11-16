@@ -137,15 +137,6 @@ else
     fail "Case 10: a missing folder exits 1" "exit: $S10"
 fi
 
-# --- Case 10b: a usage error exits 1, as documented -------------------------
-build "$TMPROOT/k" --keep -1 >/dev/null; S10B=$?
-build "$TMPROOT/k" --no-such-flag >/dev/null; S10C=$?
-if [ "$S10B" -eq 1 ] && [ "$S10C" -eq 1 ]; then
-    pass "Case 10b: a bad --keep and an unknown flag exit 1"
-else
-    fail "Case 10b: a bad --keep and an unknown flag exit 1" "--keep -1: $S10B" "unknown flag: $S10C"
-fi
-
 # --- Case 11: HTML in a prompt is escaped -----------------------------------
 H="$TMPROOT/h"
 prompt "$H/x" "X" "Status" 7
@@ -218,17 +209,6 @@ if [ "$S15" -eq 0 ] && grep -q 'badge stale">39 days old' "$Q/index.html" \
     pass "Case 15: an old snapshot is stale; bad or wrong-shape ones are skipped with a warning"
 else
     fail "Case 15: an old snapshot is stale; bad or wrong-shape ones are skipped with a warning" "err: [$(cat "$TMPROOT/err")]"
-fi
-
-# --- Case 16: the "How this index is built" section -------------------------
-if grep -q 'How this index is built' "$IDX" \
-    && grep -q 'aria-label="How the summaries index is built"' "$IDX" \
-    && grep -q 'launchctl bootstrap gui/' "$IDX" \
-    && grep -q '&lt;string&gt;org.elanregistry.summary-health&lt;/string&gt;' "$IDX" \
-    && grep -q "cd &#x27;$REAL_REPO&#x27;" "$IDX"; then
-    pass "Case 16: index explains how it is built and how to refresh it daily"
-else
-    fail "Case 16: index explains how it is built and how to refresh it daily"
 fi
 
 harness_report

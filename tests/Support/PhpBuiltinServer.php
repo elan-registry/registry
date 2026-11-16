@@ -399,8 +399,6 @@ final class PhpBuiltinServer
      * Select the leaked servers in a snapshot that are safe to kill.
      *
      * A process qualifies only when every one of these holds:
-     * - its PID key is an int and its args value is a string (anything else is
-     *   skipped, never a TypeError);
      * - its command line matches `php … -S 127.0.0.1:<port> -t …` and ends in
      *   `{$routerDir}/elanreg-phpsrv-<ownerPid>-<32 hex>.php`;
      * - its owner PID is NOT $selfPid (never kill our own live servers);
@@ -410,9 +408,9 @@ final class PhpBuiltinServer
      * A developer's own `php -S` and an editor holding a router file open both
      * fail the filename test and are skipped.
      *
-     * @param array<mixed, mixed> $snapshot  PID => args, normally from parsePsOutput().
-     * @param string              $routerDir Directory router files live in, without a trailing slash.
-     * @param int                 $selfPid   PID of the sweeping process.
+     * @param array<int, string> $snapshot  PID => args, normally from parsePsOutput().
+     * @param string             $routerDir Directory router files live in, without a trailing slash.
+     * @param int                $selfPid   PID of the sweeping process.
      *
      * @return list<array{pid: int, args: string, ownerPid: int}> Orphans, in snapshot order.
      */
@@ -429,9 +427,6 @@ final class PhpBuiltinServer
         $orphans = [];
 
         foreach ($snapshot as $pid => $args) {
-            if (!is_int($pid) || !is_string($args)) {
-                continue;
-            }
             if ($pid === $selfPid || preg_match($pattern, $args, $m) !== 1) {
                 continue;
             }
@@ -450,23 +445,17 @@ final class PhpBuiltinServer
     /**
      * Select router files whose owning process is no longer running.
      *
-     * Non-string entries in either list are skipped rather than raising a
-     * TypeError or an array_flip() warning.
-     *
-     * @param array<mixed> $routerFiles Absolute paths of candidate router files.
-     * @param array<mixed> $livePids    PIDs present in the `ps` snapshot.
+     * @param list<string> $routerFiles Absolute paths of candidate router files.
+     * @param list<int>    $livePids    PIDs present in the `ps` snapshot.
      *
      * @return list<string> Paths safe to unlink, in input order.
      */
     public static function staleRouterFiles(array $routerFiles, array $livePids): array
     {
-        $live = array_flip(array_filter($livePids, 'is_int'));
+        $live = array_flip($livePids);
         $stale = [];
 
         foreach ($routerFiles as $file) {
-            if (!is_string($file)) {
-                continue;
-            }
             if (preg_match('/^' . preg_quote(self::ROUTER_PREFIX, '/') . '(\d+)-[0-9a-f]{32}\.php$/', basename($file), $m) !== 1) {
                 continue;
             }
@@ -491,7 +480,7 @@ final class PhpBuiltinServer
      *
      * @param string       $psOutput    Raw stdout of `ps -ww -eo pid=,args=`.
      * @param int          $psExitCode  Exit status of that `ps` call.
-     * @param array<mixed> $routerFiles Router file paths, listed before the snapshot.
+     * @param list<string> $routerFiles Router file paths, listed before the snapshot.
      * @param string       $routerDir   Directory router files live in, without a trailing slash.
      * @param int          $selfPid     PID of the sweeping process.
      *
@@ -507,7 +496,7 @@ final class PhpBuiltinServer
         return [
             'usable' => true,
             'kill' => self::findOrphans($snapshot, $routerDir, $selfPid),
-            'unlink' => self::staleRouterFiles(array_values(array_filter($routerFiles, 'is_string')), array_keys($snapshot)),
+            'unlink' => self::staleRouterFiles($routerFiles, array_keys($snapshot)),
         ];
     }
 

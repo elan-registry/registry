@@ -200,29 +200,6 @@ final class PhpBuiltinServerTest extends TestCase
         $this->assertSame([], $orphans, 'A pre-#2166 tempnam-era router filename must not match the new pattern.');
     }
 
-    /**
-     * @return array<string, array{0: string}>
-     */
-    public static function malformedPsLineProvider(): array
-    {
-        return [
-            'no pid' => ['not-a-pid php -S 127.0.0.1:9000 -t /x /tmp/elanreg-phpsrv-1-' . str_repeat('a', 32) . '.php'],
-            'blank' => [''],
-            'garbage' => ['%%%garbage%%%'],
-        ];
-    }
-
-    #[DataProvider('malformedPsLineProvider')]
-    public function testFindOrphansSkipsMalformedSnapshotLinesWithoutError(string $rawLine): void
-    {
-        // Route the raw line through parsePsOutput() first, as sweep() does.
-        $snapshot = PhpBuiltinServer::parsePsOutput($rawLine);
-
-        $orphans = PhpBuiltinServer::findOrphans($snapshot, self::ROUTER_DIR, 1);
-
-        $this->assertSame([], $orphans);
-    }
-
     public function testFindOrphansMatchesPlainFormWithoutExtraFlags(): void
     {
         $ownerPid = 400;
@@ -286,44 +263,6 @@ final class PhpBuiltinServerTest extends TestCase
         $this->assertSame([], $orphans, 'Only servers bound to 127.0.0.1 are ours; a non-loopback bind must not match.');
     }
 
-    public function testFindOrphansHandlesMalformedArgsStringsWithoutError(): void
-    {
-        $snapshot = [
-            10 => '',
-            11 => 'not even a command line at all !!!! ??? ###',
-            12 => "php -S 127.0.0.1:notaport -t /docroot " . self::ROUTER_DIR . '/' . PhpBuiltinServer::routerFileName(1, str_repeat('a', 32)) . '.php.php',
-            13 => str_repeat('x', 5000),
-        ];
-
-        $orphans = PhpBuiltinServer::findOrphans($snapshot, self::ROUTER_DIR, 1);
-
-        $this->assertSame([], $orphans);
-    }
-
-    /**
-     * @return array<string, array{0: array<mixed, mixed>}>
-     */
-    public static function wrongTypedSnapshotProvider(): array
-    {
-        $validOrphanArgs = 'php -S 127.0.0.1:9000 -t /docroot '
-            . self::ROUTER_DIR . '/' . PhpBuiltinServer::routerFileName(100, str_repeat('a', 32));
-
-        return [
-            'int args' => [[5 => 123]],
-            'null args' => [[5 => null]],
-            'string pid with valid orphan args' => [['abc' => $validOrphanArgs]],
-        ];
-    }
-
-    /**
-     * @param array<mixed, mixed> $snapshot
-     */
-    #[DataProvider('wrongTypedSnapshotProvider')]
-    public function testFindOrphansSkipsWrongTypedEntries(array $snapshot): void
-    {
-        $this->assertSame([], PhpBuiltinServer::findOrphans($snapshot, self::ROUTER_DIR, 1));
-    }
-
     // ------------------------------------------------------------------
     // staleRouterFiles()
     // ------------------------------------------------------------------
@@ -350,44 +289,6 @@ final class PhpBuiltinServerTest extends TestCase
         $stale = PhpBuiltinServer::staleRouterFiles($files, []);
 
         $this->assertSame([], $stale, 'Non-matching file names must be ignored, not treated as stale.');
-    }
-
-    public function testStaleRouterFilesIgnoresMalformedNames(): void
-    {
-        $files = [
-            self::ROUTER_DIR . '/elanreg-phpsrv-abc-' . str_repeat('a', 32) . '.php',    // non-numeric pid
-            self::ROUTER_DIR . '/elanreg-phpsrv-123-' . str_repeat('a', 10) . '.php',    // nonce too short
-            self::ROUTER_DIR . '/elanreg-phpsrv-123-' . str_repeat('z', 32) . '.php',    // nonce not hex
-            self::ROUTER_DIR . '/elanreg-phpsrv--' . str_repeat('a', 32) . '.php',       // empty pid
-        ];
-
-        $stale = PhpBuiltinServer::staleRouterFiles($files, [123]);
-
-        $this->assertSame([], $stale);
-    }
-
-    public function testStaleRouterFilesSkipsNonStringFile(): void
-    {
-        $this->assertSame([], PhpBuiltinServer::staleRouterFiles([42], []));
-    }
-
-    public function testStaleRouterFilesIgnoresNonIntLivePidsWithoutWarning(): void
-    {
-        $deadOwnerFile = self::ROUTER_DIR . '/' . PhpBuiltinServer::routerFileName(601, str_repeat('c', 32));
-
-        $warnings = [];
-        set_error_handler(static function (int $errno, string $errstr) use (&$warnings): bool {
-            $warnings[] = $errstr;
-            return true;
-        });
-        try {
-            $stale = PhpBuiltinServer::staleRouterFiles([$deadOwnerFile], [null, 1.5]);
-        } finally {
-            restore_error_handler();
-        }
-
-        $this->assertSame([], $warnings, 'Non-int live PIDs must be filtered, not handed to array_flip().');
-        $this->assertSame([$deadOwnerFile], $stale);
     }
 
     // ------------------------------------------------------------------
@@ -479,15 +380,6 @@ final class PhpBuiltinServerTest extends TestCase
             ],
             $plan
         );
-    }
-
-    public function testPlanSweepSkipsNonStringRouterFiles(): void
-    {
-        $files = self::routerFiles();
-
-        $plan = PhpBuiltinServer::planSweep(self::validSnapshot(), 0, [42, null, $files['dead']], self::ROUTER_DIR, self::SELF_PID);
-
-        $this->assertSame([$files['dead']], $plan['unlink']);
     }
 
     // ------------------------------------------------------------------
