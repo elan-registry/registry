@@ -144,8 +144,11 @@ try {
 }
 $toName = (string)($toData->fname ?? '');                                        // first name only — flows to HTML template, not headers
 
+// A malformed recipient address is the owner's bad data, not a server fault, and
+// the member cannot fix it. Answer 409 like the noowner refusal. The log row
+// tells an admin to correct the address.
 if (!filter_var($toEmail, FILTER_VALIDATE_EMAIL)) {
-    ApiResponse::serverError()
+    ApiResponse::error('This owner cannot be contacted right now. Use the Feedback form to contact the registry.', 409)
         ->withLogging($logUserId ?? 0, LogCategories::LOG_CATEGORY_EMAIL_ERROR,
             'send-owner-email.php: invalid recipient email for to_user_id=' . $toUserId)
         ->send();

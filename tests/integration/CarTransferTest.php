@@ -337,22 +337,21 @@ final class CarTransferTest extends IntegrationTestCase
         $flaggedCarId = $this->createTestCar($this->testUserId, ['chassis' => 'TR' . uniqid()]);
         $previousBefore = $this->getOwnerEmailFlags($this->testUserId);
 
-        $noOwner = $this->db->query("SELECT id FROM users WHERE username = 'noowner'")->first();
-        $this->assertIsObject($noOwner, 'noowner system account must exist for this test');
+        $noOwnerId = $this->noownerId();
         $noOwnerProfilesBefore = (int) $this->db->query(
             'SELECT COUNT(*) AS cnt FROM profiles WHERE user_id = ?',
-            [(int) $noOwner->id]
+            [$noOwnerId]
         )->first()->cnt;
 
         $car = new Car($flaggedCarId);
-        $car->transfer((int) $noOwner->id, 'Test reassignment to noowner', 'NEWOWNER', $this->testUserId);
+        $car->transfer($noOwnerId, 'Test reassignment to noowner', 'NEWOWNER', $this->testUserId);
 
         $this->assertSame($previousBefore, $this->getOwnerEmailFlags($this->testUserId));
         $this->assertSame(
             $noOwnerProfilesBefore,
             (int) $this->db->query(
                 'SELECT COUNT(*) AS cnt FROM profiles WHERE user_id = ?',
-                [(int) $noOwner->id]
+                [$noOwnerId]
             )->first()->cnt,
             'The reassignment must not create or delete a noowner profile'
         );
@@ -372,15 +371,14 @@ final class CarTransferTest extends IntegrationTestCase
     {
         $carId = $this->createTestCar($this->testUserId, ['chassis' => 'TR' . uniqid(), 'solddate' => '2020-01-01']);
 
-        $noOwner = $this->db->query("SELECT id FROM users WHERE username = 'noowner'")->first();
-        $this->assertIsObject($noOwner, 'noowner system account missing — run composer migrate (RegisterNoownerAccount)');
+        $noOwnerId = $this->noownerId();
 
         $car = new Car($carId);
-        $car->transfer((int) $noOwner->id, 'Integration test: noowner reassignment preserves solddate', 'NEWOWNER', $this->testUserId);
+        $car->transfer($noOwnerId, 'Integration test: noowner reassignment preserves solddate', 'NEWOWNER', $this->testUserId);
 
         $after = $this->db->query('SELECT user_id, solddate FROM cars WHERE id = ?', [$carId])->first();
         $this->assertSame(
-            (int) $noOwner->id,
+            $noOwnerId,
             (int) $after->user_id,
             'Car must be reassigned to the noowner account'
         );
@@ -433,11 +431,10 @@ final class CarTransferTest extends IntegrationTestCase
             'vericode' => hashVericode('SOME-PLAINTEXT-CODE-' . uniqid()),
         ]);
 
-        $noOwner = $this->db->query("SELECT id FROM users WHERE username = 'noowner'")->first();
-        $this->assertIsObject($noOwner, 'noowner system account must exist for this test');
+        $noOwnerId = $this->noownerId();
 
         $car = new Car($verifiedCarId);
-        $car->transfer((int) $noOwner->id, 'Test reassignment to noowner', 'NEWOWNER', $this->testUserId);
+        $car->transfer($noOwnerId, 'Test reassignment to noowner', 'NEWOWNER', $this->testUserId);
 
         $carRow = $this->db->query(
             "SELECT vericode FROM cars WHERE id = ?",

@@ -4,15 +4,19 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
 
-use ElanRegistry\AppConstants;
 use ElanRegistry\LogCategories;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * app/api/contact/send-owner-email.php refuses a message for a car that the
- * noowner system account holds (ADR-010, #2505). The account has the address
- * noowner@invalid. Before the fix the request answered 500 and wrote an
- * EmailError row. Now it answers 409 and writes no row.
+ * app/api/contact/send-owner-email.php refuses two recipients with a 409 and a
+ * readable message:
+ * - The noowner system account (ADR-010, #2505). Its address is noowner@invalid.
+ *   The endpoint writes no log row.
+ * - An owner whose address is malformed (#2712). The endpoint writes one
+ *   EmailError row under the sender's user id. Its note names the recipient's
+ *   user id (to_user_id=N), so an admin can correct the address.
+ * Before the fixes both requests answered 500.
  *
  * Each request runs in its own `php -r` subprocess because ApiResponse::send()
  * calls exit.
@@ -58,15 +62,6 @@ final class SendOwnerEmailNoOwnerTest extends IntegrationTestCase
         return $senderId;
     }
 
-    /** The id of the noowner system account, found by username. */
-    private function noownerId(): int
-    {
-        $row = $this->db->query('SELECT id FROM users WHERE username = ?', [AppConstants::NOOWNER_USERNAME])->first();
-        $this->assertIsObject($row, 'Test setup: the noowner account must exist');
-
-        return (int) $row->id;
-    }
-
     /**
      * @return array{status: bool|null, message: string, httpCode: int|null, exitCode: int, raw: string, json: array<mixed>|null}
      */
@@ -96,19 +91,54 @@ final class SendOwnerEmailNoOwnerTest extends IntegrationTestCase
         return $this->countMatchingLogs(LogCategories::LOG_CATEGORY_EMAIL_ERROR, '%', $senderId);
     }
 
-    public function testNoownerRecipientIsRefusedWith409AndReadableMessage(): void
+    /** @return array<string, array{'noowner'|'malformed', string[]}> */
+    public static function refusedRecipientProvider(): array
+    {
+        return [
+            'noowner' => ['noowner', ['no current owner']],
+            'malformed address' => ['malformed', ['cannot be contacted', 'Feedback form']],
+        ];
+    }
+
+    /**
+     * The user id of the recipient for a provider case.
+     *
+     * @param 'noowner'|'malformed' $case
+     */
+    private function createRefusedRecipient(string $case): int
+    {
+        return match ($case) {
+            'noowner' => $this->noownerId(),
+            'malformed' => $this->createMalformedOwner(),
+        };
+    }
+
+    /** An owner whose address fails FILTER_VALIDATE_EMAIL. The profile row makes the address check the only refusal. */
+    private function createMalformedOwner(): int
+    {
+        return $this->createTestUser(['email' => 'malformed_' . uniqid()], true);
+    }
+
+    /**
+     * @param 'noowner'|'malformed' $case
+     * @param string[] $messageFragments
+     */
+    #[DataProvider('refusedRecipientProvider')]
+    public function testRefusedRecipientGets409AndReadableMessage(string $case, array $messageFragments): void
     {
         $senderId = $this->createSender();
-        $noownerId = $this->noownerId();
-        $carId = $this->createTestCar($noownerId);
+        $recipientId = $this->createRefusedRecipient($case);
+        $carId = $this->createTestCar($recipientId);
 
-        $result = $this->sendMessage($senderId, $noownerId, $carId);
+        $result = $this->sendMessage($senderId, $recipientId, $carId);
 
         $this->assertSame(0, $result['exitCode'], 'Subprocess must exit cleanly: ' . $result['raw']);
         $this->assertSame(409, $result['httpCode'], $result['raw']);
         $this->assertIsArray($result['json'], 'Response must be valid JSON: ' . $result['raw']);
         $this->assertFalse($result['status'], $result['raw']);
-        $this->assertStringContainsString('no current owner', $result['message'], $result['raw']);
+        foreach ($messageFragments as $fragment) {
+            $this->assertStringContainsString($fragment, $result['message'], $result['raw']);
+        }
         $this->assertNoPhpErrorText($result['raw']);
     }
 
@@ -129,6 +159,27 @@ final class SendOwnerEmailNoOwnerTest extends IntegrationTestCase
         );
         $this->assertSame(0, $this->countSendOutcomeLogs($senderId), 'A refused noowner request must not reach email()');
         // Guard: a request that never reached the endpoint logic would also leave the counts unchanged.
+        $this->assertSame(409, $result['httpCode'], $result['raw']);
+    }
+
+    public function testMalformedRecipientWritesEmailErrorRowAndSendsNothing(): void
+    {
+        $senderId = $this->createSender();
+        $ownerId = $this->createMalformedOwner();
+        $carId = $this->createTestCar($ownerId);
+        $note = 'send-owner-email.php: invalid recipient email for to_user_id=' . $ownerId;
+
+        $before = $this->countMatchingLogs(LogCategories::LOG_CATEGORY_EMAIL_ERROR, $note, $senderId);
+
+        $result = $this->sendMessage($senderId, $ownerId, $carId);
+
+        $this->assertSame(
+            $before + 1,
+            $this->countMatchingLogs(LogCategories::LOG_CATEGORY_EMAIL_ERROR, $note, $senderId),
+            'A malformed recipient address must write exactly one EmailError row'
+        );
+        $this->assertSame(0, $this->countSendOutcomeLogs($senderId), 'A refused malformed-address request must not reach email()');
+        // Guard: a request that never reached the endpoint logic would also leave the send count at 0.
         $this->assertSame(409, $result['httpCode'], $result['raw']);
     }
 

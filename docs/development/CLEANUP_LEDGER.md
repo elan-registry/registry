@@ -181,13 +181,13 @@ after an item is written.
 
 - [ ] The class copies `AdminDeliverabilityActionsAuthTest`: its own `grantPermission()` and permission-row cleanup (use `IntegrationTestCase::grantTestPermission()`), and its own `php -r` page runner (move to `invokeEndpoint()` with that class's item) (found in #2102 review)
 
+### `tests/integration/BrevoWebhookEndpointTest.php` + `tests/integration/EmailEventApplierIntegrationTest.php` + `tests/integration/UserDeletionReassignmentTest.php` + `tests/integration/cars/services/BrevoEventOwnerEmailMatchTest.php` + `tests/integration/database/AdminVerificationOwnerActionNoOwnerGuardTest.php` + `tests/integration/database/CarRepositoryEmailEventsTest.php` + `tests/integration/database/CarRepositoryVerificationDashboardTest.php` + `tests/integration/database/CarVerificationEligibilityTest.php` (test-only)
+
+- [ ] 11 inline `noowner` id lookups (`SELECT id FROM users WHERE username = ...`) in these 8 files. Use `IntegrationTestCase::noownerId()`. A lookup that also reads `email` or `fname` can keep its own query (found in #2712)
+
 ### `tests/integration/CarEditOwnerColumnRefreshTest.php`
 
 - [ ] `testOwnerSelfEditSetsOwnerLastUpdatedButAdminEditDoesNot` only checks that the new `owner_last_updated` is later than a date two years ago, and does not count `cars_hist` rows. Bound it with `assertEqualsWithDelta(time(), ..., 60)` and assert one new history row (found while working on #1929)
-
-### `tests/integration/CarTransferTest.php` + `tests/integration/SendOwnerEmailNoOwnerTest.php` (test-only)
-
-- [ ] Four copies of the `noowner` id lookup (`SELECT id FROM users WHERE username = ...`): `CarTransferTest` ~L340, ~L375 and ~L436 (#2402 moved the `AdminCarReassignmentTest` copies there), and `SendOwnerEmailNoOwnerTest::noownerId()`. Move one helper into `IntegrationTestCase` that reads `AppConstants::NOOWNER_USERNAME` (found in #2505)
 
 ### `tests/integration/HeadTagsCanonicalRenderTest.php` + `tests/integration/VerifyCarLandingPageTest.php` + `tests/Support/UserscPageClient.php` (test-only)
 

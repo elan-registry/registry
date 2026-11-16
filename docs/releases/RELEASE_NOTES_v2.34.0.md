@@ -8,7 +8,7 @@ the member gets a clear reason.
 
 ## User-Facing Changes
 
-- [Fill in as issues complete.]
+- Contacting an owner whose email address is not valid now shows a clear message that points to the Feedback form.
 
 ## Admin-Facing Changes
 
