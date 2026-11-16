@@ -96,8 +96,9 @@ researching a chassis number.
   another member. A car with no current owner (held by the `noowner` system
   account) has no Contact Owner action. Every viewer sees the status line
   "This car has no current owner." A member also sees a "Contact the
-  Registry" button, which opens the feedback form. An admin sees only the
-  admin banner and edit link. A guest sees no "Log in to contact owner" link.
+  Registry" button, which opens the feedback form. An admin also sees the
+  admin banner and edit link, but no "Contact the Registry" button. A guest
+  sees only the status line, with no "Log in to contact owner" link.
 - **Factory records** (`app/owner/cars/factory.php`) — original build data
   matched to a chassis number where the registry holds it.
 - **Statistics** (`app/owner/reports/statistics.php`) — production trends,
