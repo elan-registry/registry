@@ -24,8 +24,9 @@ final class ThrowingInsertDatabase extends FakeDatabase
 
 /**
  * Unit tests for admin_script_record_completion() (app/admin/includes/fix-script-core.php),
- * covering the branches the integration test FixPagePermissionsAnalyzeRunTest does not
- * reach: the function's own failure path (#1776).
+ * against a fake database. The success tests pin that a good insert neither logs nor
+ * calls onFailure. The failure tests cover the branches the integration test
+ * FixPagePermissionsAnalyzeRunTest does not reach (#1776).
  *
  * @see app/admin/includes/fix-script-core.php
  */

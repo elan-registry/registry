@@ -173,6 +173,21 @@ final class SendVerificationBatchJobTest extends TestCase
         );
     }
 
+    /**
+     * The only check of the claim interval. At 24 hours or more, cron drift makes
+     * the daily job skip days. The fake database does not check the value that
+     * the job passes to claim().
+     */
+    public function testGuardIntervalHoursReturnsTwenty(): void
+    {
+        $repo = $this->createStub(CarRepository::class);
+        $sendSvc = $this->makeSendSvc($repo);
+        $job = $this->makeJob($this->makeSettings(), $sendSvc, $this->makeSender($repo, $sendSvc));
+        $method = new ReflectionMethod($job, 'guardIntervalHours');
+
+        $this->assertSame(20, $method->invoke($job));
+    }
+
     // --- execute() — eligibility query -------------------------------------
 
     public function testExecuteCallsFindEligibleWithBatchSizeAsLimitAndOffsetZero(): void

@@ -10,7 +10,9 @@ use PHPUnit\Framework\TestCase;
  * Source pins for the admin AJAX guards. The endpoints need users/init.php and
  * exit on rejection, so PHPUnit cannot run them. Matching is token-based, so a
  * commented-out guard does not count. It proves the call exists, not that it
- * runs first. Only process-user-details.php has an HTTP rejection test (Playwright).
+ * runs first. It does not check what requireAdminAjax() does inside.
+ * tests/integration/AdminAjaxGuardBehaviorTest.php checks that. Only
+ * process-user-details.php has an HTTP rejection test (Playwright).
  */
 #[Group('fast')]
 #[Group('unit')]

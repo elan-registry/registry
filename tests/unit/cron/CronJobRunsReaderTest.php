@@ -22,10 +22,10 @@ require_once __DIR__ . '/../../Support/CronJobRunsReaderFakeDatabase.php';
  * receive (missing/unreadable row, "never run" row, and a parsed timestamp)
  * in a single read. `state()` and `lastRunAt()` are thin wrappers around
  * `status()`. tests/integration/CronJobRunsReaderDatabaseTest.php covers
- * them. Logging is asserted separately: only the two fault cases
- * (MISSING, UNREADABLE) log under LOG_CATEGORY_CRON_JOB_FAILURE — DISABLED
- * and ENABLED are routine display reads and must stay silent (see the class
- * docblock).
+ * them. In this file, logging is asserted for `status()`: only the two fault
+ * cases (MISSING, UNREADABLE) log under LOG_CATEGORY_CRON_JOB_FAILURE —
+ * DISABLED and ENABLED are routine display reads and must stay silent (see
+ * CronJobRunsReader's class docblock).
  */
 #[Group('fast')]
 final class CronJobRunsReaderTest extends TestCase

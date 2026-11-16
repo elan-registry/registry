@@ -12,12 +12,13 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Security-focused test cases for file upload functionality
+ * Upload validation tests
  *
  * Tests usersc/classes/Car/CarImageProcessor.php's upload-validation methods
  * (getMimeType, getExtension, validateFileUpload) — the same methods
  * app/api/cars/save.php calls during a real upload.
- * Validates protection against common file upload attack vectors.
+ * Covers the MIME type and extension allowlists, size limits, upload errors,
+ * and the messages the owner sees.
  *
  * Requires _is_uploaded_file_namespace_overrides.php (see its docblock):
  * validateFileUpload()'s is_uploaded_file() check can never pass for a file
