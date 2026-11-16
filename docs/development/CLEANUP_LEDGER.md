@@ -76,6 +76,7 @@ after an item is written.
 ### `app/admin/index.php`
 
 - [ ] The `car_photos_apply` case is about 270 lines of parsing and message building inside the switch (~L1115). Move the parsing and the result messages into a small helper class, so that unit tests can cover them without a page request (found in #2644)
+- [ ] The comment before the command switch (~L525) says CSRF is checked "above (line ~176)". The `Token::check()` gate is now at ~L344. Name the gate, not a line number (found in #2699)
 
 ### `app/admin/scripts/maintenance/21-Fix-Page-Permissions.php` + `app/admin/scripts/maintenance/26-Reconcile-Owner-Fields.php` + `app/api/webhooks/brevo.php` + `usersc/classes/Car/CarAdministrationService.php` + `usersc/classes/Car/CarVerificationSendService.php` + `usersc/includes/custom_functions.php` + `usersc/plugins/hooker/hooks/user_form_hook.php` (logger guards)
 
@@ -222,6 +223,10 @@ after an item is written.
 ### `tests/playwright/admin-verification-dashboard.spec.js` (test coverage)
 
 - [ ] No test covers the queue and activity forms binding when the switch is absent (#2457). The probe-failure path needs a failing DB (see the note at L267) (found in /flow:finish-milestone v2.31.0)
+
+### `tests/playwright/ajax-endpoints.spec.js` (test quality)
+
+- [ ] The contact-owner bad-token test (~L419) asserts only 403 and `success:false`. The owner check in `send-owner-email.php` also returns 403, so the test still passes if `Token::check` stops working. Also assert the CSRF error message (found in #2699)
 
 ### `tests/playwright/car-add-invalid-purchasedate.spec.js` + `tests/unit/cars/CarActionsSaveWiringTest.php` (test quality)
 
