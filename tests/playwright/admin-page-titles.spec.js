@@ -55,10 +55,10 @@ test.describe('Admin page titles — design system (#1430)', () => {
     test('renders page-specific title and description', async ({ page }) => {
         await page.goto('app/admin/design-system.php', { waitUntil: 'networkidle' });
 
-        // $pageDescription's timing isn't strictly required (head_tags.php reads it
-        // at render time, unlike $pageTitle), but its VALUE should still reach the
-        // meta tag correctly — this is the one page in the set with an easy static
-        // value to assert against.
+        // head_tags.php and the upstream header read $pageTitle and $pageDescription
+        // at render time. The loader only checks $pageTitle at init and sets a
+        // fallback when it is not set. This page has static values that are easy
+        // to assert, so the test checks that both values reach the head tags.
         await assertPageTitle(page, {
             expectedTitle: 'Color Preview — Elan Registry Token System',
             expectedDescription: 'Preview of the Elan Registry design system color tokens and UI components.',

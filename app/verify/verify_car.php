@@ -64,11 +64,8 @@ declare(strict_types=1);
 
 $pageTitle = 'Verify Your Car';
 $pageDescription = 'Confirm your Lotus Elan registry record is up to date, or tell us it has been sold.';
-// The URL carries the vericode credential in its query string, which
-// head_tags.php would otherwise republish in a canonical link and og:url tag
-// on an "index, follow" page — handing the secret to any crawler that
-// reaches it. noindex closes that off; nothing about this page belongs in a
-// search index regardless.
+// The URL carries the vericode credential in its query string, and nothing on
+// this page belongs in a search index.
 $pageRobots = 'noindex, follow';
 
 require_once '../../users/init.php';
@@ -188,27 +185,18 @@ function renderVerifyPage(string $partial): never
     // does not itself assign — the ones below are the required (non-isset()-
     // guarded) results. All are set at file scope well before this function
     // ever runs: $abs_us_root/$us_url_root/$settings/$user/$usplugins/
-    // $currentPage by users/init.php and its includes; $host/$current_url/
+    // $currentPage by users/init.php and its includes; $host/
     // $current_origin/$php_self by usersc/includes/server_globals.php
     // (loaded by users/init.php); $pageTitle/$pageDescription/$pageRobots at
     // the very top of this file. The remainder are this page's own
     // render-context variables.
     global $abs_us_root, $us_url_root, $settings, $user, $usplugins, $currentPage,
-           $pageTitle, $pageDescription, $pageRobots, $host, $current_url, $current_origin,
+           $pageTitle, $pageDescription, $pageRobots, $host, $current_origin,
            $php_self, $userspice_nonce,
            $verifyCar, $verifyCarModel, $verifyPhoto, $verifyCode,
            $verifySelfUrl, $verifyEditUrl, $soldDateValue, $soldDateMin, $soldDateMax,
            $soldDateError, $verifyNoticeIcon, $verifyNoticeHeading, $verifyNoticeBody,
            $verifyNoticeState, $optOutCarCount, $optOutAlreadyOptedOut;
-
-    // head_tags.php echoes $current_url verbatim into <link rel="canonical">,
-    // og:url, and twitter:url — which would otherwise republish the vericode
-    // credential in the page's own markup (readable via "view source" or any
-    // link-preview/social-unfurl bot, independent of the noindex directive
-    // above, which only stops search-engine crawling/indexing). Strip the
-    // query string here, before elanregistry_prep.php renders head_tags.php,
-    // so every rendered state shares one vericode-free canonical identity.
-    $current_url = $current_origin . $us_url_root . 'app/verify/verify_car.php';
 
     require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 

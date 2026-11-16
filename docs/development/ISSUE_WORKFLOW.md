@@ -454,8 +454,8 @@ section is the reference for the format.
 - **Fix an item** by deleting its line in the same PR that fixes it. Delete
   the heading too when it has no items left. The file has no `- [x]` lines.
   Git history is the record.
-- **Find the items for a change** with `scripts/ledger-items-for-files.sh`.
-  It reads one path per line on stdin and prints `path: item text`.
+- **Find the items for a change** with `flow-ledger-items-for-files` (in the
+  devkit `flow` plugin). It reads one path per line on stdin and prints `path: item text`.
 - **Move or delete a file** only with its ledger group. `composer check:docs`
   fails when a heading names a path that does not exist.
 - A cleanup find with no named benefit is dropped, not recorded. `/found`

@@ -13,8 +13,11 @@ use Tests\Support\RobotsTxtGroups;
  * (#1537, #1541: Cloudflare "Managed robots.txt", a dashboard toggle that no
  * code review can see).
  *
- * The Test host is the most sensitive canary: its whole policy is one
- * `Disallow: /`. Residual gap: a production-only re-enable is not detected.
+ * Test must allow crawl so that Google sees the X-Robots-Tag noindex header
+ * from .htaccess (#2246). An injected agent group, for example
+ * `User-agent: Googlebot` with `Disallow: /`, hides that header.
+ * testNoForeignGroupsPresentInLiveRobotsTxt catches it. Residual gap: a
+ * production-only robots.txt change is not detected.
  *
  * Needs outbound network. The `live-network` group is excluded from
  * phpunit-integration.xml. Run it with:
@@ -132,18 +135,19 @@ final class RobotsTxtAsServedTest extends TestCase
         self::$localGroups = RobotsTxtGroups::parse(RobotsTxtGroups::readRootFile(self::LOCAL_BASELINE_FILE));
     }
 
-    public function testDefaultGroupDisallowsRootPathAsServed(): void
+    public function testDefaultGroupAllowsRootPathAsServed(): void
     {
         $this->skipIfLiveFetchUnavailable();
 
         $rules = RobotsTxtGroups::mergedRulesForAgent(self::$liveGroups, '*');
 
-        $this->assertFalse(
+        $this->assertTrue(
             RobotsTxtGroups::resolve($rules, '/'),
-            "test.elanregistry.org's live robots.txt must fully block '/' for User-agent: * — if this fails, "
-                . "a permissive group (e.g. Cloudflare's Managed robots.txt) has likely been injected ahead of "
-                . 'our own, recreating the #1537 tie-break bug where an injected `Allow: /` ties our `Disallow: /` '
-                . 'at prefix length 1 and wins on least-restrictive-wins.'
+            "test.elanregistry.org's live robots.txt must allow '/' for User-agent: * — Test must allow crawl "
+                . 'so that Google sees the X-Robots-Tag noindex header (#2246); a Disallow hides that header '
+                . 'and leaves known URLs in the index. If this fails, our own group no longer allows /: the '
+                . 'old robots-test.txt is still deployed, or the edge serves a stale copy of it. An injected '
+                . '`Disallow: /` alone cannot cause it, because `Allow: /` wins the tie.'
         );
     }
 
@@ -174,8 +178,8 @@ final class RobotsTxtAsServedTest extends TestCase
     }
 
     /**
-     * A dropped `Disallow: /` group (failed deploy swap, stale cache) is as
-     * bad as an injected permissive group.
+     * A dropped `Allow: /` group (failed deploy swap, stale cache) is as bad
+     * as an injected group: production's robots.txt would be served instead.
      */
     public function testNoLocalGroupsMissingFromLiveRobotsTxt(): void
     {

@@ -6,6 +6,7 @@ use ElanRegistry\CarView;
 use ElanRegistry\Exceptions\ImageProcessingException;
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -123,6 +124,19 @@ final class CarViewTest extends TestCase
         $this->assertStringContainsString('No Photos Available', $html);
         $this->assertStringContainsString('fa-camera', $html);
         $this->assertStringContainsString('photo-placeholder', $html);
+    }
+
+    public function testDisplayCarouselPlaceholderHasNoHeadingAndHidesIcon(): void
+    {
+        $car = $this->createStub(\ElanRegistry\Car\Car::class);
+        $car->method('images')->willReturn([]);
+
+        $html = CarView::displayCarousel($car);
+
+        // Callers put the carousel under h2, h3 or h4, so a heading here skips a level.
+        $this->assertDoesNotMatchRegularExpression('/<h[1-6][\s>]/', $html);
+        $this->assertStringContainsString('<p class="h5 text-muted mb-2">No Photos Available</p>', $html);
+        $this->assertMatchesRegularExpression('/<i class="fas fa-camera[^"]*"[^>]*aria-hidden="true"/', $html);
     }
 
     public function testDisplayCarouselShowsSingleImageWithoutControls(): void
@@ -361,5 +375,297 @@ final class CarViewTest extends TestCase
 
         $this->assertArrayNotHasKey('bodyType', $schema);
         $this->assertArrayNotHasKey('vehicleConfiguration', $schema);
+    }
+
+    public function testBuildCarSchemaUrlEqualsArgument(): void
+    {
+        $url = 'https://elanregistry.org/app/owner/cars/details.php?car_id=952';
+
+        $schema = CarView::buildCarSchema($this->makeCarData(), $url);
+
+        $this->assertSame($url, $schema['url']);
+    }
+
+    // ============================================================
+    // buildPageTitle() / buildPageDescription() TESTS (Issue #1528)
+    // ============================================================
+
+    private function makeTitleCarData(array $overrides = []): object
+    {
+        return (object)array_merge([
+            'id' => 952,
+            'year' => 1967,
+            'series' => 'S3 SE',
+            'variant' => '',
+            'chassis' => '26/1234',
+        ], $overrides);
+    }
+
+    public function testBuildPageTitleMatchesIssueExample(): void
+    {
+        $this->assertSame(
+            '1967 Lotus Elan S3 SE, Chassis 26/1234',
+            CarView::buildPageTitle($this->makeTitleCarData(), true)
+        );
+    }
+
+    public function testBuildPageDescriptionMatchesIssueExample(): void
+    {
+        $this->assertSame(
+            'Registry record for a 1967 Lotus Elan S3 SE, chassis 26/1234: ownership history, factory build data and photos.',
+            CarView::buildPageDescription($this->makeTitleCarData(), true)
+        );
+    }
+
+    public function testBuildPageTitleIncludesSeriesAndVariantWhenModelKnown(): void
+    {
+        $carData = $this->makeTitleCarData(['year' => 1969, 'series' => 'S4', 'variant' => 'DHC', 'chassis' => '36/7890']);
+
+        $this->assertSame('1969 Lotus Elan S4 (DHC), Chassis 36/7890', CarView::buildPageTitle($carData, true));
+    }
+
+    public function testBuildPageTitlePlus2SeriesUsesElanPlus2Model(): void
+    {
+        $carData = $this->makeTitleCarData(['year' => 1971, 'series' => '+2S/130', 'variant' => 'FHC', 'chassis' => '7101010001']);
+
+        $this->assertSame('1971 Lotus Elan Plus 2 S/130 (FHC), Chassis 7101010001', CarView::buildPageTitle($carData, true));
+    }
+
+    public function testBuildPageTitleLeavesOutSeriesAndVariantWhenModelUnknown(): void
+    {
+        $carData = $this->makeTitleCarData(['series' => 'S4', 'variant' => 'DHC']);
+
+        $this->assertSame('1967 Lotus Elan, Chassis 26/1234', CarView::buildPageTitle($carData, false));
+        $this->assertSame(
+            'Registry record for a 1967 Lotus Elan, chassis 26/1234: ownership history, factory build data and photos.',
+            CarView::buildPageDescription($carData, false)
+        );
+    }
+
+    public function testBuildPageTitleUsesCarIdWhenChassisInvalid(): void
+    {
+        $carData = $this->makeTitleCarData(['chassis' => '']);
+
+        $this->assertSame('1967 Lotus Elan S3 SE, Registry car #952', CarView::buildPageTitle($carData, true));
+        $this->assertSame(
+            'Registry record for a 1967 Lotus Elan S3 SE, Registry car #952: ownership history, factory build data and photos.',
+            CarView::buildPageDescription($carData, true)
+        );
+    }
+
+    /**
+     * @return array<string, array{mixed}>
+     */
+    public static function invalidCarIdProvider(): array
+    {
+        return [
+            'zero' => [0],
+            'negative' => [-5],
+            'zero string' => ['0'],
+            'padded string' => ['0952'],
+            'string with suffix' => ['952-spam'],
+            'null' => [null],
+            'float' => [952.0],
+        ];
+    }
+
+    #[DataProvider('invalidCarIdProvider')]
+    public function testBuildPageTitleLeavesOutInvalidCarId(mixed $id): void
+    {
+        $carData = $this->makeTitleCarData(['chassis' => '', 'id' => $id]);
+
+        $this->assertSame('1967 Lotus Elan S3 SE', CarView::buildPageTitle($carData, true));
+    }
+
+    /**
+     * @return array<string, array{mixed}>
+     */
+    public static function invalidYearProvider(): array
+    {
+        return [
+            'before 1963' => [1962],
+            'after 1974' => [1975],
+            'zero' => [0],
+            'padded string' => ['01969'],
+            'string out of range' => ['1975'],
+            'string with suffix' => ['1969abc'],
+            'null' => [null],
+            'float' => [1969.0],
+            'bool' => [true],
+            'array' => [[]],
+        ];
+    }
+
+    #[DataProvider('invalidYearProvider')]
+    public function testBuildPageTitleLeavesOutInvalidYear(mixed $year): void
+    {
+        $carData = $this->makeTitleCarData(['year' => $year]);
+
+        $this->assertSame('Lotus Elan S3 SE, Chassis 26/1234', CarView::buildPageTitle($carData, true));
+        $this->assertSame(
+            'Registry record for a Lotus Elan S3 SE, chassis 26/1234: ownership history, factory build data and photos.',
+            CarView::buildPageDescription($carData, true)
+        );
+    }
+
+    /**
+     * @return array<string, array{int}>
+     */
+    public static function boundaryYearProvider(): array
+    {
+        return [
+            'first year' => [1963],
+            'last year' => [1974],
+        ];
+    }
+
+    public function testBuildPageTitleAcceptsDigitStringsFromDatabaseRow(): void
+    {
+        // The UserSpice DB class returns int columns as strings (#1960 render test).
+        $carData = $this->makeTitleCarData(['year' => '1969', 'chassis' => '', 'id' => '952']);
+
+        $this->assertSame('1969 Lotus Elan S3 SE, Registry car #952', CarView::buildPageTitle($carData, true));
+    }
+
+    #[DataProvider('boundaryYearProvider')]
+    public function testBuildPageTitleKeepsBoundaryYear(int $year): void
+    {
+        $carData = $this->makeTitleCarData(['year' => $year]);
+
+        $this->assertStringStartsWith($year . ' Lotus Elan', CarView::buildPageTitle($carData, true));
+    }
+
+    /**
+     * @return array<string, array{mixed}>
+     */
+    public static function invalidChassisProvider(): array
+    {
+        return [
+            'int' => [261234],
+            'null' => [null],
+            'array' => [['26/1234']],
+            'object' => [(object)['chassis' => '26/1234']],
+            'too short' => ['ab'],
+            '16 characters' => ['1234567890123456'],
+            'script tag' => ['<script>alert(1)</script>'],
+            'double quote' => ['a"b'],
+            'newline' => ["a\nb"],
+            'html entity' => ['&amp;'],
+        ];
+    }
+
+    #[DataProvider('invalidChassisProvider')]
+    public function testBuildPageTitleLeavesOutInvalidChassis(mixed $chassis): void
+    {
+        $carData = $this->makeTitleCarData(['chassis' => $chassis]);
+
+        $this->assertSame('1967 Lotus Elan S3 SE, Registry car #952', CarView::buildPageTitle($carData, true));
+        $this->assertSame(
+            'Registry record for a 1967 Lotus Elan S3 SE, Registry car #952: ownership history, factory build data and photos.',
+            CarView::buildPageDescription($carData, true)
+        );
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function boundaryChassisProvider(): array
+    {
+        return [
+            '3 characters' => ['abc'],
+            '15 characters' => ['123456789012345'],
+        ];
+    }
+
+    #[DataProvider('boundaryChassisProvider')]
+    public function testBuildPageTitleKeepsBoundaryChassis(string $chassis): void
+    {
+        $carData = $this->makeTitleCarData(['chassis' => $chassis]);
+
+        $this->assertSame('1967 Lotus Elan S3 SE, Chassis ' . $chassis, CarView::buildPageTitle($carData, true));
+    }
+
+    public function testBuildPageTitleTrimsChassis(): void
+    {
+        $carData = $this->makeTitleCarData(['chassis' => '  26/1234 ']);
+
+        $this->assertSame('1967 Lotus Elan S3 SE, Chassis 26/1234', CarView::buildPageTitle($carData, true));
+    }
+
+    public function testBuildPageTitleAndDescriptionContainNoMarkupWhenEveryFieldHasMarkup(): void
+    {
+        $markup = '<script>alert("x\'&")</script>';
+        $carData = (object)[
+            'id' => $markup,
+            'year' => $markup,
+            'series' => $markup,
+            'variant' => $markup,
+            'chassis' => $markup,
+            'color' => $markup,
+            'nickname' => $markup,
+        ];
+
+        // $modelKnown true is the worst case: series and variant are not left out for that reason.
+        $title = CarView::buildPageTitle($carData, true);
+        $description = CarView::buildPageDescription($carData, true);
+
+        $this->assertSame('Lotus Elan', $title);
+        $this->assertSame(
+            'Registry record for a Lotus Elan: ownership history, factory build data and photos.',
+            $description
+        );
+        foreach (['<', '>', '"', "'", '&'] as $unsafe) {
+            $this->assertStringNotContainsString($unsafe, $title);
+            $this->assertStringNotContainsString($unsafe, $description);
+        }
+    }
+
+    public function testBuildPageTitleLeavesOutSeriesAndVariantWithUnsafeCharactersWhenModelKnown(): void
+    {
+        $carData = $this->makeTitleCarData(['series' => 'S3"><b>', 'variant' => "FHC'"]);
+
+        $this->assertSame('1967 Lotus Elan, Chassis 26/1234', CarView::buildPageTitle($carData, true));
+    }
+
+    public function testBuildPageTitleDiffersForTwoCars(): void
+    {
+        $first = $this->makeTitleCarData();
+        $second = $this->makeTitleCarData(['id' => 736, 'year' => 1970, 'series' => 'S4', 'chassis' => '45/0736']);
+
+        $this->assertNotSame(CarView::buildPageTitle($first, true), CarView::buildPageTitle($second, true));
+        $this->assertNotSame(CarView::buildPageDescription($first, true), CarView::buildPageDescription($second, true));
+    }
+
+    public function testBuildPageTitleDiffersByCarIdForSameModelWithNoValidChassis(): void
+    {
+        $first = $this->makeTitleCarData(['id' => 952, 'chassis' => '']);
+        $second = $this->makeTitleCarData(['id' => 736, 'chassis' => '<b>']);
+
+        $this->assertSame('1967 Lotus Elan S3 SE, Registry car #952', CarView::buildPageTitle($first, true));
+        $this->assertSame('1967 Lotus Elan S3 SE, Registry car #736', CarView::buildPageTitle($second, true));
+        $this->assertNotSame(CarView::buildPageDescription($first, true), CarView::buildPageDescription($second, true));
+    }
+
+    public function testBuildPageTitleForEmptyObjectGivesBaseTitleWithoutWarning(): void
+    {
+        // PHPUnit only reports a warning and does not fail the test, so collect them here.
+        $errors = [];
+        set_error_handler(static function (int $errno, string $errstr) use (&$errors): bool {
+            $errors[] = $errstr;
+            return true;
+        });
+        try {
+            $title = CarView::buildPageTitle(new \stdClass(), true);
+            $description = CarView::buildPageDescription(new \stdClass(), true);
+        } finally {
+            restore_error_handler();
+        }
+
+        $this->assertSame([], $errors);
+        $this->assertSame('Lotus Elan', $title);
+        $this->assertSame(
+            'Registry record for a Lotus Elan: ownership history, factory build data and photos.',
+            $description
+        );
     }
 }

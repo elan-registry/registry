@@ -5,9 +5,14 @@
  */
 require_once $abs_us_root . $us_url_root . 'app/version.php';
 
-// Server global $current_url already available from server_globals.php
-// loaded in Phase 1.11.12 (usersc/includes/loader.php)
-// Uses validated Server::getScheme() and Server::get('HTTP_HOST') with proper sanitization
+// $current_origin and $php_self come from server_globals.php, loaded in
+// Phase 1.11.12 (usersc/includes/loader.php). $current_origin uses the
+// validated scheme and host. $php_self is Server::get('PHP_SELF'), which
+// drops PATH_INFO, so a crafted path suffix does not reach the canonical.
+// The canonical, og:url, and twitter:url do not use $current_url, because it
+// includes the raw query string (#1960). A page that a query parameter
+// identifies sets $pageCanonicalUrl from validated values before
+// elanregistry_prep.php.
 $site_title = $settings->site_name ?? 'Lotus Elan Registry';
 $og_title = !empty($pageTitle) ? $pageTitle : $site_title;
 $site_description = !empty($pageDescription)
@@ -26,12 +31,16 @@ $og_image = $us_url_root . 'usersc/images/og-lotus-elan.jpg';
 <meta name="author" content="Jim Boone">
 <meta name="version" content="<?= ApplicationVersion::get(); ?>">
 <meta name="robots" content="<?= htmlspecialchars($pageRobots, ENT_QUOTES, 'UTF-8') ?>">
-<?php if (!empty($host)): ?>
-<link rel="canonical" href="<?= htmlspecialchars($current_url, ENT_QUOTES, 'UTF-8') ?>">
+<?php if (!empty($host)):
+    $canonical_url = !empty($pageCanonicalUrl)
+        ? $pageCanonicalUrl
+        : \ElanRegistry\CanonicalUrl::build($current_origin, $php_self);
+?>
+<link rel="canonical" href="<?= htmlspecialchars($canonical_url, ENT_QUOTES, 'UTF-8') ?>">
 
 <!-- Open Graph / Facebook -->
 <meta property="og:type" content="website">
-<meta property="og:url" content="<?= htmlspecialchars($current_url, ENT_QUOTES, 'UTF-8') ?>">
+<meta property="og:url" content="<?= htmlspecialchars($canonical_url, ENT_QUOTES, 'UTF-8') ?>">
 <meta property="og:title" content="<?= htmlspecialchars($og_title, ENT_QUOTES, 'UTF-8') ?>">
 <meta property="og:description" content="<?= htmlspecialchars($site_description, ENT_QUOTES, 'UTF-8') ?>">
 <meta property="og:image" content="<?= htmlspecialchars($og_image, ENT_QUOTES, 'UTF-8') ?>">
@@ -42,7 +51,7 @@ $og_image = $us_url_root . 'usersc/images/og-lotus-elan.jpg';
 
 <!-- Twitter Card -->
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:url" content="<?= htmlspecialchars($current_url, ENT_QUOTES, 'UTF-8') ?>">
+<meta name="twitter:url" content="<?= htmlspecialchars($canonical_url, ENT_QUOTES, 'UTF-8') ?>">
 <meta name="twitter:title" content="<?= htmlspecialchars($og_title, ENT_QUOTES, 'UTF-8') ?>">
 <meta name="twitter:description" content="<?= htmlspecialchars($site_description, ENT_QUOTES, 'UTF-8') ?>">
 <meta name="twitter:image" content="<?= htmlspecialchars($og_image, ENT_QUOTES, 'UTF-8') ?>">

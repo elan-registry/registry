@@ -23,6 +23,9 @@ const CAR_ID_WITH_OWNERSHIP_DATES = 4;
 // path, not the admin override. Re-verify with:
 // SELECT c.id FROM cars c JOIN users u ON u.id = c.user_id WHERE u.email = '<E2E_DEV_ADMIN_USERNAME>';
 const CAR_ID_OWNED_BY_ADMIN = 1;
+// Owned by the noowner system account (#2505). Re-verify with:
+// SELECT c.id FROM cars c JOIN users u ON u.id = c.user_id WHERE u.username = 'noowner';
+const CAR_ID_NOOWNER = 17;
 
 module.exports = {
   CAR_ID_STANDARD,
@@ -34,4 +37,5 @@ module.exports = {
   CAR_ID_WITHOUT_OWNERSHIP_DATES,
   CAR_ID_WITH_OWNERSHIP_DATES,
   CAR_ID_OWNED_BY_ADMIN,
+  CAR_ID_NOOWNER,
 };
