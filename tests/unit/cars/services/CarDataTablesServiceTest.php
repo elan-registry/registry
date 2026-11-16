@@ -70,51 +70,30 @@ final class CarDataTablesServiceTest extends TestCase
         $this->assertFalse($result);
     }
 
-    public function testValidateColumnNameRejectsRemovedModifiedByColumn(): void
+    /**
+     * Each row is a separate security case: a DataTables request must not
+     * sort or filter on a column outside the allowlist.
+     *
+     * @return array<string, array{string}>
+     */
+    public static function blockedCarsColumnProvider(): array
     {
-        $result = $this->invokeValidateColumnName('ModifiedBy', 'cars');
-        $this->assertFalse($result);
+        return [
+            'removed ModifiedBy column' => ['ModifiedBy'],
+            'email'                     => ['email'],
+            'lname'                     => ['lname'],
+            'vericode'                  => ['vericode'],
+            'last_verified'             => ['last_verified'],
+            'user_id'                   => ['user_id'],
+            'lat'                       => ['lat'],
+            'lon'                       => ['lon'],
+        ];
     }
 
-    public function testValidateColumnNameRejectsEmail(): void
+    #[DataProvider('blockedCarsColumnProvider')]
+    public function testValidateColumnNameRejectsBlockedCarsColumn(string $columnName): void
     {
-        $result = $this->invokeValidateColumnName('email', 'cars');
-        $this->assertFalse($result);
-    }
-
-    public function testValidateColumnNameRejectsLname(): void
-    {
-        $result = $this->invokeValidateColumnName('lname', 'cars');
-        $this->assertFalse($result);
-    }
-
-    public function testValidateColumnNameRejectsVericode(): void
-    {
-        $result = $this->invokeValidateColumnName('vericode', 'cars');
-        $this->assertFalse($result);
-    }
-
-    public function testValidateColumnNameRejectsLastVerified(): void
-    {
-        $result = $this->invokeValidateColumnName('last_verified', 'cars');
-        $this->assertFalse($result);
-    }
-
-    public function testValidateColumnNameRejectsUserId(): void
-    {
-        $result = $this->invokeValidateColumnName('user_id', 'cars');
-        $this->assertFalse($result);
-    }
-
-    public function testValidateColumnNameRejectsLat(): void
-    {
-        $result = $this->invokeValidateColumnName('lat', 'cars');
-        $this->assertFalse($result);
-    }
-
-    public function testValidateColumnNameRejectsLon(): void
-    {
-        $result = $this->invokeValidateColumnName('lon', 'cars');
+        $result = $this->invokeValidateColumnName($columnName, 'cars');
         $this->assertFalse($result);
     }
 

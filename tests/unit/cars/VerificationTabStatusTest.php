@@ -370,32 +370,25 @@ final class VerificationTabStatusTest extends TestCase
 
     // ---- Unmatched recipients row (#2085) ----
 
-    #[Group('regression')]
-    public function test_unmatchedRow_zero_isSuccess(): void
+    /** @return array<string, array{int, string, string}> */
+    public static function unmatchedCountProvider(): array
     {
-        $row = self::row('unmatched', ['unmatched' => 0]);
-
-        $this->assertSame('0', $row['badgeText']);
-        $this->assertSame('badge text-bg-success', $row['badgeClass']);
-    }
-
-    /** The boundary: one is already a warning. */
-    #[Group('regression')]
-    public function test_unmatchedRow_one_isWarning(): void
-    {
-        $row = self::row('unmatched', ['unmatched' => 1]);
-
-        $this->assertSame('1', $row['badgeText']);
-        $this->assertSame('badge text-bg-warning', $row['badgeClass']);
+        return [
+            'zero is success' => [0, '0', 'badge text-bg-success'],
+            // The boundary: one is already a warning.
+            'one is warning'  => [1, '1', 'badge text-bg-warning'],
+            'many is warning' => [250, '250', 'badge text-bg-warning'],
+        ];
     }
 
     #[Group('regression')]
-    public function test_unmatchedRow_many_isWarning(): void
+    #[DataProvider('unmatchedCountProvider')]
+    public function test_unmatchedRow_count_setsBadge(int $unmatched, string $expectedText, string $expectedClass): void
     {
-        $row = self::row('unmatched', ['unmatched' => 250]);
+        $row = self::row('unmatched', ['unmatched' => $unmatched]);
 
-        $this->assertSame('250', $row['badgeText']);
-        $this->assertSame('badge text-bg-warning', $row['badgeClass']);
+        $this->assertSame($expectedText, $row['badgeText']);
+        $this->assertSame($expectedClass, $row['badgeClass']);
     }
 
     #[Group('regression')]
@@ -1203,35 +1196,53 @@ final class VerificationTabStatusTest extends TestCase
         $this->assertFalse($status->allHealthy());
     }
 
-    #[Group('regression')]
-    public function test_read_suppressionSyncProbeThrows_isUnreadableAndLeavesReconciliationAlone(): void
+    /**
+     * Each row names the badges that the probe fault changes or leaves alone.
+     *
+     * @return array<string, array{string, array<string, string>, string}>
+     */
+    public static function probeThrowsProvider(): array
     {
-        $db = self::healthyJobsDb();
-        $db->throwOnErrorForParam = self::SUPPRESSION;
-
-        $status = VerificationTabStatus::read($db, 7);
-
-        $badges = self::badgesByKey($status);
-        $this->assertSame('Ran', $badges['reconciliation']['badgeText']);
-        $this->assertSame('Status unavailable', $badges['suppression_sync']['badgeText']);
-        $this->assertSame('0', $badges['cron_failures']['badgeText']);
-        $this->assertSame(CronJobEnabledState::ENABLED, $status->autoSendState());
-        $this->assertLogged(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, 'Suppression sync status probe failed: RuntimeException (code 0) at VerificationTabStatusTest.php:');
+        return [
+            'suppression sync' => [
+                self::SUPPRESSION,
+                ['reconciliation' => 'Ran', 'suppression_sync' => 'Status unavailable', 'cron_failures' => '0'],
+                'Suppression sync status probe failed: RuntimeException (code 0) at VerificationTabStatusTest.php:',
+            ],
+            'reconciliation' => [
+                self::RECONCILIATION,
+                ['reconciliation' => 'Status unavailable', 'suppression_sync' => 'Ran'],
+                'Reconciliation status probe failed: RuntimeException (code 0) at VerificationTabStatusTest.php:',
+            ],
+            'failure log' => [
+                LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE,
+                ['cron_failures' => 'Unavailable', 'reconciliation' => 'Ran'],
+                'Cron failure log summary probe failed: RuntimeException (code 0) at VerificationTabStatusTest.php:',
+            ],
+        ];
     }
 
+    /**
+     * @param array<string, string> $expectedBadges Badge key to badge text
+     */
     #[Group('regression')]
-    public function test_read_reconciliationProbeThrows_isUnreadableAndLeavesTheOtherRowsAlone(): void
-    {
+    #[DataProvider('probeThrowsProvider')]
+    public function test_read_probeThrows_isUnreadableAndLeavesTheOtherRowsAlone(
+        string $throwOnParam,
+        array $expectedBadges,
+        string $expectedLog
+    ): void {
         $db = self::healthyJobsDb();
-        $db->throwOnErrorForParam = self::RECONCILIATION;
+        $db->throwOnErrorForParam = $throwOnParam;
 
         $status = VerificationTabStatus::read($db, 7);
 
         $badges = self::badgesByKey($status);
-        $this->assertSame('Status unavailable', $badges['reconciliation']['badgeText']);
-        $this->assertSame('Ran', $badges['suppression_sync']['badgeText']);
+        foreach ($expectedBadges as $key => $text) {
+            $this->assertSame($text, $badges[$key]['badgeText'], $key);
+        }
         $this->assertSame(CronJobEnabledState::ENABLED, $status->autoSendState());
-        $this->assertLogged(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, 'Reconciliation status probe failed: RuntimeException (code 0) at VerificationTabStatusTest.php:');
+        $this->assertLogged(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $expectedLog);
     }
 
     public function test_read_autoSendProbeThrows_isUnreadableWithUnreadableCounts(): void
@@ -1248,20 +1259,6 @@ final class VerificationTabStatusTest extends TestCase
             LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE,
             'Automatic send status or outcome counts probe failed: RuntimeException (code 0) at VerificationTabStatusTest.php:'
         );
-    }
-
-    #[Group('regression')]
-    public function test_read_failureLogProbeThrows_marksOnlyTheFailuresRowUnavailable(): void
-    {
-        $db = self::healthyJobsDb();
-        $db->throwOnErrorForParam = LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE;
-
-        $status = VerificationTabStatus::read($db, 7);
-
-        $badges = self::badgesByKey($status);
-        $this->assertSame('Unavailable', $badges['cron_failures']['badgeText']);
-        $this->assertSame('Ran', $badges['reconciliation']['badgeText']);
-        $this->assertLogged(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, 'Cron failure log summary probe failed: RuntimeException (code 0) at VerificationTabStatusTest.php:');
     }
 
     /** The settings fault must not blank the cron rows (#2086 fault domains). */

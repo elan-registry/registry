@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use ElanRegistry\InputSanitizer;
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -19,24 +20,25 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('unit')]
 final class InputSanitizerTest extends TestCase
 {
-    public function testPreservesHtmlTags(): void
+    /**
+     * @return array<string, array{0: string}>
+     */
+    public static function unchangedInputProvider(): array
     {
-        $this->assertSame('<b>Bold</b> name', InputSanitizer::normalize('<b>Bold</b> name'));
+        return [
+            'html tags preserved'             => ['<b>Bold</b> name'],
+            'less than and greater than kept' => ['A < B > C'],
+            'ampersand kept'                  => ['Smith & Jones'],
+            'double quotes kept'              => ['"quoted"'],
+            'empty string unchanged'          => [''],
+            'script tags not stripped'        => ['<script>alert(1)</script>'],
+        ];
     }
 
-    public function testPreservesLessThanAndGreaterThan(): void
+    #[DataProvider('unchangedInputProvider')]
+    public function testNormalizeReturnsInputUnchanged(string $input): void
     {
-        $this->assertSame('A < B > C', InputSanitizer::normalize('A < B > C'));
-    }
-
-    public function testPreservesAmpersand(): void
-    {
-        $this->assertSame('Smith & Jones', InputSanitizer::normalize('Smith & Jones'));
-    }
-
-    public function testPreservesDoubleQuotes(): void
-    {
-        $this->assertSame('"quoted"', InputSanitizer::normalize('"quoted"'));
+        $this->assertSame($input, InputSanitizer::normalize($input));
     }
 
     public function testTrimsLeadingAndTrailingWhitespace(): void
@@ -47,17 +49,6 @@ final class InputSanitizerTest extends TestCase
     public function testEnforcesMaxLength(): void
     {
         $this->assertSame('Al', InputSanitizer::normalize('Alice', 2));
-    }
-
-    public function testReturnsEmptyStringUnchanged(): void
-    {
-        $this->assertSame('', InputSanitizer::normalize(''));
-    }
-
-    public function testDoesNotStripHtmlTags(): void
-    {
-        $input = '<script>alert(1)</script>';
-        $this->assertSame($input, InputSanitizer::normalize($input));
     }
 
     public function testTruncatesOnCharactersNotBytes(): void

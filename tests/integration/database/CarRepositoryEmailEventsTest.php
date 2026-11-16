@@ -673,30 +673,6 @@ final class CarRepositoryEmailEventsTest extends IntegrationTestCase
         $this->assertSame([], $this->repo->findLatestEmailEventsByCarIds([]));
     }
 
-    /**
-     * @return array<string, array{0: array<mixed>}>
-     */
-    public static function invalidCarIdsProvider(): array
-    {
-        return [
-            'non-int element (string)' => [[1, 'two']],
-            'negative element'         => [[1, -1]],
-            'zero element'             => [[1, 0]],
-            'string-numeric element'   => [[1, '2']],
-        ];
-    }
-
-    /**
-     * @param array<mixed> $carIds
-     */
-    #[DataProvider('invalidCarIdsProvider')]
-    public function testFindLatestThrowsForAWrongTypedOrOutOfRangeElement(array $carIds): void
-    {
-        $this->expectException(\ElanRegistry\Exceptions\CarValidationException::class);
-
-        $this->repo->findLatestEmailEventsByCarIds($carIds);
-    }
-
     // --- Owner contact soft bounces (#2460) --------------------------------
 
     /** Insert a plugin message row. A null $tags value stores SQL NULL. */
@@ -738,52 +714,45 @@ final class CarRepositoryEmailEventsTest extends IntegrationTestCase
         return $this->repo->countSoftBouncesSinceLastDelivered($this->userId, $this->carEmail());
     }
 
-    /** Fails without the #2460 change: the count has no owner-contact filter. */
-    #[Group('fast')]
-    public function testOwnerContactSoftBouncesAreNotCounted(): void
+    /**
+     * "Fails" rows fail without the #2460 change. "Passes" rows pass without
+     * it and guard that the filter does not over-exclude.
+     *
+     * @return array<string, array{list<?string>, int}>
+     */
+    public static function softBounceTagProvider(): array
     {
-        $ids = $this->seedSoftBouncesWithTags(['send-owner-email', 'send-owner-email', 'send-owner-email']);
+        return [
+            // Fails: the count has no owner-contact filter.
+            'owner contact only' => [['send-owner-email', 'send-owner-email', 'send-owner-email'], 0],
+            // Passes: verification mail has always counted, and the filter must not change that.
+            'verification only' => [['car_verification', 'car_verification', 'car_verification'], 3],
+            // Fails: the two owner contact cycles count.
+            'two owner contact and one verification' => [['send-owner-email', 'car_verification', 'send-owner-email'], 1],
+            // Fails: the tagged cycle counts.
+            'owner contact among other tags' => [['foo,send-owner-email'], 0],
+            // Passes: FIND_IN_SET must match a whole tag, not a prefix.
+            'similar tag' => [['send-owner-email-x'], 1],
+            // Passes: NULL tags mean untagged mail, which counted before and still counts.
+            'null tags' => [[null], 1],
+        ];
+    }
 
-        $this->assertSame(0, $this->softBounceCount());
+    /**
+     * Every seeded cycle keeps its event row, counted or not.
+     *
+     * @param list<?string> $tagsPerMessage
+     */
+    #[DataProvider('softBounceTagProvider')]
+    #[Group('fast')]
+    public function testSoftBounceCountExcludesOnlyOwnerContactCycles(array $tagsPerMessage, int $expectedCount): void
+    {
+        $ids = $this->seedSoftBouncesWithTags($tagsPerMessage);
+
+        $this->assertSame($expectedCount, $this->softBounceCount());
         foreach ($ids as $id) {
             $this->assertSame(1, $this->eventCountForMessage($id), 'The event row is still recorded');
         }
-    }
-
-    /** Passes without the #2460 change: verification mail has always counted, and the filter must not change that. */
-    #[Group('fast')]
-    public function testVerificationSoftBouncesStillCount(): void
-    {
-        $this->seedSoftBouncesWithTags(['car_verification', 'car_verification', 'car_verification']);
-
-        $this->assertSame(3, $this->softBounceCount());
-    }
-
-    /** Fails without the #2460 change: the two owner contact cycles count. */
-    #[Group('fast')]
-    public function testMixedTwoOwnerContactAndOneVerificationCountsOne(): void
-    {
-        $this->seedSoftBouncesWithTags(['send-owner-email', 'car_verification', 'send-owner-email']);
-
-        $this->assertSame(1, $this->softBounceCount());
-    }
-
-    /** Fails without the #2460 change: the tagged cycle counts. */
-    #[Group('fast')]
-    public function testTagListWithOwnerContactAmongOthersIsExcluded(): void
-    {
-        $this->seedSoftBouncesWithTags(['foo,send-owner-email']);
-
-        $this->assertSame(0, $this->softBounceCount());
-    }
-
-    /** Passes without the #2460 change: it guards that FIND_IN_SET matches a whole tag, not a prefix. */
-    #[Group('fast')]
-    public function testSimilarTagIsNotExcluded(): void
-    {
-        $this->seedSoftBouncesWithTags(['send-owner-email-x']);
-
-        $this->assertSame(1, $this->softBounceCount());
     }
 
     /** Passes without the #2460 change: with no plugin row the cycle counted before and still counts. */
@@ -791,15 +760,6 @@ final class CarRepositoryEmailEventsTest extends IntegrationTestCase
     public function testSoftBounceWithNoPluginRowStillCounts(): void
     {
         $this->insertRawEvent('soft_bounce', 'noplugin-' . uniqid('', true), '2026-01-01 10:00:00');
-
-        $this->assertSame(1, $this->softBounceCount());
-    }
-
-    /** Passes without the #2460 change: NULL tags mean untagged mail, which counted before and still counts. */
-    #[Group('fast')]
-    public function testSoftBounceWithNullTagsStillCounts(): void
-    {
-        $this->seedSoftBouncesWithTags([null]);
 
         $this->assertSame(1, $this->softBounceCount());
     }

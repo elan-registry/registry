@@ -242,31 +242,29 @@ final class TransferEmailServiceTest extends TestCase
     // Early-exit (not-found) tests — existing coverage
     // -------------------------------------------------------------------------
 
-    public function testSendRequestReturnsFailedWhenTransferNotFound(): void
+    /**
+     * @return array<string, array{0: \Closure(TransferEmailService): (TransferNoticeOutcome|bool), 1: TransferNoticeOutcome|bool}>
+     */
+    public static function transferNotFoundProvider(): array
     {
-        $db      = $this->createMockDb(0);
-        $mailer  = function (): bool { return false; };
-        $service = new TransferEmailService($db, $mailer, $this->allowAllPolicy());
-
-        $this->assertSame(TransferNoticeOutcome::Failed, $service->sendRequest(999));
+        return [
+            'sendRequest returns Failed'   => [fn (TransferEmailService $s) => $s->sendRequest(999), TransferNoticeOutcome::Failed],
+            'sendAdminAlert returns false' => [fn (TransferEmailService $s) => $s->sendAdminAlert(999), false],
+            'sendResponse returns false'   => [fn (TransferEmailService $s) => $s->sendResponse(999, true), false],
+        ];
     }
 
-    public function testSendAdminAlertReturnsFalseWhenTransferNotFound(): void
+    /**
+     * @param \Closure(TransferEmailService): (TransferNoticeOutcome|bool) $send
+     */
+    #[DataProvider('transferNotFoundProvider')]
+    public function testSendReturnsFailureWhenTransferNotFound(\Closure $send, TransferNoticeOutcome|bool $expected): void
     {
         $db      = $this->createMockDb(0);
         $mailer  = function (): bool { return false; };
         $service = new TransferEmailService($db, $mailer, $this->allowAllPolicy());
 
-        $this->assertFalse($service->sendAdminAlert(999));
-    }
-
-    public function testSendResponseReturnsFalseWhenTransferNotFound(): void
-    {
-        $db      = $this->createMockDb(0);
-        $mailer  = function (): bool { return false; };
-        $service = new TransferEmailService($db, $mailer, $this->allowAllPolicy());
-
-        $this->assertFalse($service->sendResponse(999, true));
+        $this->assertSame($expected, $send($service));
     }
 
     public function testMailerIsNotCalledWhenTransferNotFoundViaSendRequest(): void
@@ -565,12 +563,48 @@ final class TransferEmailServiceTest extends TestCase
         $this->assertNotEmpty($matches, "Expected a log entry containing \"$needle\", got: " . json_encode($logEntries));
     }
 
-    public function testSendRequestReturnsFailedWhenCurrentOwnerNotFound(): void
+    /**
+     * @return array<string, array{
+     *     0: array<string, mixed>,
+     *     1: array<string, mixed>,
+     *     2: \Closure(TransferEmailService): (TransferNoticeOutcome|bool),
+     *     3: TransferNoticeOutcome|bool,
+     *     4: string,
+     *     5: string
+     * }>
+     */
+    public static function ownerNotFoundProvider(): array
     {
-        global $mockLogEntries;
-        $mockLogEntries = [];
+        $sendRequest    = fn (TransferEmailService $s) => $s->sendRequest(1);
+        $sendAdminAlert = fn (TransferEmailService $s) => $s->sendAdminAlert(1);
 
-        $db     = $this->createFoundMockDb($this->makeTransferRow(), $this->makeCarRow(['user_id' => 0]));
+        return [
+            'sendRequest, current owner missing'    => [[], ['user_id' => 0], $sendRequest, TransferNoticeOutcome::Failed, 'current owner', 'Current owner ID 0 not found'],
+            'sendRequest, requester missing'        => [['requested_by_user_id' => 0], [], $sendRequest, TransferNoticeOutcome::Failed, 'requester', 'Requester ID 0 not found'],
+            'sendAdminAlert, current owner missing' => [[], ['user_id' => 0], $sendAdminAlert, false, 'current owner', 'Current owner ID 0 not found'],
+            'sendAdminAlert, requester missing'     => [['requested_by_user_id' => 0], [], $sendAdminAlert, false, 'requester', 'Requester ID 0 not found'],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $transferOverrides
+     * @param array<string, mixed> $carOverrides
+     * @param \Closure(TransferEmailService): (TransferNoticeOutcome|bool) $send
+     */
+    #[DataProvider('ownerNotFoundProvider')]
+    public function testSendReturnsFailureWhenOwnerNotFound(
+        array $transferOverrides,
+        array $carOverrides,
+        \Closure $send,
+        TransferNoticeOutcome|bool $expected,
+        string $missingParty,
+        string $expectedLog
+    ): void {
+        // sendAdminAlert() reads the admin address before the guard.
+        // sendRequest() returns at the owner-not-found check and does not read it.
+        $GLOBALS['mockAdminEmails'] = 'admin@example.com';
+
+        $db     = $this->createFoundMockDb($this->makeTransferRow($transferOverrides), $this->makeCarRow($carOverrides));
         $called = false;
         $mailer = function () use (&$called): bool {
             $called = true;
@@ -579,9 +613,9 @@ final class TransferEmailServiceTest extends TestCase
 
         $service = new TransferEmailService($db, $mailer, $this->allowAllPolicy());
 
-        $this->assertSame(TransferNoticeOutcome::Failed, $service->sendRequest(1));
-        $this->assertFalse($called, 'Mailer must not be called when the current owner cannot be found');
-        $this->assertLogContains($mockLogEntries, 'Current owner ID 0 not found');
+        $this->assertSame($expected, $send($service));
+        $this->assertFalse($called, "Mailer must not be called when the {$missingParty} cannot be found");
+        $this->assertLogContains($this->logEntries(), $expectedLog);
     }
 
     public function testSendRequestReturnsFailedWhenCarNotFound(): void
@@ -618,65 +652,6 @@ final class TransferEmailServiceTest extends TestCase
         $this->assertSame(TransferNoticeOutcome::Failed, $service->sendRequest(1));
         $this->assertCount(1, $subjects);
         $this->assertLogContains($this->logEntries(), 'Failed to send transfer request notification to current owner: user 1');
-    }
-
-    public function testSendRequestReturnsFailedWhenRequesterNotFound(): void
-    {
-        global $mockLogEntries;
-        $mockLogEntries = [];
-
-        $db     = $this->createFoundMockDb($this->makeTransferRow(['requested_by_user_id' => 0]), $this->makeCarRow());
-        $called = false;
-        $mailer = function () use (&$called): bool {
-            $called = true;
-            return true;
-        };
-
-        $service = new TransferEmailService($db, $mailer, $this->allowAllPolicy());
-
-        $this->assertSame(TransferNoticeOutcome::Failed, $service->sendRequest(1));
-        $this->assertFalse($called, 'Mailer must not be called when the requester cannot be found');
-        $this->assertLogContains($mockLogEntries, 'Requester ID 0 not found');
-    }
-
-    public function testSendAdminAlertReturnsFalseWhenCurrentOwnerNotFound(): void
-    {
-        global $mockLogEntries;
-        $mockLogEntries = [];
-        $GLOBALS['mockAdminEmails'] = 'admin@example.com';
-
-        $db     = $this->createFoundMockDb($this->makeTransferRow(), $this->makeCarRow(['user_id' => 0]));
-        $called = false;
-        $mailer = function () use (&$called): bool {
-            $called = true;
-            return true;
-        };
-
-        $service = new TransferEmailService($db, $mailer, $this->allowAllPolicy());
-
-        $this->assertFalse($service->sendAdminAlert(1));
-        $this->assertFalse($called, 'Mailer must not be called when the current owner cannot be found');
-        $this->assertLogContains($mockLogEntries, 'Current owner ID 0 not found');
-    }
-
-    public function testSendAdminAlertReturnsFalseWhenRequesterNotFound(): void
-    {
-        global $mockLogEntries;
-        $mockLogEntries = [];
-        $GLOBALS['mockAdminEmails'] = 'admin@example.com';
-
-        $db     = $this->createFoundMockDb($this->makeTransferRow(['requested_by_user_id' => 0]), $this->makeCarRow());
-        $called = false;
-        $mailer = function () use (&$called): bool {
-            $called = true;
-            return true;
-        };
-
-        $service = new TransferEmailService($db, $mailer, $this->allowAllPolicy());
-
-        $this->assertFalse($service->sendAdminAlert(1));
-        $this->assertFalse($called, 'Mailer must not be called when the requester cannot be found');
-        $this->assertLogContains($mockLogEntries, 'Requester ID 0 not found');
     }
 
     // -------------------------------------------------------------------------

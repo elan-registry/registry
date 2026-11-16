@@ -5,6 +5,7 @@ declare(strict_types=1);
 use ElanRegistry\Exceptions\ImageProcessingException;
 use ElanRegistry\Resize;
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 use PHPUnit\Framework\Attributes\Group;
 
@@ -49,95 +50,54 @@ class ImageOrientationTest extends TestCase
     }
 
     /**
-     * Test orientation correction with mock image data
+     * @return array<string, array{0: int, 1: int, 2: bool, 3: string, 4: string}>
+     */
+    public static function resizeWithoutExifProvider(): array
+    {
+        // The test resizes each image to half size.
+        return [
+            'jpeg with red stripe resizes without EXIF data' => [100, 50, true, 'jpg', 'test_normal'],
+            'plain jpeg resizes without EXIF data'           => [100, 100, false, 'jpg', 'no_exif'],
+            'png resizes with no EXIF orientation step'      => [100, 100, false, 'png', 'test'],
+        ];
+    }
+
+    /**
+     * Resize must process a synthetic image that has no EXIF data.
      */
     #[Group('fast')]
-    public function testOrientationCorrectionWithMockImage(): void
-    {
-        // Create a simple test image
-        $testImage = imagecreate(100, 50);
-        $testFile = $this->outputDir . 'test_normal.jpg';
-        
-        // Create a simple test image with different colors
+    #[DataProvider('resizeWithoutExifProvider')]
+    public function testResizeHandlesImageWithoutExif(
+        int $width,
+        int $height,
+        bool $redStripe,
+        string $format,
+        string $stem
+    ): void {
+        $testImage = imagecreate($width, $height);
         $white = imagecolorallocate($testImage, 255, 255, 255);
-        $red = imagecolorallocate($testImage, 255, 0, 0);
         imagefill($testImage, 0, 0, $white);
-        imagefilledrectangle($testImage, 0, 0, 20, 50, $red); // Red stripe on left
-        
-        imagejpeg($testImage, $testFile, 90);
+        if ($redStripe) {
+            $red = imagecolorallocate($testImage, 255, 0, 0);
+            imagefilledrectangle($testImage, 0, 0, 20, $height, $red);
+        }
+
+        $testFile = $this->outputDir . $stem . '.' . $format;
+        if ($format === 'png') {
+            imagepng($testImage, $testFile);
+        } else {
+            imagejpeg($testImage, $testFile, 90);
+        }
 
         $this->assertFileExists($testFile, 'Test image should be created');
 
-        // Test Resize class can process the image
-        try {
-            $resize = new Resize($testFile);
+        $resize = new Resize($testFile);
+        $resize->resizeImage(intdiv($width, 2), intdiv($height, 2), 'exact');
 
-            // The image should be processed successfully even without EXIF data
-            $resize->resizeImage(50, 25, 'exact');
-            $resizedFile = $this->outputDir . 'test_resized.jpg';
-            $resize->saveImage($resizedFile, 80);
-            
-            $this->assertFileExists($resizedFile, 'Resized image should be created');
-            
-        } catch (Exception $e) {
-            $this->fail('Resize should handle images without EXIF data: ' . $e->getMessage());
-        }
-    }
+        $resizedFile = $this->outputDir . $stem . '_resized.' . $format;
+        $resize->saveImage($resizedFile, 80);
 
-    /**
-     * Test that the Resize class properly handles files without EXIF data
-     */
-    #[Group('fast')]
-    public function testHandleImageWithoutEXIF(): void
-    {
-        // Create a simple test image without EXIF data
-        $testImage = imagecreate(100, 100);
-        $white = imagecolorallocate($testImage, 255, 255, 255);
-        imagefill($testImage, 0, 0, $white);
-        
-        $testFile = $this->outputDir . 'no_exif.jpg';
-        imagejpeg($testImage, $testFile, 90);
-
-        // Should not throw exception when processing image without EXIF
-        try {
-            $resize = new Resize($testFile);
-            $resize->resizeImage(50, 50, 'exact');
-
-            $resizedFile = $this->outputDir . 'no_exif_resized.jpg';
-            $resize->saveImage($resizedFile, 80);
-
-            $this->assertFileExists($resizedFile, 'Resized image should be created');
-        } catch (Exception $e) {
-            $this->fail('Should handle images without EXIF data gracefully: ' . $e->getMessage());
-        }
-    }
-
-    /**
-     * Test that non-JPEG files are handled properly
-     */
-    #[Group('fast')]
-    public function testHandleNonJPEGFiles(): void
-    {
-        // Create a simple PNG test image
-        $testImage = imagecreate(100, 100);
-        $white = imagecolorallocate($testImage, 255, 255, 255);
-        imagefill($testImage, 0, 0, $white);
-        
-        $testFile = $this->outputDir . 'test.png';
-        imagepng($testImage, $testFile);
-
-        // Should process PNG files normally (no EXIF orientation correction)
-        try {
-            $resize = new Resize($testFile);
-            $resize->resizeImage(50, 50, 'exact');
-
-            $resizedFile = $this->outputDir . 'test_resized.png';
-            $resize->saveImage($resizedFile, 80);
-
-            $this->assertFileExists($resizedFile, 'Resized PNG should be created');
-        } catch (Exception $e) {
-            $this->fail('Should handle PNG files without EXIF processing: ' . $e->getMessage());
-        }
+        $this->assertFileExists($resizedFile, 'Resized image should be created');
     }
 
     /**

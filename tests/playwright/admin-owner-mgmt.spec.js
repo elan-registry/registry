@@ -26,54 +26,45 @@ function nextStatValue(cardTitleLocator) {
 }
 
 test.describe('Admin Manage Owners Tab', () => {
+    let response;
+
     test.beforeEach(async ({ page }) => {
         await ensureLoggedIn(page);
-        await page.goto('app/admin/index.php?tab=owner-mgmt', { waitUntil: 'networkidle' });
+        response = await page.goto('app/admin/index.php?tab=owner-mgmt', { waitUntil: 'networkidle' });
     });
 
-    test('page loads with no fatal error', async ({ page }) => {
-        const response = await page.goto('app/admin/index.php?tab=owner-mgmt', { waitUntil: 'networkidle' });
+    test('page loads with the heading, owner search, and profile panel', async ({ page }) => {
+        expect(response.status(), 'page returns 200').toBe(200);
+        expect(await page.locator('body').textContent(), 'page has no fatal error').not.toContain('Fatal error');
 
-        expect(response.status()).toBe(200);
-        expect(await page.locator('body').textContent()).not.toContain('Fatal error');
+        await expect.soft(page.getByRole('heading', { name: 'Manage Owners', level: 2 }), 'Manage Owners heading').toBeVisible();
+
+        await expect.soft(page.locator('#ownerSearchInput'), 'owner search input').toBeVisible();
+        await expect.soft(page.locator('#ownerSearchBtn'), 'owner search button').toBeVisible();
+        await expect.soft(page.locator('#ownerClearBtn'), 'owner clear button').toBeVisible();
+        await expect.soft(page.locator('#ownerSearchResults'), 'owner search results container').toBeAttached();
+
+        await expect.soft(page.locator('#ownerProfilePanel'), 'owner profile panel').toBeAttached();
     });
 
-    test('Manage Owners heading is visible', async ({ page }) => {
-        await expect(page.getByRole('heading', { name: 'Manage Owners', level: 2 })).toBeVisible();
-    });
-
-    test('owner search card is present', async ({ page }) => {
-        await expect(page.locator('#ownerSearchInput')).toBeVisible();
-        await expect(page.locator('#ownerSearchBtn')).toBeVisible();
-        await expect(page.locator('#ownerClearBtn')).toBeVisible();
-        await expect(page.locator('#ownerSearchResults')).toBeAttached();
-    });
-
-    test('owner profile panel is attached but hidden on load', async ({ page }) => {
-        await expect(page.locator('#ownerProfilePanel')).toBeAttached();
-    });
-
-    test('Data Health summary card renders a quality score percentage', async ({ page }) => {
+    test('Data Health and owner data quality report cards render their values', async ({ page }) => {
         const dataHealthTitle = page.locator('h5.card-title', { hasText: 'Data Health' });
-        await expect(dataHealthTitle).toBeAttached();
+        await expect.soft(dataHealthTitle, 'Data Health card title').toBeAttached();
         const scoreText = await nextStatValue(dataHealthTitle);
+        expect.soft(scoreText, 'Data Health quality score percentage').toMatch(/\d+(\.\d+)?%/);
 
-        expect(scoreText).toMatch(/\d+(\.\d+)?%/);
-    });
-
-    test('owner data quality report cards render with numeric counts', async ({ page }) => {
         // Summary cards use h5.card-title; the same title text can also appear
         // in a detail-section h4 further down the page when count > 0, so
         // scope strictly to the h5 summary-card titles to avoid a strict-mode
         // violation matching both.
         const missingInfoTitle = page.locator('h5.card-title', { hasText: 'Car Owners Missing Information' });
-        await expect(missingInfoTitle).toBeAttached();
+        await expect.soft(missingInfoTitle, 'Missing Information card title').toBeAttached();
         const missingInfoCount = await nextStatValue(missingInfoTitle);
-        expect(missingInfoCount).toMatch(/\d+/);
+        expect.soft(missingInfoCount, 'Missing Information numeric count').toMatch(/\d+/);
 
         const duplicateEmailsTitle = page.locator('h5.card-title', { hasText: 'Duplicate Email Addresses' });
-        await expect(duplicateEmailsTitle).toBeAttached();
+        await expect.soft(duplicateEmailsTitle, 'Duplicate Email Addresses card title').toBeAttached();
         const duplicateEmailsCount = await nextStatValue(duplicateEmailsTitle);
-        expect(duplicateEmailsCount).toMatch(/\d+/);
+        expect.soft(duplicateEmailsCount, 'Duplicate Email Addresses numeric count').toMatch(/\d+/);
     });
 });

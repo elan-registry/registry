@@ -167,28 +167,24 @@ final class CarRepositoryFreshnessTest extends TestCase
     // body runs for a wrong-type argument, so only wrong-VALUE cases matter)
     // ------------------------------------------------------------------
 
-    public function testIsFreshRejectsMalformedDateStringForLastVerified(): void
+    /**
+     * @return array<string, array{?string, string}>
+     */
+    public static function malformedDateProvider(): array
     {
-        $this->expectException(CarValidationException::class);
-        CarRepository::isFresh('not-a-date', $this->at(-10));
+        return [
+            'malformed last_verified'      => ['not-a-date', self::daysAgo(10)],
+            'empty last_verified'          => ['', self::daysAgo(10)],
+            'malformed owner_last_updated' => [null, 'not-a-date'],
+            'empty owner_last_updated'     => [null, ''],
+        ];
     }
 
-    public function testIsFreshRejectsEmptyStringForLastVerified(): void
+    #[DataProvider('malformedDateProvider')]
+    public function testIsFreshRejectsMalformedDateString(?string $lastVerified, string $ownerLastUpdated): void
     {
         $this->expectException(CarValidationException::class);
-        CarRepository::isFresh('', $this->at(-10));
-    }
-
-    public function testIsFreshRejectsMalformedDateStringForOwnerLastUpdated(): void
-    {
-        $this->expectException(CarValidationException::class);
-        CarRepository::isFresh(null, 'not-a-date');
-    }
-
-    public function testIsFreshRejectsEmptyStringForOwnerLastUpdated(): void
-    {
-        $this->expectException(CarValidationException::class);
-        CarRepository::isFresh(null, '');
+        CarRepository::isFresh($lastVerified, $ownerLastUpdated);
     }
 
     /**
@@ -424,39 +420,34 @@ final class CarRepositoryFreshnessTest extends TestCase
     // Alias rejection — freshnessSql() / stalenessSql()
     // ------------------------------------------------------------------
 
-    public function testFreshnessSqlRejectsInjectionShapedAlias(): void
+    /**
+     * Each row is a separate security case: the alias is put into SQL text,
+     * so each method must reject each bad shape.
+     *
+     * @return array<string, array{callable(string): string, string}>
+     */
+    public static function rejectedAliasProvider(): array
     {
-        $this->expectException(CarValidationException::class);
-        CarRepository::freshnessSql('cars; DROP TABLE cars--');
+        $freshnessSql = CarRepository::freshnessSql(...);
+        $stalenessSql = CarRepository::stalenessSql(...);
+
+        return [
+            'freshnessSql injection-shaped alias'  => [$freshnessSql, 'cars; DROP TABLE cars--'],
+            'freshnessSql alias starts with digit' => [$freshnessSql, '1cars'],
+            'freshnessSql empty alias'             => [$freshnessSql, ''],
+            'stalenessSql injection-shaped alias'  => [$stalenessSql, 'cars; DROP TABLE cars--'],
+            'stalenessSql alias starts with digit' => [$stalenessSql, '1cars'],
+            'stalenessSql empty alias'             => [$stalenessSql, ''],
+        ];
     }
 
-    public function testFreshnessSqlRejectsAliasStartingWithDigit(): void
+    /**
+     * @param callable(string): string $buildSql
+     */
+    #[DataProvider('rejectedAliasProvider')]
+    public function testSqlBuilderRejectsBadAlias(callable $buildSql, string $alias): void
     {
         $this->expectException(CarValidationException::class);
-        CarRepository::freshnessSql('1cars');
-    }
-
-    public function testFreshnessSqlRejectsEmptyAlias(): void
-    {
-        $this->expectException(CarValidationException::class);
-        CarRepository::freshnessSql('');
-    }
-
-    public function testStalenessSqlRejectsInjectionShapedAlias(): void
-    {
-        $this->expectException(CarValidationException::class);
-        CarRepository::stalenessSql('cars; DROP TABLE cars--');
-    }
-
-    public function testStalenessSqlRejectsAliasStartingWithDigit(): void
-    {
-        $this->expectException(CarValidationException::class);
-        CarRepository::stalenessSql('1cars');
-    }
-
-    public function testStalenessSqlRejectsEmptyAlias(): void
-    {
-        $this->expectException(CarValidationException::class);
-        CarRepository::stalenessSql('');
+        $buildSql($alias);
     }
 }

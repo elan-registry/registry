@@ -5,6 +5,7 @@ declare(strict_types=1);
 use ElanRegistry\Cron\CronJobEnabledState;
 use ElanRegistry\Cron\CronJobRunsReader;
 use ElanRegistry\LogCategories;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Tests\Support\CronJobRunsReaderFakeDatabase;
@@ -304,45 +305,26 @@ final class CronJobRunsReaderTest extends TestCase
         $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $mockLogEntries[0]['category']);
     }
 
-    public function testStatusDoesNotLogWhenDisabled(): void
+    /** @return array<string, array{bool, ?string, string}> */
+    public static function statusDoesNotLogProvider(): array
     {
-        global $mockLogEntries;
-
-        $db = (new CronJobRunsReaderFakeDatabase())->withRow('brevo_reconciliation', enabled: false);
-        (new CronJobRunsReader($db))->status('brevo_reconciliation');
-
-        $this->assertSame([], $mockLogEntries, 'Reading a disabled job\'s status for display is not a fault');
+        return [
+            'disabled'                      => [false, null, 'Reading a disabled job\'s status for display is not a fault'],
+            'enabled'                       => [true, null, 'Reading an enabled job\'s status for display is not a fault'],
+            'job has never run'             => [true, null, 'A "never run" enabled row is not a fault'],
+            'timestamp parses successfully' => [true, '2026-09-01 12:34:56', 'A successfully parsed timestamp is not a fault'],
+        ];
     }
 
-    public function testStatusDoesNotLogWhenEnabled(): void
+    #[DataProvider('statusDoesNotLogProvider')]
+    public function testStatusDoesNotLogWhenReadable(bool $enabled, ?string $lastRunAt, string $reason): void
     {
         global $mockLogEntries;
 
-        $db = (new CronJobRunsReaderFakeDatabase())->withRow('brevo_reconciliation', enabled: true);
+        $db = (new CronJobRunsReaderFakeDatabase())->withRow('brevo_reconciliation', enabled: $enabled, lastRunAt: $lastRunAt);
         (new CronJobRunsReader($db))->status('brevo_reconciliation');
 
-        $this->assertSame([], $mockLogEntries, 'Reading an enabled job\'s status for display is not a fault');
-    }
-
-    public function testStatusDoesNotLogWhenJobHasNeverRun(): void
-    {
-        global $mockLogEntries;
-
-        $db = (new CronJobRunsReaderFakeDatabase())->withRow('brevo_reconciliation', enabled: true, lastRunAt: null);
-        (new CronJobRunsReader($db))->status('brevo_reconciliation');
-
-        $this->assertSame([], $mockLogEntries, 'A "never run" enabled row is not a fault');
-    }
-
-    public function testStatusDoesNotLogWhenTimestampParsesSuccessfully(): void
-    {
-        global $mockLogEntries;
-
-        $db = (new CronJobRunsReaderFakeDatabase())
-            ->withRow('brevo_reconciliation', enabled: true, lastRunAt: '2026-09-01 12:34:56');
-        (new CronJobRunsReader($db))->status('brevo_reconciliation');
-
-        $this->assertSame([], $mockLogEntries, 'A successfully parsed timestamp is not a fault');
+        $this->assertSame([], $mockLogEntries, $reason);
     }
 
     // =========================================================================

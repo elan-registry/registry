@@ -6,6 +6,7 @@ require_once __DIR__ . '/IntegrationTestCase.php';
 
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\StatisticsDataService;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
  * StatisticsDataService (behind the statistics.php endpoint) against real
@@ -29,29 +30,31 @@ class StatisticsApiTest extends IntegrationTestCase
         ]);
     }
 
-    public function testGetCountryDataReturnsRowsWithExpectedShape(): void
+    /**
+     * @return array<string, array{'getCountryData'|'getTypeData', string}>
+     */
+    public static function groupedCountProvider(): array
     {
-        $service = new StatisticsDataService($this->db);
-        $result  = $service->getCountryData();
-
-        $this->assertIsArray($result);
-        $this->assertNotEmpty($result, 'Registry must have at least one car with a country');
-
-        $row = $result[0];
-        $this->assertObjectHasProperty('country', $row);
-        $this->assertObjectHasProperty('count', $row);
+        return [
+            'country data' => ['getCountryData', 'country'],
+            'type data' => ['getTypeData', 'type'],
+        ];
     }
 
-    public function testGetTypeDataReturnsRowsWithExpectedShape(): void
+    /**
+     * @param 'getCountryData'|'getTypeData' $method
+     */
+    #[DataProvider('groupedCountProvider')]
+    public function testGroupedCountReturnsRowsWithExpectedShape(string $method, string $labelField): void
     {
         $service = new StatisticsDataService($this->db);
-        $result  = $service->getTypeData();
+        $result  = $service->$method();
 
         $this->assertIsArray($result);
-        $this->assertNotEmpty($result, 'Registry must have at least one car with a type');
+        $this->assertNotEmpty($result, "Registry must have at least one car with a $labelField");
 
         $row = $result[0];
-        $this->assertObjectHasProperty('type', $row);
+        $this->assertObjectHasProperty($labelField, $row);
         $this->assertObjectHasProperty('count', $row);
     }
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use ElanRegistry\Transfer\TransferStatus;
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -16,29 +17,24 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('transfer')]
 final class TransferStatusTest extends TestCase
 {
-    public function testPendingIsNotTerminal(): void
+    /**
+     * @return array<string, array{0: TransferStatus, 1: bool}>
+     */
+    public static function isTerminalProvider(): array
     {
-        $this->assertFalse(TransferStatus::Pending->isTerminal());
+        return [
+            'pending is not terminal'  => [TransferStatus::Pending, false],
+            'approved is not terminal' => [TransferStatus::Approved, false],
+            'completed is terminal'    => [TransferStatus::Completed, true],
+            'denied is terminal'       => [TransferStatus::Denied, true],
+            'expired is terminal'      => [TransferStatus::Expired, true],
+        ];
     }
 
-    public function testApprovedIsNotTerminal(): void
+    #[DataProvider('isTerminalProvider')]
+    public function testIsTerminal(TransferStatus $status, bool $expected): void
     {
-        $this->assertFalse(TransferStatus::Approved->isTerminal());
-    }
-
-    public function testCompletedIsTerminal(): void
-    {
-        $this->assertTrue(TransferStatus::Completed->isTerminal());
-    }
-
-    public function testDeniedIsTerminal(): void
-    {
-        $this->assertTrue(TransferStatus::Denied->isTerminal());
-    }
-
-    public function testExpiredIsTerminal(): void
-    {
-        $this->assertTrue(TransferStatus::Expired->isTerminal());
+        $this->assertSame($expected, $status->isTerminal());
     }
 
     public function testBackingValuesMatchDatabaseEnumStrings(): void

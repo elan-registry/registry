@@ -1276,53 +1276,34 @@ final class EmailEventApplierIntegrationTest extends IntegrationTestCase
 
     // --- #2502: hasOwnerEmailEventForAddress -------------------------------
 
-    public function testOwnerEmailEventForAddressFindsAMatchingRow(): void
+    /**
+     * Each row stores one event for match@example.com, then asks about it.
+     *
+     * @return array<string, array{string, string, list<string>, bool, bool}>
+     */
+    public static function ownerEmailEventForAddressProvider(): array
     {
-        $userId = $this->makeOwner();
-        $this->repo->insertOwnerEmailEvent($userId, 'match@example.com', 'hard_bounce', null, $this->id('has'), '2026-10-14 09:00:00');
-
-        $this->assertTrue($this->repo->hasOwnerEmailEventForAddress($userId, 'match@example.com', ['blocked', 'hard_bounce'], null));
+        return [
+            'matching row' => ['hard_bounce', 'match@example.com', ['blocked', 'hard_bounce'], false, true],
+            'another address' => ['hard_bounce', 'other@example.com', ['hard_bounce'], false, false],
+            'accent variant' => ['hard_bounce', 'mätch@example.com', ['hard_bounce'], false, false],
+            'another cause' => ['spam', 'match@example.com', ['hard_bounce', 'blocked'], false, false],
+            'another user' => ['spam', 'match@example.com', ['spam'], true, false],
+            'input address is normalized' => ['spam', ' MATCH@Example.COM ', ['spam'], false, true],
+        ];
     }
 
-    public function testOwnerEmailEventForAddressIsFalseForAnotherAddress(): void
+    /**
+     * @param list<string> $events
+     */
+    #[DataProvider('ownerEmailEventForAddressProvider')]
+    public function testOwnerEmailEventForAddressMatchesOnlyTheSameOwnerAddressAndCause(string $storedEvent, string $address, array $events, bool $askAsAnotherUser, bool $expected): void
     {
         $userId = $this->makeOwner();
-        $this->repo->insertOwnerEmailEvent($userId, 'match@example.com', 'hard_bounce', null, $this->id('has'), '2026-10-14 09:00:00');
+        $askedId = $askAsAnotherUser ? $this->makeOwner() : $userId;
+        $this->repo->insertOwnerEmailEvent($userId, 'match@example.com', $storedEvent, null, $this->id('has'), '2026-10-14 09:00:00');
 
-        $this->assertFalse($this->repo->hasOwnerEmailEventForAddress($userId, 'other@example.com', ['hard_bounce'], null));
-    }
-
-    public function testOwnerEmailEventForAddressIsFalseForAnAccentVariant(): void
-    {
-        $userId = $this->makeOwner();
-        $this->repo->insertOwnerEmailEvent($userId, 'match@example.com', 'hard_bounce', null, $this->id('has'), '2026-10-14 09:00:00');
-
-        $this->assertFalse($this->repo->hasOwnerEmailEventForAddress($userId, 'mätch@example.com', ['hard_bounce'], null));
-    }
-
-    public function testOwnerEmailEventForAddressIsFalseForAnotherCause(): void
-    {
-        $userId = $this->makeOwner();
-        $this->repo->insertOwnerEmailEvent($userId, 'match@example.com', 'spam', null, $this->id('has'), '2026-10-14 09:00:00');
-
-        $this->assertFalse($this->repo->hasOwnerEmailEventForAddress($userId, 'match@example.com', ['hard_bounce', 'blocked'], null));
-    }
-
-    public function testOwnerEmailEventForAddressIsFalseForAnotherUser(): void
-    {
-        $userId = $this->makeOwner();
-        $otherId = $this->makeOwner();
-        $this->repo->insertOwnerEmailEvent($userId, 'match@example.com', 'spam', null, $this->id('has'), '2026-10-14 09:00:00');
-
-        $this->assertFalse($this->repo->hasOwnerEmailEventForAddress($otherId, 'match@example.com', ['spam'], null));
-    }
-
-    public function testOwnerEmailEventForAddressNormalizesTheInputAddress(): void
-    {
-        $userId = $this->makeOwner();
-        $this->repo->insertOwnerEmailEvent($userId, 'match@example.com', 'spam', null, $this->id('has'), '2026-10-14 09:00:00');
-
-        $this->assertTrue($this->repo->hasOwnerEmailEventForAddress($userId, ' MATCH@Example.COM ', ['spam'], null));
+        $this->assertSame($expected, $this->repo->hasOwnerEmailEventForAddress($askedId, $address, $events, null));
     }
 
     public function testOwnerEmailEventForAddressRejectsANonStringEvent(): void

@@ -82,41 +82,6 @@ final class GetBaseUrlTest extends IntegrationTestCase
     }
 
     /**
-     * HTTPS on the default port gives a URL with no port.
-     *
-     * @return void
-     */
-    #[Group('integration')]
-    public function testGetBaseUrlReturnsConstructedUrlWhenGlobalsSet(): void
-    {
-        $this->applyServerGlobals([
-            'REQUEST_SCHEME' => 'https',
-            'HTTP_HOST' => 'test.elanregistry.org',
-            'SERVER_PORT' => '443',
-        ]);
-
-        $this->assertSame('https://test.elanregistry.org', getBaseUrl());
-    }
-
-    /**
-     * Docker maps localhost:8001 to Apache, which reports SERVER_PORT 8001.
-     * The port must be in the URL that emails link to (#2228).
-     *
-     * @return void
-     */
-    #[Group('integration')]
-    public function testGetBaseUrlKeepsNonDefaultPort(): void
-    {
-        $this->applyServerGlobals([
-            'REQUEST_SCHEME' => 'http',
-            'HTTP_HOST' => 'localhost:8001',
-            'SERVER_PORT' => '8001',
-        ]);
-
-        $this->assertSame('http://localhost:8001', getBaseUrl());
-    }
-
-    /**
      * Behind a TLS proxy the scheme is https but Apache listens on 80. The
      * URL must not carry ':80' (#2228).
      *
@@ -159,6 +124,16 @@ final class GetBaseUrlTest extends IntegrationTestCase
     public static function portHandlingProvider(): array
     {
         return [
+            'test host, default https port' => [
+                ['REQUEST_SCHEME' => 'https', 'HTTP_HOST' => 'test.elanregistry.org', 'SERVER_PORT' => '443'],
+                'https://test.elanregistry.org',
+            ],
+            // Docker maps localhost:8001 to Apache, which reports SERVER_PORT
+            // 8001. The port must be in the URL that emails link to (#2228).
+            'localhost, docker port 8001' => [
+                ['REQUEST_SCHEME' => 'http', 'HTTP_HOST' => 'localhost:8001', 'SERVER_PORT' => '8001'],
+                'http://localhost:8001',
+            ],
             'public host, forged https port' => [
                 ['REQUEST_SCHEME' => 'https', 'HTTP_HOST' => 'elanregistry.org:2083', 'SERVER_PORT' => '2083'],
                 'https://elanregistry.org',

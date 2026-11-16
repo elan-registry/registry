@@ -108,22 +108,22 @@ final class CarRepositoryEffectiveEmailFlagsTest extends IntegrationTestCase
     }
 
     /**
-     * A flag with no stored address applies (fail closed). The detail address
-     * is null, and currentEmail holds the address that the flag applies to.
+     * A flag whose stored address is only white space applies (fail closed).
+     * The detail address is returned as stored, and currentEmail holds the
+     * address that the flag applies to. EffectiveEmailFlagsSharedTableTest
+     * covers the NULL and empty stored addresses.
      *
-     * @return array<string, array{0: ?string}>
+     * @return array<string, array{0: string}>
      */
     public static function missingAddressProvider(): array
     {
         return [
-            'NULL address'              => [null],
-            'empty address'             => [''],
             'white-space-only address' => [" \t "],
         ];
     }
 
     #[DataProvider('missingAddressProvider')]
-    public function testFlagWithMissingAddressApplies(?string $stored): void
+    public function testFlagWithMissingAddressApplies(string $stored): void
     {
         $ownerId = $this->createOwner('current-' . uniqid() . '@example.com');
         $this->setOwnerBlocked($ownerId, 'placeholder@example.com', '2026-04-05 06:07:08', null);
@@ -144,17 +144,15 @@ final class CarRepositoryEffectiveEmailFlagsTest extends IntegrationTestCase
     }
 
     /**
-     * A users.email with a trailing tab or newline equals the stored address.
+     * A users.email with a trailing CRLF equals the stored address.
+     * EffectiveEmailFlagsSharedTableTest covers the other trailing white space.
      *
      * @return array<string, array{0: string}>
      */
     public static function whiteSpaceEmailProvider(): array
     {
         return [
-            'trailing tab'     => ["\t"],
-            'trailing newline' => ["\n"],
-            'trailing CRLF'    => ["\r\n"],
-            'trailing spaces'  => ['  '],
+            'trailing CRLF' => ["\r\n"],
         ];
     }
 

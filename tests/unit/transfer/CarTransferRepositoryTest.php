@@ -7,6 +7,7 @@ use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Transfer\CarTransferRepository;
 use ElanRegistry\Transfer\TransferStatus;
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -60,7 +61,28 @@ final class CarTransferRepositoryTest extends TestCase
         return $this->createMock(DatabaseInterface::class);
     }
 
-    private function assertThrowsOnDatabaseError(callable $action): void
+    /**
+     * @return array<string, array{0: \Closure(CarTransferRepository): mixed}>
+     */
+    public static function databaseErrorProvider(): array
+    {
+        return [
+            'findById'                  => [fn (CarTransferRepository $repo) => $repo->findById(1)],
+            'findPendingById'           => [fn (CarTransferRepository $repo) => $repo->findPendingById(1)],
+            'findPendingWithCarById'    => [fn (CarTransferRepository $repo) => $repo->findPendingWithCarById(1)],
+            'hasPendingForCar'          => [fn (CarTransferRepository $repo) => $repo->hasPendingForCar(1, 2)],
+            'getPendingWithCarAndUsers' => [fn (CarTransferRepository $repo) => $repo->getPendingWithCarAndUsers()],
+            'getTodayStatusCounts'      => [fn (CarTransferRepository $repo) => $repo->getTodayStatusCounts()],
+            'countPending'              => [fn (CarTransferRepository $repo) => $repo->countPending()],
+            'updateStatus'              => [fn (CarTransferRepository $repo) => $repo->updateStatus(1, TransferStatus::Denied, 'Test denial')],
+        ];
+    }
+
+    /**
+     * @param \Closure(CarTransferRepository): mixed $action
+     */
+    #[DataProvider('databaseErrorProvider')]
+    public function testMethodThrowsOnDatabaseError(\Closure $action): void
     {
         $db = $this->makeDbMock();
         $db->expects($this->once())->method('query')->willReturnSelf();
@@ -71,48 +93,6 @@ final class CarTransferRepositoryTest extends TestCase
 
         $this->expectException(CarDatabaseException::class);
         $action($repo);
-    }
-
-    public function testFindByIdThrowsOnDatabaseError(): void
-    {
-        $this->assertThrowsOnDatabaseError(fn (CarTransferRepository $repo) => $repo->findById(1));
-    }
-
-    public function testFindPendingByIdThrowsOnDatabaseError(): void
-    {
-        $this->assertThrowsOnDatabaseError(fn (CarTransferRepository $repo) => $repo->findPendingById(1));
-    }
-
-    public function testFindPendingWithCarByIdThrowsOnDatabaseError(): void
-    {
-        $this->assertThrowsOnDatabaseError(fn (CarTransferRepository $repo) => $repo->findPendingWithCarById(1));
-    }
-
-    public function testHasPendingForCarThrowsOnDatabaseError(): void
-    {
-        $this->assertThrowsOnDatabaseError(fn (CarTransferRepository $repo) => $repo->hasPendingForCar(1, 2));
-    }
-
-    public function testGetPendingWithCarAndUsersThrowsOnDatabaseError(): void
-    {
-        $this->assertThrowsOnDatabaseError(fn (CarTransferRepository $repo) => $repo->getPendingWithCarAndUsers());
-    }
-
-    public function testGetTodayStatusCountsThrowsOnDatabaseError(): void
-    {
-        $this->assertThrowsOnDatabaseError(fn (CarTransferRepository $repo) => $repo->getTodayStatusCounts());
-    }
-
-    public function testCountPendingThrowsOnDatabaseError(): void
-    {
-        $this->assertThrowsOnDatabaseError(fn (CarTransferRepository $repo) => $repo->countPending());
-    }
-
-    public function testUpdateStatusThrowsOnDatabaseError(): void
-    {
-        $this->assertThrowsOnDatabaseError(
-            fn (CarTransferRepository $repo) => $repo->updateStatus(1, TransferStatus::Denied, 'Test denial')
-        );
     }
 
     // create() uses insert()/lastId(), not query()/error().
