@@ -40,6 +40,10 @@ after an item is written.
 - [ ] "When you review error handling" names only the last-resort fallback as an allowed `\Throwable` catch. `ERROR_HANDLING.md` also documents the page-section fault-domain catch (`VerificationTabStatus::read()`, `tab-verification.php`, #2364) as a deliberate exception. Add it to the rule, so reviewers do not flag those files (found in #1844)
 - [ ] ~L24 "Wrap database operations in `try` and `catch`" conflicts with the "No guards" rule in `ERROR_HANDLING.md` and makes reviewers flag correct code. ~L55 documents `ApiResponse::error($message, $context)`, but the second parameter is `int $statusCode`. Correct both lines (found in #2505)
 
+### `.htaccess`
+
+- [ ] The #2246 comment (~L19-21) says the Test host sends noindex on every response. LiteSpeed does not add the header to `Redirect` and `RedirectMatch` responses. Say so, or point to DEPLOYMENT.md, "Test host indexing block (#2246)" (found in /flow:finish-milestone v2.33.0)
+
 ### `app/admin/includes/account-cleanup-helpers.php`
 
 - [ ] Replace 8 × `throw new RuntimeException` with a typed `AccountCleanupException extends ElanRegistryException`. Handle it in `app/api/admin/account-cleanup-data.php` with `ApiResponse` and `LogCategories` (from #1637)
@@ -120,6 +124,10 @@ after an item is written.
 ### `database/migrations/20260915000000_add_cars_verification_attempts_columns.php`
 
 - [ ] The `down()` comment (~L84) says "MySQL refuses to DROP a column that a trigger body still references". MySQL 8 allows the drop; the next INSERT, UPDATE or DELETE on `cars` then fails with 1054. The restore-first order is still right. Correct the reason in the comment (found in #2167)
+
+### `docs/development/DEPLOYMENT.md`
+
+- [ ] "Post-deploy checks for #2190", step 2, and the "Rollback check" compare the saved `robots.txt` and `llms.txt` hashes after the push. The check is only valid for a deploy that does not change the override files (#2246 changed `robots-test.txt`). Say so in both places (found in /flow:finish-milestone v2.33.0)
 
 ### `docs/development/ENVIRONMENT.md`
 
@@ -222,9 +230,17 @@ after an item is written.
 - [ ] The wiring test (~L581) and the spec header say "a failed create writes no FileError row". `removeTmpImages()` writes one when `unlink()` fails. Change the text to "no image-move FileError row" (found in /flow:finish-milestone v2.32.0)
 - [ ] `CarActionsSaveWiringTest` checks `save.php` source text with `strpos`: `testAddCarChecksErrorsBeforeMovingTempImages`, `testAddCarImageMoveFailureStillReturnsServerError`, `testAddCarValidationLogRecordsSubmittedDates`. A correct refactor fails them, and a wrong guard with the same text passes. Delete the first two (the Playwright spec proves the 422, no car row, and no temp file). Replace the third with a check that the ValidationError log row holds `purchasedate=` (found in /flow:finish-milestone v2.32.0)
 
+### `tests/playwright/car-edit-csrf-recovery.spec.js` (test coverage)
+
+- [ ] 'a token that still fails is not retried again' (~L110-126) does not check that the unsaved-changes guard stays on after the failed retry. After the out-of-date message, call `attemptLeave(page)` and expect `['beforeunload']`, as `car-edit-unsaved-guard.spec.js` does for a failed save (found in /flow:finish-milestone v2.33.0)
+
 ### `tests/playwright/local/fixtures/` + `tests/integration/database/EmailEventRekeyMigrationFixture.php`
 
 - [ ] Seven `seed-*.php` fixtures and the migration fixture each copy the `er_deleted_user_addresses` cleanup: a table-exists check, then a `DELETE ... IN (...)`. Three also copy the username-to-ID lookup. None checks `$db->error()` after the check or the delete, although the cleanup loop in the same files exits on an error. Add one shared helper (for example `Tests\Support\DeletedUserAddressCleanup::forUserIds($db, $ids)`) that checks `error()`, and call it from each fixture (found in #2419)
+
+### `tests/unit/SitemapServiceTest.php`
+
+- [ ] The sitemap-vs-canonical parity test (~L150) uses `makeService([])`, so it covers static URLs only. Add one car, and compare its `details.php?car_id=N` URL with `CanonicalUrl::build()` (found in /flow:finish-milestone v2.33.0)
 
 ### `tests/unit/admin/VerificationBannerReasonTest.php` (test quality)
 
@@ -250,6 +266,10 @@ after an item is written.
 
 - [ ] `testEligibleCarIdsPassThroughUnchangedToProcessBatch` (~L255) uses `assertContains`, so a reordered batch passes, and no test checks that `VerificationBatchSender::processBatch()` sends in the submitted order. Assert the exact id order in both (found in #2599)
 
+### `tests/unit/regression/Issue2247LegacyRedirectsRegressionTest.php`
+
+- [ ] The three tests that match `.htaccess` lines word for word (~L37-62) copy the #2247 rows of the e2e 301 table in `not-logged-in.spec.js`, which send real requests. Delete them. Keep `testRedirectTargetsExist` if it still adds value (found in /flow:finish-milestone v2.33.0)
+
 ### `tests/unit/regression/Issue2360SendPolicySourceRegressionTest.php`
 
 - [ ] The source-position checks at ~L317, ~L322 and ~L353 repeat behavior tests (`SendOwnerEmailSendPolicyTest` ~L246, ~L334, `AdminContactSendPolicyTest`). Delete them, and keep the tests of the checker helper (found in /finish-milestone v2.30.8)
@@ -268,6 +288,22 @@ after an item is written.
 - [ ] Move `significantTokens()` / `tokensCallFunction()` into one `tests/Support/` helper, shared with the sibling pins from #2161 (from #2169)
 - [ ] `adminEndpointProvider()` globs only the top level of `app/admin/includes/`. Make it recursive (from #2169)
 
+### `tests/unit/security/HeadTagsSecurityTest.php`
+
+- [ ] Four source-text tests (~L117, L143, L159, L172) copy the render tests in `HeadTagsCanonicalRenderTest.php` (canonical, og:url and twitter:url equal, query dropped). L159 matches one whole line of markup, so a reformat breaks it. Delete them (found in /flow:finish-milestone v2.33.0)
+
+### `tests/unit/system/CanonicalUrlTest.php`
+
+- [ ] Most `encodedQueryProvider` rows (~L72-83) test `http_build_query(..., PHP_QUERY_RFC3986)`, not app behaviour. Keep the space-in-value and markup rows. Delete the rest (found in /flow:finish-milestone v2.33.0)
+
+### `tests/unit/system/CarDetailsJsonLdTest.php`
+
+- [ ] Three tests (~L111, L126, L155) check the order of strings in `details.php`. `HeadTagsCanonicalRenderTest::testDetailsInvalidCarIdSendsRealRedirectWithNoPerCarTitle` and the Playwright title tests prove the same behaviour. L155 matches exact source text. Delete them (found in /flow:finish-milestone v2.33.0)
+
+### `tests/unit/system/PageRobotsTest.php`
+
+- [ ] The regex test that `verify_car.php` does not assign `$current_url` (~L116) copies `HeadTagsCanonicalRenderTest::testVerifyCarCanonicalOmitsTheVericode`. Delete it (found in /flow:finish-milestone v2.33.0)
+
 ### `tools/phpstan/` (test-only, no estimate)
 
 - [ ] No test proves the `phpstan.neon` wiring of the path-based rules. A typo in a `files:` or `exemptPages:` entry, or a different working directory for `projectRoot`, makes the rule silently check nothing. Add a smoke test that runs PHPStan with the real config on one known violation per rule. (found in #2327)
@@ -280,6 +316,10 @@ after an item is written.
 ### `tests/unit/uploads/FileUploadSecurityTest.php` (test quality)
 
 - [ ] The expected text "The maximum size is 5 MB" (~L187, ~L273) and the size `5242880 // exactly the default 5MB maximum` (~L228) are fixed values. The test passes with the old default and breaks when someone raises `ELAN_IMAGE_SERVER_MAX_SIZE`. Build the text from `ELAN_IMAGE_SERVER_MAX_SIZE` and the size from `CarImageProcessor::serverMaxBytes()` (found in /flow:finish-milestone v2.32.0)
+
+### `usersc/classes/CanonicalUrl.php`
+
+- [ ] `build()` does not check its inputs. An empty-string query value gives `car_id=`, and a path with `?` or `#` gives a malformed URL. Both callers pass trusted values. Document the contract in the docblock (found in /flow:finish-milestone v2.33.0)
 
 ### `usersc/classes/Car/Car.php` + `app/api/cars/save.php`
 
@@ -346,6 +386,10 @@ after an item is written.
 
 - [ ] `blockedCauseLabel()` treats a whitespace-only `email_blocked_cause` as a cause and shows a blank-looking reason. Only manual SQL can write one. Trim before the empty check (found in #2458 review)
 - [ ] The `MISSING` job-row `detail` names `er_cron_job_runs` as plain text, so the panel cannot put it in `<code>`, as it does for the `advice` segments. Give `detail` the same `{text, code}` segments or move the name into `advice` (found in #2458 review)
+
+### `usersc/classes/CarView.php`
+
+- [ ] `TITLE_YEAR_MIN` and `TITLE_YEAR_MAX` (~L44-45) copy the 1963-1974 range that `CarValidator.php:142` hard-codes. Use one shared constant (found in /flow:finish-milestone v2.33.0)
 
 ### `usersc/classes/ChassisValidator.php`
 
@@ -439,6 +483,10 @@ after an item is written.
 
 - [ ] line 25 — same `(Issue #237)` pattern (from #1978)
 - [ ] line 34 — restates the line below it (from #1978)
+
+### `usersc/includes/head_tags.php`
+
+- [ ] `$pageCanonicalUrl` is a global that a page sets with no type check. CLASSES.md and the AI prompt doc tell pages to use `CanonicalUrl::build()`. Add a convention test that each `$pageCanonicalUrl =` assignment calls `CanonicalUrl::build` (found in /flow:finish-milestone v2.33.0)
 
 ### `usersc/includes/rate_limits_dev_override.php`
 
