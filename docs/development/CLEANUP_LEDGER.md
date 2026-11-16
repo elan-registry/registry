@@ -252,10 +252,6 @@ after an item is written.
 
 - [ ] The test reads `app/admin/index.php` source with `file_get_contents` and slices a block out of it. Replace it with a behavior test of the queue URL state, for example through `IntegrationTestCase::invokeEndpoint()` (found in #2330)
 
-### `tests/unit/classes/Email/BrevoDevOverrideTest.php` (test coverage)
-
-- [ ] `BrevoDevOverrideTest.php:198`: the fixture SDK keeps its host by design, so "survives setApiKey" cannot fail there; only the real-SDK test at :212 proves it, and it skips where the plugin vendor dir is missing (CI). (found in /finish-milestone v2.30.6)
-
 ### `tests/unit/cron/BrevoSuppressionSyncClientTest.php` (test quality)
 
 - [ ] The "autoloader throws" case does not assert that the exception message stays out of the log. Assert that the message has no `broken` (found in /flow:finish-milestone v2.31.0)
