@@ -78,6 +78,10 @@ after an item is written.
 
 - [ ] Each file wraps a `logger()` call in `try`/`catch (\Throwable)` (21 ~L1512, 26 ~L1728, brevo.php ~L156, CarAdministrationService ~L630, CarVerificationSendService ~L531, custom_functions ~L128, user_form_hook ~L60 and ~L105). Remove the guards, or move a deliberate one into the exceptions in ERROR_HANDLING.md with its reason (found in /flow:finish-milestone v2.31.0)
 
+### `app/admin/scripts/maintenance/21-Fix-Page-Permissions.php` (test coverage)
+
+- [ ] No test runs `analyzePermissions()` (~L114) against a database. Move it out of the page script, for example next to `PagePermissionClassifier`, then add an integration test of its query and row handling (found in #2450)
+
 ### `app/admin/scripts/maintenance/27-Reconcile-Brevo-Events.php` (test coverage)
 
 - [ ] No test renders the notConfigured info notice or the manual-run log suffix. Run the script with the `plg_sendinblue` key cleared and assert the notice and no success alert (found in /flow:finish-milestone v2.31.0)
