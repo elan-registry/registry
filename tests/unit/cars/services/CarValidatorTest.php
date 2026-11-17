@@ -583,6 +583,87 @@ final class CarValidatorTest extends TestCase
     }
 
     // ============================================================
+    // Column-size limits — issue #2696
+    // ============================================================
+
+    /**
+     * Each free-text field with its `cars` column size and the label the error names.
+     *
+     * @return array<string, array{0: string, 1: int, 2: string}>
+     */
+    public static function columnLimitProvider(): array
+    {
+        return [
+            'chassis' => ['chassis', 15, 'Chassis number'],
+            'series'  => ['series', 12, 'Series'],
+            'variant' => ['variant', 15, 'Variant'],
+            'type'    => ['type', 3, 'Type'],
+            'color'   => ['color', 50, 'Color'],
+            'engine'  => ['engine', 15, 'Engine'],
+        ];
+    }
+
+    /**
+     * A value exactly at the column size is accepted unchanged.
+     */
+    #[DataProvider('columnLimitProvider')]
+    public function testFieldAtColumnSizeIsAcceptedUnchanged(string $field, int $max, string $label): void
+    {
+        $value = str_repeat('A', $max);
+        $result = $this->validator->validateAndSanitizeFields([$field => $value], false);
+        $this->assertSame($value, $result[$field]);
+    }
+
+    /**
+     * A value one character over the column size is refused with a message that
+     * names the field and the limit.
+     */
+    #[DataProvider('columnLimitProvider')]
+    public function testFieldOverColumnSizeThrows(string $field, int $max, string $label): void
+    {
+        $this->expectException(CarValidationException::class);
+        $this->expectExceptionMessage("{$label} must be {$max} characters or fewer");
+
+        $this->validator->validateAndSanitizeFields([$field => str_repeat('A', $max + 1)], false);
+    }
+
+    /**
+     * The length check runs after the trim, so a value at the column size with
+     * pasted spaces around it is accepted and stored without the spaces.
+     */
+    #[DataProvider('columnLimitProvider')]
+    public function testPaddedFieldAtColumnSizeIsTrimmedAndAccepted(string $field, int $max, string $label): void
+    {
+        $value = str_repeat('A', $max);
+        $result = $this->validator->validateAndSanitizeFields([$field => " {$value} "], false);
+        $this->assertSame($value, $result[$field]);
+    }
+
+    /**
+     * The limit counts characters, not bytes: 50 characters with a multibyte
+     * character is accepted unchanged.
+     */
+    public function testMultibyteColorAtColumnSizeIsAcceptedUnchanged(): void
+    {
+        $color = 'Café ' . str_repeat('A', 45);
+        $this->assertSame(50, mb_strlen($color));
+
+        $result = $this->validator->validateAndSanitizeFields(['color' => $color], false);
+        $this->assertSame($color, $result['color']);
+    }
+
+    /**
+     * A non-string value is refused with CarValidationException, not a TypeError.
+     */
+    public function testArrayColorThrowsValidationException(): void
+    {
+        $this->expectException(CarValidationException::class);
+        $this->expectExceptionMessage('Color must be text');
+
+        $this->validator->validateAndSanitizeFields(['color' => ['Red']], false);
+    }
+
+    // ============================================================
     // Full positive case: valid inputs return sanitized array
     // ============================================================
 

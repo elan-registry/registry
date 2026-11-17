@@ -79,10 +79,10 @@ try {
             'Year must be between 1963 and 1974'
         );
     }
-    if (strlen($color) > 25) {
+    if (mb_strlen($color) > 50) {
         throw CarTransferException::withUserMessage(
-            'Color must be 25 characters or less',
-            'Color must be 25 characters or less'
+            'Color must be 50 characters or less',
+            'Color must be 50 characters or less'
         );
     }
     if (strlen($engine) > 15) {
@@ -212,7 +212,7 @@ try {
 
         $ownerNotice = $emailService->sendRequest($transferRequestId);
         match ($ownerNotice) {
-            TransferNoticeOutcome::Skipped => logger($userData->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Owner notification skipped by the send policy for transfer request #$transferRequestId — owner may not be aware of this request"),
+            TransferNoticeOutcome::Skipped => logger($userData->id, LogCategories::LOG_CATEGORY_CAR_TRANSFER, "Owner notification skipped by the send policy for transfer request #$transferRequestId — owner may not be aware of this request"),
             TransferNoticeOutcome::Failed  => logger($userData->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Owner notification failed for transfer request #$transferRequestId — owner may not be aware of this request"),
             TransferNoticeOutcome::Sent    => null,
         };
