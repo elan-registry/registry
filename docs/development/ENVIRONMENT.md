@@ -69,7 +69,7 @@ it to another file because other tools ignore the copy.
 | File | Read by | Holds | Template |
 | --- | --- | --- | --- |
 | `.env` | The PHP app (`users/init.php`), Phinx (`phinx.php`), `scripts/log-deployment.php`, Docker Compose (variable interpolation only), Playwright's `resolve-base-url.js` (`APP_HOST_PORT` only) and `global-setup.js` (`LANDING_HOST_PORT` only), both as fallbacks | Everything the app needs at runtime: `DB_*`, Turnstile, admin emails, webhook token — plus local-only switches (`US_ENVIRONMENT`, `BREVO_API_HOST`, session names, Docker host ports) | `.env.example` |
-| `.env.local` | Playwright (`playwright.config*.js`) and `scripts/playwright-auth-setup.js` — nothing else | Browser-test settings: `E2E_*` credentials, `PLAYWRIGHT_BASE_URL`, `CAR_ID_STANDARD` | the `.env.local` block of `.env.example` |
+| `.env.local` | Playwright (`playwright.config*.js`) and `scripts/playwright-auth-setup.js` — nothing else | Browser-test settings: `E2E_*` credentials, `PLAYWRIGHT_BASE_URL`, `CAR_ID_STANDARD`, `CAR_ID_WITH_HISTORY` | the `.env.local` block of `.env.example` |
 | `.env.test.local` | `tests/bootstrap-integration.php` only | The five `DB_*` keys of the disposable integration-test schema | `.env.test.local.sample` |
 
 Why they stay separate:
@@ -605,7 +605,7 @@ can, and the owner gets no clear message.
 | `post_max_size` | `ELAN_IMAGE_MAX` × `ELAN_IMAGE_SERVER_MAX_SIZE`, plus the form fields | 30M plus a margin |
 | `post_max_size` | not below `upload_max_filesize` | — |
 | `max_file_uploads` | `ELAN_IMAGE_MAX` | 6 |
-| `memory_limit` | 128M (`Resize.php` loads the full bitmap; a 2048 px bitmap uses about 13 MB in GD) | 128M |
+| `memory_limit` | 128M (`Resize.php` loads the full bitmap; a 2048 px bitmap uses about 13 to 17 MB in GD) | 128M |
 
 Keep `ELAN_IMAGE_SERVER_MAX_SIZE` at or below `ELAN_IMAGE_UPLOAD_MAX_SIZE`.
 If you change a constant, change the PHP values on all three servers in the
@@ -891,7 +891,12 @@ configs and `scripts/playwright-auth-setup.js` — **not** by the app:
 
 - **Location**: Root directory (not committed to git)
 - **Permissions**: `chmod 600` (it holds Test/Prod account passwords)
-- **Contents**: `E2E_*` credentials, `PLAYWRIGHT_BASE_URL`, `CAR_ID_STANDARD`
+- **Contents**: `E2E_*` credentials, `PLAYWRIGHT_BASE_URL`, `CAR_ID_STANDARD`, `CAR_ID_WITH_HISTORY`
+- **`CAR_ID_WITH_HISTORY`**: optional. The default depends on `E2E_AUTH_TIER`:
+  2 on Test, 1091 on Prod and when unset (Local and Dev). A value here wins
+  over the default. A non-empty value that is not a positive integer stops
+  the run with an error. The Docker sample data has no car 1091, so set it there.
+  The car requirements are in `tests/playwright/fixtures.js`.
 - **Distribution**: Created locally, from the Playwright entries in `.env.example`
 - **Not here**: `DB_*`, `TURNSTILE_*`, `US_ENVIRONMENT` and other app
   settings. The app does not read this file. Copies here have no effect and
