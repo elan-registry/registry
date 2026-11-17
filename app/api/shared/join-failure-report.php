@@ -20,10 +20,10 @@ use ElanRegistry\LogCategories;
  * fields' names only, never their values (#2043). For
  * location_search_failed, detail holds `status=` and the HTTP status, `api`
  * for a search that the server refused with HTTP 200, or 0 for a network or
- * JSON error (#2533). For turnstile_error, detail holds Cloudflare's error code. For
- * a js_exception from an unhandled rejection, detail holds the reason's
- * type and a source hint (Turnstile script state, widget state, seconds
- * since page load), as join-form-beacon.js documents (#2728).
+ * JSON error (#2533). For turnstile_error, detail holds Cloudflare's error
+ * code. For a js_exception from an unhandled rejection, detail holds the
+ * reason's type and a source hint (Turnstile script state, widget state,
+ * seconds since page load), as join-form-beacon.js documents (#2728).
  *
  * Anonymous and deliberately CSRF-free. The beacon used to carry the join
  * page's render-time CSRF token. In production that token went stale in a
