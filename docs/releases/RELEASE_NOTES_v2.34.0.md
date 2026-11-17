@@ -10,6 +10,7 @@ the member gets a clear reason.
 
 - Contacting an owner whose email address is not valid now shows a clear message that points to the Feedback form.
 - A car color can now have up to 50 characters. A car field that is too long shows its limit.
+- A refused location search shows the reason. Location suggestions no longer show stale results, and screen readers announce them.
 
 ## Admin-Facing Changes
 
