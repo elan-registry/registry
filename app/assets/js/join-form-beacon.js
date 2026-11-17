@@ -15,8 +15,12 @@
  * with the invalid fields' names only, never their values (#2043). The
  * location picker sends location_search_failed with the HTTP status only.
  * turnstile_error carries Cloudflare's error code, when Turnstile gives one.
- * A js_exception from an unhandled rejection carries the reason's type and
- * a source hint, then the stack or message, if any (#2728).
+ * A js_exception from an unhandled rejection carries the reason's type
+ * (type=), its value (value=) or, for an object with no stack or message,
+ * its key names (keys=), then a source hint: the Turnstile script state
+ * (turnstile=loaded|absent), the widget state (widget=rendered|empty|none)
+ * and the seconds since page load (t=). The error name, message and stack
+ * follow after " | ", if any (#2728).
  * The beacon sends at most 5 js_exception reports for each page load.
  *
  * @package ElanRegistry
@@ -158,10 +162,21 @@
         }, 10000);
     }
 
+    // WebKit's stack holds only the frames, with no "Name: message" line, so
+    // an iOS report would lose the message (#2728). Put the name and message
+    // first when the stack does not already contain them.
+    function errorText(err) {
+        if (!err) return '';
+        var stack = err.stack ? String(err.stack) : '';
+        var head = (err.name || err.message) ? (err.name || 'Error') + ': ' + (err.message || '') : '';
+        if (!head || stack.indexOf(head) !== -1) return stack;
+        return stack ? head + '\n' + stack : head;
+    }
+
     function errorDetail(errorObj, fallbackMessage) {
         // A stack trace is far more actionable than a bare message for a
         // "zero trace" bug — prefer it when available.
-        return (errorObj && errorObj.stack) || fallbackMessage || 'unknown error';
+        return errorText(errorObj) || fallbackMessage || 'unknown error';
     }
 
     // One iOS Safari visitor sent 36 reports in about 4 minutes (#2728). A
@@ -176,20 +191,30 @@
         reportJoinFailure('js_exception', detail);
     }
 
+    function turnstileWidgetState() {
+        var widget = document.querySelector('.cf-turnstile');
+        if (!widget) return 'none';
+        return widget.children.length > 0 ? 'rendered' : 'empty';
+    }
+
     // A rejection event has no filename or line, so the page state is the
     // only source hint. The hint goes first, because the 300-character limit
     // cuts the end of the detail, and a stack is long.
     function rejectionDetail(reason) {
-        var type = Object.prototype.toString.call(reason).slice(8, -1);
-        var hint = 'type=' + type;
-        if (reason === null || (typeof reason !== 'object' && typeof reason !== 'function')) {
+        var isObject = reason !== null && (typeof reason === 'object' || typeof reason === 'function');
+        var text = isObject ? errorText(reason) : '';
+        // A long Symbol.toStringTag must not push the hint past the limit.
+        var hint = 'type=' + Object.prototype.toString.call(reason).slice(8, -1).slice(0, 40);
+        if (!isObject) {
             hint += ' value=' + String(reason).slice(0, 100);
+        } else if (!text) {
+            // An object with no stack or message, such as {code: 0}, shows
+            // its key names. JSON.stringify could throw on a cycle.
+            hint += ' keys=' + Object.keys(reason).slice(0, 5).join(',').slice(0, 100);
         }
-        var widget = document.querySelector('.cf-turnstile');
         hint += ' turnstile=' + (window.turnstile ? 'loaded' : 'absent')
-            + ' widget=' + (!widget ? 'none' : (widget.children.length > 0 ? 'rendered' : 'empty'))
+            + ' widget=' + turnstileWidgetState()
             + ' t=' + Math.round(window.performance.now() / 1000) + 's';
-        var text = reason && (reason.stack || reason.message);
         return text ? hint + ' | ' + text : hint;
     }
 

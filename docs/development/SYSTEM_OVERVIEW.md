@@ -121,7 +121,9 @@ researching a chassis number.
   `location_search_failed` (a location search failed; HTTP status only), and
   `client_validation` (form validation blocked the submit; field names only).
   `turnstile_error` holds Cloudflare's error code. A `js_exception` from an
-  unhandled rejection holds the reason's type and a source hint. The browser
+  unhandled rejection holds the reason's type (`type=`), its value (`value=`)
+  or key names (`keys=`), and a source hint: `turnstile=` (script state),
+  `widget=` (widget state), and `t=` (seconds since page load). The browser
   sends at most 5 `js_exception` reports for each page load. The endpoint also
   carries no CSRF token, under ADR-019's exception for anonymous diagnostic log
   writes: a render-time token went stale and dropped the reports (#2227), and

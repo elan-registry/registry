@@ -13,7 +13,8 @@ the member gets a clear reason.
 
 ## Admin-Facing Changes
 
-- Join-failure log rows for script rejections show the error type and Turnstile state. Turnstile errors show their code. At most 5 script errors per page load.
+- Join-failure log rows for script rejections show the error type and the Turnstile state. Turnstile errors show their code.
+- The browser sends at most 5 reports of script errors and rejections for each page load.
 
 ## Issues Resolved
 

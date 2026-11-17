@@ -278,8 +278,10 @@ test.describe('Join form client-side failure beacon (#1690)', () => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: '{"success":true}' });
     });
 
-    // Locally Turnstile is off, so stub the state of the iOS case (#2728).
+    // Stub the state of the iOS case (#2728). Remove a real widget first, so
+    // the result does not depend on the local Turnstile keys.
     await page.evaluate(() => {
+      document.querySelectorAll('.cf-turnstile').forEach((el) => el.remove());
       window.turnstile = { reset: () => {} };
       const div = document.createElement('div');
       div.className = 'cf-turnstile';
@@ -289,6 +291,50 @@ test.describe('Join form client-side failure beacon (#1690)', () => {
 
     await expect.poll(() => bodies.length).toBe(1);
     expect(bodies[0].get('detail')).toMatch(/^type=Number value=0 turnstile=loaded widget=empty t=\d+s$/);
+  });
+
+  // WebKit's stack holds only frames. Chromium cannot produce one, so set it.
+  test('an Error with a WebKit-style stack still reports its name and message', async ({ page }) => {
+    const bodies = [];
+    await page.route('**/app/api/shared/join-failure-report.php', async (route) => {
+      bodies.push(new URLSearchParams(route.request().postData()));
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"success":true}' });
+    });
+
+    await page.evaluate(() => {
+      const webkitError = (message) => {
+        const err = new TypeError(message);
+        Object.defineProperty(err, 'stack', { value: 'f@\n@' });
+        return err;
+      };
+      Promise.reject(webkitError('webkit-rejection-2728'));
+      setTimeout(() => {
+        throw webkitError('webkit-error-2728');
+      }, 0);
+    });
+
+    await expect.poll(() => bodies.length).toBe(2);
+    const details = bodies.map((b) => b.get('detail'));
+    expect(details).toContainEqual(expect.stringMatching(/ \| TypeError: webkit-rejection-2728\nf@\n@$/));
+    expect(details).toContain('TypeError: webkit-error-2728\nf@\n@');
+  });
+
+  test('an object rejection reports its key names, and a long type name is cut', async ({ page }) => {
+    const bodies = [];
+    await page.route('**/app/api/shared/join-failure-report.php', async (route) => {
+      bodies.push(new URLSearchParams(route.request().postData()));
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"success":true}' });
+    });
+
+    await page.evaluate(() => {
+      Promise.reject({ code: 0, status: 'x' });
+      Promise.reject({ [Symbol.toStringTag]: 'X'.repeat(400) });
+    });
+
+    await expect.poll(() => bodies.length).toBe(2);
+    const details = bodies.map((b) => b.get('detail'));
+    expect(details).toContainEqual(expect.stringMatching(/^type=Object keys=code,status turnstile=/));
+    expect(details).toContainEqual(expect.stringMatching(/^type=X{40} keys= turnstile=\w+ widget=\w+ t=\d+s$/));
   });
 
   test('sends at most 5 js_exception reports for one page load, across errors and rejections', async ({ page }) => {
