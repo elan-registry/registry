@@ -239,6 +239,145 @@ test.describe('Join form client-side failure beacon (#1690)', () => {
     expect(beaconRequestBody).toContain('reason=js_exception');
   });
 
+  // #2728: an iOS Safari visitor's rejections were all reported as "0".
+  test('a primitive rejection reports its type, value and a source hint', async ({ page }) => {
+    const bodies = [];
+    await page.route('**/app/api/shared/join-failure-report.php', async (route) => {
+      bodies.push(new URLSearchParams(route.request().postData()));
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"success":true}' });
+    });
+
+    await page.evaluate(() => {
+      Promise.reject(0);
+    });
+
+    await expect.poll(() => bodies.length).toBe(1);
+    expect(bodies[0].get('reason')).toBe('js_exception');
+    expect(bodies[0].get('detail')).toMatch(/^type=Number value=0 turnstile=(loaded|absent) widget=(rendered|empty|none) t=\d+s$/);
+  });
+
+  test('an Error rejection reports the source hint before the stack', async ({ page }) => {
+    const bodies = [];
+    await page.route('**/app/api/shared/join-failure-report.php', async (route) => {
+      bodies.push(new URLSearchParams(route.request().postData()));
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"success":true}' });
+    });
+
+    await page.evaluate(() => {
+      Promise.reject(new Error('synthetic-rejection-2728'));
+    });
+
+    await expect.poll(() => bodies.length).toBe(1);
+    expect(bodies[0].get('detail')).toMatch(/^type=Error turnstile=\w+ widget=\w+ t=\d+s \| .*synthetic-rejection-2728/s);
+  });
+
+  test('a rejection hint shows a loaded Turnstile with an empty widget', async ({ page }) => {
+    const bodies = [];
+    await page.route('**/app/api/shared/join-failure-report.php', async (route) => {
+      bodies.push(new URLSearchParams(route.request().postData()));
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"success":true}' });
+    });
+
+    // Stub the state of the iOS case (#2728). Remove a real widget first, so
+    // the result does not depend on the local Turnstile keys.
+    await page.evaluate(() => {
+      document.querySelectorAll('.cf-turnstile').forEach((el) => el.remove());
+      window.turnstile = { reset: () => {} };
+      const div = document.createElement('div');
+      div.className = 'cf-turnstile';
+      document.body.appendChild(div);
+      Promise.reject(0);
+    });
+
+    await expect.poll(() => bodies.length).toBe(1);
+    expect(bodies[0].get('detail')).toMatch(/^type=Number value=0 turnstile=loaded widget=empty t=\d+s$/);
+  });
+
+  // WebKit's stack holds only frames. Chromium cannot produce one, so set it.
+  test('an Error with a WebKit-style stack still reports its name and message', async ({ page }) => {
+    const bodies = [];
+    await page.route('**/app/api/shared/join-failure-report.php', async (route) => {
+      bodies.push(new URLSearchParams(route.request().postData()));
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"success":true}' });
+    });
+
+    await page.evaluate(() => {
+      const webkitError = (message) => {
+        const err = new TypeError(message);
+        Object.defineProperty(err, 'stack', { value: 'f@\n@' });
+        return err;
+      };
+      Promise.reject(webkitError('webkit-rejection-2728'));
+      setTimeout(() => {
+        throw webkitError('webkit-error-2728');
+      }, 0);
+    });
+
+    await expect.poll(() => bodies.length).toBe(2);
+    const details = bodies.map((b) => b.get('detail'));
+    expect(details).toContainEqual(expect.stringMatching(/ \| TypeError: webkit-rejection-2728\nf@\n@$/));
+    expect(details).toContain('TypeError: webkit-error-2728\nf@\n@');
+  });
+
+  test('an object rejection reports its key names, and a long type name is cut', async ({ page }) => {
+    const bodies = [];
+    await page.route('**/app/api/shared/join-failure-report.php', async (route) => {
+      bodies.push(new URLSearchParams(route.request().postData()));
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"success":true}' });
+    });
+
+    await page.evaluate(() => {
+      Promise.reject({ code: 0, status: 'x' });
+      Promise.reject({ [Symbol.toStringTag]: 'X'.repeat(400) });
+    });
+
+    await expect.poll(() => bodies.length).toBe(2);
+    const details = bodies.map((b) => b.get('detail'));
+    expect(details).toContainEqual(expect.stringMatching(/^type=Object keys=code,status turnstile=/));
+    expect(details).toContainEqual(expect.stringMatching(/^type=X{40} keys= turnstile=\w+ widget=\w+ t=\d+s$/));
+  });
+
+  test('sends at most 5 js_exception reports for one page load, across errors and rejections', async ({ page }) => {
+    const bodies = [];
+    await page.route('**/app/api/shared/join-failure-report.php', async (route) => {
+      bodies.push(new URLSearchParams(route.request().postData()));
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"success":true}' });
+    });
+    const jsExceptions = () => bodies.filter((b) => b.get('reason') === 'js_exception');
+
+    // Rejections are the path that sent 36 reports from one iOS visitor.
+    await page.evaluate(() => {
+      for (let i = 0; i < 4; i++) {
+        Promise.reject(0);
+        setTimeout(() => {
+          throw new Error('synthetic-repeat-2728-' + i);
+        }, 0);
+      }
+    });
+
+    await expect.poll(() => jsExceptions().length).toBe(5);
+    // Time for a sixth report to arrive if the cap does not hold.
+    await page.waitForTimeout(500);
+    expect(jsExceptions()).toHaveLength(5);
+    expect(jsExceptions().some((b) => b.get('detail').startsWith('type=Number'))).toBe(true);
+  });
+
+  test('elanTurnstileError() sends the Turnstile error code as the detail', async ({ page }) => {
+    let body = null;
+    await page.route('**/app/api/shared/join-failure-report.php', async (route) => {
+      body = new URLSearchParams(route.request().postData());
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"success":true}' });
+    });
+
+    await page.evaluate(() => {
+      window.elanTurnstileError(300030);
+    });
+
+    await expect.poll(() => body).not.toBeNull();
+    expect(body.get('reason')).toBe('turnstile_error');
+    expect(body.get('detail')).toBe('300030');
+  });
+
   test('a sanitized cross-origin "Script error." does NOT reach the beacon', async ({ page }) => {
     // The one excluded case: third-party noise must not reach the log.
     let beaconCalled = false;

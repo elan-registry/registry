@@ -96,9 +96,17 @@ after an item is written.
 - [ ] The oversize-body 413 branch (~L44) calls `withLogging()` before `isLoggedIn()` and `Token::check()`. An anonymous request with a large `Content-Length` writes a `logs` row each time. Send a plain `ApiResponse::error()` without the log, or move the check after the login test (found in /flow:finish-milestone v2.32.0)
 - [ ] (test coverage) No automated test checks the oversize-body 413 status with `display_errors` Off (the test and production setting). Docker gives 200 with a warning prefix. Add an integration test that starts `php -S` with `-d display_errors=0` and a small `post_max_size`, and asserts 413, JSON, and the log row (found in #2627)
 
+### `app/api/shared/join-failure-report.php`
+
+- [ ] The docblock (~L17-21) says what `detail` holds for `client_validation` and `location_search_failed` only. Add `turnstile_error` (Cloudflare's error code) and a `js_exception` rejection (type and source hint), as in `join-form-beacon.js` (found in #2728)
+
 ### `app/assets/js/location-picker.js`
 
 - [ ] `render()` ~L133 — the inner `showGPS` ternary for the "OR" divider is dead, because the outer `showGPS &&` guard already holds. Use the plain divider (found in #2043)
+
+### `app/assets/js/turnstile-reset.js`
+
+- [ ] The docblock (~L12-17) says the join versions of both callbacks call `window.elanTurnstileReset()`. Only `elanTurnstileExpired` does. Correct the docblock (found in #2728)
 
 ### `app/views/cars/` (section partials)
 

@@ -13,13 +13,14 @@ the member gets a clear reason.
 
 ## Admin-Facing Changes
 
-- [Fill in as issues complete.]
+- Join-failure log rows for script rejections show the error type and the Turnstile state. Turnstile errors show their code.
+- The browser sends at most 5 reports of script errors and rejections for each page load.
 
 ## Issues Resolved
 
 - [#2712](https://github.com/elan-registry/registry/issues/2712) — Contact-owner form returns a clear error, not a 500, when the owner's email address is malformed.
 - [#2696](https://github.com/elan-registry/registry/issues/2696) — Car form length limits match the database column sizes.
-- WIP: [#2728](https://github.com/elan-registry/registry/issues/2728) — Join form failure reports from iOS Safari include the error detail.
+- [#2728](https://github.com/elan-registry/registry/issues/2728) — Join form failure reports state the error type and the Turnstile error code.
 - WIP: [#2533](https://github.com/elan-registry/registry/issues/2533) — A location search that the server refuses shows the real reason, not a network failure.
 - WIP: [#1512](https://github.com/elan-registry/registry/issues/1512) — Location picker has no race condition or silent discard, and has correct combobox ARIA.
 - WIP: [#1507](https://github.com/elan-registry/registry/issues/1507) — Statistics count photos and JSON data correctly.
