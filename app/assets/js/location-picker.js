@@ -34,9 +34,10 @@
          *        an unreported failure matters (e.g. a required-field registration blocker)
          *        can hook in their own beacon/logging here. Optional, no-op by default.
          * @param {Function} options.onSearchError Callback(status) when a location search
-         *        fails. status is the HTTP status, or 0 for a network or JSON error. The
-         *        picker calls it once for each distinct status, so a visitor who keeps
-         *        typing does not send a report for each keystroke. Optional, no-op by default.
+         *        fails. status is the HTTP status, 'api' for a 200 response that refuses
+         *        the search, or 0 for a network or JSON error. The picker calls it once
+         *        for each distinct status, so a visitor who keeps typing does not send a
+         *        report for each keystroke. Optional, no-op by default.
          * @param {boolean} options.showGPS Show GPS button (default: true)
          * @param {boolean} options.required Is location required (default: true)
          * @param {boolean} options.requireSelection Keep the input invalid until a location
@@ -67,6 +68,7 @@
             this.selectedLocation = null;
             this.currentFocusIndex = -1;
             this.reportedSearchStatuses = new Set();
+            this.searchSeq = 0;
 
             this.init();
         }
@@ -130,7 +132,7 @@
                          aria-label="Use current GPS location">
                     <i class="fas fa-location-arrow"></i> Use My Current Location
                 </button>
-                ${this.options.showGPS ? '<div class="text-center text-muted mb-2"><small>OR</small></div>' : ''}` : '';
+                <div class="text-center text-muted mb-2"><small>OR</small></div>` : '';
 
             // render() sets this once, because the text depends on whether the
             // GPS button shows. It is the one source for both the native
@@ -153,6 +155,7 @@
                                id="${this.options.containerId}-input"
                                placeholder="Start typing city, state, or country..."
                                autocomplete="off"
+                               role="combobox"
                                ${this.options.required ? 'required' : ''}
                                aria-label="Search location"
                                aria-autocomplete="list"
@@ -173,6 +176,7 @@
                          role="listbox"
                          aria-label="Location suggestions">
                     </div>
+                    <div id="${this.options.containerId}-live" class="visually-hidden" role="status" aria-live="polite"></div>
                 </div>
 
                 <!-- Hidden fields for form submission -->
@@ -242,13 +246,13 @@
                 this.syncValidity();
             }
 
+            // The results of a search for the old text must not show.
+            this.cancelSearch();
+
             if (query.length < 2) {
                 this.hideResults();
                 return;
             }
-
-            // Clear previous timer
-            clearTimeout(this.debounceTimer);
 
             // Set new timer (300ms debounce)
             this.debounceTimer = setTimeout(() => {
@@ -260,8 +264,22 @@
          * Handle keyboard navigation
          */
         handleKeyDown(e) {
+            // Escape cancels a pending search and closes the panel, also the
+            // "No locations found" panel, which has no options. When the panel
+            // is closed, the event is not prevented, so other handlers on the
+            // page (for example a modal) still get it.
+            if (e.key === 'Escape') {
+                this.cancelSearch();
+                if (this.getInput().getAttribute('aria-expanded') === 'true') {
+                    e.preventDefault();
+                    this.hideResults();
+                }
+                return;
+            }
+
             const results = document.getElementById(`${this.options.containerId}-results`);
-            const items = results.querySelectorAll('.list-group-item');
+            // Only options take keyboard focus. The "No locations found" row is not one.
+            const items = results.querySelectorAll('[role="option"]');
 
             if (!items.length) return;
 
@@ -284,11 +302,6 @@
                         items[this.currentFocusIndex].click();
                     }
                     break;
-
-                case 'Escape':
-                    e.preventDefault();
-                    this.hideResults();
-                    break;
             }
         }
 
@@ -296,25 +309,51 @@
          * Update focus styling for keyboard navigation
          */
         updateFocus(items) {
+            const input = this.getInput();
             items.forEach((item, index) => {
                 if (index === this.currentFocusIndex) {
                     item.classList.add('active');
+                    item.setAttribute('aria-selected', 'true');
                     item.scrollIntoView({ block: 'nearest' });
+                    // Focus stays on the input, so a screen reader follows
+                    // the active option through this attribute.
+                    input.setAttribute('aria-activedescendant', item.id);
                 } else {
                     item.classList.remove('active');
+                    item.setAttribute('aria-selected', 'false');
                 }
             });
+        }
+
+        /**
+         * Make a queued or in-flight search stale, so its late response
+         * cannot reopen the list, show an error, or send a report.
+         *
+         * @returns {void}
+         */
+        cancelSearch() {
+            clearTimeout(this.debounceTimer);
+            this.searchSeq++;
+            this.showLoading(false);
         }
 
         /**
          * Search for locations
          */
         async searchLocation(query) {
+            // Responses can arrive out of order. Only the newest search may
+            // show results, an error, or send a report.
+            const seq = ++this.searchSeq;
+
             // Check session cache first
             const cacheKey = `location_cache_${query}`;
             const cached = this.getSessionCache(cacheKey);
 
             if (cached) {
+                // An older search may still be in flight with its spinner on,
+                // or an older failure may still show its error.
+                this.showLoading(false);
+                this.hideError();
                 this.displayResults(cached);
                 return;
             }
@@ -324,6 +363,7 @@
             this.hideError();
 
             let status = 0;
+            let serverMessage = '';
             try {
                 const response = await fetch(this.options.urlRoot + 'app/api/shared/location-search.php', {
                     method: 'POST',
@@ -337,47 +377,79 @@
                     })
                 });
 
+                // null when the body is not JSON (or is JSON null). A non-JSON
+                // error body keeps the retry text.
+                const data = await response.json().catch(() => null);
+
+                if (seq !== this.searchSeq) {
+                    return;
+                }
+
                 if (!response.ok) {
                     status = response.status;
+                    // Only an ApiResponse body is the server's own text. A proxy
+                    // in front of the site can send other JSON.
+                    serverMessage = data?.success === false && typeof data.message === 'string' ?
+                        data.message : '';
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
 
-                const data = await response.json();
-
-                if (!data.success) {
-                    throw new Error(data.message || 'Search failed');
+                if (data === null) {
+                    throw new Error('Search response is not JSON');
                 }
 
-                // Cache results
-                this.setSessionCache(cacheKey, data.results);
+                if (!data.success) {
+                    status = 'api';
+                    serverMessage = typeof data.message === 'string' ? data.message : '';
+                    throw new Error(serverMessage || 'Search failed');
+                }
 
-                // Display results
                 this.displayResults(data.results);
 
+                // Cache only results that displayed. A malformed list throws in
+                // displayResults(), and the cache-hit path has no try to catch it.
+                this.setSessionCache(cacheKey, data.results);
+
             } catch (error) {
+                if (seq !== this.searchSeq) {
+                    return;
+                }
                 console.error('Location search error:', error);
-                this.showError(this.searchErrorMessage(status));
+                this.showError(this.searchErrorMessage(status, serverMessage));
                 this.reportSearchError(status);
             } finally {
-                this.showLoading(false);
+                if (seq === this.searchSeq) {
+                    this.showLoading(false);
+                }
             }
         }
 
         /**
          * Plain-language next step for a failed search
          *
-         * @param {number} status HTTP status, or 0 for a network or JSON error
+         * @param {number|string} status HTTP status, 'api' for a 200 response
+         *        that refuses the search, or 0 for a network or JSON error
+         * @param {string} serverMessage The server's message, or '' when it sent none
          * @returns {string} Message for the error box
          */
-        searchErrorMessage(status) {
+        searchErrorMessage(status, serverMessage) {
             // A 403 is the CSRF check: the token from page render is stale,
             // and only a reload gets a new one.
             if (status === 403) {
                 return 'This page is out of date. Reload the page, then type your town or city again.';
             }
+            // A refusal (rate limit, bad query) tells the visitor what to
+            // change. A 5xx message adds nothing to the retry text.
+            const refused = status === 'api' || (status >= 400 && status < 500);
+            if (refused && serverMessage) {
+                return serverMessage;
+            }
             const gpsBtn = document.getElementById(`${this.options.containerId}-gps-btn`);
-            return 'We could not search for locations. Try again in a moment.' +
-                (gpsBtn ? ' Or press Use My Current Location.' : '');
+            const gpsSuffix = gpsBtn ? ' Or press Use My Current Location.' : '';
+            if (status === 'api') {
+                return 'The location search was refused. Change what you typed and try again.' + gpsSuffix;
+            }
+            return 'We could not search for locations. Try again in a moment.' + gpsSuffix;
         }
 
         /**
@@ -386,7 +458,8 @@
          * page reports through the shared join_failure_beacon rate limit.
          * A throw from the callback must not break the picker.
          *
-         * @param {number} status HTTP status, or 0 for a network or JSON error
+         * @param {number|string} status HTTP status, 'api' for a 200 response
+         *        that refuses the search, or 0 for a network or JSON error
          * @returns {void}
          */
         reportSearchError(status) {
@@ -462,6 +535,10 @@
         displayResults(results) {
             const resultsContainer = document.getElementById(`${this.options.containerId}-results`);
             const input = this.getInput();
+            const liveRegion = document.getElementById(`${this.options.containerId}-live`);
+
+            // The old options are about to be replaced.
+            input.removeAttribute('aria-activedescendant');
 
             if (!results || results.length === 0) {
                 resultsContainer.innerHTML = `
@@ -469,6 +546,7 @@
                         <i class="fas fa-info-circle"></i> No locations found. Try a different search term.
                     </div>
                 `;
+                liveRegion.textContent = 'No locations found.';
                 this.showResults();
                 return;
             }
@@ -476,11 +554,14 @@
             // Filter and rank results
             const filteredResults = this.filterAndRankResults(results);
 
-            resultsContainer.innerHTML = filteredResults.map(location => `
+            resultsContainer.innerHTML = filteredResults.map((location, i) => `
                 <button type="button"
                         class="list-group-item list-group-item-action"
+                        id="${this.options.containerId}-option-${i}"
                         data-location='${this.escapeAttribute(JSON.stringify(location))}'
-                        role="option">
+                        role="option"
+                        aria-selected="false"
+                        tabindex="-1">
                     <div>
                         <strong>${this.escapeHtml(location.city || location.display)}</strong>
                         <br>
@@ -490,16 +571,19 @@
             `).join('');
 
             // Attach click handlers
-            resultsContainer.querySelectorAll('.list-group-item').forEach(item => {
+            resultsContainer.querySelectorAll('[role="option"]').forEach(item => {
                 item.addEventListener('click', () => {
                     const location = JSON.parse(item.dataset.location);
                     this.selectLocation(location);
                 });
             });
 
+            liveRegion.textContent = filteredResults.length === 1 ?
+                '1 location found.' :
+                `${filteredResults.length} locations found.`;
+
             this.currentFocusIndex = -1;
             this.showResults();
-            input.setAttribute('aria-expanded', 'true');
         }
 
         /**
@@ -514,6 +598,10 @@
                 this.callOnGPSError({ code: 0, message: 'geolocation_unsupported' });
                 return;
             }
+
+            // A search for the typed text must not show its error or send a
+            // report while the GPS lookup runs.
+            this.cancelSearch();
 
             const btn = document.getElementById(`${this.options.containerId}-gps-btn`);
             const originalText = btn.innerHTML;
@@ -648,6 +736,9 @@
          * Select a location
          */
         selectLocation(location) {
+            // A search for the typed text may still be queued or in flight. Its
+            // late response must not reopen the list over the selection.
+            this.cancelSearch();
             this.selectedLocation = location;
 
             this.writeHiddenFields(location);
@@ -701,6 +792,8 @@
             if (results) {
                 results.style.display = 'block';
             }
+            // The "No locations found" panel is open too, so it sets this as well.
+            this.getInput()?.setAttribute('aria-expanded', 'true');
         }
 
         /**
@@ -716,6 +809,14 @@
 
             if (input) {
                 input.setAttribute('aria-expanded', 'false');
+                input.removeAttribute('aria-activedescendant');
+            }
+
+            // After the list closes, a cleared region lets the next search
+            // announce the same count again.
+            const liveRegion = document.getElementById(`${this.options.containerId}-live`);
+            if (liveRegion) {
+                liveRegion.textContent = '';
             }
 
             this.currentFocusIndex = -1;
@@ -749,6 +850,7 @@
          * @param {string} displayText - Display text for the location
          */
         setLocation(location, displayText) {
+            this.cancelSearch();
             // A pre-filled location counts as selected, so requireSelection does
             // not block a form that pre-fills.
             this.selectedLocation = location;

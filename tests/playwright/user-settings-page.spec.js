@@ -42,4 +42,37 @@ test.describe('User settings page (customized) — #1253', () => {
     await expect(page.locator('#location-picker-settings')).toBeVisible();
   });
 
+  // #1512: the picker's select path on User Settings, which loads the same
+  // location-picker.min.js as the join form. The search is stubbed.
+  test('selecting a stubbed search result fills the hidden location fields', async ({ page }) => {
+    const rome = {
+      city: 'Rome', state: 'Lazio', country: 'Italy',
+      lat: '41.8933203', lon: '12.4829321', display: 'Rome, Lazio, Italy',
+    };
+    await page.route('**/app/api/shared/location-search.php', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, results: [rome] }),
+      });
+    });
+    await page.goto('usersc/user_settings.php', { waitUntil: 'domcontentloaded' });
+    test.skip(
+      page.url().includes('login') || page.url().includes('Please Log In'),
+      'Session not established locally — skipping user settings assertions'
+    );
+
+    const input = page.locator('#location-picker-settings-input');
+    await input.fill('Rome');
+    const option = page.locator('#location-picker-settings-results [role="option"]');
+    await expect(option).toHaveCount(1);
+    await option.click();
+
+    await expect(input).toHaveValue(rome.display);
+    await expect(page.locator('#location-picker-settings-lat')).toHaveValue(rome.lat);
+    await expect(page.locator('#location-picker-settings-lon')).toHaveValue(rome.lon);
+    await expect(page.locator('#location-picker-settings-city')).toHaveValue(rome.city);
+    await expect(page.locator('#location-picker-settings-country')).toHaveValue(rome.country);
+  });
+
 });

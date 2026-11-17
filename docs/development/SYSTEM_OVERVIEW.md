@@ -118,7 +118,8 @@ researching a chassis number.
   join attempt that failed in the browser before it reached the server. Reasons:
   Turnstile failures (`turnstile_error`, `turnstile_expired`,
   `turnstile_not_loaded`), `js_exception`, `location_gps_failed`,
-  `location_search_failed` (a location search failed; HTTP status only), and
+  `location_search_failed` (a location search failed; HTTP status, `api` for a
+  refused search, or 0), and
   `client_validation` (form validation blocked the submit; field names only).
   `turnstile_error` holds Cloudflare's error code. A `js_exception` from an
   unhandled rejection holds the reason's type (`type=`), its value (`value=`)
