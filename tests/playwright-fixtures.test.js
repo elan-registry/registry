@@ -10,6 +10,10 @@
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
+// fixtures.js resolves CAR_ID_WITH_HISTORY from process.env when it loads.
+// Remove shell values, so a bad export cannot fail this file before a test runs.
+delete process.env.CAR_ID_WITH_HISTORY;
+delete process.env.E2E_AUTH_TIER;
 const { resolveCarIdWithHistory } = require('./playwright/fixtures.js');
 
 describe('resolveCarIdWithHistory', () => {
@@ -35,6 +39,13 @@ describe('resolveCarIdWithHistory', () => {
             );
         });
     }
+
+    test('an empty tier throws and does not use the default', () => {
+        assert.throws(
+            () => resolveCarIdWithHistory({ E2E_AUTH_TIER: '' }),
+            /E2E_AUTH_TIER.*got: ""/
+        );
+    });
 
     test('an unknown tier throws', () => {
         assert.throws(

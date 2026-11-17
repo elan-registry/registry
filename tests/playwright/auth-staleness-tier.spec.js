@@ -60,17 +60,17 @@ test.describe('resolveTierConfig (#1935, #2035)', () => {
     expect(() => resolveTierConfig(undefined, 'admin', AUTH_DIR))
       .toThrow(/requires E2E_AUTH_TIER to be 'test' or 'prod'/);
     expect(() => resolveTierConfig(undefined, 'admin', AUTH_DIR)).toThrow(/got: unset/);
-    expect(() => resolveTierConfig('', 'admin', AUTH_DIR)).toThrow(/got: unset/);
+    expect(() => resolveTierConfig('', 'admin', AUTH_DIR)).toThrow(/got: ""/);
   });
 
   test('a misspelled tier throws the fail-fast error rather than defaulting to prod', () => {
     expect(() => resolveTierConfig('bogus', 'admin', AUTH_DIR))
       .toThrow(/requires E2E_AUTH_TIER to be 'test' or 'prod'/);
-    expect(() => resolveTierConfig('bogus', 'admin', AUTH_DIR)).toThrow(/got: bogus/);
+    expect(() => resolveTierConfig('bogus', 'admin', AUTH_DIR)).toThrow(/got: "bogus"/);
 
     // Case sensitivity is deliberate — a near-miss must not silently pass.
-    expect(() => resolveTierConfig('Prod', 'admin', AUTH_DIR)).toThrow(/got: Prod/);
-    expect(() => resolveTierConfig('TEST', 'admin', AUTH_DIR)).toThrow(/got: TEST/);
+    expect(() => resolveTierConfig('Prod', 'admin', AUTH_DIR)).toThrow(/got: "Prod"/);
+    expect(() => resolveTierConfig('TEST', 'admin', AUTH_DIR)).toThrow(/got: "TEST"/);
   });
 
   test('an unset role throws the fail-fast error rather than defaulting to admin', () => {

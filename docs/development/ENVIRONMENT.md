@@ -893,10 +893,13 @@ configs and `scripts/playwright-auth-setup.js` — **not** by the app:
 - **Permissions**: `chmod 600` (it holds Test/Prod account passwords)
 - **Contents**: `E2E_*` credentials, `PLAYWRIGHT_BASE_URL`, `CAR_ID_STANDARD`, `CAR_ID_WITH_HISTORY`
 - **`CAR_ID_WITH_HISTORY`**: optional. The default depends on `E2E_AUTH_TIER`:
-  2 on Test, 1091 on Prod and when unset (Local and Dev). A value here wins
-  over the default. A non-empty value that is not a positive integer stops
-  the run with an error. The Docker sample data has no car 1091, so set it there.
-  The car requirements are in `tests/playwright/fixtures.js`.
+  2 on test, 1091 on prod and when unset (local and dev). A value here
+  replaces the default on all tiers, also test and prod. Comment it out
+  before you run the test or prod config. A non-empty value
+  that is not a positive integer stops the run with an error. The Docker
+  sample data has no car 1091. On Docker, set `CAR_ID_WITH_HISTORY` to a car
+  that exists, or run `scripts/refresh-local-db.sh`. The car requirements are
+  in `tests/playwright/fixtures.js`.
 - **Distribution**: Created locally, from the Playwright entries in `.env.example`
 - **Not here**: `DB_*`, `TURNSTILE_*`, `US_ENVIRONMENT` and other app
   settings. The app does not read this file. Copies here have no effect and

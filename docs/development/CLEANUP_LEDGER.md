@@ -187,10 +187,6 @@ after an item is written.
 
 - [ ] The two #2144 history tests skip when `E2E_DEV_ADMIN_USERNAME` or `E2E_DEV_ADMIN_PASSWORD` is not set, also on the test and prod tiers. On those tiers the admin session comes from the saved storageState, so the guard and its skip message name the wrong credentials. Check the credentials for the current tier, or remove the guard where storageState supplies the session (found in #2387)
 
-### `tests/playwright/e2e/auth-staleness-tier.js`
-
-- [ ] `assertValidTier()` reports an empty `E2E_AUTH_TIER` as `(got: unset)` because of `tier || 'unset'`, and says only the configs set it. Since #2387, `fixtures.js` calls it on every local and dev run, so a stray `E2E_AUTH_TIER=` in `.env.local` or the shell gets a misleading message. Show the value with `JSON.stringify(tier)` and name `.env.local` and the shell as sources (found in #2387)
-
 ### `tests/playwright/local/fixtures/`
 
 - [ ] Eight `seed-*.php` fixtures each copy the `er_deleted_user_addresses` cleanup: a table-exists check, then a `DELETE ... IN (...)`. All eight also copy the username-to-ID lookup. Only `seed-output-escaping-car.php` checks `$db->error()` after the delete. The others check `error()` after neither the check nor the delete. In most of them, the cleanup loop in the same file exits on an error. `seed-bounced-car.php` checks `error()` nowhere. Add one shared helper (for example `Tests\Support\DeletedUserAddressCleanup::forUserIds($db, $ids)`) that checks `error()`, and call it from each fixture (found in #2419)

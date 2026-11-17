@@ -9,8 +9,8 @@ const CAR_ID_STANDARD = Number(process.env.CAR_ID_STANDARD) || 1;
 // CAR_ID_WITH_HISTORY needs non-zero lat and lon (car details map test),
 // history rows (#2144 admin tests), and at least one photo and a saved model
 // (car-edit-text-save.spec.js). The test DB is not a prod copy, so it has no
-// car 1091 (#2387). Tiers not in this map use the default: prod, and unset
-// (local and dev). A local DB has car 1091 only after
+// car 1091. Tiers not in this map use the default: prod, and unset (local
+// and dev). A local DB has car 1091 only after
 // scripts/refresh-local-db.sh loads a prod dump. The Docker sample data does
 // not. To re-verify a value:
 // SELECT lat, lon, (SELECT COUNT(*) FROM cars_hist h WHERE h.car_id = c.id) AS hist
@@ -35,7 +35,7 @@ function resolveCarIdWithHistory(env) {
     if (!/^[1-9]\d*$/.test(override)) {
       throw new Error(
         `fixtures.js requires CAR_ID_WITH_HISTORY to be a positive integer (got: ${JSON.stringify(override)}). ` +
-        'Fix or remove it in .env.local.'
+        'Fix or remove it in .env.local or the shell environment.'
       );
     }
     return Number(override);
