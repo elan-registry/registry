@@ -13,9 +13,9 @@
  * js_exception, location_gps_failed, location_search_failed,
  * client_validation. The join form's submit handler sends client_validation
  * with the invalid fields' names only, never their values (#2043). The
- * location picker sends location_search_failed with the HTTP status, api
- * for a search that the server refused with HTTP 200, or 0 for a network or
- * JSON error (#2533).
+ * location picker sends location_search_failed with status= and the HTTP
+ * status, api for a search that the server refused with HTTP 200, or 0 for a
+ * network or JSON error (#2533).
  * turnstile_error carries Cloudflare's error code, when Turnstile gives one.
  * A js_exception from an unhandled rejection carries the reason's type
  * (type=), its value (value=) or, for an object with no stack or message,

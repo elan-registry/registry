@@ -18,9 +18,9 @@ use ElanRegistry\LogCategories;
  * js_exception, location_gps_failed, location_search_failed,
  * client_validation. For client_validation, detail holds the invalid
  * fields' names only, never their values (#2043). For
- * location_search_failed, detail holds the HTTP status, `api` for a search
- * that the server refused with HTTP 200, or 0 for a network or JSON error
- * (#2533). For turnstile_error, detail holds Cloudflare's error code. For
+ * location_search_failed, detail holds `status=` and the HTTP status, `api`
+ * for a search that the server refused with HTTP 200, or 0 for a network or
+ * JSON error (#2533). For turnstile_error, detail holds Cloudflare's error code. For
  * a js_exception from an unhandled rejection, detail holds the reason's
  * type and a source hint (Turnstile script state, widget state, seconds
  * since page load), as join-form-beacon.js documents (#2728).

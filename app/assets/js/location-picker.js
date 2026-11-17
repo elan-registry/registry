@@ -350,9 +350,8 @@
             const cached = this.getSessionCache(cacheKey);
 
             if (cached) {
-                // An older search may still be in flight with its spinner on,
-                // or an older failure may still show its error.
-                this.showLoading(false);
+                // An older failure may still show its error. handleInput()
+                // already stopped the spinner through cancelSearch().
                 this.hideError();
                 this.displayResults(cached);
                 return;
