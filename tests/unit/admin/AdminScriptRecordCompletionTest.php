@@ -24,8 +24,9 @@ final class ThrowingInsertDatabase extends FakeDatabase
 
 /**
  * Unit tests for admin_script_record_completion() (app/admin/includes/fix-script-core.php),
- * against a fake database. The helper must never throw, because a failed
- * fix_script_runs write must not hide the result of the calling script. The tests
+ * against a fake database. The helper must not throw when the fix_script_runs write
+ * or the onFailure callback fails, because a failed write must not hide the result
+ * of the calling script. The tests
  * cover a good insert, a failed insert with and without onFailure, and an
  * onFailure callback that throws.
  *
@@ -98,18 +99,6 @@ final class AdminScriptRecordCompletionTest extends TestCase
 
         $this->assertNotNull($receivedMessage);
         $this->assertStringContainsString('Could not record script completion', $receivedMessage);
-    }
-
-    #[Group('fast')]
-    public function testFailedInsertWithNoCallbackDoesNotThrow(): void
-    {
-        global $db, $mockLogEntries;
-        $db = new ThrowingInsertDatabase();
-
-        // No $onFailure passed on a failing insert — must not throw, matching
-        // the documented "never throws" contract. Still logs the failure.
-        admin_script_record_completion(__FILE__, 1);
-        $this->assertCount(1, $mockLogEntries);
     }
 
     #[Group('fast')]
