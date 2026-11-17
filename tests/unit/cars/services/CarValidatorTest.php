@@ -628,6 +628,18 @@ final class CarValidatorTest extends TestCase
     }
 
     /**
+     * The length check runs after the trim, so a value at the column size with
+     * pasted spaces around it is accepted and stored without the spaces.
+     */
+    #[DataProvider('columnLimitProvider')]
+    public function testPaddedFieldAtColumnSizeIsTrimmedAndAccepted(string $field, int $max, string $label): void
+    {
+        $value = str_repeat('A', $max);
+        $result = $this->validator->validateAndSanitizeFields([$field => " {$value} "], false);
+        $this->assertSame($value, $result[$field]);
+    }
+
+    /**
      * The limit counts characters, not bytes: 50 characters with a multibyte
      * character is accepted unchanged.
      */
