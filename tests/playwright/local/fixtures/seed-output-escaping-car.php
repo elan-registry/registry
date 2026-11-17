@@ -10,7 +10,7 @@ use ElanRegistry\Car\CarRepository;
  * Seeds one owner and one car whose color, engine, and chassis hold HTML
  * payloads. The spec opens the car details page and checks that each payload
  * shows as text and creates no element. Each payload fits its column width:
- * color is varchar(25), engine and chassis are varchar(15).
+ * color is varchar(50), engine and chassis are varchar(15).
  *
  * The owner website holds a quote-break payload (website is varchar(100)).
  * It has an https scheme, so OwnerView::websiteUrl() keeps it and the Owner

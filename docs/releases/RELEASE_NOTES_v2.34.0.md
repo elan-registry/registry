@@ -9,6 +9,7 @@ the member gets a clear reason.
 ## User-Facing Changes
 
 - Contacting an owner whose email address is not valid now shows a clear message that points to the Feedback form.
+- A car color can now have up to 50 characters. A car field that is too long shows its limit.
 
 ## Admin-Facing Changes
 
