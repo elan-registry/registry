@@ -14,6 +14,10 @@
  * client_validation. The join form's submit handler sends client_validation
  * with the invalid fields' names only, never their values (#2043). The
  * location picker sends location_search_failed with the HTTP status only.
+ * turnstile_error carries Cloudflare's error code, when Turnstile gives one.
+ * A js_exception from an unhandled rejection carries the reason's type and
+ * a source hint, then the stack or message, if any (#2728).
+ * The beacon sends at most 5 js_exception reports for each page load.
  *
  * @package ElanRegistry
  * @since 2.29.2
@@ -69,8 +73,9 @@
         return event.message !== 'Script error.';
     }
 
-    window.elanTurnstileError = function () {
-        reportJoinFailure('turnstile_error');
+    // Turnstile passes its error code as the first argument (#2728).
+    window.elanTurnstileError = function (errorCode) {
+        reportJoinFailure('turnstile_error', errorCode);
         var msg = document.getElementById('turnstile-status-message');
         if (msg) {
             msg.textContent = 'Verification failed to load. Please refresh the page and try again, or try a different browser.';
@@ -159,9 +164,38 @@
         return (errorObj && errorObj.stack) || fallbackMessage || 'unknown error';
     }
 
+    // One iOS Safari visitor sent 36 reports in about 4 minutes (#2728). A
+    // repeating error says nothing new after the first few, and the reports
+    // count toward the join_failure_beacon total that all visitors share.
+    var MAX_JS_EXCEPTION_REPORTS = 5;
+    var jsExceptionReports = 0;
+
+    function reportJsException(detail) {
+        if (jsExceptionReports >= MAX_JS_EXCEPTION_REPORTS) return;
+        jsExceptionReports++;
+        reportJoinFailure('js_exception', detail);
+    }
+
+    // A rejection event has no filename or line, so the page state is the
+    // only source hint. The hint goes first, because the 300-character limit
+    // cuts the end of the detail, and a stack is long.
+    function rejectionDetail(reason) {
+        var type = Object.prototype.toString.call(reason).slice(8, -1);
+        var hint = 'type=' + type;
+        if (reason === null || (typeof reason !== 'object' && typeof reason !== 'function')) {
+            hint += ' value=' + String(reason).slice(0, 100);
+        }
+        var widget = document.querySelector('.cf-turnstile');
+        hint += ' turnstile=' + (window.turnstile ? 'loaded' : 'absent')
+            + ' widget=' + (!widget ? 'none' : (widget.children.length > 0 ? 'rendered' : 'empty'))
+            + ' t=' + Math.round(window.performance.now() / 1000) + 's';
+        var text = reason && (reason.stack || reason.message);
+        return text ? hint + ' | ' + text : hint;
+    }
+
     window.addEventListener('error', function (event) {
         if (document.getElementById('join-form') && isJoinPageError(event)) {
-            reportJoinFailure('js_exception', errorDetail(event && event.error, event && event.message));
+            reportJsException(errorDetail(event && event.error, event && event.message));
         }
     });
 
@@ -170,11 +204,16 @@
     // 'unhandledrejection' instead. Both are realistic candidates for the
     // original #1690 webview mystery, so both must be covered or a real
     // root cause could again produce zero client-side trace.
+    //
+    // #2728: an iOS Safari visitor's rejections all had the reason 0. The
+    // cause is not proven. None of our own scripts rejects with a number.
+    // The same visitor sent turnstile_error reports, and the 0 reports came
+    // about every 7 seconds, close to Turnstile's automatic retry. So
+    // Turnstile's api.js is the likely source. The type and Turnstile state
+    // in the detail confirm or disprove this on the next case.
     window.addEventListener('unhandledrejection', function (event) {
         if (document.getElementById('join-form')) {
-            var reason = event && event.reason;
-            var detail = (reason && reason.stack) || (reason && reason.message) || String(reason);
-            reportJoinFailure('js_exception', detail);
+            reportJsException(rejectionDetail(event && event.reason));
         }
     });
 })();

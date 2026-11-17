@@ -119,7 +119,10 @@ researching a chassis number.
   Turnstile failures (`turnstile_error`, `turnstile_expired`,
   `turnstile_not_loaded`), `js_exception`, `location_gps_failed`,
   `location_search_failed` (a location search failed; HTTP status only), and
-  `client_validation` (form validation blocked the submit; field names only). Also
+  `client_validation` (form validation blocked the submit; field names only).
+  `turnstile_error` holds Cloudflare's error code. A `js_exception` from an
+  unhandled rejection holds the reason's type and a source hint. The browser
+  sends at most 5 `js_exception` reports for each page load. The endpoint also
   carries no CSRF token, under ADR-019's exception for anonymous diagnostic log
   writes: a render-time token went stale and dropped the reports (#2227), and
   its own rate limit bounds abuse instead.
