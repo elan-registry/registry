@@ -17,7 +17,8 @@ function assertValidTier(tier, opts = {}, callerName = 'this file') {
   if (tier !== 'test' && tier !== 'prod') {
     throw new Error(
       `${callerName} requires E2E_AUTH_TIER to be 'test'${allowUnset ? ", 'prod', or unset" : " or 'prod'"} ` +
-      `(got: ${tier || 'unset'}). It is set by playwright.config.test.js / playwright.config.prod.js.`
+      `(got: ${tier === undefined ? 'unset' : JSON.stringify(tier)}). playwright.config.test.js / playwright.config.prod.js set it. ` +
+      'Also check .env.local and the shell environment.'
     );
   }
 }

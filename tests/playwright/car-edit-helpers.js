@@ -1,6 +1,7 @@
 // Shared helpers for the car edit form specs (edit.php).
 
 const { expect } = require('@playwright/test');
+const { CAR_ID_WITH_HISTORY } = require('./fixtures.js');
 
 // 1x1 PNG. FilePond accepts it as a new (non-LOCAL) file.
 const TINY_PNG = Buffer.from(
@@ -176,6 +177,6 @@ async function giveUserGesture(page) {
     await page.locator('body').click({ position: { x: 2, y: 2 } });
 }
 
-const SAVE_OK = { status: 200, body: { success: true, cardetails: { id: 1091 } } };
+const SAVE_OK = { status: 200, body: { success: true, cardetails: { id: CAR_ID_WITH_HISTORY } } };
 
 module.exports = { TINY_PNG, makePhoto, SAVE_OK, attemptLeave, giveUserGesture, postUpdateCar, openAddMode, openEditMode, routeSave, routeModels };

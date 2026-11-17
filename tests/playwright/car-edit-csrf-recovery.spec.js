@@ -59,7 +59,7 @@ test.describe('Car form save: CSRF and session recovery (#1455)', () => {
         });
 
         await page.locator('#submit').click();
-        await page.waitForURL(/app\/owner\/cars\/details\.php\?car_id=1091/, { timeout: 15000 });
+        await page.waitForURL(new RegExp(`app/owner/cars/details\\.php\\?car_id=${CAR_ID_WITH_HISTORY}(?:&|$)`), { timeout: 15000 });
 
         expect(dialogs, 'a save that succeeds on the retry leaves without a dialog').toEqual([]);
         expect(saves.calls.map((c) => c.csrf)[0], 'the first send carries the stale token').toBe('stale');
@@ -97,7 +97,7 @@ test.describe('Car form save: CSRF and session recovery (#1455)', () => {
         await otherTab.close();
 
         await page.locator('#submit').click();
-        await page.waitForURL(/app\/owner\/cars\/details\.php\?car_id=1091/, { timeout: 15000 });
+        await page.waitForURL(new RegExp(`app/owner/cars/details\\.php\\?car_id=${CAR_ID_WITH_HISTORY}(?:&|$)`), { timeout: 15000 });
 
         // Send 1: 401. Send 2: real 403 for the old token. Send 3: new token, mocked success.
         expect(saves.calls).toHaveLength(3);
@@ -203,7 +203,7 @@ test.describe('Car form save: CSRF and session recovery (#1455)', () => {
         await page.locator('#csrf').evaluate((el) => { el.value = 'stale'; });
 
         await page.locator('#submit').click();
-        await page.waitForURL(/app\/owner\/cars\/details\.php\?car_id=1091/, { timeout: 15000 });
+        await page.waitForURL(new RegExp(`app/owner/cars/details\\.php\\?car_id=${CAR_ID_WITH_HISTORY}(?:&|$)`), { timeout: 15000 });
 
         expect(saves.calls, 'one send, one retry').toHaveLength(2);
         expect(filesPerSave).toHaveLength(2);

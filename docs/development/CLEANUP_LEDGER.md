@@ -104,13 +104,9 @@ after an item is written.
 
 - [ ] The "Back to all options" `btn-link` is about 38px high, below the 44px touch target. The `#verify-actions` target cannot take focus, so a screen reader announces nothing after the jump. Add `tabindex="-1"` and a group label (found in #2495)
 
-### `database/4-sample-data.sql` + `tests/playwright/fixtures.js`
+### `database/4-sample-data.sql`
 
-- [ ] Sample car 1 (1973, chassis `7301019999B`) now fails the 1972-1974 9-character rule, and its comment still says "Post-1970 format: YYMMBBXXXXC". `CAR_ID_OWNED_BY_ADMIN` uses car 1, so an unmocked save test on it fails on the chassis. Change the sample chassis to a 9-character value such as `73081602L`, or note the failure on the fixture constant (found in /flow:finish-milestone v2.31.2)
-
-### `docs/development/ENVIRONMENT.md`
-
-- [ ] In the minimum-values table, the `memory_limit` row says a 2048 px bitmap uses "about 13 MB" in GD. That holds for a 4:3 frame. A 2048x2048 bitmap is about 16 MB. Say "about 13 to 17 MB" (found in /flow:finish-milestone v2.32.0)
+- [ ] Sample car 1 (1973, chassis `7301019999B`) fails the 1972-1974 9-character rule, and its comment still says "Post-1970 format: YYMMBBXXXXC". Change the chassis to a 9-character value such as `73081602L` and fix the comment. `tests/playwright/fixtures.js` notes the failure on `CAR_ID_OWNED_BY_ADMIN` (found in #2387)
 
 ### `docs/pdf-viewer.php`
 
@@ -186,6 +182,10 @@ after an item is written.
 ### `tests/playwright/car-edit-csrf-recovery.spec.js` (test coverage)
 
 - [ ] 'a token that still fails is not retried again' (~L110-126) does not check that the unsaved-changes guard stays on after the failed retry. After the out-of-date message, call `attemptLeave(page)` and expect `['beforeunload']`, as `car-edit-unsaved-guard.spec.js` does for a failed save (found in /flow:finish-milestone v2.33.0)
+
+### `tests/playwright/e2e/admin.spec.js`
+
+- [ ] The two #2144 history tests skip when `E2E_DEV_ADMIN_USERNAME` or `E2E_DEV_ADMIN_PASSWORD` is not set, also on the test and prod tiers. On those tiers the admin session comes from the saved storageState, so the guard and its skip message name the wrong credentials. Check the credentials for the current tier, or remove the guard where storageState supplies the session (found in #2387)
 
 ### `tests/playwright/local/fixtures/`
 
