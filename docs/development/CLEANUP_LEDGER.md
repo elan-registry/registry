@@ -87,6 +87,10 @@ after an item is written.
 - [ ] The chassis error at ~L582 holds the literal `<strong>ERROR:</strong>`. `errors.general` is a list now, and `car-edit.js` escapes each item, so the tag shows as text. Remove the markup from the message (found in /flow:finish-milestone v2.32.0)
 - [ ] (test coverage) No automated test checks the oversize-body 413 status with `display_errors` Off (the test and production setting). Docker gives 200 with a warning prefix. Add an integration test that starts `php -S` with `-d display_errors=0` and a small `post_max_size`, and asserts 413, JSON, and the log row (found in #2627)
 
+### `app/owner/cars/factory.php`
+
+- [ ] The `#cartable` header cells use `scope="column"`, which is not a valid value. Change each one to `scope="col"` (found in #2622)
+
 ### `app/views/cars/_factory_data_card.php`
 
 - [ ] "Factory Notes" is an `h6` under the `h3` card heading, so it skips levels. Use a `p` with `fw-semibold`, or a heading one level below `$headingTag` (found in #2495)
