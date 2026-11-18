@@ -588,6 +588,38 @@ outgrows 512M, check for a genuine leak first. PHPUnit prints the peak on
 every run, so growth shows up there long before a fatal. Then raise the value
 in every config together.
 
+### Deprecations Fail the Run
+
+**Problem**: The run ends with `Deprecations: 1` and exits non-zero, but no
+test failed. Or the run stops with "Error in bootstrap script" and "A committed
+file raised a deprecation".
+
+**Cause**: A PHP deprecation in project code once printed output before the
+response headers and broke responses (#2490), and the run still passed. Now
+these deprecations fail the pre-commit hook, the pre-push hook and CI (#2491):
+
+- **During a test.** All three PHPUnit configs set `failOnDeprecation="true"`.
+  Each `<source>` lists every PHP file tracked in git outside `tests/`, so a
+  deprecation that a test or tracked code raises fails the run.
+- **While a bootstrap loads a file.** PHPUnit does not see these.
+  `tests/Support/BootstrapDeprecationGuard.php` wraps the bootstrap requires
+  and stops the run with the file and line. The integration bootstrap cannot
+  see code after the `ipCheckBan()` failure in `users/init.php` (#2749). A
+  test that runs that code still fails on its deprecation.
+
+Each `<source>` element also sets `ignoreIndirectDeprecations="true"`. A
+deprecation that untracked upstream code (`users/` except its tracked files,
+untracked `usersc/plugins/`, `vendor/`) raises when upstream code calls it
+does not fail the run, because this repo cannot fix that code. The bootstrap
+guard ignores untracked files for the same reason.
+
+**Solution**: For a test-time failure, run the failing suite with
+`--display-deprecations` to see the file and line. A bootstrap failure prints
+them. Fix the code. Do not remove the attributes or the guard. When you commit
+PHP in a new directory or a new root file, add it to `<source>` in every
+`phpunit*.xml`. `tests/unit/regression/Issue2491RegressionTest.php` fails if
+a config loses an attribute or does not cover a tracked file.
+
 ## See Also
 
 - [TESTING.md](../docs/testing/TESTING.md) - Comprehensive testing guide
