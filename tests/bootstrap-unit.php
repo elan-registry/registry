@@ -229,6 +229,11 @@ if (!function_exists('currentUserId')) {
 // Load Composer autoloader for all custom classes and exceptions
 require_once $projectRoot . '/vendor/autoload.php';
 
+// Fail the run on a deprecation that committed code raises while this file
+// loads it (#2491). The guard class needs the autoloader, and nothing above
+// loads a committed file.
+\Tests\Support\BootstrapDeprecationGuard::start($projectRoot);
+
 // Register PhpBuiltinServer's shutdown hook before PHPUnit registers its own
 // (lazily, during the first test): PHPUnit's handler can exit(2), which stops
 // every later-registered shutdown function. See tests/bootstrap-integration.php.
@@ -335,3 +340,5 @@ if (!function_exists('isRegistryAdmin')) {
 // RegressionTestCase is not in the PSR-4 autoloaded path, so it must be
 // explicitly required before PHPUnit loads test classes that extend it.
 require_once __DIR__ . '/unit/regression/RegressionTestCase.php';
+
+\Tests\Support\BootstrapDeprecationGuard::stop();

@@ -5,6 +5,7 @@
          colors="true"
          processIsolation="false"
          stopOnFailure="false"
+         failOnDeprecation="true"
          cacheDirectory=".phpunit.cache"
          backupGlobals="false">
 
@@ -27,17 +28,51 @@
         <ini name="memory_limit" value="512M"/>
     </php>
 
-    <source>
+    <!-- Every PHP file tracked in git outside tests/ (#2491). Untracked
+         upstream code stays outside, so ignoreIndirectDeprecations skips its
+         deprecations. Keep every phpunit*.xml in step;
+         Issue2491RegressionTest fails when a tracked file is not covered. -->
+    <source ignoreIndirectDeprecations="true">
         <include>
-            <directory>usersc/classes</directory>
             <directory>app</directory>
+            <directory>database</directory>
+            <directory>docs</directory>
+            <directory>error</directory>
+            <directory>scripts</directory>
+            <directory>stubs</directory>
+            <directory>tools</directory>
+            <directory>usersc/classes</directory>
+            <directory>usersc/includes</directory>
+            <directory>usersc/lang</directory>
+            <directory>usersc/oauth_client</directory>
+            <directory>usersc/oauth_server</directory>
+            <directory>usersc/scripts</directory>
+            <directory>usersc/userspice_core</directory>
+            <directory>usersc/views</directory>
+            <directory>usersc/widgets/settings</directory>
+            <directory>usersc/widgets/tools</directory>
+            <directory>usersc/plugins/ai_prompts/custom_prompts</directory>
+            <directory>usersc/plugins/hooker/hooks</directory>
+            <directory>users/cron</directory>
+            <file>index.php</file>
+            <file>phinx.php</file>
+            <file>phpstan-bootstrap.php</file>
+            <file>z_us_root.php</file>
+            <file>users/init.php</file>
+            <file>usersc/account.php</file>
+            <file>usersc/join.php</file>
+            <file>usersc/login.php</file>
+            <file>usersc/user_settings.php</file>
+            <file>usersc/templates/customizer/assets/child_themes/dashboard.php</file>
+            <file>usersc/templates/customizer/assets/child_themes/elanregistry.php</file>
+            <file>usersc/templates/customizer/file_nav_custom.php</file>
+            <file>usersc/templates/customizer/navigation.php</file>
         </include>
         <exclude>
             <directory>vendor</directory>
-            <directory>users</directory>
-            <directory>FIX</directory>
             <directory>tests</directory>
-            <file>usersc/classes/test_class.php</file>
+            <file>usersc/includes/totp_key.php</file>
+            <file>usersc/includes/trusted_proxies.php</file>
         </exclude>
     </source>
 </phpunit>
