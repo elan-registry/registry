@@ -21,7 +21,7 @@ the member gets a clear reason.
 ## Issues Resolved
 
 - [#2712](https://github.com/elan-registry/registry/issues/2712) — Contact-owner form returns a clear error, not a 500, when the owner's email address is malformed.
-- [#2696](https://github.com/elan-registry/registry/issues/2696) — Car form length limits match the column sizes, and a skipped transfer notice logs under CarTransfer.
+- [#2696](https://github.com/elan-registry/registry/issues/2696) — Car form length limits match the column sizes, and a too-long value is refused with a message that names the limit.
 - [#2728](https://github.com/elan-registry/registry/issues/2728) — Join form failure reports state the error type and the Turnstile error code.
 - [#2533](https://github.com/elan-registry/registry/issues/2533) — A refused location search shows the server's reason, and a search with no match says so.
 - [#1512](https://github.com/elan-registry/registry/issues/1512) — Location picker has no race condition or silent discard, and has correct combobox ARIA.
