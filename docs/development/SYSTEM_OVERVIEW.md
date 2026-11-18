@@ -118,8 +118,14 @@ researching a chassis number.
   join attempt that failed in the browser before it reached the server. Reasons:
   Turnstile failures (`turnstile_error`, `turnstile_expired`,
   `turnstile_not_loaded`), `js_exception`, `location_gps_failed`,
-  `location_search_failed` (a location search failed; HTTP status only), and
-  `client_validation` (form validation blocked the submit; field names only). Also
+  `location_search_failed` (a location search failed; `status=` and the HTTP
+  status, `api` for a refused search, or 0), and
+  `client_validation` (form validation blocked the submit; field names only).
+  `turnstile_error` holds Cloudflare's error code. A `js_exception` from an
+  unhandled rejection holds the reason's type (`type=`), its value (`value=`)
+  or key names (`keys=`), and a source hint: `turnstile=` (script state),
+  `widget=` (widget state), and `t=` (seconds since page load). The browser
+  sends at most 5 `js_exception` reports for each page load. The endpoint also
   carries no CSRF token, under ADR-019's exception for anonymous diagnostic log
   writes: a render-time token went stale and dropped the reports (#2227), and
   its own rate limit bounds abuse instead.
@@ -171,8 +177,12 @@ detail, factory and statistics pages — as public.
   it gives the sender the same response as for a sent message (`SendPolicy`,
   see EMAIL_SYSTEM.md). The endpoint refuses a `noowner` recipient with a 409
   response and a readable message. It writes no log row and no `EmailError`
-  row for that refusal. The form page redirects a `noowner` car to the car
-  details page with an information message.
+  row for that refusal. The endpoint also refuses an owner whose address is
+  malformed, with a 409 response and a readable message. It writes an
+  `EmailError` row under the sender's user id. The row's note names the
+  recipient's user id (`to_user_id=N`), so an admin can correct the
+  address. The form page redirects a `noowner` car to the car details page
+  with an information message.
 - **Send feedback to the registrar** (`app/owner/contact/index.php`).
 
 ### 3.3. Editor and administrator

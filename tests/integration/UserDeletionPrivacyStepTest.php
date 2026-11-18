@@ -823,11 +823,6 @@ final class UserDeletionPrivacyStepTest extends IntegrationTestCase
         $this->assertSame(0, $this->profileCount($userId));
     }
 
-    private function noownerId(): int
-    {
-        return (int) $this->db->query("SELECT id FROM users WHERE username = 'noowner'")->first()->id;
-    }
-
     private function waitUntil(callable $condition, float $seconds): bool
     {
         $deadline = microtime(true) + $seconds;

@@ -30,6 +30,26 @@ final class CarTransferRepositoryIntegrationTest extends TransferIntegrationTest
         $this->assertSame('pending', $row->status, 'Schema DEFAULT must set status to pending');
     }
 
+    /**
+     * Issue #2696: a transfer request copies the submitted car color, which the
+     * validator allows up to 50 characters.
+     */
+    public function testCreateStoresFiftyCharacterSubmittedColor(): void
+    {
+        // 50 characters, the validator maximum.
+        $color = 'Carnival Red over Old English White Gold Coachline';
+
+        $ownerId     = $this->createTestUser();
+        $requesterId = $this->createTestUser();
+        $carId       = $this->createTestCar($ownerId);
+
+        $id  = $this->createTransferRequest($carId, $requesterId, ['submitted_color' => $color]);
+        $row = $this->repo->findById($id);
+
+        $this->assertNotNull($row, 'findById() must return the created row');
+        $this->assertSame($color, $row->submitted_color, 'submitted_color must hold all 50 characters');
+    }
+
     public function testFindByIdReturnsNullForMissingId(): void
     {
         $this->assertNull($this->repo->findById(PHP_INT_MAX));

@@ -124,8 +124,8 @@ $toData   = $toOwner->data();
 $fromData = $fromOwner->data();
 
 // The noowner system account has an undeliverable address (ADR-010). Refuse
-// before the address check, which would otherwise answer 500. No log row:
-// this is an expected refusal, not an error.
+// before the address check, because that check writes an EmailError row. No
+// log row: this is an expected refusal, not an error.
 if ($toData->username === AppConstants::NOOWNER_USERNAME) {
     ApiResponse::error('This car has no current owner to contact. Use the Feedback form to contact the registry.', 409)->send();
 }
@@ -144,8 +144,11 @@ try {
 }
 $toName = (string)($toData->fname ?? '');                                        // first name only — flows to HTML template, not headers
 
+// A malformed recipient address is the owner's bad data, not a server fault, and
+// the member cannot fix it. Answer 409 like the noowner refusal. The log row
+// tells an admin to correct the address.
 if (!filter_var($toEmail, FILTER_VALIDATE_EMAIL)) {
-    ApiResponse::serverError()
+    ApiResponse::error('This owner cannot be contacted right now. Use the Feedback form to contact the registry.', 409)
         ->withLogging($logUserId ?? 0, LogCategories::LOG_CATEGORY_EMAIL_ERROR,
             'send-owner-email.php: invalid recipient email for to_user_id=' . $toUserId)
         ->send();

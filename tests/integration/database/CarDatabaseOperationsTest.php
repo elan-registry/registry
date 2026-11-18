@@ -97,6 +97,44 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
         $this->assertEquals('Integration Blue', $updatedCar->color);
     }
 
+    /**
+     * Issue #2696: the validator accepts a 50-character color, so `cars.color`
+     * and the `cars_hist.color` column that the update trigger writes must hold it.
+     */
+    #[Group('integration')]
+    public function testCarUpdateStoresFiftyCharacterColorInCarsAndHistory(): void
+    {
+        // 50 characters, the validator maximum.
+        $color = 'Carnival Red over Old English White Gold Coachline';
+
+        $car    = new Car($this->testCarId);
+        $result = $car->update([
+            'id'    => $this->testCarId,
+            'token' => Token::generate(),
+            'color' => $color,
+        ]);
+
+        $this->assertTrue($result);
+
+        $row = $this->db->query('SELECT color FROM cars WHERE id = ?', [$this->testCarId])->first();
+        $this->assertSame($color, $row->color, 'cars.color must hold all 50 characters');
+
+        // The cars_update trigger writes the OLD row to cars_hist. A second
+        // update is necessary to put the 50-character color in an UPDATE row.
+        $this->assertTrue((new Car($this->testCarId))->update([
+            'id'    => $this->testCarId,
+            'token' => Token::generate(),
+            'color' => 'Red',
+        ]));
+
+        $history = $this->db->query(
+            "SELECT color FROM cars_hist WHERE car_id = ? AND operation = 'UPDATE' ORDER BY id DESC LIMIT 1",
+            [$this->testCarId]
+        )->first();
+        $this->assertNotNull($history, 'The update must write a cars_hist UPDATE row');
+        $this->assertSame($color, $history->color, 'cars_hist.color must hold all 50 characters');
+    }
+
     #[Group('integration')]
     public function testCarDeletionRemovesFromDatabase(): void
     {

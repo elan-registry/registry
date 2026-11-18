@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\AppConstants;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Database\DbAdapter;
 use ElanRegistry\Owner;
@@ -1278,6 +1279,15 @@ abstract class IntegrationTestCase extends TestCase
         }
 
         return (int) $result->first()->cnt;
+    }
+
+    /** The id of the noowner system account, found by username. Fails the test if the row is missing. */
+    protected function noownerId(): int
+    {
+        $row = $this->db->query('SELECT id FROM users WHERE username = ?', [AppConstants::NOOWNER_USERNAME])->first();
+        $this->assertIsObject($row, 'Test setup: the noowner account must exist (run composer migrate)');
+
+        return (int) $row->id;
     }
 
     /**

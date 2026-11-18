@@ -14,6 +14,7 @@ const SELECT_TEXT = 'Select your town or city from the list, or press Use My Cur
 const GPS_FALLBACK = 'Type your town or city in the Location box and select it from the list.';
 const SEARCH_RELOAD_TEXT = 'This page is out of date. Reload the page, then type your town or city again.';
 const SEARCH_RETRY_TEXT = 'We could not search for locations. Try again in a moment. Or press Use My Current Location.';
+const SEARCH_REFUSED_TEXT = 'The location search was refused. Change what you typed and try again. Or press Use My Current Location.';
 
 const ROME = {
   city: 'Rome',
@@ -59,14 +60,23 @@ async function abortJoinPosts(page) {
 
 // Answer every location search with an error status. Returns a live count of searches.
 async function failLocationSearch(page, status) {
+  return stubLocationSearch(page, {
+    status,
+    body: JSON.stringify({ success: false, message: 'stubbed search failure' }),
+  });
+}
+
+// Answer every location search with a fixed status and raw body, or abort the
+// request when `abort` is true (a network failure). Returns a live count of searches.
+async function stubLocationSearch(page, { status = 200, body = '', abort = false }) {
   const hits = { count: 0 };
   await page.route('**/app/api/shared/location-search.php', async (route) => {
     hits.count += 1;
-    await route.fulfill({
-      status,
-      contentType: 'application/json',
-      body: JSON.stringify({ success: false, message: 'stubbed search failure' }),
-    });
+    if (abort) {
+      await route.abort();
+      return;
+    }
+    await route.fulfill({ status, contentType: 'application/json', body });
   });
   return hits;
 }
@@ -524,6 +534,62 @@ test.describe('Join form blocked submit feedback (#2043)', () => {
     await expect.poll(() => beaconsWithReason(beaconBodies, 'location_search_failed').length).toBe(1);
     expect(new URLSearchParams(beaconsWithReason(beaconBodies, 'location_search_failed')[0]).get('detail')).toBe('status=500');
   });
+
+  // Each case: what the server (or network) does, what the visitor reads, and
+  // the beacon detail.
+  const searchErrorCases = [
+    {
+      name: 'a 200 refusal with a message shows that message and reports status=api',
+      stub: { status: 200, body: JSON.stringify({ success: false, message: 'Rate limit exceeded. Wait a minute.' }) },
+      text: 'Rate limit exceeded. Wait a minute.',
+      detail: 'status=api',
+    },
+    {
+      name: 'a 200 refusal without a message shows the refused text and reports status=api',
+      stub: { status: 200, body: JSON.stringify({ success: false }) },
+      text: SEARCH_REFUSED_TEXT,
+      detail: 'status=api',
+    },
+    {
+      name: 'a 400 refusal with a message shows that message and reports status=400',
+      stub: { status: 400, body: JSON.stringify({ success: false, message: 'Query is too short.' }) },
+      text: 'Query is too short.',
+      detail: 'status=400',
+    },
+    {
+      name: 'a 4xx with JSON that is not an ApiResponse (a proxy) shows the retry text and reports its status',
+      stub: { status: 429, body: JSON.stringify({ message: 'Proxy text' }) },
+      text: SEARCH_RETRY_TEXT,
+      detail: 'status=429',
+    },
+    {
+      name: 'a network failure shows the retry text and reports status=0',
+      stub: { abort: true },
+      text: SEARCH_RETRY_TEXT,
+      detail: 'status=0',
+    },
+    {
+      name: 'a 200 response with invalid JSON shows the retry text and reports status=0',
+      stub: { status: 200, body: 'not json' },
+      text: SEARCH_RETRY_TEXT,
+      detail: 'status=0',
+    },
+  ];
+
+  for (const errorCase of searchErrorCases) {
+    test(errorCase.name, async ({ page }) => {
+      const hits = await stubLocationSearch(page, errorCase.stub);
+      const beaconBodies = await recordBeacons(page);
+
+      await runFailingSearch(page, hits, 'Rome');
+
+      await expect(page.locator(LOCATION_ERROR)).toBeVisible();
+      await expect(page.locator(LOCATION_ERROR)).toHaveText(errorCase.text);
+      await expect.poll(() => beaconsWithReason(beaconBodies, 'location_search_failed').length).toBe(1);
+      const params = new URLSearchParams(beaconsWithReason(beaconBodies, 'location_search_failed')[0]);
+      expect(params.get('detail')).toBe(errorCase.detail);
+    });
+  }
 });
 
 // The picker is shared with user_settings.php and the admin owner profile.

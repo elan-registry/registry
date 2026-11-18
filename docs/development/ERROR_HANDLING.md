@@ -152,7 +152,7 @@ class gives 500 and `SystemError`.
 | OwnerValidationException | 422 | ValidationError | Owner data validation |
 | OwnerSearchException | 500 | OwnerActions | Owner search |
 | ValidationException | 422 | ValidationError | Generic validation |
-| LocationServiceException | 500 | SystemError | Location API |
+| LocationServiceException | 500 | SystemError | Location API. `app/api/shared/location-search.php` sends it as a 400 and logs it under `LocationService`, and the location picker shows that message to the visitor |
 | ImageProcessingException | 500 | FileError | Photo upload check, move and resize. When `validateUploadBatch()` rejects a photo, `save.php` returns the owner message with a 422 through `validationError()`. A thrown exception (invalid car ID, path guard, failed mkdir, or malformed `$_FILES` shape) goes to the action's `catch (ElanRegistryException)`, which returns the owner message with a 500 through `serverError()` |
 | BackupException | 500 | BackupError | Backup operations |
 | AdminOperationException | 500 | SystemError | Admin operations |
@@ -160,6 +160,10 @@ class gives 500 and `SystemError`.
 | VerificationConfigException | 422 | VerificationConfigWarning | Verification cannot be enabled, because the Brevo email integration is not ready |
 | RetentionPurgeException | 500 | RetentionPurge | A retention rule failed in the daily purge job |
 | SessionTimeZoneException | 500 | DatabaseError | The MySQL session `time_zone` cannot be set to the PHP named zone |
+
+An endpoint that refuses a request the caller cannot fix by trying again (no owner, or a recipient address
+that is not valid) sends 409 through `ApiResponse::error()`, not `serverError()`. It writes no `SystemError`
+row. `app/api/contact/send-owner-email.php` is the example.
 
 **Usage Pattern**:
 

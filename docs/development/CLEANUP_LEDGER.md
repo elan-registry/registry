@@ -51,8 +51,10 @@ after an item is written.
 ### `app/admin/includes/process-transfer-approve.php` `app/admin/includes/process-transfer-deny.php` `app/api/cars/transfer-request.php`
 
 - [ ] No test asserts the "No transfer approval/denial notification sent ... each one failed or the send policy skipped it" `EMAIL_ERROR` line. In `tests/integration/transfer/CarTransferWorkflowTest.php`, approve and deny with both parties opted out and assert that one row (found in /finish-milestone v2.30.9)
-- [ ] `transfer-request.php` logs a send-policy skip of the owner notice as `EMAIL_ERROR`, but `policyAllows()` already logged it. Drop the endpoint line or log it under `CAR_TRANSFER` (found in /flow:finish-milestone v2.31.0)
 - [ ] `process-transfer-approve.php` (~L131 and ~L147) wraps `$db->rollBack()` in `catch (\Throwable $rollbackEx)`. Remove the guard (see ERROR_HANDLING.md, no guards) (found in /flow:finish-milestone v2.31.0)
+- [ ] `transfer-request.php` (~L70-93) repeats the limits in `CarValidator::COLUMN_MAX_LENGTHS`, and checks chassis and engine with `strlen` while color uses `mb_strlen`. Take the limits from the constant and use `mb_strlen` for every field (found in /flow:finish-milestone v2.34.0)
+- [ ] (test coverage) `transfer-request.php` (~L213) logs the skipped owner notice under `CAR_TRANSFER`, and no test checks the category. `tests/unit/regression/Issue2476TransferOwnerNoticeRegressionTest.php:65` matches the message text only (found in /flow:finish-milestone v2.34.0)
+- [ ] (test coverage) No endpoint test sends a 50-character color with a multibyte character to `transfer-request.php` (~L82). Only `tests/unit/cars/services/CarValidatorTest.php` covers the multibyte case, and the endpoint has its own check (found in /flow:finish-milestone v2.34.0)
 
 ### `app/admin/includes/tab-car_mgmt.php`
 
@@ -90,6 +92,19 @@ after an item is written.
 
 - [ ] The chassis error at ~L582 holds the literal `<strong>ERROR:</strong>`. `errors.general` is a list now, and `car-edit.js` escapes each item, so the tag shows as text. Remove the markup from the message (found in /flow:finish-milestone v2.32.0)
 - [ ] (test coverage) No automated test checks the oversize-body 413 status with `display_errors` Off (the test and production setting). Docker gives 200 with a warning prefix. Add an integration test that starts `php -S` with `-d display_errors=0` and a small `post_max_size`, and asserts 413, JSON, and the log row (found in #2627)
+- [ ] (test coverage) No endpoint or browser test shows that a too-long car field (~L333) returns its limit message. Only the `CarValidator` unit tests cover it (found in /flow:finish-milestone v2.34.0)
+
+### `app/assets/js/join-form-beacon.js`
+
+- [ ] The #2728 comments (~L164-169, ~L231-241) record an open investigation (36 reports in about 4 minutes, cause not proven, next case). Once the next case confirms or disproves the Turnstile theory, keep the durable why (the 5-report cap, the hint goes first) and cut the speculation (found in /flow:finish-milestone v2.34.0)
+
+### `app/assets/js/statistics.js` (test coverage)
+
+- [ ] A 200 response with `data: null` (~L249) also makes the tab load again, and no test covers it. `tests/playwright/maps-charts.spec.js` tests only the 500 path (found in /flow:finish-milestone v2.34.0)
+
+### `app/assets/js/turnstile-reset.js`
+
+- [ ] The docblock (~L12-17) says the join versions of both callbacks call `window.elanTurnstileReset()`. Only `elanTurnstileExpired` does. Correct the docblock (found in #2728)
 
 ### `app/owner/cars/factory.php`
 
@@ -116,6 +131,10 @@ after an item is written.
 
 - [ ] Sample car 1 (1973, chassis `7301019999B`) fails the 1972-1974 9-character rule, and its comment still says "Post-1970 format: YYMMBBXXXXC". Change the chassis to a 9-character value such as `73081602L` and fix the comment. `tests/playwright/fixtures.js` notes the failure on `CAR_ID_OWNED_BY_ADMIN` (found in #2387)
 
+### `database/migrations/20261117000000_widen_car_color_columns.php` (test coverage)
+
+- [ ] No test covers the `down()` refusal (~L45) that protects color values longer than 25 characters, including `cars_hist` rows, from truncation. `tests/integration/database/CarVerificationTimestampMigrationTest.php` shows the pattern (found in /flow:finish-milestone v2.34.0)
+
 ### `docs/pdf-viewer.php`
 
 - [ ] The `$is_servable_doc` closure (sets `$pageCanonicalUrl` before the header renders) repeats the subdir allowlist, the doc checks and the extension list of the later validation block, and uses `is_file()` where the block uses `file_exists()`. Define the lists once above both and share the checks (found in #1960)
@@ -138,13 +157,13 @@ after an item is written.
 
 - [ ] The class copies `AdminDeliverabilityActionsAuthTest`: its own `grantPermission()` and permission-row cleanup (use `IntegrationTestCase::grantTestPermission()`), and its own `php -r` page runner (move to `invokeEndpoint()` with that class's item) (found in #2102 review)
 
+### `tests/integration/BrevoWebhookEndpointTest.php` + `tests/integration/EmailEventApplierIntegrationTest.php` + `tests/integration/UserDeletionReassignmentTest.php` + `tests/integration/cars/services/BrevoEventOwnerEmailMatchTest.php` + `tests/integration/database/AdminVerificationOwnerActionNoOwnerGuardTest.php` + `tests/integration/database/CarRepositoryEmailEventsTest.php` + `tests/integration/database/CarRepositoryVerificationDashboardTest.php` + `tests/integration/database/CarVerificationEligibilityTest.php` (test-only)
+
+- [ ] 11 inline `noowner` id lookups (`SELECT id FROM users WHERE username = ...`) in these 8 files. Use `IntegrationTestCase::noownerId()`. A lookup that also reads `email` or `fname` can keep its own query (found in #2712)
+
 ### `tests/integration/CarEditOwnerColumnRefreshTest.php`
 
 - [ ] `testOwnerSelfEditSetsOwnerLastUpdatedButAdminEditDoesNot` only checks that the new `owner_last_updated` is later than a date two years ago, and does not count `cars_hist` rows. Bound it with `assertEqualsWithDelta(time(), ..., 60)` and assert one new history row (found while working on #1929)
-
-### `tests/integration/CarTransferTest.php` + `tests/integration/SendOwnerEmailNoOwnerTest.php` (test-only)
-
-- [ ] Five copies of the `noowner` id lookup (`SELECT id FROM users WHERE username = ...`): `CarTransferTest` ~L340, ~L375 and ~L436, `SendOwnerEmailNoOwnerTest::noownerId()` ~L62, and `UserDeletionPrivacyStepTest::noownerId()` ~L826. Move one helper into `IntegrationTestCase` that reads `AppConstants::NOOWNER_USERNAME` (found in #2505)
 
 ### `tests/integration/HeadTagsCanonicalRenderTest.php` + `tests/integration/VerifyCarLandingPageTest.php` + `tests/Support/UserscPageClient.php` (test-only)
 
@@ -190,6 +209,10 @@ after an item is written.
 ### `tests/playwright/car-edit-csrf-recovery.spec.js` (test coverage)
 
 - [ ] 'a token that still fails is not retried again' (~L110-126) does not check that the unsaved-changes guard stays on after the failed retry. After the out-of-date message, call `attemptLeave(page)` and expect `['beforeunload']`, as `car-edit-unsaved-guard.spec.js` does for a failed save (found in /flow:finish-milestone v2.33.0)
+
+### `tests/playwright/contact-owner-page.spec.js` (test coverage)
+
+- [ ] No browser test checks that the contact form shows the 409 "cannot be contacted" message from #2712. `tests/integration/SendOwnerEmailNoOwnerTest.php` checks only the API body. The display goes through `usError(error.message)` in `app/assets/js/contact-form.js` (found in /flow:finish-milestone v2.34.0)
 
 ### `tests/playwright/e2e/admin.spec.js`
 
@@ -308,6 +331,10 @@ after an item is written.
 ### `usersc/classes/Owner.php` + `usersc/user_settings.php` + `app/verify/verify_car.php` + `usersc/classes/Car/EmailEventApplier.php`
 
 - [ ] The `try { logger() } catch { error_log('[ElanRegistry] ...') }` guard is copied at about 7 sites. Rollback guards are in `Owner.php` (1), `user_settings.php` (4), `verify_car.php` (`rollbackQuietly()`) and `EmailEventApplier.php`. Remove all of them and call `logger()` and `rollback()` directly (see ERROR_HANDLING.md): `logger()` throws only when the database already failed the request (see #2449, #2561). Update `UserSettingsResumeVerificationEndpointTest`, which checks the "logger failed" text (found in #2393)
+
+### `usersc/classes/Owner.php`
+
+- [ ] `validateAndSanitizeFields()` (~L1100) cuts `fname` and `lname` to 25 characters with `InputSanitizer::normalize()`. `CarValidator` (#2696) now refuses an over-long value with a message that names the limit. Make the owner name fields follow the same rule (found in /flow:finish-milestone v2.34.0)
 
 ### `usersc/classes/OwnerView.php` + `app/admin/includes/tab-owner_mgmt.php` (est. −11)
 

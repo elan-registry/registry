@@ -174,7 +174,7 @@ removes them. See `CarPhotoRecovery` in [CLASSES.md](CLASSES.md).
 | `type` | `char(3)` | Vehicle type code |
 | `chassis` | `varchar(15)` | Chassis number (INDEXED) |
 | `chassis_override` | `TINYINT(1) NOT NULL DEFAULT 0` | Flag indicating whether chassis validation was overridden by the user. Set to `1` when validation was overridden; `0` for normal/valid chassis. |
-| `color` | `varchar(25)` | Vehicle color |
+| `color` | `varchar(50)` | Vehicle color |
 | `engine` | `varchar(15)` | Engine specification |
 | `purchasedate`, `solddate` | `date` | Purchase and sale dates |
 | `comments` | `mediumtext` | Additional notes and history |

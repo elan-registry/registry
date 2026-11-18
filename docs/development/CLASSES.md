@@ -572,14 +572,18 @@ $clean = $validator->validateAndSanitizeFields([
 
 | Field | Rule | Example |
 | --- | --- | --- |
-| `chassis` | 3-50 chars, sanitized | `26/0001` |
+| `chassis` | 3-15 chars, trimmed. Longer is refused | `26/0001` |
 | `model` | Format: `series\|variant\|type`, must exist in car_models | `S4\|FHC\|36` |
 | `year` | 1963-1974 inclusive | `1970` |
 | `email` | Valid email format | `user@example.com` |
 | `website` | Valid URL format | `https://example.com` |
 | `purchasedate` / `solddate` | YYYY-MM-DD format | `2023-06-15` |
 | `lat` / `lon` | -180 to +180 range | `51.5` |
-| `color`, `engine`, `series`, `variant`, `type` | 1-100 chars, sanitized | `Red` |
+| `series` | ≤12 chars, trimmed. Longer is refused | `S4` |
+| `variant` | ≤15 chars, trimmed. Longer is refused | `FHC` |
+| `type` | ≤3 chars, trimmed. Longer is refused | `36` |
+| `color` | ≤50 chars, trimmed. Longer is refused. Empty clears to `null` | `Red` |
+| `engine` | ≤15 chars, trimmed. Longer is refused. Empty clears to `null` | `LP/1234` |
 | `comments` | 1-5000 chars, sanitized | `Well maintained` |
 
 **Model Validation** (Phase 2):

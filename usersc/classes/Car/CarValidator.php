@@ -24,6 +24,29 @@ class CarValidator
     public const MIN_CAR_DATE = '1957-01-01';
 
     /**
+     * Column sizes, in characters, of the `cars` columns that hold free text,
+     * with the field label for the error message.
+     *
+     * Source: the baseline migration
+     * `database/migrations/20260709000000_add_elanregistry_baseline.php`, with
+     * `color` widened from 25 to 50 by
+     * `database/migrations/20261117000000_widen_car_color_columns.php`. The
+     * column list is in `docs/development/DATABASE.md`. The columns are utf8mb4
+     * `varchar(n)` or `char(n)`, so n counts characters, not bytes.
+     *
+     * A value longer than its column is refused, not truncated. The app session
+     * runs with sql_mode='', so MySQL would otherwise cut it with no error (#2696).
+     */
+    private const COLUMN_MAX_LENGTHS = [
+        'chassis' => ['label' => 'Chassis number', 'max' => 15],
+        'series'  => ['label' => 'Series',         'max' => 12],
+        'variant' => ['label' => 'Variant',        'max' => 15],
+        'type'    => ['label' => 'Type',           'max' => 3],
+        'color'   => ['label' => 'Color',          'max' => 50],
+        'engine'  => ['label' => 'Engine',         'max' => 15],
+    ];
+
+    /**
      * Latest date a member may enter for a purchase or sale.
      *
      * The server date plus one day. The server zone is set in users/init.php
@@ -108,7 +131,7 @@ class CarValidator
             switch ($key) {
                 case 'chassis':
                     if (!empty($value)) {
-                        $validatedFields[$key] = InputSanitizer::normalize($value, 50);
+                        $validatedFields[$key] = $this->normalizeToColumn($key, $value);
                         if (strlen($validatedFields[$key]) < 3) {
                             throw new CarValidationException('Chassis number must be at least 3 characters long');
                         }
@@ -152,7 +175,7 @@ class CarValidator
                 case 'variant':
                 case 'type':
                     if (!empty($value)) {
-                        $validatedFields[$key] = InputSanitizer::normalize($value, 100);
+                        $validatedFields[$key] = $this->normalizeToColumn($key, $value);
                     }
                     break;
 
@@ -164,7 +187,7 @@ class CarValidator
                     // (see #1448). lat/lon aren't clearable this way — dropping the key
                     // there is intentional, don't copy this pattern onto them.
                     if ($value !== null && $value !== '') {
-                        $validatedFields[$key] = InputSanitizer::normalize($value, 100);
+                        $validatedFields[$key] = $this->normalizeToColumn($key, $value);
                     } else {
                         $validatedFields[$key] = null;
                     }
@@ -290,5 +313,31 @@ class CarValidator
         }
 
         return $validatedFields;
+    }
+
+    /**
+     * Trim a free-text field and check it fits its `cars` column.
+     *
+     * The message names the field and the limit, never the submitted value.
+     *
+     * @param key-of<self::COLUMN_MAX_LENGTHS> $key Field name
+     * @param mixed $value Submitted value
+     * @return string The trimmed value
+     * @throws CarValidationException If the value is not a string, or is longer than the column
+     */
+    private function normalizeToColumn(string $key, mixed $value): string
+    {
+        ['label' => $label, 'max' => $max] = self::COLUMN_MAX_LENGTHS[$key];
+
+        if (!is_string($value)) {
+            throw new CarValidationException("{$label} must be text");
+        }
+
+        $trimmed = trim($value);
+        if (mb_strlen($trimmed) > $max) {
+            throw new CarValidationException("{$label} must be {$max} characters or fewer");
+        }
+
+        return $trimmed;
     }
 }

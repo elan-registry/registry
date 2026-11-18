@@ -512,6 +512,39 @@ final class LocationServiceRateLimitTest extends TestCase
     }
 
     /**
+     * A query that both providers answer with an empty list is a no-match,
+     * not an outage. searchLocation() must return [] so the picker shows
+     * "No locations found" (found in /flow:finish-milestone v2.34.0).
+     */
+    #[Group('fast')]
+    public function test_searchLocation_returnsEmptyAndRecordsSuccess_whenBothProvidersFindNoMatch(): void
+    {
+        $query = 'nomatch-test-' . uniqid('', true);
+        $GLOBALS['mockCurlResponseByUrlSubstring'] = [
+            'photon.komoot.io' => '{"features":[]}',
+            'nominatim.openstreetmap.org' => '[]',
+        ];
+        $GLOBALS['mockCurlHttpCode'] = 200;
+
+        $fake = new FakeRateLimiter(allow: true);
+        $service = new LocationService($fake);
+
+        $result = $service->searchLocation($query, 31);
+
+        $this->assertSame(
+            [],
+            $result,
+            'A query that both providers answer with no match must return an empty list, '
+                . 'not throw the "temporarily unavailable" exception that the picker shows as a refusal.'
+        );
+        $this->assertSame(
+            [['action' => 'location_search', 'success' => true, 'userId' => 31]],
+            $fake->recordCalls,
+            'A no-match answer is a successful upstream call, not an outage.'
+        );
+    }
+
+    /**
      * The asymmetric-fallback case: Photon fails via one of the branches
      * covered above (cURL failure, chosen arbitrarily as representative),
      * but Nominatim then succeeds. Tests 6-8 only ever fail both providers

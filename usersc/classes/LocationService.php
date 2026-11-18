@@ -171,7 +171,8 @@ class LocationService
      * @param string $query Search term (e.g., "Portland", "London", "Tokyo")
      * @param int|null $userId User ID for rate limiting, or null for an anonymous caller
      * @param int $limit Maximum number of results (default: 8)
-     * @return array Array of location results with coordinates
+     * @return array Array of location results with coordinates. Empty when a
+     *               provider answered and found no match.
      * @throws LocationServiceException If rate limit exceeded or all services fail
      */
     public function searchLocation(string $query, ?int $userId, int $limit = 8): array
@@ -196,9 +197,16 @@ class LocationService
             throw new LocationServiceException('Rate limit exceeded. Please try again in a moment.');
         }
 
+        // A provider that answers with an empty list is not an outage. Only
+        // when both providers threw does the visitor get the retry text
+        // (/flow:finish-milestone v2.34.0: the picker shows a 400 message
+        // word for word, so a typo must not read as "temporarily unavailable").
+        $providerAnswered = false;
+
         // Try Photon API first
         try {
             $results = $this->searchPhoton($query, $limit);
+            $providerAnswered = true;
             if (!empty($results)) {
                 $this->setCache($cacheKey, $results);
                 $this->recordRateLimiterAttempt(self::RATE_LIMIT_ACTION, true, $userId);
@@ -211,6 +219,7 @@ class LocationService
         // Fallback to Nominatim
         try {
             $results = $this->searchNominatim($query, $limit);
+            $providerAnswered = true;
             if (!empty($results)) {
                 $this->setCache($cacheKey, $results);
                 $this->recordRateLimiterAttempt(self::RATE_LIMIT_ACTION, true, $userId);
@@ -218,6 +227,11 @@ class LocationService
             }
         } catch (LocationServiceException $e) {
             logger($userId ?? 0, LogCategories::LOG_CATEGORY_LOCATION_SERVICE, 'Nominatim API failed: ' . $e->getMessage());
+        }
+
+        if ($providerAnswered) {
+            $this->recordRateLimiterAttempt(self::RATE_LIMIT_ACTION, true, $userId);
+            return [];
         }
 
         // All services failed — record as a failed attempt so a genuine

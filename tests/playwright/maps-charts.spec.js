@@ -430,6 +430,47 @@ test.describe('Maps and Charts', () => {
     }
   });
 
+  // #1507: the tab was marked loaded before its request returned, so one failed
+  // request left it blank until the page reloaded.
+  test('data quality tab loads again after a failed request', async ({ page }) => {
+    let requests = 0;
+    await page.route('**/app/api/shared/statistics.php*', async (route) => {
+      requests += 1;
+      if (requests === 1) {
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: false, message: 'Server error' }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          message: 'Statistics data loaded',
+          tab: 'quality',
+          data: { completeness: SAMPLE_COMPLETENESS },
+        }),
+      });
+    });
+
+    await page.goto('app/owner/reports/statistics.php');
+    await page.waitForLoadState('networkidle');
+    await page.locator('#quality-tab').click();
+    await expect.poll(() => requests).toBe(1);
+    await expect(page.locator('#quality-spinner')).toBeHidden();
+    expect(await page.evaluate(() => !!window.statisticsCharts.dataCompleteness)).toBe(false);
+
+    await page.locator('#overview-tab').click();
+    await page.locator('#quality-tab').click();
+    await page.waitForFunction(() => !!(window.statisticsCharts && window.statisticsCharts.dataCompleteness), null, { timeout: 15000 });
+
+    expect(requests).toBe(2);
+    await expect(page.locator('[data-metric="image"]')).toHaveText('40%');
+  });
+
   test('no requests to Google Maps domains on statistics page', async ({ page }) => {
     await assertNoGoogleMapsRequests(page, 'app/owner/reports/statistics.php', 'statistics page');
   });

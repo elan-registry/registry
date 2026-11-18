@@ -187,7 +187,7 @@ test.describe('transfer-request.php — length validation', () => {
     const baseValid = {
         chassis: '123456789012345',             // 15 chars (at limit)
         year: '1973',                           // valid in-range year (1963–1974)
-        color: '0123456789012345678901234',      // 25 chars (at limit)
+        color: '01234567890123456789012345678901234567890123456789', // 50 chars (at limit)
         engine: '123456789012345',              // 15 chars (at limit)
         comments: 'A'.repeat(1000),             // 1000 chars (at limit)
         model: 'S4|SE|FHC',                    // valid format; series='S4'(2), variant='SE'(2), type='FHC'(3 — at limit)
@@ -211,14 +211,14 @@ test.describe('transfer-request.php — length validation', () => {
         }
     });
 
-    test('color exactly 25 chars is accepted (at-limit)', async ({ page }) => {
+    test('color exactly 50 chars is accepted (at-limit)', async ({ page }) => {
         const resp = await page.request.post('app/api/cars/transfer-request.php', {
             form: { ...baseValid, csrf: csrfToken },
         });
         const body = await resp.json();
         expect(body).toHaveProperty('success');
         if (!body.success) {
-            expect(body.message).not.toMatch(/color.*25/i);
+            expect(body.message).not.toMatch(/color.*characters/i);
         }
     });
 
@@ -341,11 +341,11 @@ test.describe('transfer-request.php — length validation', () => {
         expect(body.message).toMatch(/year.*between/i);
     });
 
-    test('color 26 chars rejected with 400 (over-limit)', async ({ page }) => {
+    test('color 51 chars rejected with 400 (over-limit)', async ({ page }) => {
         const resp = await page.request.post('app/api/cars/transfer-request.php', {
             form: {
                 ...baseValid,
-                color: '01234567890123456789012345', // 26 chars
+                color: '012345678901234567890123456789012345678901234567890', // 51 chars
                 csrf: csrfToken,
             },
         });
@@ -356,7 +356,7 @@ test.describe('transfer-request.php — length validation', () => {
         }
         expect(resp.status()).toBe(400);
         expect(body).toHaveProperty('success', false);
-        expect(body.message).toMatch(/color.*25/i);
+        expect(body.message).toMatch(/color.*50/i);
     });
 
     test('engine 16 chars rejected with 400 (over-limit)', async ({ page }) => {

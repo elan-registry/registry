@@ -306,15 +306,27 @@ class StatisticsDataService {
         // SUM(CASE ...), not COUNT(CASE ... ELSE 0 END): COUNT counts non-NULL values, so it
         // would count every row. COALESCE keeps an empty registry at 0, because
         // SUM over zero rows returns NULL.
+        //
+        // COUNT(col) counts '' as a value, so the text columns go through NULLIF(TRIM(...)).
+        // image holds a JSON array or, in old rows, a comma-separated string. '' and '[]' hold
+        // no file. JSON_LENGTH() fails on invalid JSON, and MySQL does not promise to
+        // short-circuit AND, so a CASE puts the JSON_VALID() check first.
+        // CarShowcaseService::IMAGE_CONDITION differs on purpose: it requires valid JSON
+        // with at least one element and a ctime, so a legacy comma-separated row counts
+        // here but is not showcased.
         return $this->executeQuery(
             "SELECT
                 COUNT(*) as total_cars,
-                COUNT(chassis) as has_chassis,
-                COUNT(color) as has_color,
-                COUNT(engine) as has_engine,
+                COUNT(NULLIF(TRIM(chassis), '')) as has_chassis,
+                COUNT(NULLIF(TRIM(color), '')) as has_color,
+                COUNT(NULLIF(TRIM(engine), '')) as has_engine,
                 COUNT(purchasedate) as has_purchase_date,
                 COUNT(solddate) as has_sold_date,
-                COUNT(image) as has_image,
+                COALESCE(SUM(CASE
+                    WHEN image IS NULL OR TRIM(image) = '' THEN 0
+                    WHEN JSON_VALID(image) THEN JSON_TYPE(image) = 'ARRAY' AND JSON_LENGTH(image) > 0
+                    ELSE 1
+                END), 0) as has_image,
                 COUNT(lat) as has_location,
                 COALESCE(SUM(CASE WHEN " . CarRepository::freshnessSql() . " THEN 1 ELSE 0 END), 0) as verified_cars
              FROM cars",
