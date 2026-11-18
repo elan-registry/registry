@@ -311,6 +311,8 @@ class StatisticsDataService {
         // image holds a JSON array or, in old rows, a comma-separated string. '' and '[]' hold
         // no file. JSON_LENGTH() fails on invalid JSON, and MySQL does not promise to
         // short-circuit AND, so a CASE puts the JSON_VALID() check first.
+        // CarShowcaseService::IMAGE_CONDITION is stricter on purpose: it accepts only a
+        // JSON array, so a legacy comma-separated row counts here but is not showcased.
         return $this->executeQuery(
             "SELECT
                 COUNT(*) as total_cars,

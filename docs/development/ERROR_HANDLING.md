@@ -161,6 +161,10 @@ class gives 500 and `SystemError`.
 | RetentionPurgeException | 500 | RetentionPurge | A retention rule failed in the daily purge job |
 | SessionTimeZoneException | 500 | DatabaseError | The MySQL session `time_zone` cannot be set to the PHP named zone |
 
+An endpoint that refuses a request the caller cannot fix by trying again (no owner, or a recipient address
+that is not valid) sends 409 through `ApiResponse::error()`, not `serverError()`. It writes no `SystemError`
+row. `app/api/contact/send-owner-email.php` is the example.
+
 **Usage Pattern**:
 
 ```php

@@ -444,6 +444,10 @@ after an item is written.
 
 - [ ] The `try { logger() } catch { error_log('[ElanRegistry] ...') }` guard is copied at about 7 sites. Rollback guards are in `Owner.php` (2), `user_settings.php`, `verify_car.php` (`rollbackQuietly()`) and `EmailEventApplier.php`. Remove all of them and call `logger()` and `rollback()` directly (see ERROR_HANDLING.md): `logger()` throws only when the database already failed the request (see #2449, #2561). Update `UserSettingsResumeVerificationEndpointTest`, which checks the "logger failed" text (found in #2393)
 
+### `usersc/classes/Owner.php`
+
+- [ ] `validateAndSanitizeFields()` (~L1100) cuts `fname` and `lname` to 25 characters with `InputSanitizer::normalize()`. `CarValidator` (#2696) now refuses an over-long value with a message that names the limit. Make the owner name fields follow the same rule (found in /flow:finish-milestone v2.34.0)
+
 ### `usersc/classes/OwnerView.php` + `app/admin/includes/tab-owner_mgmt.php` (est. −11)
 
 - [ ] `displayQualityBadge()` (~55-66) has only test callers. Meanwhile `tab-owner_mgmt.php:418` builds the same badge by hand and prints `$owner->quality_score` without a cast or escaping. That is low risk, because the value is a numeric SQL result. Call `displayQualityBadge()` from line 418 and delete the inline copy. This removes the duplicate and puts the escaping in one place. (found in the #2208 audit)

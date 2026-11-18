@@ -17,6 +17,8 @@ class CarShowcaseService
     // Public because CarBadges builds the "new" badge tooltip from them.
     public const NEW_DAYS = 90;
     public const NEW_FLOOR = 5;
+    // Stricter than the Data Quality count in StatisticsDataService on purpose: a
+    // legacy comma-separated image row counts as a photo there, but is not showcased.
     private const IMAGE_CONDITION = "image <> '' AND image <> '[]' AND JSON_VALID(image) = 1 AND JSON_LENGTH(image) > 0 AND ctime IS NOT NULL";
 
     private DatabaseInterface $db;
