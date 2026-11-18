@@ -152,7 +152,7 @@ class gives 500 and `SystemError`.
 | OwnerValidationException | 422 | ValidationError | Owner data validation |
 | OwnerSearchException | 500 | OwnerActions | Owner search |
 | ValidationException | 422 | ValidationError | Generic validation |
-| LocationServiceException | 500 | SystemError | Location API |
+| LocationServiceException | 500 | SystemError | Location API. `app/api/shared/location-search.php` sends it as a 400 and logs it under `LocationService`, and the location picker shows that message to the visitor |
 | ImageProcessingException | 500 | FileError | Photo upload check, move and resize. When `validateUploadBatch()` rejects a photo, `save.php` returns the owner message with a 422 through `validationError()`. A thrown exception (invalid car ID, path guard, failed mkdir, or malformed `$_FILES` shape) goes to the action's `catch (ElanRegistryException)`, which returns the owner message with a 500 through `serverError()` |
 | BackupException | 500 | BackupError | Backup operations |
 | AdminOperationException | 500 | SystemError | Admin operations |
