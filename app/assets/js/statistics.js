@@ -208,38 +208,43 @@ function initializeOverviewTab() {
  * Set up lazy loading for tab content
  */
 function setupTabLazyLoading() {
-  const loadedTabs = new Set(["overview"]); // Overview is already loaded
+  // Holds each tab that is loading or loaded, so a second selection sends no second request.
+  // A failed load removes its tab, so the next selection tries again.
+  const requestedTabs = new Set(["overview"]); // Overview is already loaded
 
   $('#statisticsTabs a[data-bs-toggle="tab"]').on("shown.bs.tab", function (e) {
     const hrefAttr = $(e.target).attr("href") || $(e.target).attr("data-bs-target");
     const targetTab = hrefAttr ? hrefAttr.substring(1) : null;
-    if (!targetTab) { return; }
+    if (!targetTab || requestedTabs.has(targetTab)) { return; }
 
-    if (!loadedTabs.has(targetTab)) {
-      loadTabContent(targetTab);
-      loadedTabs.add(targetTab);
-    }
+    requestedTabs.add(targetTab);
+    loadTabContent(targetTab).then(function (rendered) {
+      if (!rendered) { requestedTabs.delete(targetTab); }
+    });
   });
 }
 
 /**
  * Load content for a specific tab via AJAX
+ *
+ * @returns {Promise<boolean>} true when the tab rendered, false on any failure
  */
 function loadTabContent(tabName) {
   const spinner = $(`#${tabName}-spinner`);
 
   spinner.show();
 
-  new ElanRegistryAPI()
+  return new ElanRegistryAPI()
     .post(window.statisticsConfig.statisticsDataUrl, {
       tab: tabName
     })
     .then(function (response) {
       if (response.data != null) {
         renderTabContent(tabName, response.data);
-      } else {
-        NotificationHelper.show('Statistics data unavailable.', 'error');
+        return true;
       }
+      NotificationHelper.show('Statistics data unavailable.', 'error');
+      return false;
     })
     .catch(function (error) {
       // Retrying re-fires the request, so it is the wrong advice for a 429.
@@ -248,6 +253,7 @@ function loadTabContent(tabName) {
         : 'Failed to load data. Please try again.';
       NotificationHelper.show(message, 'error');
       console.error('[ElanRegistry] loadTabContent error:', error);
+      return false;
     })
     .finally(function () {
       spinner.hide();

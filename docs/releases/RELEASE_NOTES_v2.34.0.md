@@ -11,6 +11,7 @@ the member gets a clear reason.
 - Contacting an owner whose email address is not valid now shows a clear message that points to the Feedback form.
 - A car color can now have up to 50 characters. A car field that is too long shows its limit.
 - A refused location search shows the reason. Location suggestions no longer show stale results, and screen readers announce them.
+- Data Quality statistics count only real photos and filled-in fields. A statistics tab that fails to load tries again when selected.
 
 ## Admin-Facing Changes
 
@@ -24,4 +25,4 @@ the member gets a clear reason.
 - [#2728](https://github.com/elan-registry/registry/issues/2728) — Join form failure reports state the error type and the Turnstile error code.
 - [#2533](https://github.com/elan-registry/registry/issues/2533) — A location search that the server refuses shows the real reason, not a network failure.
 - [#1512](https://github.com/elan-registry/registry/issues/1512) — Location picker has no race condition or silent discard, and has correct combobox ARIA.
-- WIP: [#1507](https://github.com/elan-registry/registry/issues/1507) — Statistics count photos and JSON data correctly.
+- WIP: [#1507](https://github.com/elan-registry/registry/issues/1507) — Data Quality counts skip empty photo lists and blank fields. A failed statistics tab loads again.
