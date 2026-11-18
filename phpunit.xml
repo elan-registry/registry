@@ -53,7 +53,8 @@
             <directory>usersc/scripts</directory>
             <directory>usersc/userspice_core</directory>
             <directory>usersc/views</directory>
-            <directory>usersc/widgets</directory>
+            <directory>usersc/widgets/settings</directory>
+            <directory>usersc/widgets/tools</directory>
             <directory>usersc/plugins/ai_prompts/custom_prompts</directory>
             <directory>usersc/plugins/hooker/hooks</directory>
             <directory>users/cron</directory>
@@ -74,6 +75,8 @@
         <exclude>
             <directory>vendor</directory>
             <directory>tests</directory>
+            <file>usersc/includes/totp_key.php</file>
+            <file>usersc/includes/trusted_proxies.php</file>
         </exclude>
     </source>
 </phpunit>

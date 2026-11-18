@@ -611,7 +611,11 @@ Each `<source>` element also sets `ignoreIndirectDeprecations="true"`. A
 deprecation that untracked upstream code (`users/` except its tracked files,
 untracked `usersc/plugins/`, `vendor/`) raises when upstream code calls it
 does not fail the run, because this repo cannot fix that code. The bootstrap
-guard ignores untracked files for the same reason.
+guard ignores untracked files for the same reason. For `E_USER_DEPRECATED`, its
+rule is narrower than the PHPUnit rule. During a test, PHPUnit also fails a
+`trigger_error()` deprecation that an untracked file raises when tracked code
+calls it. The guard ignores that case. For an engine deprecation
+(`E_DEPRECATED`), both use only the file that raises it.
 
 **Solution**: For a test-time failure, run the failing suite with
 `--display-deprecations` to see the file and line. A bootstrap failure prints

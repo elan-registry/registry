@@ -26,7 +26,11 @@ use RuntimeException;
  * committed (see committedPhpFiles()). It passes every other error to the
  * handler that was active before start(). Untracked upstream code is out of
  * scope for the same reason as `ignoreIndirectDeprecations`: this repo cannot
- * fix it.
+ * fix it. For E_USER_DEPRECATED, the guard rule is narrower than the PHPUnit
+ * rule. During a test, PHPUnit also fails a trigger_error() deprecation that an
+ * untracked file raises when tracked code calls it (a direct deprecation). The
+ * guard ignores that case. For E_DEPRECATED, both use only the file that
+ * raises it.
  *
  * The handler records and does not throw, because the integration bootstrap
  * catches every Throwable from users/init.php. stop() throws after that catch.
