@@ -25,4 +25,4 @@ the member gets a clear reason.
 - [#2728](https://github.com/elan-registry/registry/issues/2728) — Join form failure reports state the error type and the Turnstile error code.
 - [#2533](https://github.com/elan-registry/registry/issues/2533) — A location search that the server refuses shows the real reason, not a network failure.
 - [#1512](https://github.com/elan-registry/registry/issues/1512) — Location picker has no race condition or silent discard, and has correct combobox ARIA.
-- WIP: [#1507](https://github.com/elan-registry/registry/issues/1507) — Data Quality counts skip empty photo lists and blank fields. A failed statistics tab loads again.
+- [#1507](https://github.com/elan-registry/registry/issues/1507) — Data Quality counts skip empty photo lists and blank fields. A failed statistics tab loads again.
