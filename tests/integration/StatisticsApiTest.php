@@ -101,6 +101,50 @@ class StatisticsApiTest extends IntegrationTestCase
     }
 
     /**
+     * @return array<string, array{'chassis'|'color'|'engine'|'image', ?string, int}>
+     */
+    public static function completenessValueProvider(): array
+    {
+        $cases = [
+            'image NULL'                 => ['image', null, 0],
+            'image empty string'         => ['image', '', 0],
+            'image empty JSON array'     => ['image', '[]', 0],
+            'image JSON array, one file' => ['image', '["car_1507.jpg"]', 1],
+            'image legacy string'        => ['image', 'car_1507a.jpg,car_1507b.jpg', 1],
+        ];
+        foreach (['chassis', 'color', 'engine'] as $column) {
+            $cases["$column empty string"] = [$column, '', 0];
+            $cases["$column whitespace"]   = [$column, '   ', 0];
+            $cases["$column value"]        = [$column, 'X1507', 1];
+        }
+
+        return $cases;
+    }
+
+    /**
+     * has_<column> counts a car only when the column holds a real value (#1507).
+     * COUNT(col) counted '', blank strings and an image of '[]'.
+     *
+     * @param 'chassis'|'color'|'engine'|'image' $column
+     */
+    #[DataProvider('completenessValueProvider')]
+    public function testGetDataCompletenessCountsOnlyRealValues(string $column, ?string $value, int $expectedDelta): void
+    {
+        $service  = new StatisticsDataService($this->db);
+        $baseline = $service->getDataCompleteness();
+        $this->assertNotNull($baseline);
+
+        $this->createTestCar($this->testUserId, [$column => $value]);
+
+        $after = $service->getDataCompleteness();
+        $this->assertNotNull($after);
+
+        $field = "has_$column";
+        $this->assertSame($expectedDelta, (int) $after->$field - (int) $baseline->$field);
+        $this->assertSame(1, (int) $after->total_cars - (int) $baseline->total_cars);
+    }
+
+    /**
      * Fresh and stale counts partition the registry. The stale count uses
      * CarRepository::stalenessSql(), not a copy of the SQL.
      */
