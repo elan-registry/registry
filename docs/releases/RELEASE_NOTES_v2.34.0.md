@@ -1,6 +1,6 @@
 # Elan Registry v2.34.0 Release Notes
 
-**Release Date:** [DATE]
+**Release Date:** November 18, 2026
 **Type:** Minor Release - Members Reach Owners Without Errors
 
 A member can register, find a car, and contact its owner. When a step fails,
@@ -9,14 +9,13 @@ the member gets a clear reason.
 ## User-Facing Changes
 
 - Contacting an owner whose email address is not valid now shows a clear message that points to the Feedback form.
-- A car color can now have up to 50 characters. A car field that is too long shows its limit.
-- A refused location search shows the reason. Location suggestions no longer show stale results, and screen readers announce them.
-- Data Quality statistics count only real photos and filled-in fields. A statistics tab that fails to load tries again when selected.
+- A car color can have up to 50 characters, and a car field that is too long shows its limit.
+- A refused location search shows the reason, and location suggestions are current and announced to screen readers.
+- Data Quality statistics count only real photos and filled-in fields, and a failed tab loads again when selected.
 
 ## Admin-Facing Changes
 
-- Join-failure log rows for script rejections show the error type and the Turnstile state. Turnstile errors show their code.
-- The browser sends at most 5 reports of script errors and rejections for each page load.
+- Join-failure log rows show the script error type, the Turnstile state, and the Turnstile error code.
 
 ## Issues Resolved
 
