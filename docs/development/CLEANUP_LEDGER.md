@@ -40,17 +40,13 @@ after an item is written.
 - [ ] "When you review error handling" names only the last-resort fallback as an allowed `\Throwable` catch. `ERROR_HANDLING.md` also documents the page-section fault-domain catch (`VerificationTabStatus::read()`, `tab-verification.php`, #2364) as a deliberate exception. Add it to the rule, so reviewers do not flag those files (found in #1844)
 - [ ] ~L24 "Wrap database operations in `try` and `catch`" conflicts with the "No guards" rule in `ERROR_HANDLING.md` and makes reviewers flag correct code. ~L55 documents `ApiResponse::error($message, $context)`, but the second parameter is `int $statusCode`. Correct both lines (found in #2505)
 
-### `.htaccess`
-
-- [ ] The #2246 comment (~L19-21) says the Test host sends noindex on every response. LiteSpeed does not add the header to `Redirect` and `RedirectMatch` responses. Say so, or point to DEPLOYMENT.md, "Test host indexing block (#2246)" (found in /flow:finish-milestone v2.33.0)
-
 ### `app/admin/assets/backup-operations.js` (test coverage)
 
 - [ ] No test covers `deleteBackup()` (~L214), the one path that puts a variable (the file name) into `#confirmMessage`. It uses `textContent`. The XSS test in `admin-modal-confirmation.spec.js` opens the cleanup modal, which writes a fixed `innerHTML` string. Add a test that opens the delete confirmation for a file with a hostile name (found in #2699)
 
 ### `app/admin/includes/account-cleanup-helpers.php`
 
-- [ ] Replace 8 × `throw new RuntimeException` with a typed `AccountCleanupException extends ElanRegistryException`. Handle it in `app/api/admin/account-cleanup-data.php` with `ApiResponse` and `LogCategories` (from #1637)
+- [ ] Replace 9 × `throw new RuntimeException` with a typed `AccountCleanupException extends ElanRegistryException`. Catch it in `app/admin/includes/tab-account_cleanup.php` (~L55, ~L100) in place of `\Throwable` (from #1637)
 
 ### `app/admin/includes/process-transfer-approve.php` `app/admin/includes/process-transfer-deny.php` `app/api/cars/transfer-request.php`
 
@@ -67,7 +63,6 @@ after an item is written.
 ### `app/admin/includes/tab-email_delivery.php` `usersc/classes/Email/DeliveryLogRepository.php`
 
 - [ ] The tab logs `ExceptionLogSummary::of($e)` only, and the repository puts the failed step ("table check", "tags column check", "window load") and the driver error only in the message, which it must not log. The log line cannot tell which query failed or why. Carry the step and the SQLSTATE (`errorInfo()[0]`) outside the message and log them (found in #2102 review)
-- [ ] The pager prints one link for each page. Show a window (first, current ±2, last) when the page count grows past about 10 (found in #2102 review)
 - [ ] The owner, car and plugin links open a new tab with no screen-reader cue. Fix with the shared helper from the `tab-verification.php` `vsNewTabLink()` item (found in #2102 review)
 - [ ] With an ignored recipient address, the `invalid-feedback d-block` hint grows the Recipient column, and `row g-2 align-items-end` then aligns the other filter controls to the hint, not the input. Use `align-items-start`, or move the hint to its own `col-12`. Also add `aria-invalid="true"` next to `is-invalid` (found in #2102 review)
 
@@ -75,10 +70,6 @@ after an item is written.
 
 - [ ] The Automatic Sending card shows only "Status unavailable" for an `UNREADABLE` or `MISSING` job state, and its "Next eligible" row says "the job status could not be read" for `MISSING` too. Show the same detail lines as the status panel rows, from one shared source next to `CronJobRunsReader::badgeFor()` (found in #2572 review)
 - [ ] `vsNewTabLink()` gives the queue and Recent Activity links no screen-reader cue that they open a new tab (WCAG G201), and neither table has an accessible name. Add `<span class="visually-hidden"> (opens in a new tab)</span>` in the helper, and a `visually-hidden` `<caption>` or `aria-labelledby` on each table (found in #2496 review)
-
-### `app/admin/includes/verification-batch-size-field.php`
-
-- [ ] The decorative icons at ~L28, ~L46 and ~L51 have no `aria-hidden="true"`. The Verification tab around them has it since #2496 (found in #2496 review)
 
 ### `app/admin/index.php`
 
@@ -89,6 +80,10 @@ after an item is written.
 
 - [ ] Each file wraps a `logger()` call in `try`/`catch (\Throwable)` (21 ~L1512, 26 ~L1728, brevo.php ~L156, CarAdministrationService ~L630, CarVerificationSendService ~L531, custom_functions ~L128, user_form_hook ~L60 and ~L105). Remove the guards, or move a deliberate one into the exceptions in ERROR_HANDLING.md with its reason (found in /flow:finish-milestone v2.31.0)
 
+### `app/admin/scripts/maintenance/21-Fix-Page-Permissions.php` (test coverage)
+
+- [ ] No test runs `analyzePermissions()` (~L114) against a database. Move it out of the page script, for example next to `PagePermissionClassifier`, then add an integration test of its query and row handling (found in #2450)
+
 ### `app/admin/scripts/maintenance/27-Reconcile-Brevo-Events.php` (test coverage)
 
 - [ ] No test renders the notConfigured info notice or the manual-run log suffix. Run the script with the `plg_sendinblue` key cleared and assert the notice and no success alert (found in /flow:finish-milestone v2.31.0)
@@ -96,7 +91,6 @@ after an item is written.
 ### `app/api/cars/save.php`
 
 - [ ] The chassis error at ~L582 holds the literal `<strong>ERROR:</strong>`. `errors.general` is a list now, and `car-edit.js` escapes each item, so the tag shows as text. Remove the markup from the message (found in /flow:finish-milestone v2.32.0)
-- [ ] The oversize-body 413 branch (~L44) calls `withLogging()` before `isLoggedIn()` and `Token::check()`. An anonymous request with a large `Content-Length` writes a `logs` row each time. Send a plain `ApiResponse::error()` without the log, or move the check after the login test (found in /flow:finish-milestone v2.32.0)
 - [ ] (test coverage) No automated test checks the oversize-body 413 status with `display_errors` Off (the test and production setting). Docker gives 200 with a warning prefix. Add an integration test that starts `php -S` with `-d display_errors=0` and a small `post_max_size`, and asserts 413, JSON, and the log row (found in #2627)
 - [ ] (test coverage) No endpoint or browser test shows that a too-long car field (~L333) returns its limit message. Only the `CarValidator` unit tests cover it (found in /flow:finish-milestone v2.34.0)
 
@@ -112,9 +106,9 @@ after an item is written.
 
 - [ ] The docblock (~L12-17) says the join versions of both callbacks call `window.elanTurnstileReset()`. Only `elanTurnstileExpired` does. Correct the docblock (found in #2728)
 
-### `app/views/cars/` (section partials)
+### `app/owner/cars/factory.php`
 
-- [ ] `_vehicle_info_card` and `_factory_data_card` link the card level to the heading level. Only `h4` gets `card-header-er-l2`, so a nested `h3` card cannot use L2 styling (UI_STANDARDS "Card Hierarchy"). `_owner_info_card`, `_location_map_card` and `_photos_card` always use a plain `card-header`. Give all five partials a card-level variable (found in #2495)
+- [ ] The `#cartable` header cells use `scope="column"`, which is not a valid value. Change each one to `scope="col"` (found in #2622)
 
 ### `app/views/cars/_factory_data_card.php`
 
@@ -133,55 +127,22 @@ after an item is written.
 
 - [ ] The "Back to all options" `btn-link` is about 38px high, below the 44px touch target. The `#verify-actions` target cannot take focus, so a screen reader announces nothing after the jump. Add `tabindex="-1"` and a group label (found in #2495)
 
-### `database/4-sample-data.sql` + `tests/playwright/fixtures.js`
+### `database/4-sample-data.sql`
 
-- [ ] Sample car 1 (1973, chassis `7301019999B`) now fails the 1972-1974 9-character rule, and its comment still says "Post-1970 format: YYMMBBXXXXC". `CAR_ID_OWNED_BY_ADMIN` uses car 1, so an unmocked save test on it fails on the chassis. Change the sample chassis to a 9-character value such as `73081602L`, or note the failure on the fixture constant (found in /flow:finish-milestone v2.31.2)
-
-### `database/migrations/20260915000000_add_cars_verification_attempts_columns.php`
-
-- [ ] The `down()` comment (~L84) says "MySQL refuses to DROP a column that a trigger body still references". MySQL 8 allows the drop; the next INSERT, UPDATE or DELETE on `cars` then fails with 1054. The restore-first order is still right. Correct the reason in the comment (found in #2167)
+- [ ] Sample car 1 (1973, chassis `7301019999B`) fails the 1972-1974 9-character rule, and its comment still says "Post-1970 format: YYMMBBXXXXC". Change the chassis to a 9-character value such as `73081602L` and fix the comment. `tests/playwright/fixtures.js` notes the failure on `CAR_ID_OWNED_BY_ADMIN` (found in #2387)
 
 ### `database/migrations/20261117000000_widen_car_color_columns.php` (test coverage)
 
 - [ ] No test covers the `down()` refusal (~L45) that protects color values longer than 25 characters, including `cars_hist` rows, from truncation. `tests/integration/database/CarVerificationTimestampMigrationTest.php` shows the pattern (found in /flow:finish-milestone v2.34.0)
-
-### `docs/development/DEPLOYMENT.md`
-
-- [ ] "Post-deploy checks for #2190", step 2, and the "Rollback check" compare the saved `robots.txt` and `llms.txt` hashes after the push. The check is only valid for a deploy that does not change the override files (#2246 changed `robots-test.txt`). Say so in both places (found in /flow:finish-milestone v2.33.0)
-
-### `docs/development/ENVIRONMENT.md`
-
-- [ ] In "PHP upload and memory limits", the sentence "Nothing checks test and production automatically, so check them after each change" (~L613) wraps wider than the paragraph. Rewrap it. The cell "8M (set 2026-11-11)" (~L581) is a dated fact that will age. Say "Check in cPanel" and keep the date in the release notes (found in /flow:finish-milestone v2.32.0)
-- [ ] In the minimum-values table, the `memory_limit` row says a 2048 px bitmap uses "about 13 MB" in GD. That holds for a 4:3 frame. A 2048x2048 bitmap is about 16 MB. Say "about 13 to 17 MB". The "Why 8M and 64M" text and the `ELAN_IMAGE_UPLOAD_MAX_SIZE` comment in `config.php` imply that the resize keeps files under 5 MB. Say that the server limit applies to a photo posted unchanged (found in /flow:finish-milestone v2.32.0)
-
-### `docs/development/adr/ADR-018-build-at-deploy-for-frontend-vendoring.md`
-
-- [ ] The "Update 2026-11-10" note says Node 20 or later, but the original Node v18 research text below it is not marked as superseded. Mark that paragraph as superseded (found in /flow:finish-milestone v2.31.2)
 
 ### `docs/pdf-viewer.php`
 
 - [ ] The `$is_servable_doc` closure (sets `$pageCanonicalUrl` before the header renders) repeats the subdir allowlist, the doc checks and the extension list of the later validation block, and uses `is_file()` where the block uses `file_exists()`. Define the lists once above both and share the checks (found in #1960)
 - [ ] The comment above `$provisional_doc_metadata` says the legacy-alias 301 runs "before any title would be sent". The head renders first. Output buffering (`header1_must_include.php` `ob_start()`) is what lets the 301 work. Correct the comment (found in #1960)
 
-### `docs/reference/chassis-validation.php`
-
-- [ ] The section id `format-1971` sits on the heading "11-Character Format (1970-1971)", and the summary table links 1970 to `format-1970`. Rename the id to `format-11-char` and update its links (found in /flow:finish-milestone v2.31.2)
-
-### `error/500.php`
-
-- [ ] Restore a unit pin: all nine status codes (400/401/403/404/405/408/500/502/504) have entries in both `$errorMessages` and `$logCategoryMap` (from #2169)
-
 ### `package.json` + `scripts/build.js` + `app/assets/js/car-edit.js` (−1 dependency)
 
-- [ ] Drop `filepond-plugin-image-exif-orientation`: the package, its `<script>` tag, its `registerPlugin()` argument (car-edit.js ~29), and its copy line (build.js ~47). Current browsers apply EXIF orientation natively. **First upload one rotated phone JPEG with the plugin removed, and confirm that the stored image and the resized variants are upright.** (found in the #2208 audit)
-
-### `scripts/render-deploy-sheet.sh`
-
-- [ ] ~L143 `grep -qx '.env.example'` reads `.` as any character. Use `grep -Fxq '.env.example'`, so only the literal file name matches (found in #2233)
-
-### `tests/Support/BrevoOverrideStub.php` + `tests/Support/BrevoSiteRoot.php` (test-only)
-
-- [ ] `BrevoOverrideStub` writes `"<?php\n"` and `sweep()` deletes any file with that exact content. Add a unique marker comment to the stub content (found in /finish-milestone v2.30.7)
+- [ ] Drop `filepond-plugin-image-exif-orientation`: the package, its `<script>` tag (`app/owner/cars/edit.php` ~L671), its `registerPlugin()` argument (car-edit.js ~L67, and the `/* global */` at L1), its copy line (build.js ~L48), and the committed `usersc/js/filepond-plugin-image-exif-orientation.min.js`. Current browsers apply EXIF orientation natively. **First upload one rotated phone JPEG with the plugin removed, and confirm that the stored image and the resized variants are upright.** (found in the #2208 audit)
 
 ### `tests/integration/AdminClearBlockAndOptOutTest.php` (test coverage)
 
@@ -189,8 +150,8 @@ after an item is written.
 
 ### `tests/integration/AdminDeliverabilityActionsAuthTest.php`
 
-- [ ] The class has its own `php -r` subprocess copy of the endpoint runner. Use `IntegrationTestCase::invokeEndpoint()` and delete the copy. `invokeEndpoint()` needs GET/HTML or session-flash support first (found in #2165)
-- [ ] The runner reads a missing `___EXIT:` marker as exit code 0 (`array_pad(..., '0')`, ~L161), and it ignores a failed `$loggedInUser->find()` (~L142), so an unknown user runs logged out. The class docblock (~L15) names `VerificationToggleEndpointBehaviorTest` as the model runner, but that class now uses `invokeEndpoint()`. The migration item above fixes all three. (found in #2165)
+- [ ] The class has its own `php -r` subprocess copy of the endpoint runner. Use `IntegrationTestCase::invokeEndpoint()` and delete the copy (found in #2165)
+- [ ] The runner reads a missing `___EXIT:` marker as exit code 0 (`array_pad(..., '0')`, ~L173), and it ignores a failed `$loggedInUser->find()` (~L148), so an unknown user runs logged out. The class docblock (~L15) names `VerificationToggleEndpointBehaviorTest` as the model runner, but that class now uses `invokeEndpoint()`. The migration item above fixes all three. (found in #2165)
 
 ### `tests/integration/AdminEmailDeliveryTabAuthTest.php`
 
@@ -210,7 +171,7 @@ after an item is written.
 
 ### `tests/integration/OwnerCreateUpdateTransactionRollbackTest.php`
 
-- [ ] Replace the hand-written DB proxy (~L55) with `PassThroughDatabase` (from #2169)
+- [ ] Replace the hand-written DB proxy (~L32, an anonymous class that implements `DatabaseInterface`) with `PassThroughDatabase` (from #2169)
 
 ### `tests/integration/UserDeletionPrivacyStepTest.php` + `tests/integration/admin/RerunDeletionPrivacyStepScriptTest.php`
 
@@ -221,7 +182,7 @@ after an item is written.
 ### `tests/integration/UserSettingsResumeVerificationEndpointTest.php`
 
 - [ ] The class has its own `php -r` subprocess copy of the endpoint runner. Use `IntegrationTestCase::invokeEndpoint()` and delete the copy. `invokeEndpoint()` needs GET/HTML or session-flash support first (found in #2165)
-- [ ] The runner reads a missing `___EXIT:` marker as exit code 0 (`array_pad(..., '0')`, ~L196). The migration item above fixes it. (found in #2165)
+- [ ] The runner reads a missing `___EXIT:` marker as exit code 0 (`array_pad(..., '0')`, ~L209). The migration item above fixes it. (found in #2165)
 
 ### `tests/integration/VerifyCarLandingPageTest.php` (test coverage)
 
@@ -244,7 +205,6 @@ after an item is written.
 
 - [ ] The photo test (~L181) passes when `uploadImages()` never saw the file, because the "no leftover temp file" check holds with no file written. Also assert that `cardetails.image` holds one stored `img_<hex>.jpg` name (found in /flow:finish-milestone v2.32.0)
 - [ ] The wiring test (~L581) and the spec header say "a failed create writes no FileError row". `removeTmpImages()` writes one when `unlink()` fails. Change the text to "no image-move FileError row" (found in /flow:finish-milestone v2.32.0)
-- [ ] `CarActionsSaveWiringTest` checks `save.php` source text with `strpos`: `testAddCarChecksErrorsBeforeMovingTempImages`, `testAddCarImageMoveFailureStillReturnsServerError`, `testAddCarValidationLogRecordsSubmittedDates`. A correct refactor fails them, and a wrong guard with the same text passes. Delete the first two (the Playwright spec proves the 422, no car row, and no temp file). Replace the third with a check that the ValidationError log row holds `purchasedate=` (found in /flow:finish-milestone v2.32.0)
 
 ### `tests/playwright/car-edit-csrf-recovery.spec.js` (test coverage)
 
@@ -253,6 +213,10 @@ after an item is written.
 ### `tests/playwright/contact-owner-page.spec.js` (test coverage)
 
 - [ ] No browser test checks that the contact form shows the 409 "cannot be contacted" message from #2712. `tests/integration/SendOwnerEmailNoOwnerTest.php` checks only the API body. The display goes through `usError(error.message)` in `app/assets/js/contact-form.js` (found in /flow:finish-milestone v2.34.0)
+
+### `tests/playwright/e2e/admin.spec.js`
+
+- [ ] The two #2144 history tests skip when `E2E_DEV_ADMIN_USERNAME` or `E2E_DEV_ADMIN_PASSWORD` is not set, also on the test and prod tiers. On those tiers the admin session comes from the saved storageState, so the guard and its skip message name the wrong credentials. Check the credentials for the current tier, or remove the guard where storageState supplies the session (found in #2387)
 
 ### `tests/playwright/local/fixtures/`
 
@@ -269,10 +233,6 @@ after an item is written.
 ### `tests/unit/cron/BrevoSuppressionSyncClientTest.php` (test quality)
 
 - [ ] The "autoloader throws" case does not assert that the exception message stays out of the log. Assert that the message has no `broken` (found in /flow:finish-milestone v2.31.0)
-
-### `tests/unit/cron/BrevoSuppressionSyncJobTest.php` (test quality)
-
-- [ ] `runWasMarkedFailed()` reads the private `AbstractCronJob::$runFailed` through reflection. When the job gets a healthcheck slug (#2586), assert the `/fail` ping through an injected pinger and delete the helper (found in /flow:finish-milestone v2.31.0)
 
 ### `tests/unit/cron/SendVerificationBatchJobTest.php` (test coverage)
 
@@ -293,19 +253,10 @@ after an item is written.
 ### `tests/unit/security/AdminAjaxGuardTest.php`
 
 - [ ] Move `significantTokens()` / `tokensCallFunction()` into one `tests/Support/` helper, shared with the sibling pins from #2161 (from #2169)
-- [ ] `adminEndpointProvider()` globs only the top level of `app/admin/includes/`. Make it recursive (from #2169)
-
-### `tests/unit/security/HeadTagsSecurityTest.php`
-
-- [ ] Four source-text tests (~L117, L143, L159, L172) copy the render tests in `HeadTagsCanonicalRenderTest.php` (canonical, og:url and twitter:url equal, query dropped). L159 matches one whole line of markup, so a reformat breaks it. Delete them (found in /flow:finish-milestone v2.33.0)
 
 ### `tests/unit/system/CanonicalUrlTest.php`
 
 - [ ] Most `encodedQueryProvider` rows (~L72-83) test `http_build_query(..., PHP_QUERY_RFC3986)`, not app behaviour. Keep the space-in-value and markup rows. Delete the rest (found in /flow:finish-milestone v2.33.0)
-
-### `tests/unit/system/CarDetailsJsonLdTest.php`
-
-- [ ] Three tests (~L111, L126, L155) check the order of strings in `details.php`. `HeadTagsCanonicalRenderTest::testDetailsInvalidCarIdSendsRealRedirectWithNoPerCarTitle` and the Playwright title tests prove the same behaviour. L155 matches exact source text. Delete them (found in /flow:finish-milestone v2.33.0)
 
 ### `tests/unit/system/PageRobotsTest.php`
 
@@ -314,7 +265,6 @@ after an item is written.
 ### `tools/phpstan/` (test-only, no estimate)
 
 - [ ] No test proves the `phpstan.neon` wiring of the path-based rules. A typo in a `files:` or `exemptPages:` entry, or a different working directory for `projectRoot`, makes the rule silently check nothing. Add a smoke test that runs PHPStan with the real config on one known violation per rule. (found in #2327)
-- [ ] `PageMetadataBeforeInitRule` does not report an `exemptPages` entry whose file was deleted or moved, or no longer calls `securePage()`. Report it as a stale exemption. (found in #2327)
 
 ### `tests/unit/system/RobotsTxtPolicyTest.php`
 
@@ -326,60 +276,24 @@ after an item is written.
 
 ### `usersc/classes/CanonicalUrl.php`
 
-- [ ] `build()` does not check its inputs. An empty-string query value gives `car_id=`, and a path with `?` or `#` gives a malformed URL. Both callers pass trusted values. Document the contract in the docblock (found in /flow:finish-milestone v2.33.0)
+- [ ] The `build()` docblock does not say that an empty-string query value gives `key=`, or that `$scriptPath` must hold no `?` or `#`. Add those two rules (found in /flow:finish-milestone v2.33.0)
 
 ### `usersc/classes/Car/Car.php` + `app/api/cars/save.php`
 
-- [ ] `removeTmpImages()` skips a name that fails `isValidFilename()` with no log, and treats `glob() === false` as "no resized copies". Log a `LOG_CATEGORY_FILE_ERROR` row before `continue`, and check `glob()` for `false` before the `[]` fallback (found in /flow:finish-milestone v2.32.0)
-- [ ] Each consumer builds the `{root}{ELAN_IMAGE_DIR}{carId}/` path by hand (`Car.php` ~L75 and ~L178, `save.php` ~L41, ~L697 and ~L915, `24-Regenerate-Optimized-Thumbnails.php` ~L381, `app/owner/cars/index.php` ~L120, `details.php` ~L479, `statistics.php` ~L359). Add one helper and call it from each (from #1943)
+- [ ] Each consumer builds the `{root}{ELAN_IMAGE_DIR}{carId}/` path by hand (`Car.php` ~L76 and ~L179, `save.php` ~L41, ~L755 and ~L975, `24-Regenerate-Optimized-Thumbnails.php` ~L381, `CarPhotoRecovery.php` ~L79). `app/owner/cars/index.php` ~L117, `details.php` ~L481 and `statistics.php` ~L358 build the URL root the same way. Add one helper and call it from each (from #1943)
 
 ### `usersc/classes/Car/CarImageProcessor.php`
 
-- [ ] `resolveUploadOrder()` and `checkUploadOrder()` pass array shapes that only docblocks describe, and `checkUploadOrder()` returns data that the caller already holds (`missing`). Use a small readonly value object, or return only `errors`, `storedUnsafe` and `unplaced` (found in /flow:finish-milestone v2.31.2)
-- [ ] `cleanClientText()` is a general client-text helper, not image logic, and `save.php` calls it. Move it to a shared helper when a second caller appears (found in /flow:finish-milestone v2.31.2)
 - [ ] Three callers build the `{name}-resized-{size}.{ext}` file name themselves: `CarView` (srcset), `CarVerificationEmailComposer` (~L514) and `CarPhotoRecovery::thumbnailName()`. Add one `CarImageProcessor` helper next to `isResizedVariant()` and call it from all three (found in #2644 simplify pass)
-
-### `usersc/classes/Car/CarPhotoRecovery.php` + `usersc/classes/Car/CarPhotoRecoveryRow.php` + `usersc/classes/Car/CarPhotoRecoveryResult.php` + `usersc/classes/Car/DetachedPhoto.php` + `usersc/classes/Car/DetachedHow.php`
-
-- [ ] The decision-log array shape is written out three times as an untyped array (`CarPhotoRecovery` ~L63, ~L435, ~L453). Add a small `CarPhotoDecision` value object. It also removes the `is_*` checks at ~L493-525 (found in /flow:finish-milestone v2.32.0)
-- [ ] `CarPhotoRecovery` is about 840 lines and does four jobs: scan, apply, decision log, tokens. Move the decision log and the token helpers (`versionToken()`, `isValidToken()`) to their own classes (found in /flow:finish-milestone v2.32.0)
-- [ ] `@exif_imagetype` (~L690) conflicts with the rule in `.claude/rules/php-code.md` to flag `@`. Add a comment that links the same case in `decodeAndProcessImages()` (found in /flow:finish-milestone v2.32.0)
-- [ ] `DetachedPhoto` takes `$safe` as an argument, but `CarImageProcessor::isSafeFilename()` gives it from `$name`. Compute it in the constructor. Also reject a `$name` with `/` or `..` and an empty `$leftAt` (found in /flow:finish-milestone v2.32.0)
-- [ ] `CarPhotoRecoveryRow` does not check its `list<>` properties with `array_is_list()`. It also does not check `rawImage` against `currentNames`, or `earlierOrder` as the reverse of `currentNames`. Only `buildRow()` keeps those rules (found in /flow:finish-milestone v2.32.0)
-- [ ] `CarPhotoRecoveryRow::$unreadable` marks an unreadable car folder with the string `{carId}/`, which can be confused with a photo name. Use a `bool $folderUnreadable`. `DetachedPhoto::$leftAt` and `CarPhotoRecoveryRow::$earlierOrderAt` also accept an empty string (found in /flow:finish-milestone v2.32.0)
-- [ ] `DetachedHow` uses the display text `'partly removed'` as its backed value. Use a key such as `'partly_removed'` and add a `label()` method. Check first whether the value is in a log row (found in /flow:finish-milestone v2.32.0)
-- [ ] `CarPhotoRecoveryResult::Applied` covers three writes: `cars.image`, the ignore log row, and the undo log row. If a caller must tell them apart, add the write kind to `CarPhotoRecoveryOutcome` (found in /flow:finish-milestone v2.32.0)
 
 ### `usersc/classes/Car/CarRepository.php`
 
-- [ ] `recentFlagChanges()` (~L2327) has no production caller, but tests in 15 unit and integration files read flag-change rows through it. Delete it only after those tests use a test helper (found in /finish-milestone v2.30.7)
+- [ ] `recentFlagChanges()` (~L2480) has no production caller, but tests in 15 unit and integration files read flag-change rows through it. Delete it only after those tests use a test helper (found in /finish-milestone v2.30.7)
 - [ ] The block-cause names are four loose string sets: `BLOCKED_CAUSES`, `EmailEventApplier::SUPPRESSION_EVENT_CAUSES`, the bare `'spam'` and `'unsubscribed'` matches in `VerificationTabStatus::chip()`, and `EffectiveEmailFlags::$blockedCause` (`?string`). Add `enum BlockedCause: string` and convert to a string only at the database boundary (found in /finish-milestone v2.30.8)
-
-### `usersc/classes/Car/CarVerificationEmailComposer.php`
-
-- [ ] Photo FileError logs record user 0. The composer has no actor id, so an admin-started send is not attributed (found while working on #1894)
-
-### `usersc/classes/Car/ChassisOverrideNoteResult.php`
-
-- [ ] Two bools (`changed`, `manual`) allow a state that the named constructors forbid. Replace them with an enum (`Unchanged`, `Stripped`, `Manual`) (found in /flow:finish-milestone v2.31.2)
-
-### `usersc/classes/Car/EffectiveEmailFlags.php`
-
-- [ ] `fromQueueRow()` checks that each column exists, not its value. A null or non-numeric flag casts to 0 (no flag). Reject null and values other than 0 or 1 for the four flag columns (found in /flow:finish-milestone v2.31.0)
-- [ ] `fromQueueRow()` throws a bare `\InvalidArgumentException`. Check ERROR_HANDLING.md for programmer-error exceptions, or use a typed one. Move `QUEUE_ROW_COLUMNS` to the top of the class (found in /flow:finish-milestone v2.31.0)
-
-### `usersc/classes/Car/EmailEventMatch.php`
-
-- [ ] Make the class `final readonly`. The accessors return `?? 0` or `?? ''` after `requireMatched()`, which hides a broken invariant. Return the typed value with a PHPStan assert instead (found in /finish-milestone v2.30.8)
 
 ### `usersc/classes/Car/SendPolicy.php`
 
-- [ ] The flag list is written three times: `SendDecision::FLAG_ORDER`, the `$all` list in `blockingFlags()`, and the table docblock. Build it once, or use a `SendFlag` enum (found in /finish-milestone v2.30.8)
-- [ ] `adminMessage()` has no sentence for `email_blocked`, which is right only for `MailKind::AdminContact`. Take the `MailKind`, or rename it `adminContactMessage()` (found in /finish-milestone v2.30.8)
-
-### `usersc/classes/Car/SendResult.php`
-
-- [ ] Replace the raw `string $status` with a backed enum, so callers cannot compare raw strings. `VerificationBatchSender` does `$sendResult->status === SendResult::STATUS_SENT` today. Update it in the same change (from #2149)
+- [ ] `adminMessage()` has no sentence for `email_blocked`, which is right only for `MailKind::AdminContact`. The docblock says so. Rename it `adminContactMessage()`, or take the `MailKind` (found in /finish-milestone v2.30.8)
 
 ### `usersc/classes/Car/VerificationEligibility.php`
 
@@ -389,51 +303,25 @@ after an item is written.
 
 - [ ] `isEnabled()` has no production caller after #2602. All callers use `isEnabledOrNull()`. Remove `isEnabled()`, its tests in `VerificationSettingsTest`, and the references to it in `CLASSES.md` (method list and the `VerificationTabStatus` entry), the `{@see isEnabled()}` in `VerificationSettings.php`, and the `VerificationTabStatus.php` class docblock (found in /flow:finish-milestone v2.31.1)
 
-### `usersc/classes/Car/VerificationTabStatus.php`
-
-- [ ] `blockedCauseLabel()` treats a whitespace-only `email_blocked_cause` as a cause and shows a blank-looking reason. Only manual SQL can write one. Trim before the empty check (found in #2458 review)
-- [ ] The `MISSING` job-row `detail` names `er_cron_job_runs` as plain text, so the panel cannot put it in `<code>`, as it does for the `advice` segments. Give `detail` the same `{text, code}` segments or move the name into `advice` (found in #2458 review)
-
 ### `usersc/classes/CarView.php`
 
-- [ ] `TITLE_YEAR_MIN` and `TITLE_YEAR_MAX` (~L44-45) copy the 1963-1974 range that `CarValidator.php:142` hard-codes. Use one shared constant (found in /flow:finish-milestone v2.33.0)
+- [ ] `TITLE_YEAR_MIN` and `TITLE_YEAR_MAX` (~L44-45) copy the 1963-1974 range that `usersc/classes/Car/CarValidator.php:142` hard-codes. Use one shared constant (found in /flow:finish-milestone v2.33.0)
 
 ### `usersc/classes/ChassisValidator.php`
 
 - [ ] The `validatePost1970()` docblock says "5 characters" for 1970-1974, but the 5-character format applies only to model year 1970. Name each format with its years (found in /flow:finish-milestone v2.31.2)
-- [ ] `ruleGroup()` returns a `string` that only a docblock limits to `RULE_GROUPS` keys. A string-backed enum would remove the `RULE_GROUPS[$groupKey]` lookups in `tab-manage_cars.php` and fix script 31 (found in /flow:finish-milestone v2.31.2)
-
-### `usersc/classes/Cron/HealthcheckPinger.php` + `usersc/classes/Cron/CurlHealthcheckTransport.php`
-
-- [ ] `CurlHealthcheckTransport`: set `CURLOPT_PROTOCOLS => CURLPROTO_HTTPS` and an explicit `CURLOPT_FOLLOWLOCATION => false` (defense in depth; the base URL is constant) (found in /finish-milestone v2.30.9)
-
-### `usersc/classes/Email/BrevoApiFactory.php`
-
-- [ ] The `reason` key of `readApiKey()` and `loadSdk()` never varies within each method. Use `cause !== null` as the failure test, define `no_api_key` and `no_sdk` only in `BrevoUnblockReason`, and drop the `REASON_*` aliases. Do it together with moving `BrevoEventReconciliationClient` onto the factory, and keep its `readiness()` mapping: table absent and key not set give NOT_CONFIGURED, every other cause gives FAILED (found in #2426, mapping note from /flow:finish-milestone v2.31.0)
-- [ ] Replace the `array{reason, cause, detail}` returns of `readApiKey()` and `loadSdk()` with two small readonly result types (or PHPStan shape aliases) (found in /finish-milestone v2.30.9)
-- [ ] No test calls `readApiKey()` directly. Add `tests/unit/classes/Email/BrevoApiFactoryTest.php` with `SendinblueSettingsFakeDatabase`: success, key not set, `42S02` and `HY000`, each with the `sqlState` value (found in #2488)
-- [ ] The class is no longer `final` only so a test double can extend it, and a double must override `loadSdk()` too. Extract a small interface (`loadSdk()`, `createApi()`) for `BrevoBlocklistClient` and make the factory `final` again (found in /flow:finish-milestone v2.31.0)
 
 ### `usersc/classes/EmailTemplate.php`
 
 - [ ] The `createButtonRow()` docblock says the buttons stack full-width below 600 px, but each `<a>` keeps its inline `display: inline-block`, so stacked buttons keep their own width. Correct the docblock or the style (found in #2608)
 
-### `usersc/classes/Exceptions/ProfileFlagValueException.php`
-
-- [ ] Mark the class `final`. It extends `CarDatabaseException` and nothing extends it (found in /finish-milestone v2.30.8)
-
-### `usersc/classes/Exceptions/RetentionPurgeException.php`
-
-- [ ] `forStep()` sets `step` and `sqlState` after construction on non-readonly properties. Make them `private readonly`, set through a constructor, and document why `forStep()` passes no previous exception (found in /finish-milestone v2.30.10)
-
 ### `usersc/classes/InputSanitizer.php` (est. −8)
 
 - [ ] `stripHeaderInjectionChars()`: replace `preg_replace` and its PCRE-failure throw with `str_replace(["\r", "\n", "\t"], '', (string) $value)`. `str_replace` cannot fail. Related: #1786. (found in the #2208 audit)
-- [ ] `normalize()`: drop the length check before `mb_substr()`. `mb_substr()` never pads the string, so the check does nothing. (found in the #2208 audit)
 
 ### `usersc/classes/LogCategories.php` (est. −410)
 
-- [ ] Delete the constants that no project code uses (65–69 of 115: `PASSKEY_*`, `OAUTH_*`, `TOTP_*`, `LOGIN*`, `PASSWORDLESS_*`, `*_MANAGER`, `GEOCODE`, `SECURE_PAGE`, `HAS_PERM`, `CHECK_ACCESS`, `IP_LOGGING`, `BACKUP_OPERATION`, `CAR_UPDATE`, `DIAGNOSTICS`, and others). Keep the class. (found in the #2208 audit)
+- [ ] Delete the constants that no project code uses (about 66 of 117: `PASSKEY_*`, `OAUTH_*`, `TOTP_*`, `LOGIN*`, `PASSWORDLESS_*`, `*_MANAGER`, `GEOCODE`, `SECURE_PAGE`, `HAS_PERM`, `CHECK_ACCESS`, `IP_LOGGING`, `BACKUP_OPERATION`, and others). Keep the class. (found in the #2208 audit)
   - Check first: the gitignored upstream plugin code may reference some of these constants. A search of tracked files cannot see it.
   - Check first: the admin log viewer may filter by the stored category *values*. Old `logs` rows keep their values after a constant goes.
   - Check first: `docs/development/LOG_CATEGORIES.md` lists the constants.
@@ -442,7 +330,7 @@ after an item is written.
 
 ### `usersc/classes/Owner.php` + `usersc/user_settings.php` + `app/verify/verify_car.php` + `usersc/classes/Car/EmailEventApplier.php`
 
-- [ ] The `try { logger() } catch { error_log('[ElanRegistry] ...') }` guard is copied at about 7 sites. Rollback guards are in `Owner.php` (2), `user_settings.php`, `verify_car.php` (`rollbackQuietly()`) and `EmailEventApplier.php`. Remove all of them and call `logger()` and `rollback()` directly (see ERROR_HANDLING.md): `logger()` throws only when the database already failed the request (see #2449, #2561). Update `UserSettingsResumeVerificationEndpointTest`, which checks the "logger failed" text (found in #2393)
+- [ ] The `try { logger() } catch { error_log('[ElanRegistry] ...') }` guard is copied at about 7 sites. Rollback guards are in `Owner.php` (1), `user_settings.php` (4), `verify_car.php` (`rollbackQuietly()`) and `EmailEventApplier.php`. Remove all of them and call `logger()` and `rollback()` directly (see ERROR_HANDLING.md): `logger()` throws only when the database already failed the request (see #2449, #2561). Update `UserSettingsResumeVerificationEndpointTest`, which checks the "logger failed" text (found in #2393)
 
 ### `usersc/classes/Owner.php`
 
@@ -459,41 +347,15 @@ after an item is written.
 
 ### `usersc/classes/RegistrationRecoveryNotifier.php`
 
-- [ ] Replace 2 inline header-injection `preg_replace` calls with `InputSanitizer::stripHeaderInjectionChars()` (from #1786)
-
-### `usersc/classes/Retention/DeletedUserAddressesBacklogRule.php`
-
-- [ ] The alarm and a query failure both throw `RetentionPurgeException` and differ only by step text. Give the alarm its own step constant or subtype, so log triage can tell "run script 30" from "query failed" (found in /finish-milestone v2.30.10)
-
-### `usersc/classes/Retention/SendinblueMessagesRetentionRule.php`
-
-- [ ] The missing-table skip reason is a long inline literal. Make it a class constant, so tests can assert it without a copy of the text (found in /finish-milestone v2.30.10)
-
-### `usersc/classes/Transfer/CarTransferRepository.php`
-
-- [ ] Add PHPStan `@return` object shapes to `findById`, `findPendingById`, `findPendingWithCarById`, `getPendingWithCarAndUsers`, `getTodayStatusCounts`. This removes the 52 level-7 `property.notFound` errors in `tab-car_mgmt.php` (from #1532)
+- [ ] Replace the inline header-injection `preg_replace` at ~L129 with `InputSanitizer::stripHeaderInjectionChars()`. The call at ~L146 replaces with a space, so it stays (from #1786)
 
 ### `usersc/classes/Transfer/TransferEmailService.php` + `usersc/classes/Transfer/TransferNoticeOutcome.php`
 
 - [ ] Make `sendAdminAlert()`'s `$ownerNotice` required. The default `TransferNoticeOutcome::Sent` hides the Owner Not Notified box for a caller that forgets it. The one caller passes it (found in /flow:finish-milestone v2.31.0)
-- [ ] `TransferNoticeOutcome` is string-backed, but nothing calls `from()` or `tryFrom()`. Drop the backing unless logs or JSON need the value (found in /flow:finish-milestone v2.31.0)
 
 ### `usersc/classes/admin/BackupManager.php` (est. −65)
 
-- [ ] Delete `verifyBackupIntegrity()` (~481-545). Only tests call it (`BackupManagerTest.php` ~190-250). No page or cron job calls it. (found in the #2208 audit)
-
-### `usersc/classes/admin/MaintenanceStatusLabels.php` + `app/admin/maintenance.php` (est. −28)
-
-- [ ] Inline the two 5-line `match` expressions into `maintenance.php` (~209, ~233). They are its only caller. Then drop the class and `MaintenanceStatusLabelsTest`. (found in the #2208 audit)
-
-### `usersc/includes/example_admin_user_system_settings_post.php`
-
-- [ ] line 25 — same `(Issue #237)` pattern (from #1978)
-- [ ] line 34 — restates the line below it (from #1978)
-
-### `usersc/includes/head_tags.php`
-
-- [ ] `$pageCanonicalUrl` is a global that a page sets with no type check. CLASSES.md and the AI prompt doc tell pages to use `CanonicalUrl::build()`. Add a convention test that each `$pageCanonicalUrl =` assignment calls `CanonicalUrl::build` (found in /flow:finish-milestone v2.33.0)
+- [ ] Delete `verifyBackupIntegrity()` (~L494). No page or cron job calls it. `BackupManagerTest.php` and `BackupRestorabilityTest.php:104` call it, and the second uses it as a real integrity check, so give that test a replacement check first. (found in the #2208 audit)
 
 ### `usersc/includes/rate_limits_dev_override.php`
 

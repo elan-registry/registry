@@ -21,10 +21,13 @@ test.describe('Factory Page - Registry Link Feature', () => {
 
   test('should display Registry Link column in table header', async ({ page }) => {
     await page.goto('app/owner/cars/factory.php');
-    await page.waitForLoadState('domcontentloaded');
+    await waitForDataTables(page);
 
-    // Look for Registry Link column header
-    const registryHeader = page.locator('th:has-text("Registry Link")');
+    // scrollX makes DataTables keep a zero-height copy of the header inside
+    // #cartable, so a text or role match alone resolves to 2 elements (#2622).
+    const registryHeader = page
+      .getByRole('columnheader', { name: 'Registry Link', exact: true })
+      .filter({ visible: true });
     await expect(registryHeader).toBeVisible();
     console.log('✓ Registry Link column header visible');
   });

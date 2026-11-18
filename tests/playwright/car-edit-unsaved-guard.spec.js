@@ -99,7 +99,7 @@ test.describe('Car form unsaved-changes guard (#1455)', () => {
         });
         await page.locator('#submit').click();
 
-        await page.waitForURL(/app\/owner\/cars\/details\.php\?car_id=1091/, { timeout: 15000 });
+        await page.waitForURL(new RegExp(`app/owner/cars/details\\.php\\?car_id=${CAR_ID_WITH_HISTORY}(?:&|$)`), { timeout: 15000 });
         expect(dialogs, 'a completed save must not prompt').toEqual([]);
     });
 

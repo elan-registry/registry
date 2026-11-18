@@ -151,6 +151,12 @@ set_error_handler(function ($errno, $errstr, $errfile, $errline) {
     return true;
 });
 
+// Record deprecations from committed files that init.php loads (#2490, #2491).
+// BootstrapDeprecationGuard passes every other error to the suppress-all
+// handler above. It throws from stop(), after the catch below, which would
+// swallow it.
+\Tests\Support\BootstrapDeprecationGuard::start($projectRoot);
+
 // Start output buffering to catch any die() output messages
 ob_start();
 
@@ -174,7 +180,13 @@ if (!empty(trim($output))) {
     fwrite(STDERR, "NOTE: {$output}\n");
 }
 
+\Tests\Support\BootstrapDeprecationGuard::stop();
 restore_error_handler();
+
+// The rest of this file loads config.php and runs committed classes
+// (SessionTimeZone, DbAdapter, ...). Guard it until the end of the file, after
+// its last catch.
+\Tests\Support\BootstrapDeprecationGuard::start($projectRoot);
 
 // If users/init.php threw before reaching usersc/includes/loader.php, the
 // application constants (ELAN_IMAGE_DIR, BACKUP_*, ...) that Car and
@@ -188,7 +200,7 @@ restore_error_handler();
 // init.php fails here on every run, not occasionally: users/helpers/us_helpers.php's
 // ipCheckBan() reads `global $db`, but PHPUnit includes this bootstrap from a
 // function scope, so the $db init.php just built is a local — ipCheckBan() gets
-// null and throws, before loader.php.
+// null and throws, before loader.php (#2749).
 if (!defined('ELAN_IMAGE_DIR')) {
     fwrite(STDERR, "NOTE: users/init.php did not reach usersc/includes/loader.php; loading config.php directly\n");
     // init.php sets these at its top, before anything that can fail, but
@@ -594,3 +606,5 @@ try {
 } catch (Throwable $e) {
     abortMissingSeed("ERROR: Failed to verify reference data: {$e->getMessage()}");
 }
+
+\Tests\Support\BootstrapDeprecationGuard::stop();
