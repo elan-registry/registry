@@ -56,6 +56,9 @@ after an item is written.
 
 - [ ] No test asserts the "No transfer approval/denial notification sent ... each one failed or the send policy skipped it" `EMAIL_ERROR` line. In `tests/integration/transfer/CarTransferWorkflowTest.php`, approve and deny with both parties opted out and assert that one row (found in /finish-milestone v2.30.9)
 - [ ] `process-transfer-approve.php` (~L131 and ~L147) wraps `$db->rollBack()` in `catch (\Throwable $rollbackEx)`. Remove the guard (see ERROR_HANDLING.md, no guards) (found in /flow:finish-milestone v2.31.0)
+- [ ] `transfer-request.php` (~L70-93) repeats the limits in `CarValidator::COLUMN_MAX_LENGTHS`, and checks chassis and engine with `strlen` while color uses `mb_strlen`. Take the limits from the constant and use `mb_strlen` for every field (found in /flow:finish-milestone v2.34.0)
+- [ ] (test coverage) `transfer-request.php` (~L213) logs the skipped owner notice under `CAR_TRANSFER`, and no test checks the category. `tests/unit/regression/Issue2476TransferOwnerNoticeRegressionTest.php:65` matches the message text only (found in /flow:finish-milestone v2.34.0)
+- [ ] (test coverage) No endpoint test sends a 50-character color with a multibyte character to `transfer-request.php` (~L82). Only `tests/unit/cars/services/CarValidatorTest.php` covers the multibyte case, and the endpoint has its own check (found in /flow:finish-milestone v2.34.0)
 
 ### `app/admin/includes/tab-car_mgmt.php`
 
@@ -95,6 +98,15 @@ after an item is written.
 - [ ] The chassis error at ~L582 holds the literal `<strong>ERROR:</strong>`. `errors.general` is a list now, and `car-edit.js` escapes each item, so the tag shows as text. Remove the markup from the message (found in /flow:finish-milestone v2.32.0)
 - [ ] The oversize-body 413 branch (~L44) calls `withLogging()` before `isLoggedIn()` and `Token::check()`. An anonymous request with a large `Content-Length` writes a `logs` row each time. Send a plain `ApiResponse::error()` without the log, or move the check after the login test (found in /flow:finish-milestone v2.32.0)
 - [ ] (test coverage) No automated test checks the oversize-body 413 status with `display_errors` Off (the test and production setting). Docker gives 200 with a warning prefix. Add an integration test that starts `php -S` with `-d display_errors=0` and a small `post_max_size`, and asserts 413, JSON, and the log row (found in #2627)
+- [ ] (test coverage) No endpoint or browser test shows that a too-long car field (~L333) returns its limit message. Only the `CarValidator` unit tests cover it (found in /flow:finish-milestone v2.34.0)
+
+### `app/assets/js/join-form-beacon.js`
+
+- [ ] The #2728 comments (~L164-169, ~L231-241) record an open investigation (36 reports in about 4 minutes, cause not proven, next case). Once the next case confirms or disproves the Turnstile theory, keep the durable why (the 5-report cap, the hint goes first) and cut the speculation (found in /flow:finish-milestone v2.34.0)
+
+### `app/assets/js/statistics.js` (test coverage)
+
+- [ ] A 200 response with `data: null` (~L249) also makes the tab load again, and no test covers it. `tests/playwright/maps-charts.spec.js` tests only the 500 path (found in /flow:finish-milestone v2.34.0)
 
 ### `app/assets/js/turnstile-reset.js`
 
@@ -128,6 +140,10 @@ after an item is written.
 ### `database/migrations/20260915000000_add_cars_verification_attempts_columns.php`
 
 - [ ] The `down()` comment (~L84) says "MySQL refuses to DROP a column that a trigger body still references". MySQL 8 allows the drop; the next INSERT, UPDATE or DELETE on `cars` then fails with 1054. The restore-first order is still right. Correct the reason in the comment (found in #2167)
+
+### `database/migrations/20261117000000_widen_car_color_columns.php` (test coverage)
+
+- [ ] No test covers the `down()` refusal (~L45) that protects color values longer than 25 characters, including `cars_hist` rows, from truncation. `tests/integration/database/CarVerificationTimestampMigrationTest.php` shows the pattern (found in /flow:finish-milestone v2.34.0)
 
 ### `docs/development/DEPLOYMENT.md`
 
@@ -233,6 +249,10 @@ after an item is written.
 ### `tests/playwright/car-edit-csrf-recovery.spec.js` (test coverage)
 
 - [ ] 'a token that still fails is not retried again' (~L110-126) does not check that the unsaved-changes guard stays on after the failed retry. After the out-of-date message, call `attemptLeave(page)` and expect `['beforeunload']`, as `car-edit-unsaved-guard.spec.js` does for a failed save (found in /flow:finish-milestone v2.33.0)
+
+### `tests/playwright/contact-owner-page.spec.js` (test coverage)
+
+- [ ] No browser test checks that the contact form shows the 409 "cannot be contacted" message from #2712. `tests/integration/SendOwnerEmailNoOwnerTest.php` checks only the API body. The display goes through `usError(error.message)` in `app/assets/js/contact-form.js` (found in /flow:finish-milestone v2.34.0)
 
 ### `tests/playwright/local/fixtures/`
 
