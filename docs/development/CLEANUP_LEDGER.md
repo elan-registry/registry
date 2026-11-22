@@ -177,6 +177,7 @@ after an item is written.
 
 - [ ] `countMatchingLogs()` counts the whole `logs` table. A `user_id = 0` row left by an earlier run fails an absolute count. `CarSaveOwnershipGuardTest`, `CarSaveBodyLimitTest` and `RetentionPurgeJobIntegrationTest` write their own `id > ?` COUNT. Add an optional `?int $afterId` to the helper and use it there (found in #2471)
 - [ ] Integration tests copy the same setup steps: a logged-in member or admin (`createTestUser(['permissions' => 1])` plus `grantTestPermission()`), the user email read (`SELECT email FROM users WHERE id = ?`), the `logs` MAX(id) floor, and the per-user `DELETE FROM logs` cleanup loop. Copies are in the `SendOwnerEmail*Test` classes, `CarDetailsEmailOnFileRenderTest`, `BackupOperationsAccessTest`, `AdminAjaxGuardBehaviorTest` and others. Add base-class helpers, as `trackNewRateLimitRows()` does for rate limits (found in #2471)
+- [ ] Endpoint tests repeat the same 5 or 6 response assertions: `exitCode` 0, `httpCode`, `json` is an array, `status`, `message`, and `assertNoPhpErrorText()`. The copies are in `CarSaveOwnershipGuardTest`, `CarSaveBodyLimitTest` and `SendOwnerEmailSenderAndCsrfTest`, about 8 in total. Add an `assertApiResponse(array $result, int $httpCode, bool $success, string $message)` helper next to `assertNoPhpErrorText()`. `AdminAjaxGuardBehaviorTest::assertCleanGuardRefusal()` is the model (found in #2471)
 
 ### `tests/integration/OwnerCreateUpdateTransactionRollbackTest.php`
 
