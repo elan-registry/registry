@@ -216,6 +216,10 @@ after an item is written.
 
 - [ ] 'a token that still fails is not retried again' (~L110-126) does not check that the unsaved-changes guard stays on after the failed retry. After the out-of-date message, call `attemptLeave(page)` and expect `['beforeunload']`, as `car-edit-unsaved-guard.spec.js` does for a failed save (found in /flow:finish-milestone v2.33.0)
 
+### `tests/playwright/car-edit-text-save.spec.js` (test coverage)
+
+- [ ] No test checks that the `app/owner/cars/edit.php` comments textarea (~L357) escapes its value. Text in a textarea is not parsed as HTML, so the #844 textarea test still passes with no `htmlspecialchars()`. Seed a comment that holds `</textarea><script>` and check that no element is created, as `car-details-output-escaping.spec.js` does for the details page (found in #2737)
+
 ### `tests/playwright/contact-owner-page.spec.js` (test coverage)
 
 - [ ] No browser test checks that the contact form shows the 409 "cannot be contacted" message from #2712. `tests/integration/SendOwnerEmailNoOwnerTest.php` checks only the API body. The display goes through `usError(error.message)` in `app/assets/js/contact-form.js` (found in /flow:finish-milestone v2.34.0)
