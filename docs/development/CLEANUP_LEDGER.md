@@ -218,6 +218,10 @@ after an item is written.
 
 - [ ] Eight `seed-*.php` fixtures each copy the `er_deleted_user_addresses` cleanup: a table-exists check, then a `DELETE ... IN (...)`. All eight also copy the username-to-ID lookup. Only `seed-output-escaping-car.php` checks `$db->error()` after the delete. The others check `error()` after neither the check nor the delete. In most of them, the cleanup loop in the same file exits on an error. `seed-bounced-car.php` checks `error()` nowhere. Add one shared helper (for example `Tests\Support\DeletedUserAddressCleanup::forUserIds($db, $ids)`) that checks `error()`, and call it from each fixture (found in #2419)
 
+### `tests/playwright/security/car-update-ownership.spec.js` `tests/playwright/security/car-image-ownership.spec.js`
+
+- [ ] Both headers call the specs ownership-guard regression tests. The specs log in as admin and use a car that does not exist, so they reach the car-not-found branch of `app/api/cars/save.php`, not the ownership branch. `tests/integration/CarSaveOwnershipGuardTest.php` tests the ownership branch. The `car-image-ownership.spec.js` header also says that a CSRF failure returns HTML with HTTP 200. `save.php` returns `ApiResponse::forbidden('Invalid CSRF token')` with HTTP 403. Correct both headers, or remove the specs in #2471 (found in #2362)
+
 ### `tests/unit/SitemapServiceTest.php`
 
 - [ ] The sitemap-vs-canonical parity test (~L150) uses `makeService([])`, so it covers static URLs only. Add one car, and compare its `details.php?car_id=N` URL with `CanonicalUrl::build()` (found in /flow:finish-milestone v2.33.0)

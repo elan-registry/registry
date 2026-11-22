@@ -31,7 +31,8 @@ final class StatisticsEndpointRejectionTest extends IntegrationTestCase
 
         $max = $this->db->query('SELECT COALESCE(MAX(id), 0) AS max_id FROM logs')->first();
         $this->assertFalse($this->db->error(), 'Failed to read logs MAX(id) for test setup: ' . $this->db->errorString());
-        $this->logIdFloor = (int) ($max->max_id ?? 0);
+        $this->assertIsObject($max, 'logs MAX(id) query returned no row');
+        $this->logIdFloor = (int) $max->max_id;
     }
 
     protected function tearDown(): void

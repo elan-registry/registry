@@ -37,13 +37,14 @@ final class CarSaveOwnershipGuardTest extends IntegrationTestCase
 
         $max = $this->db->query('SELECT COALESCE(MAX(id), 0) AS max_id FROM logs')->first();
         $this->assertFalse($this->db->error(), 'Failed to read logs MAX(id) for test setup: ' . $this->db->errorString());
-        $this->logIdFloor = (int) ($max->max_id ?? 0);
+        $this->assertIsObject($max, 'logs MAX(id) query returned no row');
+        $this->logIdFloor = (int) $max->max_id;
     }
 
     protected function tearDown(): void
     {
-        // A null floor means setUp() did not take the snapshot. Deleting then
-        // would remove rows that other runs wrote.
+        // A null floor means setUp() skipped or failed before the snapshot.
+        // Without a floor, no delete can be limited to this test's rows.
         if ($this->databaseConnected && $this->logIdFloor !== null) {
             foreach ($this->guardUserIds as $userId) {
                 $this->db->query('DELETE FROM logs WHERE id > ? AND user_id = ?', [$this->logIdFloor, $userId]);
@@ -106,7 +107,7 @@ final class CarSaveOwnershipGuardTest extends IntegrationTestCase
 
         $row = $this->db->query('SELECT user_id, color, image FROM cars WHERE id = ?', [$carId])->first();
         $this->assertFalse($this->db->error(), 'Failed to read the car row: ' . $this->db->errorString());
-        $this->assertNotNull($row, "Car {$carId} must still exist");
+        $this->assertIsObject($row, "Car {$carId} must still exist");
         $this->assertSame($ownerId, (int) $row->user_id);
         $this->assertSame('Red', $row->color);
         $this->assertSame('["owner-photo.jpg"]', $row->image);
