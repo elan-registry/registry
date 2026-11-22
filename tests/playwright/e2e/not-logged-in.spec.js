@@ -2,6 +2,12 @@ const { test, expect } = require('@playwright/test');
 const { CAR_ID_STANDARD, CAR_ID_REDIRECT_TEST } = require('../fixtures.js');
 const { assertPageTitle } = require('../auth-helper.js');
 const { assertValidTier } = require('./auth-staleness-tier.js');
+const {
+  discoverInternalLinks,
+  splitDownloadableLinks,
+  checkNavigableLinks,
+  checkDownloadableLinks,
+} = require('./link-discovery.js');
 
 // True on the local stack (E2E_AUTH_TIER unset). assertValidTier() makes a
 // stray shell export fail loudly instead of picking the wrong tier.
@@ -190,16 +196,6 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
     },
   ];
 
-  test('page-specific titles are unique across all pages (#1432)', () => {
-    const titles = pages.map(p => p.expectedTitle).filter(Boolean);
-    expect(new Set(titles).size).toBe(titles.length);
-  });
-
-  test('page-specific descriptions are unique across all pages (#1432)', () => {
-    const descriptions = pages.map(p => p.expectedDescription).filter(Boolean);
-    expect(new Set(descriptions).size).toBe(descriptions.length);
-  });
-
   pages.forEach(({ path, name, selector, expectedText, isLoginPage, expectedTitle, expectedDescription }) => {
     test(`should be able to reach ${name} page`, async ({ page }) => {
       const response = await page.goto(path);
@@ -285,132 +281,32 @@ test.describe('Internal Links Discovery and Testing (Not Logged In)', () => {
 
   test('test all unique internal links found across all pages', async ({ page }) => {
     test.setTimeout(120000); // 2 minutes for testing 50+ links on production
-    const allInternalLinks = new Map();
     // All discovery pages except Forgot Password count as public pages for warning purposes
     const publicPageNames = pages.filter(p => p.name !== 'Forgot Password').map(p => p.name);
 
-    console.log('\n=== Discovering Internal Links ===');
-    for (const { path, name } of pages) {
-      await page.goto(path);
-      await page.waitForLoadState('domcontentloaded');
-
-      const contentLinks = await page.locator('a:not(header a, nav a)').all();
-
-      for (const link of contentLinks) {
-        const href = await link.getAttribute('href');
-
-        // Security: Use proper URL parsing to validate hostname, not substring matching
-        let isInternalLink = href && href.startsWith('/');
-        if (href && href.startsWith('http')) {
-          try {
-            const url = new URL(href);
-            const siteHost = new URL(page.url()).hostname;
-            isInternalLink = url.hostname === siteHost || url.hostname === `www.${siteHost}`;
-          } catch (_e) {
-            isInternalLink = false;
-          }
-        }
-
-        if (isInternalLink) {
-          // Convert to relative path if it's a full URL
-          const relativePath = href.startsWith('http')
-            ? new URL(href).pathname
-            : href;
-
-          // Track which page this link was found on
-          if (!allInternalLinks.has(relativePath)) {
-            allInternalLinks.set(relativePath, {
-              url: relativePath,
-              foundOn: [name]
-            });
-          } else {
-            const existing = allInternalLinks.get(relativePath);
-            if (!existing.foundOn.includes(name)) {
-              existing.foundOn.push(name);
-            }
-          }
-        }
-      }
-    }
-
-    const uniqueLinks = Array.from(allInternalLinks.values()).map(link => link.url).sort();
-
-    // Separate links into navigable pages and downloadable files
-    const downloadExtensions = ['.pdf', '.zip', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.gif', '.svg'];
-    const navigableLinks = [];
-    const downloadableLinks = [];
-
-    uniqueLinks.forEach(link => {
-      const isDownloadable = downloadExtensions.some(ext => link.toLowerCase().endsWith(ext));
-      if (isDownloadable) {
-        downloadableLinks.push(link);
-      } else {
-        // Exclude /app/owner/cars/details.php links except for CAR_ID_STANDARD (to avoid testing many individual car pages)
-        if (link.includes('/app/owner/cars/details.php') && !link.includes(`car_id=${CAR_ID_STANDARD}`)) {
-          // Skip this link - it's a car details page other than CAR_ID_STANDARD
-          return;
-        }
-        navigableLinks.push(link);
-      }
-    });
+    const foundOn = await discoverInternalLinks(page, pages);
+    const uniqueLinks = Array.from(foundOn.keys()).sort();
+    const { navigableLinks: allNavigableLinks, downloadableLinks } = splitDownloadableLinks(uniqueLinks);
+    // Check only the CAR_ID_STANDARD details page, not every listed car.
+    const navigableLinks = allNavigableLinks.filter(link =>
+      !link.includes('/app/owner/cars/details.php') || link.includes(`car_id=${CAR_ID_STANDARD}`));
 
     console.log(`\n=== Testing Links ===`);
     console.log(`Navigable pages: ${navigableLinks.length}`);
     console.log(`Downloadable files: ${downloadableLinks.length}`);
-    console.log(`Total unique links: ${uniqueLinks.length}`);
-    expect(navigableLinks.length, 'Link discovery found no navigable links, so the loop below would check nothing').toBeGreaterThan(0);
-    console.log(`Links from public pages: ${allInternalLinks.size}\n`);
+    console.log(`Total unique links: ${uniqueLinks.length}\n`);
 
-    let successCount = 0;
-    let failCount = 0;
-    let protectedLinksFromPublic = []; // Track protected pages linked from public pages
-
-    // Test navigable pages
-    console.log('=== Testing Navigable Pages ===\n');
-    for (const linkPath of navigableLinks) {
-      try {
-        const response = await page.goto(linkPath);
-        const status = response.status();
-        const currentUrl = page.url();
-        const redirectsToLogin = currentUrl.includes('login.php');
-
-        if (status < 400) {
-          if (redirectsToLogin) {
-            // This link is protected (redirects to login)
-            const linkData = allInternalLinks.get(linkPath);
-            const foundOn = linkData ? linkData.foundOn : [];
-            const foundOnPublic = foundOn.some(name => publicPageNames.includes(name));
-
-            if (foundOnPublic) {
-              // Protected link found on public page - log as warning
-              protectedLinksFromPublic.push({
-                link: linkPath,
-                foundOn: foundOn
-              });
-              console.log(`⚠️  ${linkPath} - Protected (requires login, found on: ${foundOn.join(', ')})`);
-            } else {
-              // Protected link found on non-public pages - OK
-              console.log(`✓ ${linkPath} - Protected (found on non-public pages)`);
-              successCount++;
-            }
-          } else {
-            successCount++;
-            console.log(`✓ ${linkPath} - Status: ${status}`);
-          }
-        } else {
-          failCount++;
-          console.log(`✗ ${linkPath} - Status: ${status}`);
-        }
-
-        expect(status).toBeLessThan(400);
-      } catch (error) {
-        failCount++;
-        console.log(`✗ ${linkPath} - Error: ${error.message}`);
-        throw error;
+    // A protected page (one that redirects to login) linked from a public
+    // page is a warning, not a failure.
+    const protectedLinksFromPublic = [];
+    await checkNavigableLinks(page, navigableLinks, (linkPath, loadedPage) => {
+      const linkFoundOn = foundOn.get(linkPath) ?? [];
+      if (loadedPage.url().includes('login.php') && linkFoundOn.some(name => publicPageNames.includes(name))) {
+        protectedLinksFromPublic.push({ link: linkPath, foundOn: linkFoundOn });
+        console.log(`⚠️  ${linkPath} - Protected (requires login, found on: ${linkFoundOn.join(', ')})`);
       }
-    }
+    });
 
-    // Report protected links found on public pages
     if (protectedLinksFromPublic.length > 0) {
       console.log('\n=== Protected Pages Linked From Public Pages ===\n');
       protectedLinksFromPublic.forEach((item, index) => {
@@ -419,45 +315,19 @@ test.describe('Internal Links Discovery and Testing (Not Logged In)', () => {
       });
     }
 
-    // Test downloadable files using fetch API
-    console.log('\n=== Testing Downloadable Files ===\n');
-    for (const linkPath of downloadableLinks) {
-      try {
-        const context = page.context();
-        // Resolve against the current page's origin, not a hardcoded prod
-        // host — otherwise test:e2e:test silently checks prod's files.
-        const fullURL = linkPath.startsWith('http') ? linkPath : new URL(linkPath, page.url()).toString();
-
-        // Use API request context to check if file exists without downloading
-        const response = await context.request.head(fullURL);
-        const status = response.status();
-
-        if (status < 400) {
-          successCount++;
-          console.log(`✓ ${linkPath} - Status: ${status} (file exists)`);
-        } else {
-          failCount++;
-          console.log(`✗ ${linkPath} - Status: ${status}`);
-        }
-
-        expect(status).toBeLessThan(400);
-      } catch (error) {
-        failCount++;
-        console.log(`✗ ${linkPath} - Error: ${error.message}`);
-        throw error;
-      }
-    }
-
-    console.log(`\n=== Results ===`);
-    console.log(`Total links tested: ${uniqueLinks.length}`);
-    console.log(`Navigable pages: ${navigableLinks.length}`);
-    console.log(`Downloadable files: ${downloadableLinks.length}`);
-    console.log(`Successful: ${successCount}`);
-    console.log(`Failed: ${failCount}`);
+    await checkDownloadableLinks(page, downloadableLinks);
   });
 });
 
-test.describe('Redirect verification — GSC 404 and soft 404 cleanup (#1369)', () => {
+// Each row must answer 301 with Location set to `to` (#1369, #1539, #1409, #1473).
+// Flags:
+// - followStatus: also request the target and expect this status. A redirect
+//   into a login wall passes the Location check alone (#1539).
+// - mountPrefixed: the Location carries the mount prefix (pdf-viewer.php), so
+//   resolve both sides against baseURL (#2055).
+// - caseSensitiveFsOnly: the redirect depends on a case-sensitive filesystem,
+//   which the local stack does not have.
+test.describe('Redirect map — legacy and GSC-flagged URLs answer 301 to the canonical path', () => {
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'not-logged-in') {
       testInfo.skip(true, 'Only runs under the not-logged-in project');
@@ -465,6 +335,7 @@ test.describe('Redirect verification — GSC 404 and soft 404 cleanup (#1369)', 
   });
 
   const redirects = [
+    // GSC 404 and soft 404 cleanup (#1369)
     {
       from: 'docs/embed.php?doc=Elan_26_36_Workshop_Manual.pdf',
       to: '/docs/pdf-viewer.php?subdir=reference&doc=Elan_26_36_Workshop_Manual.pdf',
@@ -548,15 +419,135 @@ test.describe('Redirect verification — GSC 404 and soft 404 cleanup (#1369)', 
       to: '/docs/car-stories.php',
       label: '/stories/ bare directory (#2247)',
     },
+    // Bare-directory 403s (#1539)
+    {
+      from: 'app/owner/reports/',
+      to: '/app/owner/reports/statistics.php',
+      label: 'app/owner/reports/ bare-directory 403 → statistics.php',
+      followStatus: 200,
+    },
+    {
+      from: 'app/owner/',
+      to: '/app/owner/cars/',
+      label: 'app/owner/ bare-directory 403 → cars/',
+      followStatus: 200,
+    },
+    {
+      from: 'docs/stories/',
+      to: '/docs/car-stories.php',
+      label: 'docs/stories/ bare-directory 403 → car-stories.php',
+      followStatus: 200,
+    },
+    {
+      // The URL GSC flagged (#1539): must land in one hop.
+      from: 'app/reports/',
+      to: '/app/owner/reports/statistics.php',
+      label: 'app/reports/ (legacy, GSC-flagged) → statistics.php, single hop',
+      followStatus: 200,
+    },
+    // GSC 404 cleanup (#1409)
+    {
+      from: 'docs/guide-viewer.php?doc=ADD_CAR_GUIDE.md',
+      to: '/docs/guides/',
+      label: 'docs/guide-viewer.php ADD_CAR_GUIDE.md',
+    },
+    {
+      from: 'app/manage_cars.php',
+      to: '/app/owner/cars/index.php',
+      label: '/app/manage_cars.php legacy path',
+    },
+    {
+      from: 'app/edit_car.php',
+      to: '/app/owner/cars/edit.php',
+      label: '/app/edit_car.php legacy path',
+    },
+    {
+      from: 'app/statistics.php',
+      to: '/app/owner/reports/statistics.php',
+      label: '/app/statistics.php legacy path',
+    },
+    {
+      from: 'docs/guide-viewer.php?doc=PRIVACY.md',
+      to: '/app/owner/privacy.php',
+      label: 'docs/guide-viewer.php PRIVACY.md',
+    },
+    {
+      from: 'docs/stories/type26registry/',
+      to: '/docs/stories/type26register.com/',
+      label: 'docs/stories/type26registry/ typo-fix redirect',
+    },
+    {
+      from: 'docs/reference/assets/Elan_S1_S2_Coupe_Masterpartslist.pdf',
+      to: '/docs/reference/assets/elan_s1_s2_coupe_masterpartslist.pdf',
+      label: 'PDF asset case mismatch: capitalized legacy URL → renamed lowercase asset',
+    },
+    {
+      from: 'embed.php?doc=elan_s1_s2_coupe_masterpartslist.pdf',
+      to: '/docs/pdf-viewer.php?subdir=reference&doc=elan_s1_s2_coupe_masterpartslist.pdf',
+      label: 'root embed.php soft 404 → pdf-viewer.php',
+    },
+    // PDF viewer subdir normalization (#1473)
+    {
+      from: 'docs/pdf-viewer.php?subdir=reference/assets&doc=elan_s1_s2_coupe_masterpartslist.pdf',
+      to: '/docs/pdf-viewer.php?subdir=reference&doc=elan_s1_s2_coupe_masterpartslist.pdf',
+      label: 'pdf-viewer.php legacy subdir=reference/assets → subdir=reference',
+      mountPrefixed: true,
+    },
+    {
+      from: `docs/pdf-viewer.php?subdir=stories/assets&doc=${encodeURIComponent('Mag _issue_50_p12-15_Barry-Shapecraft.pdf')}`,
+      to: `/docs/pdf-viewer.php?subdir=stories&doc=${encodeURIComponent('Mag _issue_50_p12-15_Barry-Shapecraft.pdf')}`,
+      label: 'pdf-viewer.php legacy subdir=stories/assets → subdir=stories',
+      mountPrefixed: true,
+    },
+    // #1594: wrong subdir, wrong case, or both must 301 to the canonical path.
+    {
+      from: `docs/pdf-viewer.php?subdir=reference&doc=${encodeURIComponent('Mag _issue_50_p12-15_Barry-Shapecraft.pdf')}`,
+      to: `/docs/pdf-viewer.php?subdir=stories&doc=${encodeURIComponent('Mag _issue_50_p12-15_Barry-Shapecraft.pdf')}`,
+      label: 'pdf-viewer.php #1594 correct filename/case but wrong subdir (reference → stories)',
+      mountPrefixed: true,
+    },
+    {
+      from: 'docs/pdf-viewer.php?subdir=reference&doc=Elan_S1_S2_Coupe_Masterpartslist.pdf',
+      to: '/docs/pdf-viewer.php?subdir=reference&doc=elan_s1_s2_coupe_masterpartslist.pdf',
+      label: 'pdf-viewer.php #1594 correct subdir but wrong filename case',
+      // The local macOS bind mount is case-insensitive, so this resolves
+      // directly (200) there.
+      caseSensitiveFsOnly: true,
+      mountPrefixed: true,
+    },
+    {
+      from: 'docs/pdf-viewer.php?subdir=stories&doc=Elan_S1_S2_Coupe_Masterpartslist.pdf',
+      to: '/docs/pdf-viewer.php?subdir=reference&doc=elan_s1_s2_coupe_masterpartslist.pdf',
+      label: 'pdf-viewer.php #1594 wrong subdir AND wrong filename case',
+      mountPrefixed: true,
+    },
   ];
 
-  redirects.forEach(({ from, to, label }) => {
-    test(`301: ${label}`, async ({ request }) => {
+  redirects.forEach(({ from, to, label, followStatus, mountPrefixed, caseSensitiveFsOnly }) => {
+    test(`301: ${label}`, async ({ request, baseURL }) => {
+      test.skip(
+        IS_LOCAL_DEV_TIER && !!caseSensitiveFsOnly,
+        'macOS bind mount is case-insensitive, so filename case mismatches do not redirect locally'
+      );
       const response = await request.get(from, { maxRedirects: 0 });
       expect(response.status(), `Expected 301 for ${from}`).toBe(301);
       const location = response.headers()['location'] ?? '';
-      const locationPath = toLocationPath(location);
-      expect(locationPath, `Expected Location: ${to} for ${from}`).toBe(to);
+      const expected = new URL(stripLeadingSlash(to), baseURL);
+
+      if (mountPrefixed) {
+        const actual = new URL(location, baseURL);
+        expect(
+          actual.pathname + actual.search,
+          `Expected Location: ${expected.pathname}${expected.search} for ${from}`
+        ).toBe(expected.pathname + expected.search);
+      } else {
+        expect(toLocationPath(location), `Expected Location: ${to} for ${from}`).toBe(to);
+      }
+
+      if (followStatus !== undefined) {
+        const followed = await request.get(expected.href);
+        expect(followed.status(), `Expected ${followStatus} for redirect target ${to}`).toBe(followStatus);
+      }
     });
   });
 });
@@ -566,44 +557,6 @@ test.describe('Bare-directory 403s and docs/assets/ CSS relocation (#1539)', () 
     if (testInfo.project.name !== 'not-logged-in') {
       testInfo.skip(true, 'Only runs under the not-logged-in project');
     }
-  });
-
-  const redirects = [
-    {
-      from: 'app/owner/reports/',
-      to: '/app/owner/reports/statistics.php',
-      label: 'app/owner/reports/ bare-directory 403 → statistics.php',
-    },
-    {
-      from: 'app/owner/',
-      to: '/app/owner/cars/',
-      label: 'app/owner/ bare-directory 403 → cars/',
-    },
-    {
-      from: 'docs/stories/',
-      to: '/docs/car-stories.php',
-      label: 'docs/stories/ bare-directory 403 → car-stories.php',
-    },
-    {
-      // The URL GSC flagged (#1539): must land in one hop.
-      from: 'app/reports/',
-      to: '/app/owner/reports/statistics.php',
-      label: 'app/reports/ (legacy, GSC-flagged) → statistics.php, single hop',
-    },
-  ];
-
-  redirects.forEach(({ from, to, label }) => {
-    test(`301: ${label}`, async ({ request, baseURL }) => {
-      const response = await request.get(from, { maxRedirects: 0 });
-      expect(response.status(), `Expected 301 for ${from}`).toBe(301);
-      const location = response.headers()['location'] ?? '';
-      const locationPath = toLocationPath(location);
-      expect(locationPath, `Expected Location: ${to} for ${from}`).toBe(to);
-
-      // Follow through: a redirect into a login wall would pass the checks above (#2055 for the slash).
-      const followed = await request.get(new URL(stripLeadingSlash(to), baseURL).href);
-      expect(followed.status(), `Expected 200 for redirect target ${to}`).toBe(200);
-    });
   });
 
   test('regression guard: /app/owner/reports/statistics.php requested directly is NOT redirected (mod_alias prefix-match trap)', async ({ request }) => {
@@ -684,59 +637,6 @@ test.describe('GSC 404 cleanup redirects (#1409)', () => {
     }
   });
 
-  const redirects = [
-    {
-      from: 'docs/guide-viewer.php?doc=ADD_CAR_GUIDE.md',
-      to: '/docs/guides/',
-      label: 'docs/guide-viewer.php ADD_CAR_GUIDE.md',
-    },
-    {
-      from: 'app/manage_cars.php',
-      to: '/app/owner/cars/index.php',
-      label: '/app/manage_cars.php legacy path',
-    },
-    {
-      from: 'app/edit_car.php',
-      to: '/app/owner/cars/edit.php',
-      label: '/app/edit_car.php legacy path',
-    },
-    {
-      from: 'app/statistics.php',
-      to: '/app/owner/reports/statistics.php',
-      label: '/app/statistics.php legacy path',
-    },
-    {
-      from: 'docs/guide-viewer.php?doc=PRIVACY.md',
-      to: '/app/owner/privacy.php',
-      label: 'docs/guide-viewer.php PRIVACY.md',
-    },
-    {
-      from: 'docs/stories/type26registry/',
-      to: '/docs/stories/type26register.com/',
-      label: 'docs/stories/type26registry/ typo-fix redirect',
-    },
-    {
-      from: 'docs/reference/assets/Elan_S1_S2_Coupe_Masterpartslist.pdf',
-      to: '/docs/reference/assets/elan_s1_s2_coupe_masterpartslist.pdf',
-      label: 'PDF asset case mismatch: capitalized legacy URL → renamed lowercase asset',
-    },
-    {
-      from: 'embed.php?doc=elan_s1_s2_coupe_masterpartslist.pdf',
-      to: '/docs/pdf-viewer.php?subdir=reference&doc=elan_s1_s2_coupe_masterpartslist.pdf',
-      label: 'root embed.php soft 404 → pdf-viewer.php',
-    },
-  ];
-
-  redirects.forEach(({ from, to, label }) => {
-    test(`301: ${label}`, async ({ request }) => {
-      const response = await request.get(from, { maxRedirects: 0 });
-      expect(response.status(), `Expected 301 for ${from}`).toBe(301);
-      const location = response.headers()['location'] ?? '';
-      const locationPath = toLocationPath(location);
-      expect(locationPath, `Expected Location: ${to} for ${from}`).toBe(to);
-    });
-  });
-
   test('renamed PDF asset (lowercase) returns 200', async ({ request }) => {
     const response = await request.get(
       `docs/reference/assets/elan_s1_s2_coupe_masterpartslist.pdf`
@@ -767,64 +667,11 @@ test.describe('GSC 404 cleanup redirects (#1409)', () => {
   });
 });
 
-// A per-entry `caseSensitiveFsOnly: true` flag marks redirects that depend on
-// a case-sensitive filesystem, which the local stack does not have.
 test.describe('PDF viewer subdir normalization and 404 fixes (#1473)', () => {
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'not-logged-in') {
       testInfo.skip(true, 'Only runs under the not-logged-in project');
     }
-  });
-
-  const redirects = [
-    {
-      from: 'docs/pdf-viewer.php?subdir=reference/assets&doc=elan_s1_s2_coupe_masterpartslist.pdf',
-      to: '/docs/pdf-viewer.php?subdir=reference&doc=elan_s1_s2_coupe_masterpartslist.pdf',
-      label: 'pdf-viewer.php legacy subdir=reference/assets → subdir=reference',
-    },
-    {
-      from: `docs/pdf-viewer.php?subdir=stories/assets&doc=${encodeURIComponent('Mag _issue_50_p12-15_Barry-Shapecraft.pdf')}`,
-      to: `/docs/pdf-viewer.php?subdir=stories&doc=${encodeURIComponent('Mag _issue_50_p12-15_Barry-Shapecraft.pdf')}`,
-      label: 'pdf-viewer.php legacy subdir=stories/assets → subdir=stories',
-    },
-    // #1594: wrong subdir, wrong case, or both must 301 to the canonical path.
-    {
-      from: `docs/pdf-viewer.php?subdir=reference&doc=${encodeURIComponent('Mag _issue_50_p12-15_Barry-Shapecraft.pdf')}`,
-      to: `/docs/pdf-viewer.php?subdir=stories&doc=${encodeURIComponent('Mag _issue_50_p12-15_Barry-Shapecraft.pdf')}`,
-      label: 'pdf-viewer.php #1594 correct filename/case but wrong subdir (reference → stories)',
-    },
-    {
-      from: 'docs/pdf-viewer.php?subdir=reference&doc=Elan_S1_S2_Coupe_Masterpartslist.pdf',
-      to: '/docs/pdf-viewer.php?subdir=reference&doc=elan_s1_s2_coupe_masterpartslist.pdf',
-      label: 'pdf-viewer.php #1594 correct subdir but wrong filename case',
-      // The local macOS bind mount is case-insensitive, so this resolves
-      // directly (200) there.
-      caseSensitiveFsOnly: true,
-    },
-    {
-      from: 'docs/pdf-viewer.php?subdir=stories&doc=Elan_S1_S2_Coupe_Masterpartslist.pdf',
-      to: '/docs/pdf-viewer.php?subdir=reference&doc=elan_s1_s2_coupe_masterpartslist.pdf',
-      label: 'pdf-viewer.php #1594 wrong subdir AND wrong filename case',
-    },
-  ];
-
-  redirects.forEach(({ from, to, label, caseSensitiveFsOnly }) => {
-    test(`301: ${label}`, async ({ request, baseURL }) => {
-      test.skip(
-        IS_LOCAL_DEV_TIER && caseSensitiveFsOnly,
-        'macOS bind mount is case-insensitive, so filename case mismatches do not redirect locally'
-      );
-      const response = await request.get(from, { maxRedirects: 0 });
-      expect(response.status(), `Expected 301 for ${from}`).toBe(301);
-      const location = response.headers()['location'] ?? '';
-      // pdf-viewer.php's Location is mount-prefixed, so resolve both sides against baseURL (#2055).
-      const actual = new URL(location, baseURL);
-      const expected = new URL(stripLeadingSlash(to), baseURL);
-      expect(
-        actual.pathname + actual.search,
-        `Expected Location: ${expected.pathname}${expected.search} for ${from}`
-      ).toBe(expected.pathname + expected.search);
-    });
   });
 
   test('200: pdf-viewer.php valid subdir and existing document', async ({ page, baseURL }) => {

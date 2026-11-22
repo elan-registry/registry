@@ -1,5 +1,19 @@
 const { test, expect } = require('@playwright/test');
 const { CAR_ID_WITH_HISTORY } = require('../fixtures.js');
+const { assertValidTier } = require('./auth-staleness-tier.js');
+const {
+  discoverInternalLinks,
+  splitDownloadableLinks,
+  checkNavigableLinks,
+  checkDownloadableLinks,
+} = require('./link-discovery.js');
+
+// Local/Dev (E2E_AUTH_TIER unset) log in with E2E_DEV_ADMIN_* in the setup
+// project. Test/Prod load a saved storageState, and their configs register
+// the admin project only when that file exists.
+assertValidTier(process.env.E2E_AUTH_TIER, { allowUnset: true }, 'admin.spec.js');
+const HAS_ADMIN_SESSION = process.env.E2E_AUTH_TIER !== undefined
+  || !!(process.env.E2E_DEV_ADMIN_USERNAME && process.env.E2E_DEV_ADMIN_PASSWORD);
 
 test.describe('Elan Registry - Menu Verification (Logged In)', () => {
   // Skip these tests if NOT running in admin project
@@ -216,132 +230,26 @@ test.describe('Internal Links Discovery and Testing (Logged In)', () => {
   ];
 
   test('test all unique internal links found across all pages when logged in', async ({ page }) => {
-    const allInternalLinks = new Set();
-
-    console.log('\n=== Discovering Internal Links (Logged In) ===');
-    for (const { path } of pages) {
-      await page.goto(path);
-      await page.waitForLoadState('domcontentloaded');
-
-      const contentLinks = await page.locator('a:not(header a, nav a)').all();
-
-      for (const link of contentLinks) {
-        const href = await link.getAttribute('href');
-
-        // Security: Use proper URL parsing to validate hostname, not substring matching
-        let isInternalLink = href && href.startsWith('/');
-        if (href && href.startsWith('http')) {
-          try {
-            const url = new URL(href);
-            const siteHost = new URL(page.url()).hostname;
-            isInternalLink = url.hostname === siteHost || url.hostname === `www.${siteHost}`;
-          } catch (_e) {
-            isInternalLink = false;
-          }
-        }
-
-        if (isInternalLink) {
-          const relativePath = href.startsWith('http')
-            ? new URL(href).pathname
-            : href;
-          allInternalLinks.add(relativePath);
-        }
-      }
-    }
+    const foundOn = await discoverInternalLinks(page, pages);
 
     // The Customizer menu is a bare <ul class="us_menu"> with no <nav> or
-    // <header> wrapper, so the selector above also collects its Logout link
+    // <header> wrapper, so link discovery also collects its Logout link
     // (users/logout.php). A visit to it ends the shared admin storageState
     // session, and later tests in this project (for example the #2144 car
     // history tests) then run logged out. No other GET link ends the session.
     const isSessionEndingLink = link => /\/logout\.php(\?|#|$)/i.test(link);
-    const uniqueLinks = Array.from(allInternalLinks)
+    const uniqueLinks = Array.from(foundOn.keys())
       .filter(link => !isSessionEndingLink(link))
       .sort();
-
-    const downloadExtensions = ['.pdf', '.zip', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.gif', '.svg'];
-    const navigableLinks = [];
-    const downloadableLinks = [];
-
-    uniqueLinks.forEach(link => {
-      const isDownloadable = downloadExtensions.some(ext => link.toLowerCase().endsWith(ext));
-      if (isDownloadable) {
-        downloadableLinks.push(link);
-      } else {
-        navigableLinks.push(link);
-      }
-    });
+    const { navigableLinks, downloadableLinks } = splitDownloadableLinks(uniqueLinks);
 
     console.log(`\n=== Testing Links (Logged In) ===`);
     console.log(`Navigable pages: ${navigableLinks.length}`);
     console.log(`Downloadable files: ${downloadableLinks.length}`);
     console.log(`Total unique links: ${uniqueLinks.length}\n`);
-    expect(navigableLinks.length, 'Link discovery found no navigable links, so the loop below would check nothing').toBeGreaterThan(0);
 
-    let successCount = 0;
-    let failCount = 0;
-
-    console.log('=== Testing Navigable Pages ===\n');
-    for (const linkPath of navigableLinks) {
-      try {
-        const response = await page.goto(linkPath);
-        const status = response.status();
-
-        if (status < 400) {
-          successCount++;
-          console.log(`✓ ${linkPath} - Status: ${status}`);
-        } else {
-          failCount++;
-          console.log(`✗ ${linkPath} - Status: ${status}`);
-        }
-
-        expect(status).toBeLessThan(400);
-      } catch (error) {
-        failCount++;
-        console.log(`✗ ${linkPath} - Error: ${error.message}`);
-        throw error;
-      }
-    }
-
-    console.log('\n=== Testing Downloadable Files ===\n');
-    for (const linkPath of downloadableLinks) {
-      try {
-        const context = page.context();
-        // linkPath is an absolute-path href scraped directly from the
-        // rendered page (e.g. '/ElanRegistry/Registry/docs/pdf-viewer.php?...'
-        // locally, '/docs/pdf-viewer.php?...' when deployed) — it already
-        // includes whatever path prefix this environment uses. Resolve it
-        // against the current page's own origin rather than a hardcoded
-        // 'https://elanregistry.org', which previously made this always
-        // target prod regardless of which config ran the test, 404ing on
-        // local's path-prefixed URLs.
-        const fullURL = linkPath.startsWith('http') ? linkPath : new URL(linkPath, page.url()).toString();
-
-        const response = await context.request.head(fullURL);
-        const status = response.status();
-
-        if (status < 400) {
-          successCount++;
-          console.log(`✓ ${linkPath} - Status: ${status} (file exists)`);
-        } else {
-          failCount++;
-          console.log(`✗ ${linkPath} - Status: ${status}`);
-        }
-
-        expect(status).toBeLessThan(400);
-      } catch (error) {
-        failCount++;
-        console.log(`✗ ${linkPath} - Error: ${error.message}`);
-        throw error;
-      }
-    }
-
-    console.log(`\n=== Results (Logged In) ===`);
-    console.log(`Total links tested: ${uniqueLinks.length}`);
-    console.log(`Navigable pages: ${navigableLinks.length}`);
-    console.log(`Downloadable files: ${downloadableLinks.length}`);
-    console.log(`Successful: ${successCount}`);
-    console.log(`Failed: ${failCount}`);
+    await checkNavigableLinks(page, navigableLinks);
+    await checkDownloadableLinks(page, downloadableLinks);
   });
 });
 
@@ -359,10 +267,10 @@ test.describe('Issue #2144 — car history requires login (member regression cov
   });
 
   test('member sees history table rows after opening the history section', async ({ page }) => {
-    // Skip only for the environmental cause: no member session. Everything
+    // Skip only for the environmental cause: no admin session. Everything
     // after that is asserted, not guarded, so a regression that hides the
     // history card from members fails this test instead of skipping it.
-    test.skip(!process.env.E2E_DEV_ADMIN_USERNAME || !process.env.E2E_DEV_ADMIN_PASSWORD, 'Set E2E_DEV_ADMIN_USERNAME and E2E_DEV_ADMIN_PASSWORD in .env.local to run authenticated tests');
+    test.skip(!HAS_ADMIN_SESSION, 'Local/Dev has no admin session: set E2E_DEV_ADMIN_USERNAME and E2E_DEV_ADMIN_PASSWORD in .env.local');
 
     await page.goto(`app/owner/cars/details.php?car_id=${CAR_ID_WITH_HISTORY}`, { waitUntil: 'domcontentloaded' });
 
@@ -381,7 +289,7 @@ test.describe('Issue #2144 — car history requires login (member regression cov
   });
 
   test('a 401 from history.php shows the "session has ended" message', async ({ page }) => {
-    test.skip(!process.env.E2E_DEV_ADMIN_USERNAME || !process.env.E2E_DEV_ADMIN_PASSWORD, 'Set E2E_DEV_ADMIN_USERNAME and E2E_DEV_ADMIN_PASSWORD in .env.local to run authenticated tests');
+    test.skip(!HAS_ADMIN_SESSION, 'Local/Dev has no admin session: set E2E_DEV_ADMIN_USERNAME and E2E_DEV_ADMIN_PASSWORD in .env.local');
 
     // DataTables' ajax sets `cache: false`, so jQuery appends `?_=<timestamp>`
     // even to this POST. A plain glob on the path never matches; the regex

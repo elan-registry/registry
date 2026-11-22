@@ -181,7 +181,7 @@ after an item is written.
 
 ### `tests/integration/UserSettingsResumeVerificationEndpointTest.php`
 
-- [ ] The class has its own `php -r` subprocess copy of the endpoint runner. Use `IntegrationTestCase::invokeEndpoint()` and delete the copy. `invokeEndpoint()` needs GET/HTML or session-flash support first (found in #2165)
+- [ ] The class has its own `php -r` subprocess copy of the endpoint runner. Use `IntegrationTestCase::invokeEndpoint()` and delete the copy. Since #2400 it also takes `$method`, so it can run GET requests (found in #2165)
 - [ ] The runner reads a missing `___EXIT:` marker as exit code 0 (`array_pad(..., '0')`, ~L209). The migration item above fixes it. (found in #2165)
 
 ### `tests/integration/VerifyCarLandingPageTest.php` (test coverage)
@@ -213,10 +213,6 @@ after an item is written.
 ### `tests/playwright/contact-owner-page.spec.js` (test coverage)
 
 - [ ] No browser test checks that the contact form shows the 409 "cannot be contacted" message from #2712. `tests/integration/SendOwnerEmailNoOwnerTest.php` checks only the API body. The display goes through `usError(error.message)` in `app/assets/js/contact-form.js` (found in /flow:finish-milestone v2.34.0)
-
-### `tests/playwright/e2e/admin.spec.js`
-
-- [ ] The two #2144 history tests skip when `E2E_DEV_ADMIN_USERNAME` or `E2E_DEV_ADMIN_PASSWORD` is not set, also on the test and prod tiers. On those tiers the admin session comes from the saved storageState, so the guard and its skip message name the wrong credentials. Check the credentials for the current tier, or remove the guard where storageState supplies the session (found in #2387)
 
 ### `tests/playwright/local/fixtures/`
 

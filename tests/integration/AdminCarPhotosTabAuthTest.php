@@ -13,11 +13,10 @@ use Tests\Support\TestJpeg;
 /**
  * #2644: the Car Photos tab of app/admin/index.php.
  *
- * Each request runs the real page through invokeEndpoint(). That method
- * always sends a POST. A "GET" here is a request with an empty $post and
- * csrfMode 'omit': $_POST is empty, so ElanInput::existsPost() is false and
- * the page takes its render path, as for a real GET. $get carries
- * `tab=car-photos`.
+ * Each request runs the real page through invokeEndpoint() with the default
+ * POST method. A "GET" here is a POST with an empty $post and csrfMode
+ * 'omit': $_POST is empty, so ElanInput::existsPost() is false and the page
+ * takes its render path, as for a real GET. $get carries `tab=car-photos`.
  *
  * The page reads photo files from the real `userimages/{carId}/`, so the test
  * writes there. tearDown removes each directory that the test made. newCar()

@@ -1,7 +1,6 @@
 // Load .env.local first — E2E_TEST_*/E2E_PROD_* credentials live there,
 // and any spec collected under this config that reads process.env.E2E_*
-// (e.g. car-edit-workflow.spec.js, car-edit-owner-refresh.spec.js) needs
-// them present the same way playwright.config.js/.dev.js already do.
+// needs them present the same way playwright.config.js/.dev.js already do.
 require("dotenv").config({ path: ".env.local" });
 const { defineConfig, devices } = require("@playwright/test");
 const path = require("path");
