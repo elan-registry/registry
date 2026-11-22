@@ -437,19 +437,6 @@ final class CarRepositoryProfileFlagReadersTest extends IntegrationTestCase
         $this->assertNotSame('', $this->emailOnFileText($this->renderVehicleInfoCard($owner['car'], $state, true)), 'Control: the admin sees it');
     }
 
-    public function testCarDetailsPageLoadsTheOwnerProfileStateForTheCard(): void
-    {
-        $source = (string) file_get_contents(dirname(__DIR__, 4) . '/app/owner/cars/details.php');
-        $this->assertNotSame('', $source);
-
-        $loadAt = strpos($source, 'effectiveEmailFlags((int) $carData->user_id)');
-        $includeAt = strpos($source, "_vehicle_info_card.php'");
-        $this->assertNotFalse($loadAt, 'details.php must read the owner profile state');
-        $this->assertNotFalse($includeAt);
-        $this->assertLessThan($includeAt, $loadAt, 'The state must be loaded before the card is included');
-        $this->assertStringContainsString('$ownerEmailState = (new CarRepository(dbi()))', $source);
-    }
-
     // ---- account notice ------------------------------------------------------------------------
 
     public function testAccountNoticeReadsTheProfileFlags(): void

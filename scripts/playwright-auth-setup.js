@@ -13,15 +13,15 @@
  * docs/testing/PLAYWRIGHT_E2E.md.
  *
  * Credentials are read from .env.local (never committed) as
- * E2E_<TIER>_<ROLE>_USERNAME / E2E_<TIER>_<ROLE>_PASSWORD — see
+ * E2E_<TIER>_ADMIN_USERNAME / E2E_<TIER>_ADMIN_PASSWORD — see
  * docs/development/ENVIRONMENT.md.
  *
  * Usage:
- *   node scripts/playwright-auth-setup.js <test|prod> <admin|nonadmin>
+ *   node scripts/playwright-auth-setup.js <test|prod> admin
  *
  * Examples:
  *   node scripts/playwright-auth-setup.js test admin
- *   node scripts/playwright-auth-setup.js prod nonadmin
+ *   node scripts/playwright-auth-setup.js prod admin
  */
 
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env.local') });
@@ -31,7 +31,8 @@ const path = require('path');
 const fs = require('fs');
 
 const TIERS = ['test', 'prod'];
-const ROLES = ['admin', 'nonadmin'];
+// Only the admin role has a Test/Prod project (#2471).
+const ROLES = ['admin'];
 
 const TIER_HOSTS = {
   test: 'https://test.elanregistry.org',
@@ -43,12 +44,12 @@ function parseArgs(argv) {
 
   if (!TIERS.includes(tier)) {
     console.error(`❌ Error: first argument must be 'test' or 'prod' (got: ${tier || 'unset'})`);
-    console.log('\nUsage: node scripts/playwright-auth-setup.js <test|prod> <admin|nonadmin>');
+    console.log('\nUsage: node scripts/playwright-auth-setup.js <test|prod> admin');
     process.exit(1);
   }
   if (!ROLES.includes(role)) {
-    console.error(`❌ Error: second argument must be 'admin' or 'nonadmin' (got: ${role || 'unset'})`);
-    console.log('\nUsage: node scripts/playwright-auth-setup.js <test|prod> <admin|nonadmin>');
+    console.error(`❌ Error: second argument must be 'admin' (got: ${role || 'unset'})`);
+    console.log('\nUsage: node scripts/playwright-auth-setup.js <test|prod> admin');
     process.exit(1);
   }
 

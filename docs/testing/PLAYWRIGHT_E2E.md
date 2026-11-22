@@ -19,15 +19,12 @@ mostly-unauthenticated browser checks plus one `admin` project.
 `playwright.config.dev.js` (Dev) scopes to `tests/playwright/e2e/` only —
 the same `not-logged-in`/`admin` specs that run against Test/Production
 in CI — so a developer can validate that exact suite against the local
-Docker site first. Dev also provisions a `logged-in-non-admin` project — a second local
-test account distinct from `admin`'s admin account — covering
-`ajax-endpoints-non-admin.spec.js` (#2068), non-admin coverage of
-`requireAdminAjax()`'s `isRegistryAdmin()` branch.
+Docker site first.
 
-Every tier below has two authenticated project shapes: `admin` (admin
-account) and `logged-in` (non-admin account, #2035) — renamed from a single,
-ambiguously-named `logged-in` tier that was actually the admin account
-everywhere except Prod.
+Every tier below has one authenticated project: `admin` (admin account).
+PHPUnit integration tests cover the non-admin refusal of the admin AJAX
+endpoints (`tests/integration/AdminAjaxGuardBehaviorTest.php`), so no E2E
+tier has a non-admin project.
 
 ## Running Tests
 
@@ -58,7 +55,6 @@ npm run test:e2e:test              # All tests
 npm run test:e2e:test:headed       # With browser
 npm run test:e2e:test:not-logged-in
 npm run test:e2e:test:admin        # Authenticated admin tests
-npm run test:e2e:test:non-admin    # Authenticated non-admin tests
 npm run test:e2e:test:report
 ```
 
@@ -69,7 +65,6 @@ npm run test:e2e                   # All tests
 npm run test:e2e:headed            # With browser
 npm run test:e2e:not-logged-in
 npm run test:e2e:admin             # Authenticated admin tests
-npm run test:e2e:non-admin         # Authenticated non-admin tests
 npm run test:e2e:report
 ```
 
@@ -81,26 +76,25 @@ npm run test:e2e:dev:headed        # With browser
 npm run test:e2e:dev:ui            # UI mode
 npm run test:e2e:dev:not-logged-in # Public pages only
 npm run test:e2e:dev:admin         # Authenticated flows (admin account)
-npm run test:e2e:dev:non-admin     # Authenticated flows (non-admin account)
 npm run test:e2e:dev:report        # View test report
 ```
 
 ## Authentication Setup
 
 E2E tests use session persistence to avoid Turnstile challenges. Local and
-Dev tiers instead use a live login (`auth.setup.js` / `auth-dev.setup.js` /
-`auth-non-admin.setup.js`, see [ENVIRONMENT.md](../development/ENVIRONMENT.md)),
-with credentials from `E2E_DEV_ADMIN_USERNAME`/`E2E_DEV_ADMIN_PASSWORD` (admin) and
-`E2E_DEV_NONADMIN_USERNAME`/`E2E_DEV_NONADMIN_PASSWORD` (non-admin) in `.env.local` — plain HTTP,
-no Turnstile challenge. Test and Production use a pre-generated storageState
-file described below, since both run HTTPS with an active Cloudflare
+Dev tiers instead use a live login (`auth.setup.js` / `auth-dev.setup.js`, see
+[ENVIRONMENT.md](../development/ENVIRONMENT.md)), with credentials from
+`E2E_DEV_ADMIN_USERNAME`/`E2E_DEV_ADMIN_PASSWORD` in `.env.local` — plain
+HTTP, no Turnstile challenge. Some local specs in `tests/playwright/` also
+log in as a member with
+`E2E_DEV_NONADMIN_USERNAME`/`E2E_DEV_NONADMIN_PASSWORD`. Test and Production
+use a pre-generated storageState file described below, since both run HTTPS with an active Cloudflare
 Turnstile challenge that an automated browser cannot solve.
 
 ### Prerequisites
 
-- Credentials for all four Test/Prod tier×role combinations stored in
-  `.env.local` as `E2E_TEST_ADMIN_*`, `E2E_TEST_NONADMIN_*`,
-  `E2E_PROD_ADMIN_*`, `E2E_PROD_NONADMIN_*` (see
+- Admin credentials for Test and Production stored in `.env.local` as
+  `E2E_TEST_ADMIN_*` and `E2E_PROD_ADMIN_*` (see
   [ENVIRONMENT.md](../development/ENVIRONMENT.md) and `.env.example`).
 - **Turnstile must be manually disabled on the target environment before
   running the setup script** — an automated browser cannot solve a real
@@ -114,9 +108,7 @@ Turnstile challenge that an automated browser cannot solve.
 
 ```bash
 node scripts/playwright-auth-setup.js test admin
-node scripts/playwright-auth-setup.js test nonadmin
 node scripts/playwright-auth-setup.js prod admin
-node scripts/playwright-auth-setup.js prod nonadmin
 ```
 
 ### Setup Process
@@ -124,7 +116,7 @@ node scripts/playwright-auth-setup.js prod nonadmin
 1. Disable Turnstile on the target environment (Cloudflare dashboard).
 2. Run the relevant command above. Browser opens to the login page.
 3. Credentials from `.env.local` are auto-filled and submitted.
-4. Auth state saved to `tests/playwright/.auth/user-<tier>-<role>.json`.
+4. Auth state saved to `tests/playwright/.auth/user-<tier>-admin.json`.
 5. Browser closes.
 6. Re-enable Turnstile on the target environment.
 
@@ -133,14 +125,10 @@ node scripts/playwright-auth-setup.js prod nonadmin
 | Environment | Role | File | Config |
 | ----------- | ---- | ---- | ------ |
 | Test | admin | `.auth/user-test-admin.json` | `playwright.config.test.js` |
-| Test | non-admin | `.auth/user-test-nonadmin.json` | `playwright.config.test.js` |
 | Production | admin | `.auth/user-prod-admin.json` | `playwright.config.prod.js` |
-| Production | non-admin | `.auth/user-prod-nonadmin.json` | `playwright.config.prod.js` |
 
-The non-admin auth files are intended to hold a session for a non-admin
-owner account with at least one registered car. Each `(tier, role)`
-combination's project only registers when its own auth file is present —
-missing one file does not block the other three.
+Each config registers its `admin` project only when the admin auth file for
+that tier is present.
 
 Files are gitignored. Re-run setup if sessions expire.
 
@@ -152,21 +140,20 @@ Files are gitignored. Re-run setup if sessions expire.
 - No authentication required
 - Always runs
 
-### admin / logged-in
+### admin
 
-- Authenticated workflows (`admin` = admin account, `logged-in` = non-admin
-  account)
-- Requires a valid auth file for that tier×role
-- Local/Dev: preceded by a `setup`/`setup-non-admin` project that performs a
-  live login on every run
-- Test/Production: preceded by a `check-auth-admin` (for `admin`) or
-  `check-auth` (for `logged-in`) project that loads the existing auth file
+- Authenticated workflows with the admin account
+- Requires a valid admin auth file for that tier
+- Local/Dev: preceded by a `setup` project that performs a live login on
+  every run
+- Test/Production: preceded by a `check-auth-admin` project that loads the
+  existing auth file
   and verifies the session is still authenticated (navigates to an
   authenticated page and checks for a logged-in marker — live re-login isn't
   possible there, both origins run a real Cloudflare Turnstile challenge).
-  If the file is missing or the session has expired, the check-auth project
+  If the file is missing or the session has expired, `check-auth-admin`
   fails loudly with a message pointing at
-  `node scripts/playwright-auth-setup.js <tier> <role>`, and the
+  `node scripts/playwright-auth-setup.js <tier> admin`, and the
   corresponding project is skipped — its tests do not silently run
   anonymous. `not-logged-in` is unaffected and still runs to completion.
 
@@ -174,8 +161,8 @@ Files are gitignored. Re-run setup if sessions expire.
 
 | Issue | Solution |
 | ------- | ---------- |
-| Auth file doesn't exist | Run `node scripts/playwright-auth-setup.js <tier> <role>` — also now caught automatically by `check-auth`/`check-auth-admin` before the corresponding project runs on Test/Production |
-| `check-auth`/`check-auth-admin` fails with "session is stale/expired" | Re-run `node scripts/playwright-auth-setup.js <tier> <role>` (session expired — now caught automatically instead of the project silently running anonymous) |
+| Auth file doesn't exist | Run `node scripts/playwright-auth-setup.js <tier> admin` — also now caught automatically by `check-auth-admin` before the corresponding project runs on Test/Production |
+| `check-auth-admin` fails with "session is stale/expired" | Re-run `node scripts/playwright-auth-setup.js <tier> admin` (session expired — now caught automatically instead of the project silently running anonymous) |
 | Turnstile blocks login | Disable Turnstile entirely on the target environment before running the setup script; re-enable once done |
 | Auth setup fails with "Turnstile is enabled on this environment..." | **Turnstile is enabled.** An automated browser cannot pass it — this is not a bug in the login flow, and the check fires on any Turnstile widget including a test/always-pass sitekey. Disable Turnstile entirely, re-run the auth script, then re-enable it once the auth file is saved. Do not attempt to work around Turnstile programmatically. |
 | Auth setup fails with "Invalid credentials / 2FA / network" but credentials are correct | Turnstile may have rejected the submission after the pre-submit check missed it (a race — see `playwright-auth-setup.js`'s Turnstile-check comment). Confirm Turnstile is fully disabled, not just set to a test sitekey, then re-run. |

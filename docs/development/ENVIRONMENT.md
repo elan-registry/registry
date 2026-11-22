@@ -291,9 +291,8 @@ slash. A missing slash makes `page.goto('')` collapse the path.
 ### Playwright Test Credentials (Local/Dev)
 
 **Usage**: `playwright.config.js` uses these values for its `admin` project
-through `auth.setup.js`. `playwright.config.dev.js` uses them for its `admin`
-and `logged-in-non-admin` projects through `auth-dev.setup.js` and
-`auth-non-admin.setup.js`.
+through `auth.setup.js`. `playwright.config.dev.js` uses the admin pair for
+its `admin` project through `auth-dev.setup.js`.
 
 - `E2E_DEV_ADMIN_USERNAME` / `E2E_DEV_ADMIN_PASSWORD` — credentials for an
   admin test account. Each setup project logs in through `usersc/login.php`
@@ -304,11 +303,10 @@ and `logged-in-non-admin` projects through `auth-dev.setup.js` and
   credentials. If they are unset, the setup test skips and deletes the storage
   state file. The `admin` tests then run without authentication.
 - `E2E_DEV_NONADMIN_USERNAME` / `E2E_DEV_NONADMIN_PASSWORD` — credentials for a
-  non-admin test account. `auth-non-admin.setup.js` saves its storage state to
-  `tests/playwright/.auth/user-dev-non-admin.json`. The dev config uses this
-  file for the `logged-in-non-admin` project. The project has no test specs yet.
-  The account must have `email_verified = 1` in the local database. Otherwise
-  UserSpice's verify wall redirects every page to the verify page, and tests
+  non-admin test account. Only local specs in `tests/playwright/` use it. They
+  log in as this account in the test itself. No Playwright config has a
+  non-admin project. The account must have `email_verified = 1` in the local
+  database. Otherwise UserSpice's verify wall redirects every page to the verify page, and tests
   that log in as this account fail. To fix, run this command in the Docker `db`
   container: `UPDATE users SET email_verified = 1 WHERE id = <id>`.
 - All four live in `.env.local` (gitignored) and must never be committed. See
@@ -323,27 +321,22 @@ and `logged-in-non-admin` projects through `auth-dev.setup.js` and
 
 **Usage**: Run `scripts/playwright-auth-setup.js` manually to create the
 pre-authenticated storage state files. Issue #2035 consolidated this script.
-Before each test or production run, `auth-staleness.setup.js` and
-`auth-staleness-admin.setup.js` check these files. The test and production
-configs use them for the `admin` project. The `logged-in` project also uses a
-storage state file, but no non-admin spec targets it yet.
+Before each test or production run, `auth-staleness-admin.setup.js` checks
+the admin file. The test and production configs use it for the `admin`
+project. Only the admin role has a test or production project.
 
 - `E2E_TEST_ADMIN_USERNAME` / `E2E_TEST_ADMIN_PASSWORD` — admin account on
   `test.elanregistry.org`.
-- `E2E_TEST_NONADMIN_USERNAME` / `E2E_TEST_NONADMIN_PASSWORD` — non-admin
-  account on `test.elanregistry.org`.
 - `E2E_PROD_ADMIN_USERNAME` / `E2E_PROD_ADMIN_PASSWORD` — admin account on
   `elanregistry.org`.
-- `E2E_PROD_NONADMIN_USERNAME` / `E2E_PROD_NONADMIN_PASSWORD` — non-admin
-  account on `elanregistry.org`.
 - Both environments use HTTPS and an active Cloudflare Turnstile challenge.
   This challenge blocks automated login. A human must disable Turnstile before
-  running `node scripts/playwright-auth-setup.js <test|prod> <admin|nonadmin>`
-  once for each tier and role. The script creates
-  `tests/playwright/.auth/user-<tier>-<role>.json`. Re-enable Turnstile after
+  running `node scripts/playwright-auth-setup.js <test|prod> admin`
+  once for each tier. The script creates
+  `tests/playwright/.auth/user-<tier>-admin.json`. Re-enable Turnstile after
   the script completes. See `docs/testing/PLAYWRIGHT_E2E.md` for the full
   setup process.
-- All eight live in `.env.local` (gitignored) and must never be committed. See
+- All four live in `.env.local` (gitignored) and must never be committed. See
   `.env.example` for the placeholder entries.
 
 ### Multi-Clone Session Isolation

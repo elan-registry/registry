@@ -9,7 +9,9 @@ use PHPUnit\Framework\Attributes\Group;
 
 /**
  * requireAdminAjax() at the HTTP layer, through one read-only endpoint:
- * app/admin/includes/process-owner-search.php.
+ * app/admin/includes/process-owner-search.php. One more test refuses a member
+ * on app/admin/includes/process-user-details.php, which returns another
+ * user's details.
  *
  * The source pins in tests/unit/security/AdminAjaxGuardTest.php only prove
  * that each endpoint calls the guard. These tests prove that the guard
@@ -27,6 +29,8 @@ final class AdminAjaxGuardBehaviorTest extends IntegrationTestCase
     private const ENDPOINT = 'app/admin/includes/process-owner-search.php';
     private const DENIED_NOTE = 'Unauthorized owner search attempt';
     private const CSRF_NOTE = 'Invalid CSRF token in owner search';
+    private const USER_DETAILS_ENDPOINT = 'app/admin/includes/process-user-details.php';
+    private const USER_DETAILS_DENIED_NOTE = 'Unauthorized user details attempt';
 
     /** @var int|null Highest logs.id before the test, so tearDown() deletes only rows written after it */
     private ?int $logIdFloor = null;
@@ -60,8 +64,8 @@ final class AdminAjaxGuardBehaviorTest extends IntegrationTestCase
             // requireAdminAjax() writes the access-denied row with user_id 0, so
             // the exact note is the only way to find this test's row.
             $this->db->query(
-                'DELETE FROM logs WHERE id > ? AND user_id = 0 AND lognote = ?',
-                [$this->logIdFloor, self::DENIED_NOTE]
+                'DELETE FROM logs WHERE id > ? AND user_id = 0 AND lognote IN (?, ?)',
+                [$this->logIdFloor, self::DENIED_NOTE, self::USER_DETAILS_DENIED_NOTE]
             );
             if ($this->db->error()) {
                 fwrite(STDERR, "NOTE: tearDown() cleanup failed for access-denied logs rows: {$this->db->errorString()}\n");
@@ -107,6 +111,36 @@ final class AdminAjaxGuardBehaviorTest extends IntegrationTestCase
             $this->countMatchingLogs(LogCategories::LOG_CATEGORY_ACCESS_DENIED, self::DENIED_NOTE . '%'),
             'Exactly one access-denied log row must be written'
         );
+    }
+
+    public function testUserWithoutAdminOrEditorPermissionCannotReadAnotherUsersDetails(): void
+    {
+        $userId = $this->createGuardUser(1); // 1 = User
+        $otherUserId = $this->createGuardUser(1);
+        $deniedBefore = $this->countMatchingLogs(LogCategories::LOG_CATEGORY_ACCESS_DENIED, self::USER_DETAILS_DENIED_NOTE . '%');
+
+        // A valid token proves that the refusal comes from the authorization check.
+        $result = $this->invokeEndpoint(self::USER_DETAILS_ENDPOINT, ['user_id' => $otherUserId], $userId);
+
+        $this->assertCleanGuardRefusal($result);
+        $this->assertSame('Unauthorized access', $result['message']);
+        $this->assertSame(
+            $deniedBefore + 1,
+            $this->countMatchingLogs(LogCategories::LOG_CATEGORY_ACCESS_DENIED, self::USER_DETAILS_DENIED_NOTE . '%'),
+            'Exactly one access-denied log row must be written'
+        );
+    }
+
+    public function testAdminCanReadAnotherUsersDetails(): void
+    {
+        $adminId = $this->createGuardUser(2);
+        $otherUserId = $this->createGuardUser(1);
+
+        $result = $this->invokeEndpoint(self::USER_DETAILS_ENDPOINT, ['user_id' => $otherUserId], $adminId);
+
+        // Control for the member refusal on the same endpoint: a guard that
+        // refuses every request would pass that test.
+        $this->assertGuardPassed($result);
     }
 
     public function testAdminWithInvalidCsrfTokenIsRefusedByCsrfCheck(): void

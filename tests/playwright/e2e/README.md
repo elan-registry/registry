@@ -12,11 +12,10 @@ setup script, then re-enable it:
 
 ```bash
 node scripts/playwright-auth-setup.js prod admin
-node scripts/playwright-auth-setup.js prod nonadmin
 ```
 
-Credentials are read from `.env.local` (`E2E_PROD_ADMIN_USERNAME`/`_PASSWORD`,
-`E2E_PROD_NONADMIN_USERNAME`/`_PASSWORD`) — see `docs/development/ENVIRONMENT.md`.
+Credentials are read from `.env.local` (`E2E_PROD_ADMIN_USERNAME`/`_PASSWORD`)
+— see `docs/development/ENVIRONMENT.md`.
 
 ### 2. Run Tests
 
@@ -32,17 +31,12 @@ npm run test:e2e:not-logged-in
 
 # Run only admin-authenticated tests (auth required)
 npm run test:e2e:admin
-
-# Run only non-admin-authenticated tests (auth required)
-npm run test:e2e:non-admin
 ```
 
 ## Test Files
 
 - **`not-logged-in.spec.js`** - Public page accessibility and link validation
 - **`admin.spec.js`** - Authenticated admin user workflows
-- **`ajax-endpoints-non-admin.spec.js`** - Authenticated non-admin coverage of
-  `requireAdminAjax()`'s `isRegistryAdmin()` branch
 
 Helper modules (not test files):
 
@@ -51,14 +45,14 @@ Helper modules (not test files):
 - **`auth-staleness-check.js`** - Fails fast when a saved session has expired.
   Unit test: `tests/playwright-auth-staleness-check.test.js`
 - **`auth-staleness-tier.js`** - Checks `E2E_AUTH_TIER` and picks the auth
-  file and setup script for each tier and role. Unit test: `tests/playwright-auth-staleness-tier.test.js`
+  file and setup script for each tier (admin role only). Unit test: `tests/playwright-auth-staleness-tier.test.js`
 
 ## Configuration
 
 - **Config**: `playwright.config.prod.js` (project root)
 - **Base URL**: `https://elanregistry.org`
-- **Auth State**: Saved to `tests/playwright/.auth/user-prod-admin.json` and
-  `user-prod-nonadmin.json` (gitignored)
+- **Auth State**: Saved to `tests/playwright/.auth/user-prod-admin.json`
+  (gitignored)
 
 ## Documentation
 

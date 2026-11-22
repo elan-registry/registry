@@ -2,9 +2,9 @@
 
 /**
  * Unit tests for resolveTierConfig in tests/playwright/e2e/auth-staleness-tier.js
- * (#1935, #2035): which auth file and setup command a (tier, role) pair
+ * (#1935, #2035, #2471): which admin auth file and setup command a tier
  * selects, and the fail-fast guard that refuses to default to a more
- * sensitive combination.
+ * sensitive tier.
  *
  * Run with: node --test tests/playwright-auth-staleness-tier.test.js
  */
@@ -16,47 +16,28 @@ const { resolveTierConfig } = require('./playwright/e2e/auth-staleness-tier');
 
 const AUTH_DIR = path.join(__dirname, 'playwright', '.auth');
 
-describe('resolveTierConfig (#1935, #2035)', () => {
-    for (const [tier, role] of [['test', 'admin'], ['test', 'nonadmin'], ['prod', 'admin'], ['prod', 'nonadmin']]) {
-        test(`tier '${tier}' + role '${role}' resolves to its own auth file and setup command`, () => {
-            assert.deepEqual(resolveTierConfig(tier, role, AUTH_DIR), {
-                authFile: path.join(AUTH_DIR, `user-${tier}-${role}.json`),
-                setupScriptPath: `node scripts/playwright-auth-setup.js ${tier} ${role}`,
+describe('resolveTierConfig (#1935, #2035, #2471)', () => {
+    for (const tier of ['test', 'prod']) {
+        test(`tier '${tier}' resolves to its own admin auth file and setup command`, () => {
+            assert.deepEqual(resolveTierConfig(tier, AUTH_DIR), {
+                authFile: path.join(AUTH_DIR, `user-${tier}-admin.json`),
+                setupScriptPath: `node scripts/playwright-auth-setup.js ${tier} admin`,
             });
         });
     }
 
     test('an unset tier throws the fail-fast error rather than defaulting to prod', () => {
-        assert.throws(() => resolveTierConfig(undefined, 'admin', AUTH_DIR), /requires E2E_AUTH_TIER to be 'test' or 'prod'/);
-        assert.throws(() => resolveTierConfig(undefined, 'admin', AUTH_DIR), /got: unset/);
-        assert.throws(() => resolveTierConfig('', 'admin', AUTH_DIR), /got: ""/);
+        assert.throws(() => resolveTierConfig(undefined, AUTH_DIR), /requires E2E_AUTH_TIER to be 'test' or 'prod'/);
+        assert.throws(() => resolveTierConfig(undefined, AUTH_DIR), /got: unset/);
+        assert.throws(() => resolveTierConfig('', AUTH_DIR), /got: ""/);
     });
 
     test('a misspelled tier throws the fail-fast error rather than defaulting to prod', () => {
-        assert.throws(() => resolveTierConfig('bogus', 'admin', AUTH_DIR), /requires E2E_AUTH_TIER to be 'test' or 'prod'/);
-        assert.throws(() => resolveTierConfig('bogus', 'admin', AUTH_DIR), /got: "bogus"/);
+        assert.throws(() => resolveTierConfig('bogus', AUTH_DIR), /requires E2E_AUTH_TIER to be 'test' or 'prod'/);
+        assert.throws(() => resolveTierConfig('bogus', AUTH_DIR), /got: "bogus"/);
 
         // Case sensitivity is deliberate: a near-miss must not silently pass.
-        assert.throws(() => resolveTierConfig('Prod', 'admin', AUTH_DIR), /got: "Prod"/);
-        assert.throws(() => resolveTierConfig('TEST', 'admin', AUTH_DIR), /got: "TEST"/);
-    });
-
-    test('an unset role throws the fail-fast error rather than defaulting to admin', () => {
-        assert.throws(() => resolveTierConfig('test', undefined, AUTH_DIR), /requires role to be 'admin' or 'nonadmin'/);
-        assert.throws(() => resolveTierConfig('test', undefined, AUTH_DIR), /got: unset/);
-        assert.throws(() => resolveTierConfig('test', '', AUTH_DIR), /got: unset/);
-    });
-
-    test('a misspelled role throws the fail-fast error rather than defaulting to admin', () => {
-        assert.throws(() => resolveTierConfig('test', 'bogus', AUTH_DIR), /requires role to be 'admin' or 'nonadmin'/);
-        assert.throws(() => resolveTierConfig('test', 'bogus', AUTH_DIR), /got: bogus/);
-
-        // Case sensitivity is deliberate: a near-miss must not silently pass.
-        assert.throws(() => resolveTierConfig('test', 'Admin', AUTH_DIR), /got: Admin/);
-        assert.throws(() => resolveTierConfig('test', 'NONADMIN', AUTH_DIR), /got: NONADMIN/);
-    });
-
-    test('a valid tier with an invalid role still fails fast (tier check does not mask role check)', () => {
-        assert.throws(() => resolveTierConfig('prod', 'superadmin', AUTH_DIR), /requires role to be 'admin' or 'nonadmin'/);
+        assert.throws(() => resolveTierConfig('Prod', AUTH_DIR), /got: "Prod"/);
+        assert.throws(() => resolveTierConfig('TEST', AUTH_DIR), /got: "TEST"/);
     });
 });

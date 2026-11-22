@@ -14,7 +14,8 @@ use PHPUnit\Framework\Attributes\Group;
  * against a real DB user row.
  *
  * The #971 sender-impersonation contract (from_user_id is never read from POST)
- * is pinned at source level in tests/unit/security/SerializedDataRemovalTest.php.
+ * is tested in SendOwnerEmailSenderAndCsrfTest, which posts another user's
+ * from_user_id.
  *
  * The IDOR guard (the recipient must own the car) is tested in
  * SendOwnerEmailOwnerMismatchTest, which uses a real car owned by another
