@@ -44,6 +44,15 @@ npm run test:e2e:non-admin
 - **`ajax-endpoints-non-admin.spec.js`** - Authenticated non-admin coverage of
   `requireAdminAjax()`'s `isRegistryAdmin()` branch
 
+Helper modules (not test files):
+
+- **`link-discovery.js`** - Link crawl shared by `not-logged-in.spec.js` and
+  `admin.spec.js`. Unit test: `tests/playwright-link-discovery.test.js`
+- **`auth-staleness-check.js`** - Fails fast when a saved session has expired.
+  Unit test: `tests/playwright-auth-staleness-check.test.js`
+- **`auth-staleness-tier.js`** - Checks `E2E_AUTH_TIER` and picks the auth
+  file and setup script for each tier and role. Unit test: `tests/playwright-auth-staleness-tier.test.js`
+
 ## Configuration
 
 - **Config**: `playwright.config.prod.js` (project root)

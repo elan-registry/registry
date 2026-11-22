@@ -213,9 +213,9 @@ protected function invokeEndpoint(
 `invokeEndpoint()` starts a `php -r` subprocess. The subprocess uses the test
 database (`.env.test.local`) and loads the real UserSpice bootstrap. So
 `Token::check()`, `hasPerm()`, and `securePage()` run unchanged. It then
-sets the request superglobals, runs the endpoint, and captures the output. The subprocess runs
-with `-d display_errors=stderr -d error_reporting=-1`, so PHP error text
-always gets into `raw`, whatever `php.ini` sets.
+sets the request superglobals, runs the endpoint, and captures the output.
+The subprocess runs with `-d display_errors=stderr -d error_reporting=-1`,
+so PHP error text always gets into `raw`, whatever `php.ini` sets.
 
 Parameters:
 
@@ -248,8 +248,9 @@ Parameters:
 - `$method` — the value of `$_SERVER['REQUEST_METHOD']`. The default is
   `'POST'`. The helper accepts `GET`, `POST`, `PUT`, `PATCH`, `DELETE`,
   `HEAD`, and `OPTIONS`, in upper case only. Any other value throws
-  `InvalidArgumentException`. `$post` and `$csrfMode` set `$_POST` for any
-  method. For a GET, pass `[]` and `'omit'` so that the request has no body.
+  `InvalidArgumentException`. A request that is not a POST has no body: pass
+  `[]` for `$post` and `'omit'` for `$csrfMode`, or the helper throws
+  `InvalidArgumentException`.
 - `$server` — extra `$_SERVER` keys, for example request headers. The
   subprocess sets them before `users/init.php` runs, so `Server::get()` and
   the server globals see the keys that the harness accepts. Each key and

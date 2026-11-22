@@ -27,6 +27,9 @@ const PUBLIC_PAGES = [
   'app/owner/reports/statistics.php',
   'app/owner/privacy.php',
   'docs/guides/car-transfer-faq.php',
+  // Named here so the login page keeps its check if the contact pages
+  // stop redirecting to it.
+  'users/login.php',
 ];
 
 test.describe('Mobile Responsive (iPhone SE / 375px)', () => {

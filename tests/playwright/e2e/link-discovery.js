@@ -5,8 +5,8 @@ const DOWNLOAD_EXTENSIONS = ['.pdf', '.zip', '.doc', '.docx', '.xls', '.xlsx', '
 
 /**
  * Return the site-relative path of an internal href, or null for an external
- * or unparsable href. An absolute URL keeps only its pathname. A root-relative
- * href is returned as written. A protocol-relative href (//host/x) is external.
+ * or unparsable href. An absolute URL keeps its pathname and query string. A
+ * root-relative href is returned as written when it resolves to the page host.
  *
  * @param {string|null} href The raw href attribute
  * @param {string} pageUrl The URL of the page that holds the link
@@ -16,13 +16,14 @@ function toInternalPath(href, pageUrl) {
   if (!href) {
     return null;
   }
-  // A protocol-relative href names a host, so it is not root-relative.
-  // Browsers and the URL parser read a backslash as a slash here.
-  if (/^[/\\]{2}/.test(href)) {
-    return null;
-  }
   if (href.startsWith('/')) {
-    return href;
+    // Resolve the href, because a leading slash can still name another host:
+    // the URL parser reads //host, /\host and /<tab>/host as a host.
+    try {
+      return new URL(href, pageUrl).host === new URL(pageUrl).host ? href : null;
+    } catch (_e) {
+      return null;
+    }
   }
   if (!href.startsWith('http')) {
     return null;
@@ -31,7 +32,7 @@ function toInternalPath(href, pageUrl) {
   try {
     const url = new URL(href);
     const siteHost = new URL(pageUrl).hostname;
-    return url.hostname === siteHost || url.hostname === `www.${siteHost}` ? url.pathname : null;
+    return url.hostname === siteHost || url.hostname === `www.${siteHost}` ? url.pathname + url.search : null;
   } catch (_e) {
     return null;
   }
@@ -80,7 +81,9 @@ function splitDownloadableLinks(links) {
   const navigableLinks = [];
   const downloadableLinks = [];
   for (const link of links) {
-    const isDownloadable = DOWNLOAD_EXTENSIONS.some(ext => link.toLowerCase().endsWith(ext));
+    // A link can keep its query string (toInternalPath), so match the path only.
+    const linkFile = link.split(/[?#]/)[0].toLowerCase();
+    const isDownloadable = DOWNLOAD_EXTENSIONS.some(ext => linkFile.endsWith(ext));
     (isDownloadable ? downloadableLinks : navigableLinks).push(link);
   }
   return { navigableLinks, downloadableLinks };

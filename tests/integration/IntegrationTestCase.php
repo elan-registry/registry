@@ -342,17 +342,13 @@ abstract class IntegrationTestCase extends TestCase
      * The request is a POST unless $method names another HTTP method. $get
      * adds a query string to it, as a form that posts to `page.php?tab=x`
      * does, so a page that picks its tab or view from $_GET renders that view
-     * after the POST handler runs. $post and $csrfMode set $_POST for any
-     * method, so a GET test passes `[]` and 'omit' to send no body.
+     * after the POST handler runs. A request that is not a POST has no body,
+     * so it must pass `[]` for $post and 'omit' for $csrfMode.
      *
      * $server sets $_SERVER keys before users/init.php runs, so Server::get()
      * and the server globals see them. Use it for request headers, for
      * example `['HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest']`. The harness
-     * refuses the keys that it sets itself. Use $method for REQUEST_METHOD.
-     * Use $get for QUERY_STRING and REQUEST_URI. SCRIPT_FILENAME and
-     * DOCUMENT_ROOT come from $endpointFile and the repository root. Under
-     * CLI, Server::get() derives PHP_SELF and SCRIPT_NAME from SCRIPT_FILENAME,
-     * so the harness refuses them too.
+     * refuses the keys that it sets itself. See HARNESS_SERVER_KEYS.
      *
      * @param string $endpointFile Repo-relative path (e.g. 'app/api/contact/send-owner-email.php'), or an absolute path inside this repository
      * @param array<string, scalar|null|array<mixed>> $post $_POST fields; values pass through var_export(), so nested arrays of scalars and null are allowed
@@ -362,7 +358,7 @@ abstract class IntegrationTestCase extends TestCase
      * @param string $method Value for $_SERVER['REQUEST_METHOD'], for example 'GET'
      * @param array<string, string> $server Extra $_SERVER keys and values, for example request headers. The harness owns REQUEST_METHOD, SCRIPT_FILENAME, DOCUMENT_ROOT, QUERY_STRING, REQUEST_URI, PHP_SELF, and SCRIPT_NAME
      * @return array{status: bool|null, message: string, httpCode: int|null, exitCode: int, raw: string, json: array<mixed>|null, flash: array{error: list<string>, success: list<string>, message: list<string>}}
-     * @throws InvalidArgumentException If $csrfMode or $method is unknown, $endpointFile is not a file in this repository, a $post or $get value is not a scalar, null, or an array of those, a $server key or value is not a string, or a $server key is one that the harness owns
+     * @throws InvalidArgumentException If $csrfMode or $method is unknown, $endpointFile is not a file in this repository, a $post or $get value is not a scalar, null, or an array of those, a $server key or value is not a string, a $server key is one that the harness owns, or a request that is not a POST has a $post value or a $csrfMode other than 'omit'
      * @throws RuntimeException If shell_exec() cannot run the subprocess, or the HTTP marker matched and the flash payload is missing or malformed
      */
     protected function invokeEndpoint(string $endpointFile, array $post, ?int $loggedInUserId, string $csrfMode = 'valid', array $get = [], string $method = 'POST', array $server = []): array
@@ -384,6 +380,14 @@ abstract class IntegrationTestCase extends TestCase
         if (!in_array($method, self::HTTP_METHODS, true)) {
             throw new InvalidArgumentException(
                 "invokeEndpoint(): unknown method '{$method}'. Use one of: " . implode(', ', self::HTTP_METHODS) . '.'
+            );
+        }
+
+        // Without this check, the default 'valid' CSRF mode fills $_POST, which a
+        // real GET never has. A test could then pass where a browser is refused.
+        if ($method !== 'POST' && ($post !== [] || $csrfMode !== 'omit')) {
+            throw new InvalidArgumentException(
+                "invokeEndpoint(): a {$method} request has no body. Pass [] for \$post and 'omit' for \$csrfMode."
             );
         }
 

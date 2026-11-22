@@ -181,7 +181,7 @@ after an item is written.
 
 ### `tests/integration/UserSettingsResumeVerificationEndpointTest.php`
 
-- [ ] The class has its own `php -r` subprocess copy of the endpoint runner. Use `IntegrationTestCase::invokeEndpoint()` and delete the copy. `invokeEndpoint()` needs GET/HTML or session-flash support first (found in #2165)
+- [ ] The class has its own `php -r` subprocess copy of the endpoint runner. Use `IntegrationTestCase::invokeEndpoint()` and delete the copy. Since #2400 it also takes `$method`, so it can run GET requests (found in #2165)
 - [ ] The runner reads a missing `___EXIT:` marker as exit code 0 (`array_pad(..., '0')`, ~L209). The migration item above fixes it. (found in #2165)
 
 ### `tests/integration/VerifyCarLandingPageTest.php` (test coverage)

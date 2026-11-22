@@ -143,7 +143,7 @@ final class CarEndpointLengthValidationTest extends IntegrationTestCase
     }
 
     /**
-     * @param array{status: bool|null, message: string, httpCode: int|null, exitCode: int, raw: string, json: array<mixed>|null} $result
+     * @param array{status: bool|null, message: string, httpCode: int|null, exitCode: int, raw: string, json: array<mixed>|null, flash: array{error: list<string>, success: list<string>, message: list<string>}} $result
      */
     private function assertRefusedWith(array $result, string $expectedMessage): void
     {

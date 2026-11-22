@@ -510,6 +510,7 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
   });
 
   // #1455: a long-open car form refreshes its CSRF token from csrf-token.php.
+  // Refusal cases (400, 405, 401): tests/integration/CsrfTokenEndpointTest.php.
   test('csrf-token.php returns a non-cacheable token that save.php accepts', async ({ page }) => {
     const response = await page.request.get('app/api/shared/csrf-token.php', {
       headers: { 'X-Requested-With': 'XMLHttpRequest' }
