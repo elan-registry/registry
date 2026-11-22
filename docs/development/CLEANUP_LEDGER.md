@@ -214,10 +214,6 @@ after an item is written.
 
 - [ ] No browser test checks that the contact form shows the 409 "cannot be contacted" message from #2712. `tests/integration/SendOwnerEmailNoOwnerTest.php` checks only the API body. The display goes through `usError(error.message)` in `app/assets/js/contact-form.js` (found in /flow:finish-milestone v2.34.0)
 
-### `tests/playwright/e2e/admin.spec.js`
-
-- [ ] The two #2144 history tests skip when `E2E_DEV_ADMIN_USERNAME` or `E2E_DEV_ADMIN_PASSWORD` is not set, also on the test and prod tiers. On those tiers the admin session comes from the saved storageState, so the guard and its skip message name the wrong credentials. Check the credentials for the current tier, or remove the guard where storageState supplies the session (found in #2387)
-
 ### `tests/playwright/local/fixtures/`
 
 - [ ] Eight `seed-*.php` fixtures each copy the `er_deleted_user_addresses` cleanup: a table-exists check, then a `DELETE ... IN (...)`. All eight also copy the username-to-ID lookup. Only `seed-output-escaping-car.php` checks `$db->error()` after the delete. The others check `error()` after neither the check nor the delete. In most of them, the cleanup loop in the same file exits on an error. `seed-bounced-car.php` checks `error()` nowhere. Add one shared helper (for example `Tests\Support\DeletedUserAddressCleanup::forUserIds($db, $ids)`) that checks `error()`, and call it from each fixture (found in #2419)

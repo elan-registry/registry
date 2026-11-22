@@ -203,14 +203,17 @@ protected function invokeEndpoint(
     string $endpointFile,
     array $post,
     ?int $loggedInUserId,
-    string $csrfMode = 'valid'
+    string $csrfMode = 'valid',
+    array $get = [],
+    string $method = 'POST',
+    array $server = []
 ): array
 ```
 
 `invokeEndpoint()` starts a `php -r` subprocess. The subprocess uses the test
 database (`.env.test.local`) and loads the real UserSpice bootstrap. So
 `Token::check()`, `hasPerm()`, and `securePage()` run unchanged. It then
-posts `$post` to the endpoint and captures the output. The subprocess runs
+sets the request superglobals, runs the endpoint, and captures the output. The subprocess runs
 with `-d display_errors=stderr -d error_reporting=-1`, so PHP error text
 always gets into `raw`, whatever `php.ini` sets.
 
@@ -239,6 +242,28 @@ Parameters:
   Any other value throws `InvalidArgumentException`. The subprocess sets the
   `$post` values after the CSRF value, so a `csrf` key in `$post` overrides
   `$csrfMode`.
+- `$get` — `$_GET` fields. The value rules are the same as for `$post`. The
+  subprocess also sets `QUERY_STRING` and `REQUEST_URI` from them, as a web
+  server does.
+- `$method` — the value of `$_SERVER['REQUEST_METHOD']`. The default is
+  `'POST'`. The helper accepts `GET`, `POST`, `PUT`, `PATCH`, `DELETE`,
+  `HEAD`, and `OPTIONS`, in upper case only. Any other value throws
+  `InvalidArgumentException`. `$post` and `$csrfMode` set `$_POST` for any
+  method. For a GET, pass `[]` and `'omit'` so that the request has no body.
+- `$server` — extra `$_SERVER` keys, for example request headers. The
+  subprocess sets them before `users/init.php` runs, so `Server::get()` and
+  the server globals see the keys that the harness accepts. Each key and
+  each value must be a string.
+  Any other type throws `InvalidArgumentException`. The harness sets some
+  keys itself, so it refuses them with `InvalidArgumentException`:
+
+  | Key | Use instead |
+  | --- | --- |
+  | `REQUEST_METHOD` | `$method` |
+  | `SCRIPT_FILENAME` | `$endpointFile` |
+  | `DOCUMENT_ROOT` | None. The harness sets the repository root |
+  | `QUERY_STRING`, `REQUEST_URI` | `$get` |
+  | `PHP_SELF`, `SCRIPT_NAME` | None. Under CLI, `Server::get()` derives them from `$endpointFile` |
 
 Return value:
 
@@ -250,6 +275,7 @@ Return value:
 | `exitCode` | `int` | Exit code of the subprocess. `-1` if the exit marker is missing |
 | `raw` | `string` | Exact stdout and stderr bytes of the subprocess, so PHP error text is included. It is not trimmed, so you can compare two responses byte for byte. If output follows the status marker, `raw` keeps the marker and that output |
 | `json` | `array<mixed>\|null` | Decoded body. `null` if the trimmed body is not a JSON object or array |
+| `flash` | `array{error: list<string>, success: list<string>, message: list<string>}` | UserSpice session flash messages that the endpoint set. `error` holds `usError()` text, `success` holds `usSuccess()` text, and `message` holds `usWarning()` and `usMessage()` text. Each list is empty if the endpoint set none, or if the status marker did not match |
 
 Example, from `tests/integration/VerificationToggleEndpointBehaviorTest.php`:
 
@@ -263,6 +289,21 @@ private function invokeToggleEndpoint(?int $loggedInUserId, ?string $enabledValu
         $withValidCsrf ? 'valid' : 'invalid'
     );
 }
+```
+
+Example of a GET with a request header, based on
+`tests/integration/CsrfTokenEndpointTest.php`:
+
+```php
+$result = $this->invokeEndpoint(
+    'app/api/shared/csrf-token.php',
+    [],
+    $userId,
+    'omit',
+    [],
+    'GET',
+    ['HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest']
+);
 ```
 
 Related helpers in `IntegrationTestCase`:

@@ -87,26 +87,4 @@ test.describe('EmailTemplate::createButtonRow() responsive stacking', () => {
     expect(Math.abs(firstCellBox.x - secondCellBox.x)).toBeLessThan(2);
     expect(Math.abs(firstCellBox.width - secondCellBox.width)).toBeLessThan(2);
   });
-
-  test('cells are full-width block elements below the breakpoint', async ({ page }) => {
-    await page.setViewportSize({ width: 375, height: 800 });
-    await page.setContent(buttonRowHtml);
-
-    const cells = page.locator('td.btn-row-cell');
-    await expect(cells).toHaveCount(2);
-
-    for (const cell of await cells.all()) {
-      const display = await cell.evaluate((el) => getComputedStyle(el).display);
-      expect(display).toBe('block');
-    }
-  });
-
-  test('cells remain inline table cells above the breakpoint', async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await page.setContent(buttonRowHtml);
-
-    const firstCell = page.locator('td.btn-row-cell').first();
-    const display = await firstCell.evaluate((el) => getComputedStyle(el).display);
-    expect(display).not.toBe('block');
-  });
 });

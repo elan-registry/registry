@@ -9,13 +9,18 @@ use PHPUnit\Framework\TestCase;
  * Unit tests for app/api/shared/join-failure-report.php — the client-side
  * join-failure beacon added for Issue #1690.
  *
- * This file is a top-level, procedural API endpoint script (require_once
- * '../../../users/init.php' at the top, ApiResponse::send() calls that
- * return `never` / exit the process) — it cannot be require()'d directly
- * inside a PHPUnit process without terminating the test run, and this repo
- * has no HTTP-level harness for app/api/ endpoints (confirmed: no existing
- * test in tests/unit/api/ executes an endpoint file directly; ApiResponseTest
- * only tests the ApiResponse class itself).
+ * The endpoint is a procedural script that exits through ApiResponse::send(),
+ * so a unit test cannot require() it. IntegrationTestCase::invokeEndpoint()
+ * can run it in a subprocess, but that needs the test database (the endpoint
+ * writes us_rate_limits and logs rows), and CI runs only the unit tier. This
+ * file stays a unit-tier source scan so that CI checks the endpoint on every
+ * PR. Some checks also cannot use a test request:
+ *
+ * - The fail-open path runs when checkRateLimit() throws. Only a DB or
+ *   RateLimit failure makes it throw, and a test request cannot force that.
+ * - The check that the client sends no CSRF token scans a JS file, not the
+ *   endpoint.
+ * - The securePage() check tests for a call that must be absent.
  *
  * Following the same source-text regression pattern used by
  * Issue1406RegressionTest for usersc/join.php, this test asserts the

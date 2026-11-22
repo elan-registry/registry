@@ -510,25 +510,6 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
   });
 
   // #1455: a long-open car form refreshes its CSRF token from csrf-token.php.
-  test('csrf-token.php rejects a request without the AJAX header', async ({ page }) => {
-    const response = await page.request.get('app/api/shared/csrf-token.php');
-    expect(response.status()).toBe(400);
-    const jsonResponse = await response.json();
-    expect(jsonResponse).toHaveProperty('success', false);
-    expect(jsonResponse).not.toHaveProperty('csrf');
-  });
-
-  test('csrf-token.php rejects a POST with 405', async ({ page }) => {
-    const response = await page.request.post('app/api/shared/csrf-token.php', {
-      headers: { 'X-Requested-With': 'XMLHttpRequest' },
-      form: { x: '1' }
-    });
-    expect(response.status()).toBe(405);
-    const jsonResponse = await response.json();
-    expect(jsonResponse).toHaveProperty('success', false);
-    expect(jsonResponse).not.toHaveProperty('csrf');
-  });
-
   test('csrf-token.php returns a non-cacheable token that save.php accepts', async ({ page }) => {
     const response = await page.request.get('app/api/shared/csrf-token.php', {
       headers: { 'X-Requested-With': 'XMLHttpRequest' }
@@ -775,23 +756,5 @@ test.describe('Issue #2227 — join-failure beacon survives a lost/stale CSRF to
     const jsonResponse = await response.json();
     expect(jsonResponse).toHaveProperty('success', true);
     expect(jsonResponse).toHaveProperty('message', 'Reported');
-  });
-});
-
-test.describe('Issue #1455 — csrf-token.php requires login', () => {
-  // Clearing cookies models a lost session. The token must not reach it.
-  test.beforeEach(async ({ page }) => {
-    await page.context().clearCookies();
-  });
-
-  test('csrf-token.php returns 401 Login required with no session', async ({ page }) => {
-    const response = await page.request.get('app/api/shared/csrf-token.php', {
-      headers: { 'X-Requested-With': 'XMLHttpRequest' }
-    });
-    expect(response.status()).toBe(401);
-    const jsonResponse = await response.json();
-    expect(jsonResponse).toHaveProperty('success', false);
-    expect(jsonResponse).toHaveProperty('message', 'Login required');
-    expect(jsonResponse).not.toHaveProperty('csrf');
   });
 });

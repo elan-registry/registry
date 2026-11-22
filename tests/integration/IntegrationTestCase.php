@@ -40,6 +40,21 @@ abstract class IntegrationTestCase extends TestCase
     /** @var list<string> Connection variables that invokeEndpoint() exports to its subprocess */
     private const DB_ENV_VARS = ['DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASS'];
 
+    /** @var list<string> HTTP methods that invokeEndpoint() accepts as $method */
+    private const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
+
+    /** @var array<string, string> $_SERVER keys that invokeEndpoint() sets itself, each with the parameter to use */
+    private const HARNESS_SERVER_KEYS = [
+        'REQUEST_METHOD' => 'Use the $method parameter.',
+        'SCRIPT_FILENAME' => 'Use the $endpointFile parameter.',
+        'DOCUMENT_ROOT' => 'The harness sets it to the repository root.',
+        'QUERY_STRING' => 'Use the $get parameter.',
+        'REQUEST_URI' => 'Use the $get parameter.',
+        // Under CLI, Server::get() derives these two from SCRIPT_FILENAME and ignores $_SERVER.
+        'PHP_SELF' => 'Server::get() derives it from $endpointFile.',
+        'SCRIPT_NAME' => 'Server::get() derives it from $endpointFile.',
+    ];
+
     protected $db;
     protected $databaseConnected = false;
 
@@ -294,7 +309,7 @@ abstract class IntegrationTestCase extends TestCase
     }
 
     /**
-     * POST to a real endpoint file in a `php -r` subprocess and capture its response.
+     * Send a request to a real endpoint file in a `php -r` subprocess and capture its response.
      *
      * A subprocess is necessary because ApiResponse::send() calls exit, and a
      * securePage() refusal exits through Redirect::to() or die(). Either would
@@ -324,20 +339,33 @@ abstract class IntegrationTestCase extends TestCase
      * The subprocess sets $post values after the CSRF value. Thus a 'csrf' key
      * in $post overrides $csrfMode.
      *
-     * The request is always a POST. $get adds a query string to it, as a form
-     * that posts to `page.php?tab=x` does, so a page that picks its tab or view
-     * from $_GET renders that view after the POST handler runs.
+     * The request is a POST unless $method names another HTTP method. $get
+     * adds a query string to it, as a form that posts to `page.php?tab=x`
+     * does, so a page that picks its tab or view from $_GET renders that view
+     * after the POST handler runs. $post and $csrfMode set $_POST for any
+     * method, so a GET test passes `[]` and 'omit' to send no body.
+     *
+     * $server sets $_SERVER keys before users/init.php runs, so Server::get()
+     * and the server globals see them. Use it for request headers, for
+     * example `['HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest']`. The harness
+     * refuses the keys that it sets itself. Use $method for REQUEST_METHOD.
+     * Use $get for QUERY_STRING and REQUEST_URI. SCRIPT_FILENAME and
+     * DOCUMENT_ROOT come from $endpointFile and the repository root. Under
+     * CLI, Server::get() derives PHP_SELF and SCRIPT_NAME from SCRIPT_FILENAME,
+     * so the harness refuses them too.
      *
      * @param string $endpointFile Repo-relative path (e.g. 'app/api/contact/send-owner-email.php'), or an absolute path inside this repository
      * @param array<string, scalar|null|array<mixed>> $post $_POST fields; values pass through var_export(), so nested arrays of scalars and null are allowed
      * @param int|null $loggedInUserId User to log in inside the subprocess; null = logged out
      * @param string $csrfMode 'valid' (Token::generate()), 'invalid' (a well-formed token that does not match the session token), or 'omit' (no csrf key)
      * @param array<string, scalar|null|array<mixed>> $get $_GET fields; the same value rules as $post. The subprocess also sets QUERY_STRING and REQUEST_URI from them
+     * @param string $method Value for $_SERVER['REQUEST_METHOD'], for example 'GET'
+     * @param array<string, string> $server Extra $_SERVER keys and values, for example request headers. The harness owns REQUEST_METHOD, SCRIPT_FILENAME, DOCUMENT_ROOT, QUERY_STRING, REQUEST_URI, PHP_SELF, and SCRIPT_NAME
      * @return array{status: bool|null, message: string, httpCode: int|null, exitCode: int, raw: string, json: array<mixed>|null, flash: array{error: list<string>, success: list<string>, message: list<string>}}
-     * @throws InvalidArgumentException If $csrfMode is unknown, $endpointFile is not a file in this repository, or a $post or $get value is not a scalar, null, or an array of those
+     * @throws InvalidArgumentException If $csrfMode or $method is unknown, $endpointFile is not a file in this repository, a $post or $get value is not a scalar, null, or an array of those, a $server key or value is not a string, or a $server key is one that the harness owns
      * @throws RuntimeException If shell_exec() cannot run the subprocess, or the HTTP marker matched and the flash payload is missing or malformed
      */
-    protected function invokeEndpoint(string $endpointFile, array $post, ?int $loggedInUserId, string $csrfMode = 'valid', array $get = []): array
+    protected function invokeEndpoint(string $endpointFile, array $post, ?int $loggedInUserId, string $csrfMode = 'valid', array $get = [], string $method = 'POST', array $server = []): array
     {
         // Resolve the root too, so the prefix check works in a symlinked checkout.
         $projectRoot = (string) realpath(dirname(__DIR__, 2));
@@ -351,6 +379,13 @@ abstract class IntegrationTestCase extends TestCase
 
         $this->assertExportableValues($post, 'post');
         $this->assertExportableValues($get, 'get');
+        self::assertValidServerEntries($server);
+
+        if (!in_array($method, self::HTTP_METHODS, true)) {
+            throw new InvalidArgumentException(
+                "invokeEndpoint(): unknown method '{$method}'. Use one of: " . implode(', ', self::HTTP_METHODS) . '.'
+            );
+        }
 
         $csrfSnippet = match ($csrfMode) {
             'valid'   => '$_POST["csrf"] = \Token::generate();',
@@ -379,10 +414,7 @@ abstract class IntegrationTestCase extends TestCase
                 $loggedInUserId
             );
 
-        $postSnippet = '';
-        foreach ($post as $key => $value) {
-            $postSnippet .= sprintf('$_POST[%s] = %s; ', var_export($key, true), var_export($value, true));
-        }
+        $postSnippet = self::exportAssignments('_POST', $post);
 
         // Under CLI, Server::get() derives no QUERY_STRING or REQUEST_URI, so
         // the subprocess sets them as a web server would.
@@ -396,6 +428,8 @@ abstract class IntegrationTestCase extends TestCase
                 var_export(substr($absoluteFile, strlen($projectRoot)) . '?' . $queryString, true)
             );
         }
+
+        $serverSnippet = self::exportAssignments('_SERVER', $server);
 
         // Shutdown functions also run after exit and die(), so every path
         // through the endpoint prints the marker.
@@ -419,8 +453,8 @@ abstract class IntegrationTestCase extends TestCase
             // empty (giving '/'). Set SCRIPT_FILENAME so securePage($php_self)
             // sees the real page.
             '$_SERVER["SCRIPT_FILENAME"] = %s; ' .
-            '$_SERVER["REQUEST_METHOD"] = "POST"; ' .
-            '%s' .
+            '$_SERVER["REQUEST_METHOD"] = %s; ' .
+            '%s%s' .
             'chdir(%s); ' .
             'require_once %s; ' .
             '%s %s %s %s ' .
@@ -429,6 +463,8 @@ abstract class IntegrationTestCase extends TestCase
             var_export($projectRoot, true),
             var_export($projectRoot, true),
             var_export($absoluteFile, true),
+            var_export($method, true),
+            $serverSnippet,
             $getSnippet,
             var_export(dirname($absoluteFile), true),
             var_export($projectRoot . '/users/init.php', true),
@@ -498,6 +534,51 @@ abstract class IntegrationTestCase extends TestCase
             'json'     => $json,
             'flash'    => $flash,
         ];
+    }
+
+    /**
+     * Build one PHP assignment statement for each entry of $values, for the subprocess source.
+     *
+     * @param string $superglobal Superglobal name without the dollar sign, for example '_POST'
+     * @param array<mixed> $values Values that assertExportableValues() accepted
+     */
+    private static function exportAssignments(string $superglobal, array $values): string
+    {
+        $snippet = '';
+        foreach ($values as $key => $value) {
+            $snippet .= sprintf('$%s[%s] = %s; ', $superglobal, var_export($key, true), var_export($value, true));
+        }
+
+        return $snippet;
+    }
+
+    /**
+     * Reject a $server entry that is not a string key with a string value, or
+     * that sets a key the harness owns. The harness sets those keys from other
+     * parameters, so a $server value would override them without notice.
+     *
+     * @param array<mixed> $server The $server argument of invokeEndpoint()
+     * @throws InvalidArgumentException If a key or value is not a string, or a key is one that the harness owns
+     */
+    private static function assertValidServerEntries(array $server): void
+    {
+        foreach ($server as $key => $value) {
+            if (!is_string($key)) {
+                throw new InvalidArgumentException(
+                    'invokeEndpoint(): $server key ' . var_export($key, true) . ' is ' . get_debug_type($key) . '. Use a string key.'
+                );
+            }
+            if (!is_string($value)) {
+                throw new InvalidArgumentException(
+                    "invokeEndpoint(): \$server['{$key}'] is " . get_debug_type($value) . '. Use a string value.'
+                );
+            }
+            if (array_key_exists($key, self::HARNESS_SERVER_KEYS)) {
+                throw new InvalidArgumentException(
+                    "invokeEndpoint(): \$server['{$key}'] is set by the harness. " . self::HARNESS_SERVER_KEYS[$key]
+                );
+            }
+        }
     }
 
     /**

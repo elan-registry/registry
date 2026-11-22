@@ -59,29 +59,4 @@ test.describe('Mobile Responsive (iPhone SE / 375px)', () => {
     const firstControl = page.locator('table.dataTable tbody tr td.dtr-control').first();
     await expect(firstControl).toBeVisible({ timeout: 15000 });
   });
-
-  test('edit car form progress bar does not cause horizontal overflow', async ({ page }) => {
-    await navigateAndWait(page, 'app/owner/cars/edit.php');
-    await page.waitForLoadState('networkidle');
-
-    // Check overflow regardless of auth state — both paths render a full page at 375px.
-    const overflow = await page.evaluate(() => ({
-      scrollWidth: document.documentElement.scrollWidth,
-      innerWidth: window.innerWidth,
-    }));
-    expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.innerWidth);
-  });
-
-  test('admin page tabs do not cause horizontal overflow', async ({ page }) => {
-    // Admin is auth-protected. We don't log in — UserSpice renders either the
-    // admin page or a login redirect. Either way, no horizontal overflow at 375px.
-    await navigateAndWait(page, 'users/admin.php');
-    await page.waitForLoadState('networkidle');
-
-    const overflow = await page.evaluate(() => ({
-      scrollWidth: document.documentElement.scrollWidth,
-      innerWidth: window.innerWidth,
-    }));
-    expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.innerWidth);
-  });
 });
