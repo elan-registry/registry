@@ -10,8 +10,9 @@ use PHPUnit\Framework\TestCase;
  * app/api/shared/statistics.php.
  *
  * The endpoint requires users/init.php and exits via ApiResponse::send(), so
- * it cannot be executed inside PHPUnit. These tests assert, against the
- * comment-stripped live source, that:
+ * a unit test cannot run it. The HTTP-level 400 responses are tested in
+ * tests/integration/StatisticsEndpointRejectionTest.php. These tests assert,
+ * against the comment-stripped live source, that:
  *
  *  - an empty/missing `tab` is rejected with a 400 before the switch; and
  *  - the `switch ($tab)` has a default branch that rejects unknown tabs
