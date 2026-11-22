@@ -10,7 +10,8 @@ use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
  * StatisticsDataService (behind the statistics.php endpoint) against real
- * fixtures. Tab validation: tests/unit/api/StatisticsEndpointValidationTest.php.
+ * fixtures. Tab validation: tests/integration/StatisticsEndpointRejectionTest.php
+ * (HTTP) and tests/unit/api/StatisticsEndpointValidationTest.php (source pins).
  */
 class StatisticsApiTest extends IntegrationTestCase
 {

@@ -1,6 +1,6 @@
 // edit.php updateCarDetails(): missing-car path (#1313) and the adjacent
-// ownership-violation logout branch. security/car-update-ownership.spec.js
-// covers save.php, a different code path.
+// ownership-violation logout branch. tests/integration/CarSaveOwnershipGuardTest.php
+// covers the save.php ownership guard, a different code path.
 //
 // These tests POST action=updateCar directly, because only the POST path
 // logs out a non-owner. car-edit-get-car-id.spec.js covers the GET path. The
