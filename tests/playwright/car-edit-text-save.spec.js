@@ -3,9 +3,11 @@
 // existing (LOCAL) FilePond images; it sends only a sentinel `blob` file.
 
 const { test, expect } = require('@playwright/test');
+const BASE_URL = require('./base-url.js');
 const { ensureLoggedIn } = require('./auth-helper.js');
+const { runPhpFixture } = require('./fixture-runner.js');
 const { makePhoto, postUpdateCar, routeModels, attemptLeave, giveUserGesture } = require('./car-edit-helpers.js');
-const { CAR_ID_STANDARD, CAR_ID_WITH_SPECIAL_CHARS, CAR_ID_WITH_HISTORY } = require('./fixtures.js');
+const { CAR_ID_STANDARD, CAR_ID_WITH_HISTORY } = require('./fixtures.js');
 
 /**
  * Minimal multipart/form-data parser for browser FormData bodies.
@@ -491,7 +493,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
             await route.fallback();
         });
 
-        await page.goto(`app/owner/cars/edit.php?car_id=${CAR_ID_WITH_SPECIAL_CHARS}`, { waitUntil: 'domcontentloaded' });
+        await page.goto(`app/owner/cars/edit.php?car_id=${CAR_ID_STANDARD}`, { waitUntil: 'domcontentloaded' });
 
         expect(page.url(), 'edit.php must render for an authenticated session, not redirect to login').not.toContain('login');
 
@@ -541,7 +543,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
                     await route.fulfill({
                         status: 200,
                         contentType: 'application/json',
-                        body: JSON.stringify({ success: true, cardetails: { id: CAR_ID_WITH_SPECIAL_CHARS } })
+                        body: JSON.stringify({ success: true, cardetails: { id: CAR_ID_STANDARD } })
                     });
                     return;
                 }
@@ -594,7 +596,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
 
         // A successful save leaves edit.php for the details page of the car
         // id that the mock returns.
-        await page.waitForURL(new RegExp(`details\\.php\\?car_id=${CAR_ID_WITH_SPECIAL_CHARS}\\b`), { timeout: 10000 });
+        await page.waitForURL(new RegExp(`details\\.php\\?car_id=${CAR_ID_STANDARD}\\b`), { timeout: 10000 });
     });
 
     // Existing LOCAL image plus one new upload: only the new file is in
@@ -969,8 +971,11 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
     });
 });
 
-// Encode-at-output regression (#844). Tests 2 and 3 need CAR_ID_WITH_SPECIAL_CHARS
-// in the local DB with special characters in comments.
+// Encode-at-output regression (#844). The details and edit-form tests seed their
+// own car (seed-special-chars-car.php, #2737), because no fixed car id can promise
+// special characters in its comments.
+const FIXTURE_REL = 'tests/playwright/local/fixtures/seed-special-chars-car.php';
+const isRemoteBase = !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(BASE_URL);
 
 test.describe('encode-at-output regression — special chars in car text fields (#844)', () => {
     const SPECIAL_CHARS = "O'Brien & Co <é> \"test\"";
@@ -1052,50 +1057,80 @@ test.describe('encode-at-output regression — special chars in car text fields 
         expect(body, 'POST body must contain the raw text value').toContain('Brien');
     });
 
-    test('details page renders special chars as readable text', async ({ page }) => {
-        // Navigate to the details page for a car with known special chars
-        await page.goto(`app/owner/cars/details.php?car_id=${CAR_ID_WITH_SPECIAL_CHARS}`, {
-            waitUntil: 'domcontentloaded',
+    test.describe('seeded car with special chars in comments', () => {
+        test.skip(isRemoteBase, 'The seed fixture writes to the local Docker database, so the base URL must be the local site');
+        // beforeAll runs before the outer beforeEach skip, so skip here too, or the seed runs for no test.
+        test.skip(
+            !process.env.E2E_DEV_ADMIN_USERNAME || !process.env.E2E_DEV_ADMIN_PASSWORD,
+            'Set E2E_DEV_ADMIN_USERNAME and E2E_DEV_ADMIN_PASSWORD in .env.local to run authenticated tests'
+        );
+
+        // One worker: one seed for both tests, and the afterAll cleanup runs once.
+        test.describe.configure({ mode: 'serial' });
+
+        let seeded;
+
+        test.beforeAll(() => {
+            seeded = JSON.parse(runPhpFixture(FIXTURE_REL).trim().split('\n').pop());
+            expect(seeded.carId).toBeGreaterThan(0);
+            // The exact checks compare with the seed output. Without this check, a plain-ASCII seed would let them pass on broken encoding.
+            expect(seeded.comments, 'The seed must hold the special characters under test').toContain(SPECIAL_CHARS);
         });
 
-        expect(page.url(), 'details.php must render for an authenticated session, not redirect to login').not.toContain('login');
-
-        // details.php sends a missing car to the cars index, which would make
-        // the entity assertions vacuous.
-        expect(
-            page.url(),
-            `Car ${CAR_ID_WITH_SPECIAL_CHARS} must exist in the local DB with migrated special-character text — see fixtures.js`
-        ).toContain(`details.php?car_id=${CAR_ID_WITH_SPECIAL_CHARS}`);
-
-        // innerText of the content wrapper: textContent also returns inline
-        // <script> source, and the footer's escapeHtml() holds a literal '&amp;'.
-        const pageText = await page.locator('.page-wrapper').innerText();
-
-        // Assert no visible HTML entity strings in any text content
-        expect(pageText, 'Details page must not render literal &amp; entity strings').not.toContain('&amp;');
-        expect(pageText, "Details page must not render literal &#039; entity strings").not.toContain('&#039;');
-        expect(pageText, 'Details page must not render literal &lt; entity strings').not.toContain('&lt;');
-    });
-
-    test('edit form textarea pre-fills with plain readable text', async ({ page }) => {
-        // Navigate to the edit form for a car with known special chars
-        await page.goto(`app/owner/cars/edit.php?car_id=${CAR_ID_WITH_SPECIAL_CHARS}`, {
-            waitUntil: 'domcontentloaded',
+        test.afterAll(() => {
+            try {
+                runPhpFixture(FIXTURE_REL, ['--cleanup']);
+            } catch (error) {
+                // The next seed run deletes the marker rows first, so a failed cleanup is not fatal.
+                console.warn('special-chars cleanup failed:', error.message);
+            }
         });
 
-        expect(page.url(), 'edit.php must render for an authenticated session, not redirect to login').not.toContain('login');
+        test('details page renders special chars as readable text', async ({ page }) => {
+            await page.goto(`app/owner/cars/details.php?car_id=${seeded.carId}`, {
+                waitUntil: 'domcontentloaded',
+            });
 
-        const commentsField = page.locator('#comments');
-        await expect(
-            commentsField,
-            `edit.php must render a #comments textarea for car ${CAR_ID_WITH_SPECIAL_CHARS} — see fixtures.js`
-        ).toBeVisible();
+            expect(page.url(), 'details.php must render for an authenticated session, not redirect to login').not.toContain('login');
 
-        const textareaValue = await commentsField.inputValue();
+            // details.php sends a missing car to the cars index, which would make
+            // the entity assertions vacuous.
+            expect(
+                page.url(),
+                `The seeded car ${seeded.carId} must exist in the local DB`
+            ).toContain(`details.php?car_id=${seeded.carId}`);
 
-        // Assert no HTML entity strings in the textarea value
-        expect(textareaValue, 'Textarea must not pre-fill with &amp; entity strings').not.toContain('&amp;');
-        expect(textareaValue, "Textarea must not pre-fill with &#039; entity strings").not.toContain('&#039;');
-        expect(textareaValue, 'Textarea must not pre-fill with &lt; entity strings').not.toContain('&lt;');
+            // innerText of the content wrapper: textContent also returns inline
+            // <script> source, and the footer's escapeHtml() holds a literal '&amp;'.
+            const pageText = await page.locator('.page-wrapper').innerText();
+
+            // Assert no visible HTML entity strings in any text content
+            expect(pageText, 'Details page must not render literal &amp; entity strings').not.toContain('&amp;');
+            expect(pageText, "Details page must not render literal &#039; entity strings").not.toContain('&#039;');
+            expect(pageText, 'Details page must not render literal &lt; entity strings').not.toContain('&lt;');
+            expect(pageText, 'Details page must show the seeded comments as written').toContain(seeded.comments);
+        });
+
+        test('edit form textarea pre-fills with plain readable text', async ({ page }) => {
+            await page.goto(`app/owner/cars/edit.php?car_id=${seeded.carId}`, {
+                waitUntil: 'domcontentloaded',
+            });
+
+            expect(page.url(), 'edit.php must render for an authenticated session, not redirect to login').not.toContain('login');
+
+            const commentsField = page.locator('#comments');
+            await expect(
+                commentsField,
+                `edit.php must render a #comments textarea for car ${seeded.carId}`
+            ).toBeVisible();
+
+            const textareaValue = await commentsField.inputValue();
+
+            // Assert no HTML entity strings in the textarea value
+            expect(textareaValue, 'Textarea must not pre-fill with &amp; entity strings').not.toContain('&amp;');
+            expect(textareaValue, "Textarea must not pre-fill with &#039; entity strings").not.toContain('&#039;');
+            expect(textareaValue, 'Textarea must not pre-fill with &lt; entity strings').not.toContain('&lt;');
+            expect(textareaValue, 'Textarea must pre-fill with the seeded comments as written').toBe(seeded.comments);
+        });
     });
 });

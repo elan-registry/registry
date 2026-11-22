@@ -44,7 +44,6 @@ function resolveCarIdWithHistory(env) {
 }
 
 const CAR_ID_WITH_HISTORY = resolveCarIdWithHistory(process.env);
-const CAR_ID_WITH_SPECIAL_CHARS = 650; // depends on a one-time migration having run against this row — see car-edit-text-save.spec.js
 const CAR_ID_NONEXISTENT = 999999999;
 const CAR_ID_REDIRECT_TEST = 100;
 // No purchase or sold date (#1897). Re-verify with:
@@ -67,7 +66,6 @@ const CAR_ID_NOOWNER = 17;
 module.exports = {
   CAR_ID_STANDARD,
   CAR_ID_WITH_HISTORY,
-  CAR_ID_WITH_SPECIAL_CHARS,
   CAR_ID_NONEXISTENT,
   CAR_ID_REDIRECT_TEST,
   CAR_ID_WITHOUT_OWNERSHIP_DATES,
