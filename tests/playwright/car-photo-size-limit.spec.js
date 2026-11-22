@@ -1,8 +1,8 @@
 // Photo size limits (#2627): FilePond accepts a photo up to 20 MB, shrinks
-// it to 2048 px before save, and save.php answers an oversized body with a
-// clear message (#2647): 413 on test and prod; 200 on Docker, see
-// docs/development/ENVIRONMENT.md. The form tests need an owner login and
-// mock the server side, so no data is written.
+// it to 2048 px before save, and the form shows the save.php message for an
+// oversized body (#2647). tests/integration/CarSaveBodyLimitTest.php checks
+// the save.php response itself. These tests need an owner login and mock the
+// server side, so no data is written.
 
 const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn } = require('./auth-helper.js');
@@ -276,45 +276,5 @@ test.describe('Photo size limit in the car edit form', () => {
         await expect(message).toBeVisible();
         await expect(message).toContainText('Submission failed.');
         await expect(message).toContainText(TOO_LARGE_MESSAGE);
-    });
-});
-
-test.describe('save.php body limits (no login needed)', () => {
-    test('answers 413 with a clear message for a body above post_max_size', async ({ request }) => {
-        // 64 MB comes from post_max_size in docker/php.ini-overrides.ini.
-        const response = await request.post(SAVE_URL, {
-            multipart: {
-                'file[]': {
-                    name: 'huge.jpg',
-                    mimeType: 'image/jpeg',
-                    buffer: Buffer.alloc(65 * MIB)
-                }
-            }
-        });
-
-        // Test and prod answer 413 with a bare JSON body. Docker has
-        // display_errors = On, so PHP prints the startup warning first, the
-        // headers go out, and the status stays 200 (ENVIRONMENT.md, "Body
-        // above post_max_size"). Accept either form; the message is the check.
-        const text = await response.text();
-        if (text.startsWith('{')) {
-            expect(response.status()).toBe(413);
-        } else {
-            expect(text, 'Docker prefix must be the PHP startup warning').toContain('exceeds the limit');
-        }
-        const jsonStart = text.indexOf('{');
-        expect(jsonStart, `response must hold a JSON object, got: ${text.slice(0, 200)}`).toBeGreaterThanOrEqual(0);
-        const json = JSON.parse(text.slice(jsonStart));
-        expect(json.success).toBe(false);
-        expect(json.message).toBe(TOO_LARGE_MESSAGE);
-    });
-
-    test('answers 400 "No data received" for an empty POST', async ({ request }) => {
-        const response = await request.post(SAVE_URL);
-
-        expect(response.status()).toBe(400);
-        const text = await response.text();
-        const json = JSON.parse(text.slice(text.indexOf('{')));
-        expect(json.message).toBe('No data received');
     });
 });

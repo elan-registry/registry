@@ -56,6 +56,10 @@ after an item is written.
 - [ ] (test coverage) `transfer-request.php` (~L213) logs the skipped owner notice under `CAR_TRANSFER`, and no test checks the category. `tests/unit/regression/Issue2476TransferOwnerNoticeRegressionTest.php:65` matches the message text only (found in /flow:finish-milestone v2.34.0)
 - [ ] (test coverage) No endpoint test sends a 50-character color with a multibyte character to `transfer-request.php` (~L82). Only `tests/unit/cars/services/CarValidatorTest.php` covers the multibyte case, and the endpoint has its own check (found in /flow:finish-milestone v2.34.0)
 
+### `app/admin/includes/system/backup-operations.php` (test coverage)
+
+- [ ] Only the logged-out 302 has a test (`BackupOperationsAccessTest`). The `isAdmin()` 403 for a logged-in member and the CSRF 403 have none. The deleted Playwright spec did not test them either (found in #2471)
+
 ### `app/admin/includes/tab-car_mgmt.php`
 
 - [ ] Narrow 2 × `catch (Exception $e)` (~L29, 53) to the typed exceptions from `Car` and `CarTransferRepository` (from #1637)
@@ -169,6 +173,12 @@ after an item is written.
 
 - [ ] Each file repeats the DB env propagation to the `php -S` process, the router bootstrap (autoload, Dotenv `.env.test.local`, chdir, require) and a curl wrapper that splits headers and reads `Location`. Move them to one `tests/Support` helper. Also use `trackNewRateLimitRows()` in place of the blanket `us_rate_limits` delete in both test classes (found in #1960)
 
+### `tests/integration/IntegrationTestCase.php` (test-only)
+
+- [ ] `countMatchingLogs()` counts the whole `logs` table. A `user_id = 0` row left by an earlier run fails an absolute count. `CarSaveOwnershipGuardTest`, `CarSaveBodyLimitTest` and `RetentionPurgeJobIntegrationTest` write their own `id > ?` COUNT. Add an optional `?int $afterId` to the helper and use it there (found in #2471)
+- [ ] Integration tests copy the same setup steps: a logged-in member or admin (`createTestUser(['permissions' => 1])` plus `grantTestPermission()`), the user email read (`SELECT email FROM users WHERE id = ?`), the `logs` MAX(id) floor, and the per-user `DELETE FROM logs` cleanup loop. Copies are in the `SendOwnerEmail*Test` classes, `CarDetailsEmailOnFileRenderTest`, `BackupOperationsAccessTest`, `AdminAjaxGuardBehaviorTest` and others. Add base-class helpers, as `trackNewRateLimitRows()` does for rate limits (found in #2471)
+- [ ] Endpoint tests repeat the same 5 or 6 response assertions: `exitCode` 0, `httpCode`, `json` is an array, `status`, `message`, and `assertNoPhpErrorText()`. The copies are in `CarSaveOwnershipGuardTest`, `CarSaveBodyLimitTest` and `SendOwnerEmailSenderAndCsrfTest`, about 8 in total. Add an `assertApiResponse(array $result, int $httpCode, bool $success, string $message)` helper next to `assertNoPhpErrorText()`. `AdminAjaxGuardBehaviorTest::assertCleanGuardRefusal()` is the model (found in #2471)
+
 ### `tests/integration/OwnerCreateUpdateTransactionRollbackTest.php`
 
 - [ ] Replace the hand-written DB proxy (~L32, an anonymous class that implements `DatabaseInterface`) with `PassThroughDatabase` (from #2169)
@@ -193,10 +203,6 @@ after an item is written.
 
 - [ ] The class does not delete the `logs` rows that its endpoint calls write (`AccessDenied`, `user_id = 0`, and `VerificationConfigChanged` rows), so they build up on every run. Use the `logIdFloor` and per-user `DELETE` pattern from `AdminAjaxGuardBehaviorTest` (found in #2165)
 
-### `tests/integration/cars/services/CarRepositoryProfileFlagReadersTest.php`
-
-- [ ] `testCarDetailsPageLoadsTheOwnerProfileStateForTheCard` (~L440) reads source text with `file_get_contents()`. Replace it with a behavior test (found in #2330)
-
 ### `tests/playwright/admin-verification-dashboard.spec.js` (test coverage)
 
 - [ ] No test covers the queue and activity forms binding when the switch is absent (#2457). The probe-failure path needs a failing DB (see the comment above `expectBrevoRow()` in the spec) (found in /flow:finish-milestone v2.31.0)
@@ -217,10 +223,6 @@ after an item is written.
 ### `tests/playwright/local/fixtures/`
 
 - [ ] Eight `seed-*.php` fixtures each copy the `er_deleted_user_addresses` cleanup: a table-exists check, then a `DELETE ... IN (...)`. All eight also copy the username-to-ID lookup. Only `seed-output-escaping-car.php` checks `$db->error()` after the delete. The others check `error()` after neither the check nor the delete. In most of them, the cleanup loop in the same file exits on an error. `seed-bounced-car.php` checks `error()` nowhere. Add one shared helper (for example `Tests\Support\DeletedUserAddressCleanup::forUserIds($db, $ids)`) that checks `error()`, and call it from each fixture (found in #2419)
-
-### `tests/playwright/security/car-update-ownership.spec.js` `tests/playwright/security/car-image-ownership.spec.js`
-
-- [ ] Both headers call the specs ownership-guard regression tests. The specs log in as admin and use a car that does not exist, so they reach the car-not-found branch of `app/api/cars/save.php`, not the ownership branch. `tests/integration/CarSaveOwnershipGuardTest.php` tests the ownership branch. The `car-image-ownership.spec.js` header also says that a CSRF failure returns HTML with HTTP 200. `save.php` returns `ApiResponse::forbidden('Invalid CSRF token')` with HTTP 403. Correct both headers, or remove the specs in #2471 (found in #2362)
 
 ### `tests/unit/SitemapServiceTest.php`
 

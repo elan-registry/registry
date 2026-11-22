@@ -7,18 +7,14 @@ const { defineConfig, devices } = require("@playwright/test");
 const path = require("path");
 const fs = require("fs");
 
-// Selects the auth file / setup script tests/playwright/e2e/auth-staleness.setup.js
-// and auth-staleness-admin.setup.js check against. Must be set before
-// Playwright collects those test files.
+// Selects the auth file that tests/playwright/e2e/auth-staleness-admin.setup.js
+// checks. Must be set before Playwright collects that test file.
 process.env.E2E_AUTH_TIER = "test";
 
-// Check TEST environment auth files independently per role (#2035) — either
-// can be present without the other (e.g. only the admin auth file was
-// regenerated), so each gates only its own check-auth/project pair.
+// Only the admin project needs a saved session (#2035). It is registered
+// only when its auth file exists.
 const authFileAdmin = path.join(__dirname, "tests/playwright/.auth/user-test-admin.json");
-const authFileNonAdmin = path.join(__dirname, "tests/playwright/.auth/user-test-nonadmin.json");
 const hasAuthFileAdmin = fs.existsSync(authFileAdmin);
-const hasAuthFileNonAdmin = fs.existsSync(authFileNonAdmin);
 
 module.exports = defineConfig({
   testDir: "./tests/playwright/e2e",
@@ -61,31 +57,6 @@ module.exports = defineConfig({
               ...devices["Desktop Chrome"],
               // Use saved authentication state
               storageState: authFileAdmin
-            }
-          }
-        ]
-      : []),
-    // Same reasoning as check-auth-admin above — always registered so a
-    // missing non-admin auth file fails loudly instead of being silently
-    // unregistered along with its dependent project.
-    {
-      name: "check-auth",
-      testMatch: /(?:^|\/)auth-staleness\.setup\.js$/,
-      use: { ...devices["Desktop Chrome"] }
-    },
-    ...(hasAuthFileNonAdmin
-      ? [
-          {
-            name: "logged-in",
-            // ajax-endpoints-non-admin.spec.js covers requireAdminAjax()'s
-            // isRegistryAdmin() branch — same as Dev's logged-in-non-admin
-            // project (#2035, #2068). Add further specs here as they're written.
-            testMatch: /(?:^|\/)ajax-endpoints-non-admin\.spec\.js$/,
-            dependencies: ["check-auth"],
-            use: {
-              ...devices["Desktop Chrome"],
-              // Use saved authentication state
-              storageState: authFileNonAdmin
             }
           }
         ]

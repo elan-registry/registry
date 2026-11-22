@@ -383,23 +383,23 @@ as an authenticated user without entering credentials on every run. Run once
 
 ### playwright-auth-setup.js
 
-Consolidated setup script (#2035) covering all four Test/Prod tier×role
-combinations. Saves an authenticated session to
-`tests/playwright/.auth/user-<tier>-<role>.json`. Launches a headed browser;
+Consolidated setup script (#2035) for the Test/Prod admin account (the only
+Test/Prod role since #2471). Saves an authenticated session to
+`tests/playwright/.auth/user-<tier>-admin.json`. Launches a headed browser;
 fails fast if Cloudflare Turnstile is enabled on the target environment
 rather than hanging or attempting to bypass it — disable Turnstile manually
 first, then re-enable it once the auth file is saved.
 
-Credentials are read from `.env.local` (`E2E_<TIER>_<ROLE>_USERNAME`/
+Credentials are read from `.env.local` (`E2E_<TIER>_ADMIN_USERNAME`/
 `_PASSWORD` — see `docs/development/ENVIRONMENT.md`), not from environment
 variables or 1Password.
 
 ```bash
-node scripts/playwright-auth-setup.js <test|prod> <admin|nonadmin>
+node scripts/playwright-auth-setup.js <test|prod> admin
 
 # Examples:
 node scripts/playwright-auth-setup.js test admin
-node scripts/playwright-auth-setup.js prod nonadmin
+node scripts/playwright-auth-setup.js prod admin
 ```
 
 ## Server Hooks

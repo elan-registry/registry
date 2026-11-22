@@ -62,10 +62,8 @@ module.exports = defineConfig({
       testIgnore: '**/e2e/**',
     },
     {
-      // Exact-filename allowlist so this doesn't also match auth-non-admin.setup.js
-      // (added for playwright.config.dev.js's setup-non-admin project) —
-      // this config has no use for it and would otherwise perform an unused
-      // live login on every local run.
+      // Exact-filename allowlist so this matches only auth.setup.js, not the
+      // auth-staleness-admin.setup.js file that the Test/Prod configs use.
       name: 'setup',
       testMatch: /(?:^|\/)auth\.setup\.js$/,
       use: { ...devices['Desktop Chrome'] },

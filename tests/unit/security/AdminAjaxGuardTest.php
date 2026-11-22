@@ -11,8 +11,8 @@ use PHPUnit\Framework\TestCase;
  * exit on rejection, so PHPUnit cannot run them. Matching is token-based, so a
  * commented-out guard does not count. It proves the call exists, not that it
  * runs first. It does not check what requireAdminAjax() does inside.
- * tests/integration/AdminAjaxGuardBehaviorTest.php checks that. Only
- * process-user-details.php has an HTTP rejection test (Playwright).
+ * tests/integration/AdminAjaxGuardBehaviorTest.php checks that, through
+ * process-owner-search.php and process-user-details.php.
  */
 #[Group('fast')]
 #[Group('unit')]

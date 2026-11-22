@@ -6,13 +6,11 @@ const path = require('path');
 // Distinct from playwright.config.js's user.json — this config runs against
 // the local Docker site, not the deployed site, so sharing that file would
 // let a dev run silently overwrite the Local storageState. Test/Prod use their
-// own user-<tier>-<role>.json files, populated by
+// own user-<tier>-admin.json files, populated by
 // scripts/playwright-auth-setup.js (see docs/testing/PLAYWRIGHT_E2E.md), so
 // there's no collision with those either.
 const authFile = path.join(__dirname, 'tests/playwright/.auth/user-dev.json');
-const authFileNonAdmin = path.join(__dirname, 'tests/playwright/.auth/user-dev-non-admin.json');
 const hasCredentials = !!(process.env.E2E_DEV_ADMIN_USERNAME && process.env.E2E_DEV_ADMIN_PASSWORD);
-const hasCredentialsNonAdmin = !!(process.env.E2E_DEV_NONADMIN_USERNAME && process.env.E2E_DEV_NONADMIN_PASSWORD);
 
 /**
  * @see https://playwright.dev/docs/test-configuration
@@ -56,22 +54,14 @@ module.exports = defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
     {
-      // Exact-filename allowlist so this doesn't also match auth-non-admin.setup.js
-      // below — same convention playwright.config.js uses for its own 'setup'
-      // project (tightened there for the same reason when this file was added,
-      // see playwright.config.js).
+      // Exact-filename allowlist, the same convention that playwright.config.js
+      // uses for its own 'setup' project. A loose pattern would also match the
+      // other *.setup.js files in this directory.
       name: 'setup',
       testMatch: /(?:^|\/)auth-dev\.setup\.js$/,
       use: { ...devices['Desktop Chrome'] },
     },
     {
-      name: 'setup-non-admin',
-      testMatch: /(?:^|\/)auth-non-admin\.setup\.js$/,
-      use: { ...devices['Desktop Chrome'] },
-    },
-    {
-      // NOTE: when adding a spec that needs the non-admin session, add it to
-      // 'logged-in-non-admin's testMatch below too if it should ALSO run here.
       // Kept in sync with playwright.config.js's own 'admin' alternation
       // (car-edit-owner-refresh included) so Dev is a strict superset of what
       // Local covers for authenticated e2e specs.
@@ -81,19 +71,6 @@ module.exports = defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         ...(hasCredentials ? { storageState: authFile } : {}),
-      },
-    },
-    {
-      name: 'logged-in-non-admin',
-      // Add a spec's filename to this testMatch to opt it into the non-admin
-      // session (mirrors the allowlist convention on 'admin' above).
-      // ajax-endpoints-non-admin.spec.js covers requireAdminAjax()'s
-      // isRegistryAdmin() branch — see package.json's test:e2e:dev:non-admin.
-      testMatch: /(?:^|\/)ajax-endpoints-non-admin\.spec\.js$/,
-      dependencies: ['setup-non-admin'],
-      use: {
-        ...devices['Desktop Chrome'],
-        ...(hasCredentialsNonAdmin ? { storageState: authFileNonAdmin } : {}),
       },
     },
   ],

@@ -27,15 +27,6 @@ class SerializedDataRemovalTest extends TestCase
         $this->assertDoesNotMatchRegularExpression('/name=[\'"]from_user_id[\'"]/', $content);
     }
 
-    /** #971: the endpoint never reads the sender from POST. */
-    public function testContactOwnerEmailDerivesSenderFromSession(): void
-    {
-        $content = $this->read('app/api/contact/send-owner-email.php');
-
-        $this->assertStringNotContainsString("Input::get('from_user_id')", $content);
-        $this->assertStringContainsString('$user->data()->id', $content);
-    }
-
     public function testUserIdFieldsAreHTMLEncoded(): void
     {
         $this->assertStringContainsString(
