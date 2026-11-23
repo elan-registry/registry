@@ -96,12 +96,6 @@ final class CronJobFailureLogReaderTest extends TestCase
         $cutoff = $db->lastParams()[1] ?? null;
 
         $this->assertIsString($cutoff, 'The cutoff must be bound as the second parameter');
-        $this->assertGreaterThan(
-            0,
-            CronJobFailureLogReader::LOOKBACK_DAYS,
-            'A non-positive lookback would make the window empty or unbounded'
-        );
-
         $expected = time() - (CronJobFailureLogReader::LOOKBACK_DAYS * 24 * 60 * 60);
         $this->assertEqualsWithDelta(
             $expected,

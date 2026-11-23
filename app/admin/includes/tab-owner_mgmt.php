@@ -322,14 +322,7 @@ $ownerQualityIcon  = match (true) {
                                     <div class="card-body">
                                         <p class="card-text mb-3"><?= $report['description'] ?></p>
 
-                                        <?php if ($key === 'inactive_owners') { ?>
-                                            <!-- Summary for inactive owners - no table shown -->
-                                            <div class="alert alert-primary">
-                                                <h6 class="alert-heading"><i class="fas fa-info-circle"></i> Inactive Car Owners Summary</h6>
-                                                <p class="mb-2">Found <strong><?= $report['count'] ?></strong> car owners who have not logged in for over 2 years or never logged in.</p>
-                                                <p class="mb-0">These accounts may be abandoned or owners may have lost access. Consider reaching out via email to re-engage these users or verify if their cars should remain in the registry.</p>
-                                            </div>
-                                        <?php } elseif ($key === 'duplicate_emails') { ?>
+                                        <?php if ($key === 'duplicate_emails') { ?>
                                             <!-- Enhanced Duplicate Emails Interface -->
                                             <div class="alert alert-primary mb-4">
                                                 <h5 class="alert-heading"><i class="fas fa-info-circle"></i> Understanding Duplicate Emails</h5>
