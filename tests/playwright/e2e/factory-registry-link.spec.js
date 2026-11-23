@@ -1,6 +1,61 @@
 const { test, expect } = require('@playwright/test');
 const { waitForDataTables, assertNoConsoleErrors } = require('../auth-helper.js');
 
+// Index of the `serial` column in app/assets/js/factory-list.js (column 0 is
+// the hidden id).
+const SERIAL_COLUMN = 5;
+
+/**
+ * Find a factory serial that matches a registry car.
+ *
+ * Throws instead of skipping, so a missing factory dataset fails the run
+ * rather than passing with no check.
+ *
+ * @param {import('@playwright/test').APIRequestContext} request
+ * @returns {Promise<{serial: string, carId: number}>}
+ */
+async function findRegisteredFactorySerial(request) {
+  const carsResponse = await request.post('app/api/cars/list.php', {
+    form: { draw: '1', start: '0', length: '100' },
+  });
+  expect(carsResponse.ok(), `cars list API returned HTTP ${carsResponse.status()}`).toBe(true);
+  const cars = await carsResponse.json();
+  const chassisValues = [...new Set(cars.data.map((car) => car.chassis).filter(Boolean))];
+
+  for (const chassis of chassisValues) {
+    const factoryResponse = await request.post('app/api/cars/factory-list.php', {
+      form: {
+        draw: '1',
+        start: '0',
+        length: '1',
+        [`columns[${SERIAL_COLUMN}][data]`]: 'serial',
+        [`columns[${SERIAL_COLUMN}][search][value]`]: chassis,
+      },
+    });
+    expect(
+      factoryResponse.ok(),
+      `factory list API returned HTTP ${factoryResponse.status()} for chassis ${chassis}`
+    ).toBe(true);
+    const [row] = (await factoryResponse.json()).data;
+    if (row) {
+      // An unfiltered row would pair this chassis with another serial's car.
+      expect(row.serial, 'factory-list.php ignored the serial column filter').toBe(chassis);
+    }
+    const carId = Number.parseInt(row?.car_id, 10);
+    if (carId > 0) {
+      return { serial: chassis, carId };
+    }
+  }
+
+  throw new Error(
+    `None of the ${chassisValues.length} chassis values from the first 100 registry cars has an elan_factory_info row. `
+      + 'On a local Docker target, load production cars and factory data: run '
+      + '`./scripts/refresh-local-db.sh --fetch --skip-images` from the host (needs the a2hosting SSH alias), '
+      + 'or `./scripts/refresh-local-db.sh <DUMP_FILE>`. See scripts/README.md, "refresh-local-db.sh". '
+      + 'On a remote target, check its elan_factory_info data.'
+  );
+}
+
 test.describe('Factory Page - Registry Link Feature', () => {
   // Run these tests with the admin project
   test.beforeEach(async ({ }, testInfo) => {
@@ -32,42 +87,10 @@ test.describe('Factory Page - Registry Link Feature', () => {
     console.log('✓ Registry Link column header visible');
   });
 
-  test('should display matched chassis with "View Car" button', async ({ page, context }) => {
-    // Matched-chassis rows require the full elan_factory_info dataset
-    // (ElanFactoryInfoSeed, 9,762 rows via `scripts/provision-schema.sh
-    // --full`) — default provisioning only inserts a couple of rows and does
-    // not guarantee a chassis match exists. Skip rather than assume, same
-    // caution as the pagination test below.
-
-    await page.goto('app/owner/cars/factory.php');
-
-    // Wait for table to load
-    await waitForDataTables(page);
-    console.log('✓ DataTable loaded');
-
-    // Registry Link renders synchronously with DataTable draw — no AJAX wait needed
-    await page.waitForSelector('.registry-link-container', { timeout: 10000 });
-    console.log('✓ Registry link containers rendered');
-
-    // Look for "View Car" buttons
-    const viewButtons = page.locator('.registry-link-container .btn-primary');
-    const viewButtonCount = await viewButtons.count();
-
-    test.skip(viewButtonCount === 0, 'No matched chassis in fixture data — requires provision-schema.sh --full');
-
-    console.log(`✓ Found ${viewButtonCount} "View Car" button(s)`);
-
-    // Verify first button has correct content
-    const firstButton = viewButtons.first();
-    const text = await firstButton.textContent();
-    expect(text).toContain('View Car');
-    console.log(`✓ First button text: "${text.trim()}"`);
-  });
-
   test('should display unmatched chassis with informational message', async ({ page }) => {
-    // Unmatched-chassis rows depend on the same environment-variable fixture
-    // data as the matched-chassis test above — see its comment. Skip rather
-    // than assume.
+    // Unmatched-chassis rows need elan_factory_info rows in the app database.
+    // `scripts/refresh-local-db.sh --fetch --skip-images` (run from the host)
+    // loads them. Skip rather than assume.
 
     await page.goto('app/owner/cars/factory.php');
 
@@ -82,7 +105,7 @@ test.describe('Factory Page - Registry Link Feature', () => {
     const messages = page.locator('.registry-link-container .text-muted, .registry-link-container .text-secondary');
     const messageCount = await messages.count();
 
-    test.skip(messageCount === 0, 'No unmatched chassis in fixture data — requires provision-schema.sh --full');
+    test.skip(messageCount === 0, 'No unmatched chassis in fixture data — requires elan_factory_info rows (scripts/refresh-local-db.sh --fetch --skip-images, from the host)');
 
     console.log(`✓ Found ${messageCount} informational message(s)`);
 
@@ -151,16 +174,36 @@ test.describe('Factory Page - Registry Link Feature', () => {
     }
   });
 
-  test('"View Car" button should navigate to car details page', async ({ page }) => {
-    await page.goto('app/owner/cars/factory.php');
+  test('matched chassis shows a View Car button that links to the car', async ({ page }) => {
+    const { serial, carId } = await findRegisteredFactorySerial(page.request);
 
-    // Wait for table and AJAX
+    await page.goto('app/owner/cars/factory.php');
     await waitForDataTables(page);
-    await page.waitForSelector('.registry-link-container', { timeout: 10000 });
+
+    // Page 1 of the unfiltered list can hold no matched row, so filter to the
+    // matched serial. The serial column filter is an exact match, so the row
+    // is always on page 1.
+    // Match the filtered request by its body: the initial unfiltered draw can
+    // still be in flight, and its response must not end the wait.
+    const encodedSerial = encodeURIComponent(serial).replace(/%20/g, '+');
+    const filtered = page.waitForResponse((response) => response.url().includes('factory-list.php')
+      && (response.request().postData() ?? '').includes(`%5Bvalue%5D=${encodedSerial}`));
+    await page.evaluate(
+      ({ column, value }) => window.jQuery('#cartable').DataTable().column(column).search(value).draw(),
+      { column: SERIAL_COLUMN, value: serial }
+    );
+    const filteredResponse = await filtered;
+    expect(filteredResponse.ok(), `filtered factory list returned HTTP ${filteredResponse.status()}`).toBe(true);
+    const filteredRows = (await filteredResponse.json()).data;
+    expect(filteredRows.length, `filtered factory list returned no row for serial ${serial}`).toBeGreaterThan(0);
+    for (const row of filteredRows) {
+      expect(row.serial, 'factory-list.php ignored the serial column filter').toBe(serial);
+    }
 
     const viewButton = page.locator('.registry-link-container .btn-primary').first();
     await expect(viewButton).toBeVisible();
-    await expect(viewButton).toHaveAttribute('href', /details\.php\?car_id=\d+/);
+    await expect(viewButton).toContainText(`View Car #${carId}`);
+    await expect(viewButton).toHaveAttribute('href', new RegExp(`details\\.php\\?car_id=${carId}$`));
   });
 
   test('should not make any request to chassis-lookup.php', async ({ page }) => {
