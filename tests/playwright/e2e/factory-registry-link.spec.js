@@ -37,6 +37,10 @@ async function findRegisteredFactorySerial(request) {
       `factory list API returned HTTP ${factoryResponse.status()} for chassis ${chassis}`
     ).toBe(true);
     const [row] = (await factoryResponse.json()).data;
+    if (row) {
+      // An unfiltered row would pair this chassis with another serial's car.
+      expect(row.serial, 'factory-list.php ignored the serial column filter').toBe(chassis);
+    }
     const carId = Number.parseInt(row?.car_id, 10);
     if (carId > 0) {
       return { serial: chassis, carId };
@@ -45,8 +49,10 @@ async function findRegisteredFactorySerial(request) {
 
   throw new Error(
     `None of the ${chassisValues.length} chassis values from the first 100 registry cars has an elan_factory_info row. `
-      + 'Load the full factory dataset with `scripts/provision-schema.sh --full`. '
-      + 'If the dataset is loaded, check that factory-list.php still applies the serial column filter.'
+      + 'On a local Docker target, load production cars and factory data: run '
+      + '`./scripts/refresh-local-db.sh --fetch --skip-images` from the host (needs the a2hosting SSH alias), '
+      + 'or `./scripts/refresh-local-db.sh <DUMP_FILE>`. See scripts/README.md, "refresh-local-db.sh". '
+      + 'On a remote target, check its elan_factory_info data.'
   );
 }
 
@@ -82,9 +88,9 @@ test.describe('Factory Page - Registry Link Feature', () => {
   });
 
   test('should display unmatched chassis with informational message', async ({ page }) => {
-    // Unmatched-chassis rows need elan_factory_info rows. Default provisioning
-    // skips the bulk seed; `scripts/provision-schema.sh --full` loads it.
-    // Skip rather than assume.
+    // Unmatched-chassis rows need elan_factory_info rows in the app database.
+    // `scripts/refresh-local-db.sh --fetch --skip-images` (run from the host)
+    // loads them. Skip rather than assume.
 
     await page.goto('app/owner/cars/factory.php');
 
@@ -99,7 +105,7 @@ test.describe('Factory Page - Registry Link Feature', () => {
     const messages = page.locator('.registry-link-container .text-muted, .registry-link-container .text-secondary');
     const messageCount = await messages.count();
 
-    test.skip(messageCount === 0, 'No unmatched chassis in fixture data — requires provision-schema.sh --full');
+    test.skip(messageCount === 0, 'No unmatched chassis in fixture data — requires elan_factory_info rows (scripts/refresh-local-db.sh --fetch --skip-images, from the host)');
 
     console.log(`✓ Found ${messageCount} informational message(s)`);
 
@@ -188,6 +194,11 @@ test.describe('Factory Page - Registry Link Feature', () => {
     );
     const filteredResponse = await filtered;
     expect(filteredResponse.ok(), `filtered factory list returned HTTP ${filteredResponse.status()}`).toBe(true);
+    const filteredRows = (await filteredResponse.json()).data;
+    expect(filteredRows.length, `filtered factory list returned no row for serial ${serial}`).toBeGreaterThan(0);
+    for (const row of filteredRows) {
+      expect(row.serial, 'factory-list.php ignored the serial column filter').toBe(serial);
+    }
 
     const viewButton = page.locator('.registry-link-container .btn-primary').first();
     await expect(viewButton).toBeVisible();
