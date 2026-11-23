@@ -76,7 +76,7 @@
     "maplibre-gl": "6.17.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.65.0",
+    "@playwright/test": "^1.65.1",
     "dotenv": "^18.0.10",
     "eslint": "^10.14.0",
     "markdownlint-cli2": "^0.24.1"
