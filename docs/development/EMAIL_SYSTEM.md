@@ -2269,9 +2269,10 @@ offset of the request date. `BrevoSuppressionSyncJob::parseBlockedAt()` reads
 a value with a zero offset (`Z`, `+00:00`) or no zone as `Europe/Paris` wall
 time. The Paris DST rules give 2 hours in summer and 1 hour in winter. A
 non-zero offset is a real offset, and the job keeps it. In the repeated hour
-of the change to CET, PHP picks the CEST reading, so a block in that hour can
-be 1 hour early. Before #2501, the job read `Z` as UTC. A run within 2 hours
-of a block rejected the value and used the run time. A later run stored the
+of the change to CET, PHP picks the CET reading (measured on PHP 8.5.12), so
+a block in the first pass of that hour can be 1 hour late. Before #2501, the
+job read `Z` as UTC. A run within 2 hours of a block rejected the value and
+used the run time. A later run stored the
 time 1 or 2 hours late. The job does not correct the rows that it wrote
 before the change. The synthetic message ID uses the raw string, so the change
 writes no second row for an entry that is already imported.

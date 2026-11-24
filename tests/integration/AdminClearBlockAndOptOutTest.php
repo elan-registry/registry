@@ -820,16 +820,20 @@ final class AdminClearBlockAndOptOutTest extends IntegrationTestCase
         $rows = $this->flagChangeRows();
         $this->assertCount(1, $rows);
         $clearedAt = (string) $rows[0]['meta']['cleared_at'];
-        // logdate is later than cleared_at: an import must compare with cleared_at.
+        // The offsets are applied to a time outside the repeated Paris hour, so
+        // the import reads each blockedAt back as the same instant. Move
+        // cleared_at, and put logdate after it: an import must compare with
+        // cleared_at, not logdate.
+        $clearedTs = FakeBrevoBlockedContact::outsideParisRepeatedHour(strtotime($clearedAt) - 60, 180) + 60;
         $this->db->query(
-            'UPDATE logs SET logdate = ? WHERE id = ?',
-            [date('Y-m-d H:i:s', strtotime($clearedAt) + 120), $rows[0]['id']]
+            "UPDATE logs SET logdate = ?, metadata = JSON_SET(CONVERT(metadata USING utf8mb4), '$.cleared_at', ?) WHERE id = ?",
+            [date('Y-m-d H:i:s', $clearedTs + 120), date('Y-m-d H:i:s', $clearedTs), $rows[0]['id']]
         );
-        $this->assertFalse($this->db->error(), 'Test setup: logdate: ' . $this->db->errorString());
-        $blockedAt = $offsetSeconds === null ? null : FakeBrevoBlockedContact::blockedAtFor(strtotime($clearedAt) + $offsetSeconds);
+        $this->assertFalse($this->db->error(), 'Test setup: logdate and cleared_at: ' . $this->db->errorString());
+        $blockedAt = $offsetSeconds === null ? null : FakeBrevoBlockedContact::blockedAtFor($clearedTs + $offsetSeconds);
         // A no-date entry takes the run time. Run 60 s after cleared_at, so
         // only the #2426 guard, not the time compare, keeps the flag clear.
-        $runAt = $offsetSeconds === null ? (new DateTimeImmutable())->setTimestamp(strtotime($clearedAt) + 60) : null;
+        $runAt = $offsetSeconds === null ? (new DateTimeImmutable())->setTimestamp($clearedTs + 60) : null;
 
         // Control: an owner with no clear on record takes the same entry.
         [$controlId, $controlEmail] = $this->createImportOwner('control', false);
@@ -843,6 +847,55 @@ final class AdminClearBlockAndOptOutTest extends IntegrationTestCase
 
         $this->assertSame(1, (int) $this->getOwnerEmailFlags($controlId)['email_blocked'], 'Control: with no clear on record the entry sets the flag');
         $this->assertSame($expectedBlocked, (int) $this->getOwnerEmailFlags($this->ownerId)['email_blocked']);
+    }
+
+    /** @return array<string, array{bool}> Shared address (else moved) */
+    public static function importAfterRegistryOnlyClearProvider(): array
+    {
+        return [
+            'shared address' => [true],
+            'moved address' => [false],
+        ];
+    }
+
+    /**
+     * A Clear Block that keeps the Brevo block leaves the entry there: the next import must not set the flag again.
+     *
+     * No single current account holds the address (2 accounts share it, or the owner moved off it), so the
+     * import matches no one. The date guards do not decide this, so an entry with no blockedAt takes the same
+     * path and needs no row of its own. matchedCount pins the reason.
+     */
+    #[DataProvider('importAfterRegistryOnlyClearProvider')]
+    public function test_clearBlock_registryOnlyClear_thenImportEntry_keepsTheFlagClear(bool $shared): void
+    {
+        if ($shared) {
+            $blockedAddress = $this->ownerEmail;
+            $otherId = $this->createTestUser(['email' => strtoupper($this->ownerEmail), 'join_date' => '2020-01-01 00:00:00'], true);
+            $this->loggedUserIds[] = $otherId;
+        } else {
+            $blockedAddress = $this->address('old');
+            [$otherId] = $this->createImportOwner('other', false);
+        }
+        $this->seedBlocked($blockedAddress);
+        $this->mockSeedBlock($blockedAddress);
+        $this->setEmailAddressSinceSeen($this->ownerId, $blockedAddress, '2020-01-01 00:00:00');
+        $otherBefore = $this->getOwnerEmailFlags($otherId);
+
+        $result = $this->requestCommand('clear_block');
+        $this->assertSame([], $result['errors']);
+        $this->assertBlockCleared();
+        $this->assertSame([$blockedAddress], $this->mockBlockedEmails(), 'Test setup: the Brevo block stays');
+
+        $summary = $this->makeJob(new FakeBrevoSuppressionSyncClient([
+            FakeBrevoSuppressionSyncClient::page([
+                FakeBrevoBlockedContact::withReason($blockedAddress, 'contactFlaggedAsSpam', null, '2026-01-02T03:04:05.000Z'),
+            ]),
+        ]))->runFullBackfill();
+
+        $this->assertSame(0, $summary->matchedCount, 'No single current account holds the address');
+        $this->assertSame(1, $summary->unmatchedCount);
+        $this->assertBlockCleared();
+        $this->assertSame($otherBefore, $this->getOwnerEmailFlags($otherId), 'The other account does not change');
     }
 
     public function test_clearBlock_thenFullBackfillAgainstMockBrevo_keepsTheFlagClear(): void
