@@ -143,7 +143,8 @@ test.describe('Factory Page - Registry Link Feature', () => {
     // selector that matched nothing, so the test passed with no check (#2771).
     const onePageHint = 'No enabled DataTables Next button. Either the paging markup changed, or the factory '
       + 'table has one page: load the full elan_factory_info data with '
-      + '`./scripts/refresh-local-db.sh --fetch --skip-images` from the host. See scripts/README.md, "refresh-local-db.sh".';
+      + '`./scripts/refresh-local-db.sh --fetch --skip-images` from the host. See scripts/README.md, "refresh-local-db.sh". '
+      + 'On a remote target, check its elan_factory_info data.';
     const nextButton = page.locator('#cartable_wrapper').getByRole('link', { name: 'Next', exact: true });
     await expect(nextButton, onePageHint).toBeVisible();
     await expect(nextButton, onePageHint).not.toHaveAttribute('aria-disabled', 'true');
