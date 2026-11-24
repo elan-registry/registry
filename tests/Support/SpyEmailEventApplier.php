@@ -11,7 +11,8 @@ use ElanRegistry\Exceptions\CarDatabaseException;
 
 /**
  * SpyEmailEventApplier - Recording stand-in for EmailEventApplier, for
- * BrevoEventReconciliationJobTest and BrevoSuppressionSyncJobTest
+ * BrevoEventReconciliationJobTest, BrevoSuppressionSyncJobTest,
+ * BrevoWebhookEventProcessorTest and Issue2359NoEmailInLogsRegressionTest
  *
  * {@see EmailEventApplier} is deliberately *not* `final` for exactly this
  * reason: it is an injected collaborator of BrevoWebhookEventProcessor,
@@ -30,8 +31,8 @@ use ElanRegistry\Exceptions\CarDatabaseException;
  *
  * The constructor skips the parent's, so an inherited public method would
  * run real code on uninitialized collaborators. The spy therefore overrides
- * every public method of EmailEventApplier, and
- * SpyEmailEventApplierContractTest fails when a new one is not overridden.
+ * every public method of EmailEventApplier. When EmailEventApplier gets a new
+ * public method, override it here too.
  *
  * Named class, not anonymous: see FakeDatabase (`impureMethod.pure`).
  *

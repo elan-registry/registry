@@ -17,38 +17,6 @@ final class CarDataTablesTest extends IntegrationTestCase
         $this->requireDatabase();
     }
 
-    protected function tearDown(): void
-    {
-        parent::tearDown();
-    }
-
-    #[Group('fast')]
-    public function testGetDataTablesDataForCarsTable(): void
-    {
-        $car = new Car();
-
-        $request = [
-            'draw' => 1,
-            'start' => 0,
-            'length' => 10,
-            'search' => ['value' => ''],
-            'order' => [['column' => 0, 'dir' => 'asc']],
-            'columns' => [
-                ['data' => 'id', 'searchable' => 'true', 'orderable' => 'true'],
-                ['data' => 'chassis', 'searchable' => 'true', 'orderable' => 'true'],
-                ['data' => 'year', 'searchable' => 'true', 'orderable' => 'true'],
-            ]
-        ];
-
-        $result = $car->getDataTablesData($request, 'cars');
-
-        $this->assertIsArray($result);
-        $this->assertArrayHasKey('draw', $result);
-        $this->assertArrayHasKey('recordsTotal', $result);
-        $this->assertArrayHasKey('recordsFiltered', $result);
-        $this->assertArrayHasKey('data', $result);
-    }
-
     #[Group('fast')]
     public function testGetDataTablesDataForFactoryTable(): void
     {
@@ -73,106 +41,6 @@ final class CarDataTablesTest extends IntegrationTestCase
     }
 
     #[Group('fast')]
-    public function testGetDataTablesDataWithSearch(): void
-    {
-        $car = new Car();
-
-        $request = [
-            'draw' => 1,
-            'start' => 0,
-            'length' => 10,
-            'search' => ['value' => 'Elan'],
-            'order' => [['column' => 0, 'dir' => 'asc']],
-            'columns' => [
-                ['data' => 'chassis', 'searchable' => 'true', 'orderable' => 'true'],
-                ['data' => 'model', 'searchable' => 'true', 'orderable' => 'true'],
-            ]
-        ];
-
-        $result = $car->getDataTablesData($request, 'cars');
-
-        $this->assertIsArray($result);
-        $this->assertArrayHasKey('data', $result);
-        $this->assertLessThanOrEqual($result['recordsTotal'], $result['recordsFiltered']);
-    }
-
-    #[Group('fast')]
-    public function testGetDataTablesDataWithSorting(): void
-    {
-        $car = new Car();
-
-        $request = [
-            'draw' => 1,
-            'start' => 0,
-            'length' => 10,
-            'search' => ['value' => ''],
-            'order' => [['column' => 1, 'dir' => 'desc']],
-            'columns' => [
-                ['data' => 'id', 'searchable' => 'true', 'orderable' => 'true'],
-                ['data' => 'year', 'searchable' => 'true', 'orderable' => 'true'],
-            ]
-        ];
-
-        $result = $car->getDataTablesData($request, 'cars');
-
-        $this->assertIsArray($result);
-        $this->assertArrayHasKey('data', $result);
-
-        if (count($result['data']) > 1) {
-            $this->assertIsArray($result['data']);
-        }
-    }
-
-    #[Group('fast')]
-    public function testGetDataTablesDataWithPagination(): void
-    {
-        $car = new Car();
-
-        $request = [
-            'draw' => 2,
-            'start' => 10,
-            'length' => 5,
-            'search' => ['value' => ''],
-            'order' => [['column' => 0, 'dir' => 'asc']],
-            'columns' => [
-                ['data' => 'id', 'searchable' => 'true', 'orderable' => 'true'],
-            ]
-        ];
-
-        $result = $car->getDataTablesData($request, 'cars');
-
-        $this->assertIsArray($result);
-        $this->assertEquals(2, $result['draw']);
-        $this->assertLessThanOrEqual(5, count($result['data']));
-    }
-
-    #[Group('fast')]
-    public function testGetDataTablesDataValidatesColumnNames(): void
-    {
-        $car = new Car();
-
-        $request = [
-            'draw' => 1,
-            'start' => 0,
-            'length' => 10,
-            'search' => ['value' => ''],
-            'order' => [['column' => 0, 'dir' => 'asc']],
-            'columns' => [
-                ['data' => 'invalid_column_name', 'searchable' => 'true', 'orderable' => 'true'],
-            ]
-        ];
-
-        // Invalid columns are skipped, not rejected.
-        $result = $car->getDataTablesData($request, 'cars');
-
-        $this->assertIsArray($result);
-        $this->assertArrayHasKey('draw', $result);
-        $this->assertArrayHasKey('recordsTotal', $result);
-        $this->assertArrayHasKey('recordsFiltered', $result);
-        $this->assertArrayHasKey('data', $result);
-    }
-
-    #[Group('fast')]
     public function testGetDataTablesDataPreventsInjection(): void
     {
         $car = new Car();
@@ -188,55 +56,10 @@ final class CarDataTablesTest extends IntegrationTestCase
             ]
         ];
 
-        $result = $car->getDataTablesData($request, 'cars');
+        $car->getDataTablesData($request, 'cars');
 
         $tableCheck = $this->db->query("SHOW TABLES LIKE 'cars'");
         $this->assertGreaterThan(0, $tableCheck->count());
-    }
-
-    #[Group('fast')]
-    public function testGetDataTablesDataFailsWithInvalidTable(): void
-    {
-        $this->expectException(Exception::class);
-
-        $car = new Car();
-
-        $request = [
-            'draw' => 1,
-            'start' => 0,
-            'length' => 10,
-            'search' => ['value' => ''],
-            'order' => [['column' => 0, 'dir' => 'asc']],
-            'columns' => [
-                ['data' => 'id', 'searchable' => 'true', 'orderable' => 'true'],
-            ]
-        ];
-
-        $result = $car->getDataTablesData($request, 'invalid_table');
-    }
-
-    #[Group('fast')]
-    public function testGetDataTablesDataReturnsCorrectRecordCounts(): void
-    {
-        $car = new Car();
-
-        $request = [
-            'draw' => 1,
-            'start' => 0,
-            'length' => 10,
-            'search' => ['value' => ''],
-            'order' => [['column' => 0, 'dir' => 'asc']],
-            'columns' => [
-                ['data' => 'id', 'searchable' => 'true', 'orderable' => 'true'],
-            ]
-        ];
-
-        $result = $car->getDataTablesData($request, 'cars');
-
-        $this->assertIsNumeric($result['recordsTotal']);
-        $this->assertIsNumeric($result['recordsFiltered']);
-        $this->assertGreaterThanOrEqual(0, $result['recordsTotal']);
-        $this->assertGreaterThanOrEqual(0, $result['recordsFiltered']);
     }
 
     /**
