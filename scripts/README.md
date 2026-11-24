@@ -344,8 +344,8 @@ so the live site is never blocked, and verifies the `Dump completed` trailer
 before importing so a truncated download cannot silently import partial data.
 
 **Tables imported:** `cars`, `cars_hist`, `car_models`, `car_transfer_requests`,
-`elan_factory_info`, `users`, `profiles`, `user_permission_matches`, `country`,
-`audit`. Deliberately excluded: `logs`/`crons_logs` (noise), `users_online`/
+`elan_factory_info`, `users`, `profiles`, `user_permission_matches`, `audit`.
+Deliberately excluded: `logs`/`crons_logs` (noise), `users_online`/
 `users_session` (prod session state), `settings`/`email` (would overwrite local
 dev config, holds SMTP credentials), and `phinxlog`/`fix_script_runs`/`updates`/
 `pages`/`menus`/`permissions` (locally owned by migrations).

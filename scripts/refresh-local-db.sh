@@ -43,10 +43,10 @@
 #
 # Tables upserted (new rows added, existing rows updated by primary key):
 #   cars, cars_hist, car_models, car_transfer_requests, elan_factory_info,
-#   users, profiles, user_permission_matches, country, audit
+#   users, profiles, user_permission_matches, audit
 #
 #   user_permission_matches gives imported production users their real roles
-#   locally; country and audit are reference/audit-trail data the UI renders.
+#   locally; the UserSpice admin security log renders audit.
 #   Deliberately NOT imported: logs and crons_logs (noise), users_online and
 #   users_session (prod session state), settings and email (would overwrite
 #   local dev config / hold SMTP credentials), and phinxlog, fix_script_runs,
@@ -70,6 +70,8 @@
 #     2. IMAGE_CACHE  ->  ./userimages/   (so the local app renders images)
 #
 set -euo pipefail
+# The dump and backups hold password hashes and addresses: owner-only files.
+umask 077
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -109,7 +111,6 @@ TABLES=(
     users
     profiles
     user_permission_matches
-    country
     audit
 )
 
@@ -273,6 +274,9 @@ fetch_dump() {
 
     echo "==> Dumping production database on $SSH_ALIAS ..."
 
+    # A redirect into an existing file keeps its old mode, and gunzip copies
+    # that mode to the dump. Remove it so umask 077 applies.
+    rm -f "$dest.gz"
     ssh -o ConnectTimeout=30 "$SSH_ALIAS" \
         "REMOTE_DOCROOT='$REMOTE_DOCROOT' DUMP_TABLES='${TABLES[*]}' bash -s" \
         <<'REMOTE' > "$dest.gz"
