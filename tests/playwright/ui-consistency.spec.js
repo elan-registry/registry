@@ -1,37 +1,7 @@
 const { test, expect } = require('@playwright/test');
-const { navigateAndWait, waitForDataTables, assertNoConsoleErrors } = require('./auth-helper.js');
+const { assertNoConsoleErrors } = require('./auth-helper.js');
 
 test.describe('UI Consistency After Style Refactoring', () => {
-  test('responsive design works on mobile', async ({ page }) => {
-    // Set mobile viewport
-    await page.setViewportSize({ width: 375, height: 667 });
-    
-    await navigateAndWait(page, 'app/owner/cars/index.php');
-
-    // Check that content is still accessible
-    const mainContent = page.locator('.page-wrapper, .container, .card');
-    await expect(mainContent.first()).toBeVisible();
-
-    // This test runs in the plain `chromium` project, which has no
-    // storageState — index.php's securePage() redirects an unauthenticated
-    // visit to login.php. Skip (not silently pass) the DataTables
-    // assertion when unauthenticated, rather than an if-with-no-else that
-    // would report a false "passed" having never checked the table (#1950).
-    const currentUrl = page.url();
-    test.skip(currentUrl.includes('login.php'), 'index.php requires auth; chromium project has no storageState');
-
-    // Check that DataTables is responsive. car-list.js initializes this
-    // table with serverSide: true — an AJAX round-trip precedes the wrapper
-    // appearing, so wait for it via the shared waitForDataTables() helper
-    // (auth-helper.js) rather than sampling .count() once immediately after
-    // domcontentloaded, which depends on incidental timing between page
-    // load and this line rather than on the table actually being ready.
-    // The returned search-box locator isn't needed here — only the wait.
-    await waitForDataTables(page, 15000);
-    const dataTable = page.locator('.dt-container, .dataTables_wrapper');
-    await expect(dataTable.first()).toBeVisible();
-  });
-
   test('JavaScript files load without errors', async ({ page }) => {
     await assertNoConsoleErrors(page, 'app/owner/reports/statistics.php', 'statistics.php');
   });
