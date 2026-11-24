@@ -830,6 +830,10 @@ final class AdminClearBlockAndOptOutTest extends IntegrationTestCase
             [date('Y-m-d H:i:s', $clearedTs + 120), date('Y-m-d H:i:s', $clearedTs), $rows[0]['id']]
         );
         $this->assertFalse($this->db->error(), 'Test setup: logdate and cleared_at: ' . $this->db->errorString());
+        // With no write, cleared_at stays about equal to logdate and every row
+        // still passes, so the test would not prove the cleared_at compare.
+        $this->assertSame(1, $this->db->count(), 'Test setup: the flag-change row must be updated');
+        $this->assertSame(date('Y-m-d H:i:s', $clearedTs), $this->flagChangeRows()[0]['meta']['cleared_at'] ?? null, 'Test setup: cleared_at must move');
         $blockedAt = $offsetSeconds === null ? null : FakeBrevoBlockedContact::blockedAtFor($clearedTs + $offsetSeconds);
         // A no-date entry takes the run time. Run 60 s after cleared_at, so
         // only the #2426 guard, not the time compare, keeps the flag clear.
