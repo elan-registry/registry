@@ -64,12 +64,59 @@ class FakeBrevoBlockedContact
     /**
      * A Unix time in Brevo's `blockedAt` form: Paris wall time with a `Z`
      * suffix, as the real API sends it (#2501).
+     *
+     * A time in the first pass of the repeated Paris hour fails at once, so
+     * a test that uses the real clock and skips
+     * {@see self::outsideParisRepeatedHour()} does not fail only on 1 day
+     * each year.
+     *
+     * @throws \LogicException If the job would read the value back as a different instant
      */
     public static function blockedAtFor(int $timestamp): string
     {
+        if (!self::parisWallTimeRoundTrips($timestamp)) {
+            throw new \LogicException(
+                "Timestamp {$timestamp} is in the first pass of the repeated Paris hour, so the job reads it 1 hour late. Use outsideParisRepeatedHour()."
+            );
+        }
+
         return (new \DateTimeImmutable('@' . $timestamp))
             ->setTimezone(new \DateTimeZone('Europe/Paris'))
             ->format('Y-m-d\\TH:i:s.000\\Z');
+    }
+
+    /**
+     * A time that survives the `blockedAt` round trip, or 2 hours earlier.
+     *
+     * `blockedAt` is Paris wall time, and the job reads it again in
+     * Europe/Paris. In the repeated hour of the change to CET (02:00 to 03:00,
+     * last Sunday of October) one wall time names 2 instants. PHP picks the
+     * CET (later) one, so a time in the first pass comes back 1 hour late
+     * (measured on PHP 8.5.12). A test that uses the real clock fails on
+     * those days.
+     *
+     * The span must be less than 1 hour: if both end points are outside the
+     * 1-hour repeated hour, no point between them is in it.
+     *
+     * @param int $ts Unix time to check
+     * @param int $spanSeconds Length of the window that starts at $ts (0 to 3599)
+     * @throws \InvalidArgumentException If $spanSeconds is negative or is 3600 or more
+     */
+    public static function outsideParisRepeatedHour(int $ts, int $spanSeconds = 0): int
+    {
+        if ($spanSeconds < 0 || $spanSeconds >= 3600) {
+            throw new \InvalidArgumentException('spanSeconds must be from 0 to 3599, got ' . $spanSeconds);
+        }
+
+        return self::parisWallTimeRoundTrips($ts) && self::parisWallTimeRoundTrips($ts + $spanSeconds) ? $ts : $ts - 7200;
+    }
+
+    private static function parisWallTimeRoundTrips(int $ts): bool
+    {
+        $zone = new \DateTimeZone('Europe/Paris');
+        $wall = (new \DateTimeImmutable('@' . $ts))->setTimezone($zone)->format('Y-m-d H:i:s');
+
+        return (new \DateTimeImmutable($wall, $zone))->getTimestamp() === $ts;
     }
 
     /**

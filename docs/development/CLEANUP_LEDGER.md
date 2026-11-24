@@ -152,10 +152,6 @@ after an item is written.
 
 - [ ] The `Mobile Chrome` project uses `devices['iPhone SE']`, which runs WebKit, so the name is wrong and no test runs Chromium at mobile width. Rename the project, or add a Chromium mobile device (found in #2716)
 
-### `tests/integration/AdminClearBlockAndOptOutTest.php` (test coverage)
-
-- [ ] Only the `CLEARED` outcome runs an import afterwards. Add one after a shared-address (and moved-address) Clear Block: Brevo's entry with its original `blockedAt` and with none; the flag stays clear and the other account does not change (found in /finish-milestone v2.30.9)
-
 ### `tests/integration/AdminDeliverabilityActionsAuthTest.php`
 
 - [ ] The class has its own `php -r` subprocess copy of the endpoint runner. Use `IntegrationTestCase::invokeEndpoint()` and delete the copy (found in #2165)
@@ -324,6 +320,10 @@ after an item is written.
 ### `usersc/classes/ChassisValidator.php`
 
 - [ ] The `validatePost1970()` docblock says "5 characters" for 1970-1974, but the 5-character format applies only to model year 1970. Name each format with its years (found in /flow:finish-milestone v2.31.2)
+
+### `usersc/classes/Cron/BrevoSuppressionSyncJob.php`
+
+- [ ] The `parseBlockedAt()` docblock (~L1077-1079) says PHP picks the CEST reading in the repeated hour of the change to CET, so a block "can be 1 hour early". PHP 8.5.12 picks the CET reading, so the block is 1 hour late. Correct the docblock (found in #2705)
 
 ### `usersc/classes/EmailTemplate.php`
 
