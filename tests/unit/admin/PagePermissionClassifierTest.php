@@ -59,10 +59,17 @@ final class PagePermissionClassifierTest extends TestCase
             'admin maintenance page'            => ['app/admin/maintenance.php',                         true],
             'admin design-system page'          => ['app/admin/design-system.php',                               true],
             'docs admin'                        => ['docs/admin/guide.php',                                     true],
+            'admin tab include'                 => ['app/admin/includes/tab-cars.php',                          true],
+            // #795: user_settings follows the owner tier, not the admin tier
             'user settings (owner page)'        => ['usersc/user_settings.php',                                 false],
             'car listing (public)'              => ['app/owner/cars/index.php',                                       false],
             'car actions (owner)'               => ['app/api/cars/save.php',                                   false],
             'api send-feedback (not admin)'     => ['app/api/contact/send-feedback.php',                       false],
+            'api send-owner-email (not admin)'  => ['app/api/contact/send-owner-email.php',                    false],
+            'api statistics (public)'           => ['app/api/shared/statistics.php',                           false],
+            // login/join are PUBLIC (PUBLIC_USERSC_PAGES)
+            'login page'                        => ['usersc/login.php',                                         false],
+            'join page'                         => ['usersc/join.php',                                          false],
             'contact form (owner)'              => ['app/owner/contact/index.php',                              false],
             'error page'                        => ['404.php',                                                  false],
         ];
@@ -82,11 +89,11 @@ final class PagePermissionClassifierTest extends TestCase
     public static function adminOnlyProvider(): array
     {
         return [
-            // Admin-only: scripts directory
+            // Admin-only: scripts directory (#797)
             'maintenance script'                => ['app/admin/scripts/maintenance/21-Fix-Page-Permissions.php', true],
             'fix script'                        => ['app/admin/scripts/fix/01-something.php',                   true],
             'scripts root'                      => ['app/admin/scripts/index.php',                              true],
-            // Admin-only: maintenance portal pages
+            // Admin-only: maintenance portal pages, not admin+editor (#797)
             'maintenance'                       => ['app/admin/maintenance.php',                         true],
             // Admin+Editor: general admin panel (including design-system)
             'design-system'                     => ['app/admin/design-system.php',                              false],
@@ -95,6 +102,8 @@ final class PagePermissionClassifierTest extends TestCase
             'tab-cars'                          => ['app/admin/includes/tab-cars.php',                          false],
             'docs admin'                        => ['docs/admin/guide.php',                                     false],
             'non-admin page'                    => ['app/owner/cars/index.php',                                       false],
+            'api send-feedback (owner)'         => ['app/api/contact/send-feedback.php',                        false],
+            'api send-owner-email (owner)'      => ['app/api/contact/send-owner-email.php',                     false],
         ];
     }
 
@@ -122,10 +131,15 @@ final class PagePermissionClassifierTest extends TestCase
             'car action'                        => ['app/api/cars/save.php',              true],
             'api send-feedback (owner)'         => ['app/api/contact/send-feedback.php',    true],
             'api send-owner-email (owner)'      => ['app/api/contact/send-owner-email.php', true],
+            // statistics.php does not call securePage(), so it is never registered in the
+            // pages table. The classifier marks app/api/* private, but the Fix Page
+            // Permissions script processes only registered pages, so it never applies this.
+            'api statistics (unregistered)'     => ['app/api/shared/statistics.php',      true],
             'contact page'                      => ['app/owner/contact/index.php',        true],
             'contact owner page'                => ['app/owner/contact/owner.php',        true],
             'privacy page (public)'             => ['app/owner/privacy.php',              false],
             'edit page'                         => ['app/owner/cars/edit.php',             true],
+            // #795: user_settings is private (usersc/* pattern)
             'usersc page'                       => ['usersc/user_settings.php',           true],
             // login/join are PUBLIC (PUBLIC_USERSC_PAGES), mirroring users/login.php and users/join.php
             'login page'                        => ['usersc/login.php',                   false],
@@ -144,164 +158,5 @@ final class PagePermissionClassifierTest extends TestCase
     public function testShouldBePrivate(string $path, bool $expected): void
     {
         $this->assertSame($expected, PagePermissionClassifier::shouldBePrivate($path));
-    }
-
-    // -------------------------------------------------------------------------
-    // Invariant: usersc/login.php and usersc/join.php are PUBLIC, mirroring
-    // users/login.php and users/join.php from the UserSpice installer defaults.
-    // -------------------------------------------------------------------------
-
-    public function testPublicUsercsPagesArePublicNotPrivateOrSpecial(): void
-    {
-        $publicUsercPages = ['usersc/join.php', 'usersc/login.php'];
-
-        foreach ($publicUsercPages as $page) {
-            $this->assertFalse(
-                PagePermissionClassifier::shouldBePrivate($page),
-                "'{$page}' must be PUBLIC — it mirrors its users/ equivalent which is public at install"
-            );
-            $this->assertFalse(
-                PagePermissionClassifier::shouldBePrivateNoPermissions($page),
-                "'{$page}' must not be special-no-perms — it is PUBLIC"
-            );
-            $this->assertFalse(
-                PagePermissionClassifier::shouldHaveAdminPermissions($page),
-                "'{$page}' must not be an admin page"
-            );
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // #795 regression: user_settings.php must follow the owner tier
-    // -------------------------------------------------------------------------
-
-    public function testUserSettingsFollowsOwnerTier(): void
-    {
-        $path = 'usersc/user_settings.php';
-
-        $this->assertFalse(
-            PagePermissionClassifier::shouldBePrivateNoPermissions($path),
-            'user_settings.php must NOT be a special-no-perms page (issue #795)'
-        );
-        $this->assertFalse(
-            PagePermissionClassifier::shouldHaveAdminPermissions($path),
-            'user_settings.php must NOT be an admin page'
-        );
-        $this->assertTrue(
-            PagePermissionClassifier::shouldBePrivate($path),
-            'user_settings.php must be private (usersc/* pattern)'
-        );
-    }
-
-    // -------------------------------------------------------------------------
-    // #797 regression: maintenance portal pages must be admin-only
-    // -------------------------------------------------------------------------
-
-    public function testMaintenancePortalPagesAreAdminOnly(): void
-    {
-        $maintenancePages = [
-            'app/admin/maintenance.php',
-        ];
-
-        foreach ($maintenancePages as $page) {
-            $this->assertTrue(
-                PagePermissionClassifier::shouldHaveAdminPermissions($page),
-                "'{$page}' must be an admin page (issue #797)"
-            );
-            $this->assertTrue(
-                PagePermissionClassifier::shouldBeAdminOnly($page),
-                "'{$page}' must be admin-only, not admin+editor (issue #797)"
-            );
-        }
-    }
-
-    public function testAdminScriptsAreAdminOnly(): void
-    {
-        $scriptPaths = [
-            'app/admin/scripts/maintenance/21-Fix-Page-Permissions.php',
-            'app/admin/scripts/fix/01-something.php',
-        ];
-
-        foreach ($scriptPaths as $page) {
-            $this->assertTrue(
-                PagePermissionClassifier::shouldBeAdminOnly($page),
-                "'{$page}' must be admin-only (issue #797)"
-            );
-        }
-    }
-
-    public function testDesignSystemPageIsEditorLevel(): void
-    {
-        $path = 'app/admin/design-system.php';
-
-        $this->assertTrue(
-            PagePermissionClassifier::shouldHaveAdminPermissions($path),
-            'design-system.php must require admin permission'
-        );
-        $this->assertFalse(
-            PagePermissionClassifier::shouldBeAdminOnly($path),
-            'design-system.php must be admin+editor, not admin-only'
-        );
-    }
-
-    public function testContactApiEndpointsAreOwnerTier(): void
-    {
-        $contactEndpoints = [
-            'app/api/contact/send-feedback.php',
-            'app/api/contact/send-owner-email.php',
-        ];
-
-        foreach ($contactEndpoints as $path) {
-            $this->assertTrue(
-                PagePermissionClassifier::shouldBePrivate($path),
-                "'{$path}' must be owner-tier private"
-            );
-            $this->assertFalse(
-                PagePermissionClassifier::shouldHaveAdminPermissions($path),
-                "'{$path}' must not require admin permission (owner-tier, not admin-tier)"
-            );
-            $this->assertFalse(
-                PagePermissionClassifier::shouldBeAdminOnly($path),
-                "'{$path}' must not be admin-only"
-            );
-        }
-    }
-
-    public function testUnregisteredPublicApiEndpointIsNeverAdminTier(): void
-    {
-        // statistics.php does not call securePage() and is therefore never registered
-        // in the pages table. The classifier marks app/api/* paths as private (matching
-        // #^app/api/#), but that result is never applied — the Fix Page Permissions script
-        // only processes pages that are registered. Public API endpoints must NOT call
-        // securePage() precisely to stay out of the pages table.
-        $this->assertTrue(
-            PagePermissionClassifier::shouldBePrivate('app/api/shared/statistics.php'),
-            'classifier marks app/api/* private, but unregistered paths are never processed'
-        );
-        $this->assertFalse(
-            PagePermissionClassifier::shouldHaveAdminPermissions('app/api/shared/statistics.php'),
-            'public statistics endpoint must not require admin permission'
-        );
-    }
-
-    public function testGeneralAdminPagesAreNotAdminOnly(): void
-    {
-        $adminEditorPages = [
-            'app/admin/design-system.php',
-            'app/admin/index.php',
-            'app/admin/includes/tab-cars.php',
-            'docs/admin/guide.php',
-        ];
-
-        foreach ($adminEditorPages as $page) {
-            $this->assertTrue(
-                PagePermissionClassifier::shouldHaveAdminPermissions($page),
-                "'{$page}' must require admin permission"
-            );
-            $this->assertFalse(
-                PagePermissionClassifier::shouldBeAdminOnly($page),
-                "'{$page}' must be admin+editor (not admin-only)"
-            );
-        }
     }
 }

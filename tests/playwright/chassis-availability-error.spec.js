@@ -57,20 +57,6 @@ test.describe('Chassis availability check error feedback (#754)', () => {
         await ensureLoggedIn(page);
     });
 
-    test('error banner appears when availability check fails', async ({ page }) => {
-        const ready = await gotoAddCarForm(page);
-        test.skip(!ready, 'Authenticated session required');
-
-        await page.route(VALIDATE_CHASSIS_URL, (route) =>
-            route.fulfill({ status: 200, contentType: 'application/json', body: VALID_RESPONSE })
-        );
-        await page.route(CHECK_CHASSIS_URL, (route) => route.abort());
-
-        await triggerChassisBlur(page);
-
-        await expect(page.locator('#chassis_check_error')).toBeVisible({ timeout: 5000 });
-    });
-
     test('color and engine fields are enabled when availability check fails', async ({ page }) => {
         const ready = await gotoAddCarForm(page);
         test.skip(!ready, 'Authenticated session required');

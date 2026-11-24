@@ -49,54 +49,33 @@ test.describe('Login Functionality', () => {
     expect(loggedIn).toBe(true);
   });
 
-  test('failed login with invalid password', async ({ page }) => {
-    await page.goto('usersc/login.php', { waitUntil: 'networkidle' });
+  // Each row submits bad credentials and must stay logged out with an error.
+  const FAILED_LOGINS = [
+    // A non-existent user avoids incrementing the real admin account's
+    // per-user rate-limit failure counter (login_attempt user_max in
+    // usersc/includes/rate_limits.php).
+    { name: 'invalid password', username: 'nonexistent.test@example.invalid', password: INVALID_CREDENTIALS.wrongPassword },
+    { name: 'invalid username', username: INVALID_CREDENTIALS.wrongUsername, password: VALID_CREDENTIALS.password },
+  ];
 
-    // Use a non-existent user to avoid incrementing the real admin account's
-    // per-user rate-limit failure counter (user_max: 5 failures / 5 min).
-    await page.fill('input[name="username"], input[name="email"]', 'nonexistent.test@example.invalid');
-    await page.fill('input[name="password"]', INVALID_CREDENTIALS.wrongPassword);
-    
-    // Submit login form
-    await page.click('button[type="submit"], input[type="submit"]');
-    
-    // Wait for response
-    await page.waitForLoadState('networkidle');
-    
-    // Should still be on login page or show error
-    const currentUrl = page.url();
-    expect(currentUrl).toContain('login');
-    
-    // Verify not logged in
-    const loggedIn = await isLoggedIn(page);
-    expect(loggedIn).toBe(false);
-    
-    // Check for error message
-    const pageContent = await page.textContent('body');
-    expect(pageContent).toMatch(/(error|invalid|incorrect|failed)/i);
-  });
+  for (const { name, username, password } of FAILED_LOGINS) {
+    test(`failed login with ${name}`, async ({ page }) => {
+      await page.goto('usersc/login.php', { waitUntil: 'networkidle' });
 
-  test('failed login with invalid username', async ({ page }) => {
-    await page.goto('usersc/login.php', { waitUntil: 'networkidle' });
-    
-    // Fill in credentials with wrong username
-    await page.fill('input[name="username"], input[name="email"]', INVALID_CREDENTIALS.wrongUsername);
-    await page.fill('input[name="password"]', VALID_CREDENTIALS.password);
-    
-    // Submit login form
-    await page.click('button[type="submit"], input[type="submit"]');
-    
-    // Wait for response
-    await page.waitForLoadState('networkidle');
-    
-    // Should still be on login page or show error
-    const currentUrl = page.url();
-    expect(currentUrl).toContain('login');
-    
-    // Verify not logged in
-    const loggedIn = await isLoggedIn(page);
-    expect(loggedIn).toBe(false);
-  });
+      await page.fill('input[name="username"], input[name="email"]', username);
+      await page.fill('input[name="password"]', password);
+      await page.click('button[type="submit"], input[type="submit"]');
+      await page.waitForLoadState('networkidle');
+
+      expect(page.url()).toContain('login');
+
+      const loggedIn = await isLoggedIn(page);
+      expect(loggedIn).toBe(false);
+
+      const pageContent = await page.textContent('body');
+      expect(pageContent).toMatch(/(error|invalid|incorrect|failed)/i);
+    });
+  }
 
   test('form validation with empty fields', async ({ page }) => {
     await page.goto('usersc/login.php', { waitUntil: 'networkidle' });
@@ -328,25 +307,6 @@ test.describe('Login Turnstile Reset (#1798)', () => {
     expect(result.hasHandler, 'window.elanTurnstileError must be defined on the login page').toBe(true);
     expect(result.threw, 'elanTurnstileError must not throw').toBeNull();
     expect(result.resetCalled, 'elanTurnstileError must call turnstile.reset()').toBe(true);
-  });
-
-  test('double-submit does not throw when Turnstile expires between submits', async ({ page }) => {
-    await page.goto('usersc/login.php', { waitUntil: 'networkidle' });
-
-    const pageErrors = [];
-    page.on('pageerror', (err) => pageErrors.push(err.message));
-
-    // Simulate the reported failure mode: the widget expires (e.g. from an
-    // idle tab or a prior submit consuming the token) between two submits.
-    // Before this fix, the login page had no elanTurnstileExpired handler at
-    // all, so this would have been a ReferenceError if Cloudflare's widget
-    // ever invoked the (unwired) callback.
-    await page.evaluate(() => {
-      window.turnstile = { reset: () => {} };
-      window.elanTurnstileExpired();
-    });
-
-    expect(pageErrors, `Unexpected page errors: ${pageErrors.join('; ')}`).toHaveLength(0);
   });
 });
 

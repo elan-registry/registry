@@ -148,6 +148,10 @@ after an item is written.
 
 - [ ] Drop `filepond-plugin-image-exif-orientation`: the package, its `<script>` tag (`app/owner/cars/edit.php` ~L671), its `registerPlugin()` argument (car-edit.js ~L67, and the `/* global */` at L1), its copy line (build.js ~L48), and the committed `usersc/js/filepond-plugin-image-exif-orientation.min.js`. Current browsers apply EXIF orientation natively. **First upload one rotated phone JPEG with the plugin removed, and confirm that the stored image and the resized variants are upright.** (found in the #2208 audit)
 
+### `playwright.config.js`
+
+- [ ] The `Mobile Chrome` project uses `devices['iPhone SE']`, which runs WebKit, so the name is wrong and no test runs Chromium at mobile width. Rename the project, or add a Chromium mobile device (found in #2716)
+
 ### `tests/integration/AdminClearBlockAndOptOutTest.php` (test coverage)
 
 - [ ] Only the `CLEARED` outcome runs an import afterwards. Add one after a shared-address (and moved-address) Clear Block: Brevo's entry with its original `blockedAt` and with none; the flag stays clear and the other account does not change (found in /finish-milestone v2.30.9)
@@ -206,6 +210,10 @@ after an item is written.
 ### `tests/playwright/admin-verification-dashboard.spec.js` (test coverage)
 
 - [ ] No test covers the queue and activity forms binding when the switch is absent (#2457). The probe-failure path needs a failing DB (see the comment above `expectBrevoRow()` in the spec) (found in /flow:finish-milestone v2.31.0)
+
+### `tests/playwright/auth-helper.js` (test quality)
+
+- [ ] `testRedirect()` (~L177) loads the new path when the redirect does not fire, so a missing redirect still passes. Assert that the old path lands on the new path (found in #2716)
 
 ### `tests/playwright/car-add-invalid-purchasedate.spec.js` + `tests/unit/cars/CarActionsSaveWiringTest.php` (test quality)
 
