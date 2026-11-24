@@ -49,6 +49,7 @@ phpstan-bootstrap.php
 tools/
 .markdownlint.json
 .markdownlintignore
+.pre-commit-config.yaml
 .semgrepignore
 eslint-rules/
 stubs/

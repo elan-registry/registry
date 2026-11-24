@@ -1,0 +1,24 @@
+# Baseline pre-commit checks from devkit (docs/baseline.md), changed for
+# Registry. Registry keeps its own hooks in .githooks/ (core.hooksPath), so
+# do not run `pre-commit install`. Step 0 of .githooks/pre-commit runs
+# `pre-commit run` on the staged files.
+#
+# Differences from the devkit baseline:
+# - No trailing-whitespace or end-of-file-fixer. They would change UserSpice
+#   files, which stay close to upstream (.claude/rules/upstream-userspice.md),
+#   and the archived pages in docs/stories/.
+# - No markdownlint-cli2. Step 2 of .githooks/pre-commit lints Markdown with
+#   .markdownlint.json and .markdownlintignore.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+  # gitleaks scans only the staged files.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks

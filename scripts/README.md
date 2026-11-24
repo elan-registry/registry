@@ -117,6 +117,11 @@ quality checks. Run once per developer after cloning the repo.
 
 **Pre-commit hook steps** (`.githooks/pre-commit`):
 
+0. devkit baseline checks: `pre-commit run` on all staged files, with the
+   checks in `.pre-commit-config.yaml` (gitleaks, YAML, JSON, merge-conflict
+   markers, large files). Install the tool with `brew install pre-commit`. Do
+   not run `pre-commit install`: Registry uses `.githooks/`. Without the tool,
+   the step prints a warning and the commit goes on.
 1. PHP coding standards validation (security, types, PHPDoc, and — for
    `tests/unit/regression/*.php` — issue-linking traceability, checked via
    `checkRegressionTestStructure()` inside this same step, not a separate one)
