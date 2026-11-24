@@ -17,11 +17,6 @@ final class CarDataTablesTest extends IntegrationTestCase
         $this->requireDatabase();
     }
 
-    protected function tearDown(): void
-    {
-        parent::tearDown();
-    }
-
     #[Group('fast')]
     public function testGetDataTablesDataForFactoryTable(): void
     {
@@ -61,7 +56,7 @@ final class CarDataTablesTest extends IntegrationTestCase
             ]
         ];
 
-        $result = $car->getDataTablesData($request, 'cars');
+        $car->getDataTablesData($request, 'cars');
 
         $tableCheck = $this->db->query("SHOW TABLES LIKE 'cars'");
         $this->assertGreaterThan(0, $tableCheck->count());
