@@ -67,7 +67,6 @@ test.describe('Login Functionality', () => {
       await page.click('button[type="submit"], input[type="submit"]');
       await page.waitForLoadState('networkidle');
 
-      // Should still be on login page
       expect(page.url()).toContain('login');
 
       const loggedIn = await isLoggedIn(page);
