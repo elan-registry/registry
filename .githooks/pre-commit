@@ -10,6 +10,9 @@
 # To bypass: git commit --no-verify (use sparingly!)
 #
 # Checks performed:
+#   0. devkit baseline checks (`pre-commit run`, .pre-commit-config.yaml):
+#      gitleaks, YAML, JSON, merge-conflict markers and large files, on all
+#      staged files. Skipped with a warning if pre-commit is not installed.
 #   1. PHP Coding Standards (security, types, documentation, and — for
 #      tests/unit/regression/*.php — issue-linking traceability; see
 #      checkRegressionTestStructure() in scripts/check-coding-standards.php,
@@ -26,6 +29,20 @@
 set -e
 
 echo "🔍 Running pre-commit quality checks..."
+
+# Step 0: devkit baseline checks on all staged files, before the file-type
+# filter below, so that gitleaks also sees .env, YAML and other files.
+# .pre-commit-config.yaml lists them. pre-commit is optional for a
+# contributor: without it, CI still scans each PR for secrets (GitGuardian).
+if command -v pre-commit >/dev/null 2>&1; then
+    echo "🔐 Running devkit baseline checks (gitleaks and file checks)..."
+    if ! pre-commit run; then
+        echo "❌ devkit baseline checks failed. Fix the findings above, then commit again."
+        exit 1
+    fi
+else
+    echo "⚠️  pre-commit not found: devkit baseline checks skipped (brew install pre-commit)"
+fi
 
 # Get list of staged files by type
 #

@@ -108,6 +108,12 @@ else
     echo "⚠️  npx: not found (markdown linting will be skipped)"
 fi
 
+if command -v pre-commit >/dev/null 2>&1; then
+    echo "✅ pre-commit: installed (devkit baseline checks, gitleaks)"
+else
+    echo "⚠️  pre-commit: not found (devkit baseline checks will be skipped; brew install pre-commit)"
+fi
+
 # Check dependencies
 echo ""
 echo "📊 Checking dependencies:"
