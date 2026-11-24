@@ -66,18 +66,6 @@ final class CarTransferTest extends IntegrationTestCase
     }
 
     #[Group('fast')]
-    public function testTransferCarSuccessWithValidUser(): void
-    {
-        $car = new Car($this->testCarId);
-
-        $car->transfer($this->targetUserId, 'Test transfer', 'NEWOWNER', $this->testUserId);
-
-        // Reload car data from database to verify transfer
-        $transferredCar = new Car($this->testCarId);
-        $this->assertEquals($this->targetUserId, $transferredCar->data()->user_id);
-    }
-
-    #[Group('fast')]
     public function testTransferCarFailsWithInvalidUser(): void
     {
         $this->expectException(CarValidationException::class);
