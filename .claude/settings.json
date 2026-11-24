@@ -37,7 +37,9 @@
       "Bash(gh pr diff:*)",
       "Bash(gh pr list:*)",
       "Bash(gh pr view:*)",
-      "Bash(gh repo view:*)"
+      "Bash(gh repo view:*)",
+      "Bash(flow-baseline --status:*)",
+      "Bash(flow-plugins:*)"
     ],
     "deny": [
       "Skill(commit-commands:commit-push-pr)",
@@ -95,7 +97,7 @@
       "source": {
         "source": "github",
         "repo": "unibrain1/devkit",
-        "ref": "v1.3.0"
+        "ref": "v1.4.1"
       },
       "autoUpdate": true
     }
