@@ -139,39 +139,29 @@ test.describe('Factory Page - Registry Link Feature', () => {
     await page.waitForSelector('.registry-link-container', { timeout: 10000 });
     console.log('✓ Page 1 loaded');
 
-    // TODO(#1760): Whether pagination appears depends on how many rows are in
-    // elan_factory_info, which is environment-dependent — the full production
-    // dataset (9,762 rows, ElanFactoryInfoSeed) is only loaded with
-    // `scripts/provision-schema.sh --full`; default provisioning and the
-    // PHPUnit integration fixtures insert only a couple of rows, well under
-    // the pageLength of 25 (see app/assets/js/factory-list.min.js). This
-    // outer condition cannot be made unconditional without confirming the
-    // local/CI DB is always provisioned with --full.
-    const nextButton = page.locator('.paginate_button.next:not(.disabled)');
-    const isNextAvailable = await nextButton.isVisible();
+    // Assert instead of skipping: a guard here once hid a DataTables 1.x
+    // selector that matched nothing, so the test passed with no check (#2771).
+    const onePageHint = 'No enabled DataTables Next button. Either the paging markup changed, or the factory '
+      + 'table has one page: load the full elan_factory_info data with '
+      + '`./scripts/refresh-local-db.sh --fetch --skip-images` from the host. See scripts/README.md.';
+    const nextButton = page.locator('#cartable_wrapper').getByRole('link', { name: 'Next', exact: true });
+    await expect(nextButton, onePageHint).toBeVisible();
+    await expect(nextButton, onePageHint).not.toHaveAttribute('aria-disabled', 'true');
 
-    if (isNextAvailable) {
-      // Click next page
-      await nextButton.click();
+    // The table is server-side with pageLength 25 (app/assets/js/factory-list.js),
+    // so page 2 is the request with start=25. Page 1 rows already match
+    // .registry-link-container, so a selector wait would not prove page 2 loaded.
+    const page2 = page.waitForResponse((response) => response.url().includes('factory-list.php')
+      && /(?:^|&)start=25(?:&|$)/.test(response.request().postData() ?? ''));
+    await nextButton.click();
+    const page2Response = await page2;
+    expect(page2Response.ok(), `page 2 of the factory list returned HTTP ${page2Response.status()}`).toBe(true);
 
-      // Wait for page 2 to load
-      await page.waitForSelector('.registry-link-container', { timeout: 10000 });
-      console.log('✓ Page 2 loaded');
+    await expect(page.locator('#cartable_wrapper [aria-current="page"]')).toHaveText('2');
+    console.log('✓ Page 2 loaded');
 
-      // Verify Registry Link containers exist on page 2
-      const registryLinks = page.locator('.registry-link-container');
-      const count = await registryLinks.count();
-      expect(count).toBeGreaterThan(0);
-      console.log(`✓ Registry Link containers visible on page 2 (${count} found)`);
-
-      // Verify no "Check failed" errors on page 2
-      const checkFailed = page.locator(':text("Check failed")');
-      const failedCount = await checkFailed.count();
-      expect(failedCount).toBe(0);
-      console.log('✓ No "Check failed" errors on page 2');
-    } else {
-      console.log('⚠ Only 1 page of data, skipping pagination test');
-    }
+    await expect(page.locator('.registry-link-container').first()).toBeVisible();
+    console.log('✓ Registry Link containers visible on page 2');
   });
 
   test('matched chassis shows a View Car button that links to the car', async ({ page }) => {
