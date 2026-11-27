@@ -85,6 +85,8 @@ quality, security, and project management compliance.
 | ----------------------------- | --------------------- | ------ | ------------------ |
 | **CodeQL Analysis**           | Security scanning     | ✅ Yes | All PRs to main    |
 | **GitGuardian Security**      | Secret detection      | ✅ Yes | All commits/PRs    |
+| **Secrets scan (trufflehog)** | Verified secrets      | ❌ No* | All PRs (see §4)   |
+| **Semgrep**                   | Code and supply chain | ✅ Yes | All PRs (see §5)   |
 | **Claude Code Review**        | Coding standards      | ❌ No* | All PRs (see §3)   |
 | **Issue Management**          | Auto-label issues     | ❌ No  | Issue events       |
 | **PR Management**             | Link PRs to issues    | ❌ No  | PR events          |
@@ -136,9 +138,31 @@ before merge, not by GitHub blocking the merge button itself (see issue #1437).
 - **Pass criteria**: No blocking issues (❌), warnings (⚠️) acceptable
 - **Review format**: Specific feedback with code examples and standard references
 
+#### 4. **Secrets scan (trufflehog)**
+
+- **What it does**: Runs trufflehog on the PR commits. It reports only the
+  secrets that trufflehog verified as live.
+- **When it runs**: On every pull request and on each push to `main`
+- **Check name**: `secrets-scan / trufflehog`
+- **Configuration**: `.github/workflows/secrets-scan.yml` calls the shared
+  devkit workflow `secrets-scan.yml`, pinned to the same devkit tag as the
+  Claude review caller
+- **Failure impact**: Not yet a required check. It becomes one after its
+  first run on `main`.
+
+#### 5. **Semgrep**
+
+- **What it does**: Semgrep Code and Supply Chain scans (Managed Scans in
+  the `jim_unibrain_org` Semgrep organization)
+- **When it runs**: On every pull request
+- **Check name**: `semgrep-cloud-platform/scan`
+- **Configuration**: External service, no local configuration files. The
+  Block policy stops a merge on a high-confidence Critical or High finding.
+- **Failure impact**: Blocks merge (required check on `main`)
+
 ### Project Management Automation
 
-#### 4. **Issue Management Automation**
+#### 6. **Issue Management Automation**
 
 - **What it does**: Automatically manages GitHub issues with labels,
   milestones, and status tracking
@@ -150,7 +174,7 @@ before merge, not by GitHub blocking the merge button itself (see issue #1437).
   - **Milestone tracking**: Updates progress when issues close
 - **Labels applied**: `priority: critical/high/medium/low`, `status: needs-planning/in-progress/needs-review`
 
-#### 5. **PR Management Automation**
+#### 7. **PR Management Automation**
 
 - **What it does**: Links PRs to issues and manages development workflow
 - **When it runs**: On PR creation, updates, and merge
@@ -163,7 +187,7 @@ before merge, not by GitHub blocking the merge button itself (see issue #1437).
 
 ### Automated Test Execution
 
-#### 6. **PHPUnit Unit + Regression**
+#### 8. **PHPUnit Unit + Regression**
 
 - **What it does**: Runs the PHPUnit `Unit` and `Regression` testsuites (`composer test:quick:ci`
   and `composer test:regression:ci`) — mocked, no database or network required
